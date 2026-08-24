@@ -2,7 +2,7 @@ import { readdirSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, join } from 'node:path'
 import { v5 as uuidv5 } from 'uuid'
-import type { SeedCard, SeedHeroPower } from '../../shared/types'
+import type { SeedCard, SeedHeroPower, VehicleType } from '../../shared/types'
 
 // Fixed namespace: changing it changes every seeded id. Never change it.
 const FTD_NAMESPACE = 'a1b0c7e2-4f3d-4b6a-9e8c-2d5f7a9b1c3e'
@@ -14,6 +14,26 @@ export const heroPowerId = (faction: string, name: string): string =>
   uuidv5(`hero:${faction}:${name}`, FTD_NAMESPACE)
 
 const SOURCE_DIR = join(dirname(fileURLToPath(import.meta.url)), 'source')
+
+// Upstream bug in supabase/seed/source/builtInCards/OW-Built-in.js: these 10
+// cards set `vehicleType: VEHICLE_TYPES.ship` (lowercase key), but the old
+// BE's VEHICLE_TYPES enum only has uppercase keys (SHIP, AIRSHIP, TANK,
+// PLANE, SUB), so `VEHICLE_TYPES.ship` evaluates to `undefined`. Every other
+// field on these cards (cardText, keywords, meta, type: 'vehicle') makes the
+// author's intent unambiguous: all 10 are ships. We patch it here instead of
+// editing the source file, which stays a verbatim copy of the old BE data.
+const VEHICLE_TYPE_PATCHES: Record<string, VehicleType> = {
+  'OW:Cauldron': 'ship',
+  'OW:Clydesdale': 'ship',
+  'OW:Halberd': 'ship',
+  'OW:Iron Cordon': 'ship',
+  'OW:Javelin': 'ship',
+  'OW:Jormangund': 'ship',
+  'OW:Mace': 'ship',
+  'OW:Mandrel': 'ship',
+  'OW:Partisan': 'ship',
+  'OW:Rook': 'ship',
+}
 
 export async function loadSeedData(): Promise<{
   cards: SeedCard[]
@@ -30,6 +50,9 @@ export async function loadSeedData(): Promise<{
           throw new Error(`Malformed card in ${file}: ${JSON.stringify(card)}`)
         }
         const key = `${card.faction}:${card.name}`
+        if (card.vehicleType == null && VEHICLE_TYPE_PATCHES[key]) {
+          card.vehicleType = VEHICLE_TYPE_PATCHES[key]
+        }
         const existing = byKey.get(key)
         if (existing) {
           if (JSON.stringify(existing) !== JSON.stringify(card)) {

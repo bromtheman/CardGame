@@ -48,6 +48,30 @@ describe('loadSeedData', () => {
   })
 })
 
+describe('vehicle_type patches (upstream OW-Built-in.js enum-key bug)', () => {
+  it('every vehicle-type card has a non-null vehicleType', async () => {
+    const { cards } = await loadSeedData()
+    for (const c of cards) {
+      if (c.type === 'vehicle') {
+        expect(c.vehicleType).not.toBeNull()
+        expect(c.vehicleType).not.toBeUndefined()
+      }
+    }
+  })
+  it('patches all 10 affected OW cards to vehicleType "ship"', async () => {
+    const { cards } = await loadSeedData()
+    const names = [
+      'Cauldron', 'Clydesdale', 'Halberd', 'Iron Cordon', 'Javelin',
+      'Jormangund', 'Mace', 'Mandrel', 'Partisan', 'Rook',
+    ]
+    for (const name of names) {
+      const card = cards.find((c) => c.faction === 'OW' && c.name === name)
+      expect(card).toBeDefined()
+      expect(card?.vehicleType).toBe('ship')
+    }
+  })
+})
+
 describe('buildSeedSql', () => {
   it('escapes quotes and serializes jsonb', () => {
     const sql = buildSeedSql(
