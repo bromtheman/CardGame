@@ -133,7 +133,8 @@ have ≥1 vehicle there. Two options:
   vehicle. The server computes outcomes: **≥90%** survives; **80–89.999%**
   destroyed unless its owner pays the repair cost (½ material cost; free with
   **Scrappy**) — repair choices are part of the report; **<80%** destroyed, no
-  repair. The opponent **approves or rejects** the report. Approve → outcomes
+  repair. **Fragile** vehicles can never be repaired (3.7).
+  The opponent **approves or rejects** the report. Approve → outcomes
   applied (destroyed vehicles removed), battle ends, turn continues. Reject →
   battle stays active; a corrected report can be submitted by either player.
 
@@ -161,9 +162,9 @@ MVP-implemented (from the design doc + old BE `gameSettings.js` comments):
 - **Robotic** — battle-conduct rule shown on the spawn sheet: unlimited
   in-battle repair resources, but the vehicle is considered destroyed if any of
   its sub-objects are destroyed (players apply this when reporting results)
-
-**Fragile** (auto-assigned to airships) is the only keyword with no known
-mechanics — stored and displayed as an inert tag until defined.
+- **Fragile** (auto-assigned to airships) — cannot be repaired once below 90%
+  HP: the 80–89.999% repair window (3.5) does not apply; the vehicle is simply
+  destroyed. Overrides Scrappy.
 
 Flier special rules: planes get Half-Cost + Temporary automatically. Submarines
 cannot damage bases. Both are deck-limited to 6 copies (3.1).
@@ -217,7 +218,7 @@ revealed as "in progress" until the required battle/report resolves.
 Create-card form: name, vehicle type, blueprint cost (manual entry), card image
 upload (Supabase Storage). Server-side rules: material cost = blueprint cost
 rounded **up** to nearest 5k (then Half-Cost halves it for planes); auto-keywords
-by type (plane → Half-Cost + Temporary; airship → fragile tag); no custom card
+by type (plane → Half-Cost + Temporary; airship → Fragile); no custom card
 text or effects. Custom cards are visible to all players (opponents see what hits
 them) but only usable in their owner's decks. AI/built-in card costs are already
 rounded down to 10k in the source data.
@@ -365,5 +366,5 @@ detailed implementation plan.
 ## 10. Out of scope (future work)
 
 Blueprint file upload/parsing, custom card effects/text, spectators, in-game
-chat, rankings/matchmaking, admin UI, faction powers for SS/WF/GT, mechanics for
-the fragile keyword, turn timers, mobile-optimized layout, deck import/export.
+chat, rankings/matchmaking, admin UI, faction powers for SS/WF/GT, turn timers,
+mobile-optimized layout, deck import/export.
