@@ -23,6 +23,9 @@ export const REPAIR_WINDOW_MIN_PERCENT = 80
 export const REPAIR_COST_RATE = 0.5
 
 export const CUSTOM_CARD_ROUND_TO = 5000 // player cards round UP to this
+export const MAX_CUSTOM_BLUEPRINT_COST = 10_000_000
+export const CARD_IMAGE_MAX_BYTES = 2_097_152 // must match the storage bucket limit
+export const CARD_IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const
 
 export const FACTIONS = {
   NEUTRAL: 'NEUTRAL', DWG: 'DWG', SS: 'SS', LH: 'LH', TG: 'TG',

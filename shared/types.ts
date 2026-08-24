@@ -1,4 +1,4 @@
-import type { CARD_TYPES, FACTIONS, VEHICLE_TYPES, ZONE_TYPES } from './gameSettings'
+import type { CARD_TYPES, FACTIONS, VEHICLE_TYPES, ZONE_TYPES } from './gameSettings.ts'
 
 export type Faction = (typeof FACTIONS)[keyof typeof FACTIONS]
 export type CardType = (typeof CARD_TYPES)[keyof typeof CARD_TYPES]
