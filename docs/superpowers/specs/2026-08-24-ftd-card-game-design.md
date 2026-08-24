@@ -28,6 +28,8 @@ Reference material (read-only, do not port bugs):
 | Custom cards | In MVP: manual stats entry only (no blueprint file upload/parsing) |
 | Rules enforcement | Server-authoritative via Supabase Edge Functions |
 | Frontend | React SPA (Vite), no Next.js; Netlify hosting later |
+| Deck faction | Every deck selects a base faction (DWG/GT/LH/OW/SS/WF); it constrains built-in cards and attaches that faction's hero powers |
+| Hero powers | 4 universal (NEUTRAL) powers + per-faction powers from old BE `heroPowers.js`, seeded into a `hero_powers` table |
 
 ## 2. Repository layout
 
@@ -68,11 +70,15 @@ overrides come from lobby settings. Nothing is hardcoded at usage sites.
 - 3 zones, left to right, ids 1–3. Each zone has a biome from lobby settings
   (default: all water). Each player has a base in each zone with HP from lobby
   settings (default **1000**).
+- Every deck has a required **base faction**, chosen at deck creation from:
+  **DWG, GT, LH, OW, SS, WF**. Built-in cards in the deck must belong to that
+  faction or NEUTRAL; the deck's faction also determines which faction hero
+  powers its player has in game (3.8).
 - Decks validated server-side at game start: exactly **20** cards, max **2** copies
   per card, max **4** custom (player-created) cards, max **6** total flier copies,
-  max **6** total submarine copies, built-in cards limited to a **single faction**
-  per deck (neutral cards allowed with any faction). Each rule is an independent
-  constant — easy to change or disable.
+  max **6** total submarine copies, built-in cards matching the deck's base
+  faction (or NEUTRAL). Each rule is an independent constant — easy to change or
+  disable.
 - Deck is expanded into card instances (`instanceId` per copy), shuffled. Starting
   hand: **5** cards. Starting CP: **3**. Starting materials: turn-1 income (see below).
 
@@ -105,7 +111,10 @@ have ≥1 vehicle there. Two options:
    turn (1-turn delay).
 2. **Attack the enemy fleet.** Requires ≥1 enemy vehicle in the zone. Activator
    selects any number of their own vehicles (excluding **Inoffensive**) and any
-   number of enemy vehicles. This creates an **active battle** (see 3.5).
+   number of enemy vehicles. If any selected enemy vehicle has **Stealthy**, its
+   owner is prompted to opt it out (3.7) before the battle locks in; a battle
+   whose defenders all opt out is cancelled (the zone activation is not spent).
+   This creates an **active battle** (see 3.5).
 
 ### 3.5 Battles (fought out-of-band in FTD)
 
@@ -136,24 +145,56 @@ and may still fight fleet battles.
 
 ### 3.7 Keywords
 
-MVP-implemented (from the design doc): **Blocker**, **Temporary**, **Scrappy**,
-**Air Screen**, **Sub Screen**, **Inoffensive**, plus **Half-Cost** (vehicle costs
-50% of blueprint cost — the flier rule). Legacy keywords present on seeded cards
-(**fragile**, **stealthy**, **mobile**, **robotic**) are stored and displayed as
-inert tags with **no rules effect** in MVP; their mechanics come later.
+MVP-implemented (from the design doc + old BE `gameSettings.js` comments):
+
+- **Blocker** — opponent may not declare base attacks in this zone
+- **Temporary** — removed at the start of the next turn (3.2)
+- **Scrappy** — no repair cost
+- **Air Screen** — opponent may not play planes/airships into this zone
+- **Sub Screen** — opponent may not play submarines into this zone
+- **Inoffensive** — cannot participate in offensive battles or base attacks
+- **Half-Cost** — vehicle costs 50% of blueprint cost (the flier rule)
+- **Stealthy** — when the opponent declares a fleet attack, this vehicle's owner
+  may exclude it from the defending selection (opt out of defensive battles)
+- **Mobile** — its owner may move it to another legal zone once per turn
+  (via the MOVE_VEHICLE action; free, doesn't activate the zone)
+- **Robotic** — battle-conduct rule shown on the spawn sheet: unlimited
+  in-battle repair resources, but the vehicle is considered destroyed if any of
+  its sub-objects are destroyed (players apply this when reporting results)
+
+**Fragile** (auto-assigned to airships) is the only keyword with no known
+mechanics — stored and displayed as an inert tag until defined.
 
 Flier special rules: planes get Half-Cost + Temporary automatically. Submarines
 cannot damage bases. Both are deck-limited to 6 copies (3.1).
 
 ### 3.8 Hero powers
 
-Universal (not per-faction, superseding the old BE's faction powers). Each usable
-**once per game**, each costs **1 CP**:
+A player's available hero powers = the **4 universal (NEUTRAL) powers** + the
+powers of **their deck's base faction**. Each usable **once per game**, each
+costs **1 CP**. Seeded from the old BE's `heroPowers.js` into the `hero_powers`
+table:
 
-1. Return one of your own destroyed vehicles' card to hand
-2. Modify one battle's starting distance by up to ±600 m (within 50 m–2 km)
-3. Draw a card
-4. Move a friendly vehicle to any other zone legal for it
+Universal (NEUTRAL):
+
+1. **Salvage** — return one of your own destroyed vehicles' card to hand
+2. **Tactical Positioning** — modify one battle's starting distance by up to
+   ±600 m (within 50 m–2 km)
+3. **Hero Power Draw** — draw a card
+4. **Rapid Redeployment** — move a friendly vehicle to any other zone legal for it
+
+Faction:
+
+- **DWG — Boarding Party**: choose a friendly DWG faction ship; you may exchange
+  it with one of your opponent's faction ships of equal or lesser cost from the
+  same zone
+- **OW — Change Order**: discard an OW vehicle card; draw a copy of a
+  player-made ship or tank from your deck in two turns
+- **LH — Flyby**: choose an LH vehicle card in hand; give it the Half-Cost and
+  Temporary keywords
+
+SS, WF, and GT have no faction power authored yet — those decks get only the 4
+universal powers until new rows (and matching effect implementations) are added.
 
 ### 3.9 Card effects
 
@@ -166,10 +207,10 @@ in the old BE are ported; cards referencing unimplemented effect names play as
 **vanilla** (effect skipped, note appended to game log). All ~120 seeded cards are
 playable from day one.
 
-Some ability cards arm a **delayed effect** on a zone or player (action
-`SET_ALERT_CARD`, e.g. "the next time the enemy attacks your base in this zone…").
-The opponent sees that an alert is armed on the target, but not which card it is,
-until it triggers.
+`SET_ALERT_CARD` (per the old BE's comment) **shows the opponent the card being
+played before its effect resolves** — used when a card's effect needs opponent
+interaction to complete, e.g. an ability that forces a battle: the card is
+revealed as "in progress" until the required battle/report resolves.
 
 ### 3.10 Custom cards (MVP)
 
@@ -201,10 +242,17 @@ RLS: everyone authed reads all cards; no direct client writes (custom card
 creation goes through an edge function; built-ins edited via Studio only).
 
 ### `decks`
-`id uuid PK`, `owner_id → profiles`, `name`, `cards jsonb` (`{card_id: qty}`),
+`id uuid PK`, `owner_id → profiles`, `name`, `faction text not null`
+(DWG|GT|LH|OW|SS|WF — the deck's base faction), `cards jsonb` (`{card_id: qty}`),
 `created_at`, `updated_at`.
 RLS: owner-only (all operations). Client-side validation for UX; authoritative
 re-validation at game start.
+
+### `hero_powers`
+`id uuid PK`, `name`, `faction text` (NEUTRAL or a faction), `text`,
+`cp_cost int`, `meta jsonb` (effect name for the shared registry), `created_at`.
+Seeded from old BE `heroPowers.js` with deterministic UUIDs.
+RLS: everyone authed reads; edited via Studio only (like built-in cards).
 
 ### `lobbies`
 `id uuid PK`, `host_id → profiles`, `name`, `status text` (open|starting|closed),
@@ -237,7 +285,7 @@ Bucket `card-images`: public read; authed upload restricted to a per-user folder
 
 | Function | Actions |
 |---|---|
-| `game-action` | `{gameId, actionType, actionBody}` — the entire in-game vocabulary: PLAY_CARD_TO_ZONE, PLAY_CARD_WITHOUT_TARGET, PLAY_CARD_TARGETING_CARD_ON_FIELD, PLAY_CARD_TARGETING_CARD_IN_HAND, SET_ALERT_CARD, ATTACK_ENEMY_BASE, ATTACK_ENEMY_FLEET, SUBMIT_BATTLE_REPORT, DECIDE_BATTLE_REPORT, USE_HERO_POWER, END_TURN, CONCEDE |
+| `game-action` | `{gameId, actionType, actionBody}` — the entire in-game vocabulary: PLAY_CARD_TO_ZONE, PLAY_CARD_WITHOUT_TARGET, PLAY_CARD_TARGETING_CARD_ON_FIELD, PLAY_CARD_TARGETING_CARD_IN_HAND, SET_ALERT_CARD, MOVE_VEHICLE (Mobile keyword), ATTACK_ENEMY_BASE, ATTACK_ENEMY_FLEET, SUBMIT_BATTLE_REPORT, DECIDE_BATTLE_REPORT, USE_HERO_POWER, END_TURN, CONCEDE |
 | `lobby-action` | JOIN, LEAVE, START (START validates both decks, rolls first player, builds initial game + game_players rows in one transaction) |
 | `create-card` | Validates + applies custom-card rules (rounding, auto-keywords), inserts card |
 
@@ -266,6 +314,10 @@ lists active games with a your-turn indicator.
 
 Routes: `/login`, `/signup`, `/` (home), `/cards` (browse by faction + create
 custom), `/decks`, `/decks/:id` (builder), `/lobbies`, `/games`, `/game/:id`.
+
+Deck builder: creating a deck starts with picking its base faction
+(DWG/GT/LH/OW/SS/WF); the card pool then shows that faction + NEUTRAL + your
+custom cards, with the faction's hero powers displayed alongside the deck.
 
 Stack: Vite, React 18, TypeScript, react-router, TanStack Query, supabase-js,
 Tailwind CSS v4 with a custom token layer.
@@ -296,14 +348,15 @@ with cost badge and keyword icon row, `shortHandNumber` formatting ("42k",
 
 ## 9. Build phases
 
-1. **Foundation** — scaffold repo per §2, link git remote, CI-less; Supabase:
-   auth config, profiles + trigger, cards schema, seed all 6 factions; login/signup UI.
+1. **Foundation** — scaffold repo per §2, link git remote; Supabase: auth
+   config, profiles + trigger, cards + hero_powers schema, seed all 6 factions'
+   cards and all hero powers; login/signup UI.
 2. **Cards & decks** — card browser, custom card creation (edge function +
-   storage), deck builder with live validation.
+   storage), deck builder with faction selection and live validation.
 3. **Lobbies** — create/browse/join/start with settings (biomes, base HP), realtime lobby list.
 4. **Game engine** — shared engine TDD (turn loop → placement → base attacks →
-   battles/reports → hero powers → card effects), `game-action` function, board
-   UI, realtime game sync.
+   battles/reports → hero powers (universal + faction) → card effects),
+   `game-action` function, board UI, realtime game sync.
 5. **Polish** — theme pass, reconnect robustness, My Games dashboard, concede/abandon handling.
 
 Each phase ends playable/verifiable. Phase 4 is the largest and will get its own
@@ -312,6 +365,5 @@ detailed implementation plan.
 ## 10. Out of scope (future work)
 
 Blueprint file upload/parsing, custom card effects/text, spectators, in-game
-chat, rankings/matchmaking, admin UI, per-faction hero powers, mechanics for
-legacy keywords (fragile/stealthy/mobile/robotic), turn timers, mobile-optimized
-layout, deck import/export.
+chat, rankings/matchmaking, admin UI, faction powers for SS/WF/GT, mechanics for
+the fragile keyword, turn timers, mobile-optimized layout, deck import/export.
