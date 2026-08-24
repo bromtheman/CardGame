@@ -1,0 +1,25 @@
+@import "tailwindcss";
+
+@font-face {
+  font-family: "Lobster";
+  src: url("../assets/fonts/Lobster-Regular.ttf") format("truetype");
+  font-display: swap;
+}
+
+@theme {
+  --color-ocean-950: #081a36;
+  --color-ocean-900: #0e2954;
+  --color-ocean-800: #153870;
+  --color-ocean-600: #2b5ea7;
+  --color-ocean-300: #7fb2e5;
+  --color-parchment-100: #f2e8d5;
+  --color-parchment-300: #d9c9a3;
+  --color-brass-400: #c9a227;
+  --font-display: "Lobster", cursive;
+  --shadow-plank: 4px 4px 4px rgba(20, 20, 20, 0.8);
+}
+
+body {
+  @apply min-h-screen text-parchment-100;
+  background: linear-gradient(180deg, var(--color-ocean-800), var(--color-ocean-950));
+}
