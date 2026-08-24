@@ -76,6 +76,44 @@ export type Database = {
           },
         ]
       }
+      decks: {
+        Row: {
+          cards: Json
+          created_at: string
+          faction: string
+          id: string
+          name: string
+          owner_id: string
+          updated_at: string
+        }
+        Insert: {
+          cards?: Json
+          created_at?: string
+          faction: string
+          id?: string
+          name: string
+          owner_id: string
+          updated_at?: string
+        }
+        Update: {
+          cards?: Json
+          created_at?: string
+          faction?: string
+          id?: string
+          name?: string
+          owner_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "decks_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       hero_powers: {
         Row: {
           cp_cost: number
