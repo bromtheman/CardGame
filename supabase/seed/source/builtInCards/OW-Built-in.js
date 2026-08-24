@@ -1,0 +1,471 @@
+import { FACTIONS, TRIGGERS, KEYWORDS, VEHICLE_TYPES } from "../gameSettings";
+
+export const GT_AIRSHIP = [
+    {
+        name: '[GT] Damacy',
+        isBuiltIn: true,
+        cardText: '',
+        materialCost: 460000,
+        blueprintCost: 487456,
+        cpCost: 0,
+        imageUrl: 'damacy.png',
+        playerId: null,
+        vehicleType: 'airship',
+        type: 'vehicle',
+        faction: FACTIONS.OW,
+        blueprintId: null,
+        keywords: [KEYWORDS.BLOCKER],
+        meta: {
+        }
+    },
+    {
+        name: '[GT] Zephyr',
+        isBuiltIn: true,
+        cardText: '',
+        materialCost: 140000,
+        blueprintCost: 143000,
+        cpCost: 0,
+        imageUrl: 'zephyr.png',
+        playerId: null,
+        vehicleType: 'airship',
+        type: 'vehicle',
+        faction: FACTIONS.GT,
+        blueprintId: null,
+        keywords: [KEYWORDS.SCRAPPY, KEYWORDS.SUB_SCREEN],
+        meta: {
+        }
+    },
+    {
+        name: '[GT] Osprey',
+        isBuiltIn: true,
+        cardText: 'When this card is played, spawn another [GT] Osprey into the same zone',
+        materialCost: 149000,
+        blueprintCost: 149000,
+        cpCost: 0,
+        imageUrl: 'ospray.png',
+        playerId: null,
+        vehicleType: 'plane',
+        type: 'vehicle',
+        faction: FACTIONS.GT,
+        blueprintId: null,
+        keywords: [KEYWORDS.TEMPORARY],
+        meta: {
+        }
+    },
+    {
+        name: '[GT] Achievement',
+        isBuiltIn: true,
+        cardText: '',
+        materialCost: 260000,
+        blueprintCost: 265000,
+        cpCost: 0,
+        imageUrl: 'achievement.png',
+        playerId: null,
+        vehicleType: 'plane',
+        type: 'vehicle',
+        faction: FACTIONS.GT,
+        blueprintId: null,
+        keywords: [KEYWORDS.STEALTHY],
+        meta: {
+        }
+    },
+];
+
+export const GT_HEAVY_AIRSHIP = [
+    {
+        name: '[GT] Kobold',
+        isBuiltIn: true,
+        cardText: '',
+        materialCost: 700000,
+        blueprintCost: 707000,
+        cpCost: 0,
+        imageUrl: 'kobold.png',
+        playerId: null,
+        vehicleType: 'airship',
+        type: 'vehicle',
+        faction: FACTIONS.GT,
+        blueprintId: null,
+        keywords: [],
+        meta: {
+        }
+    },
+    {
+        name: '[GT] Monsoon',
+        isBuiltIn: true,
+        cardText: 'Once per turn, you may pay 1cp to move this vehicle to another zone',
+        materialCost: 770000,
+        blueprintCost: 779000,
+        cpCost: 0,
+        imageUrl: 'monsoon.png',
+        playerId: null,
+        vehicleType: 'airship',
+        type: 'vehicle',
+        faction: FACTIONS.GT,
+        blueprintId: null,
+        keywords: [KEYWORDS.BLOCKER, KEYWORDS.SCRAPPY],
+        meta: {
+        }
+    },
+    {
+        name: '[GT] Hunchback',
+        isBuiltIn: true,
+        cardText: 'Once per turn, you may spend 1cp to draw a card',
+        materialCost: 770000,
+        blueprintCost: 773000,
+        cpCost: 0,
+        imageUrl: 'hunchback.png',
+        playerId: null,
+        vehicleType: 'airship',
+        type: 'vehicle',
+        faction: FACTIONS.GT,
+        blueprintId: null,
+        keywords: [KEYWORDS.BLOCKER],
+        meta: {
+        }
+    },
+];
+
+export const owVehicles = [
+    {
+        name: 'Bulwark',
+        isBuiltIn: true,
+        cardText: 'When played, gain 2cp',
+        materialCost: 400000,
+        blueprintCost: 466000,
+        cpCost: 0,
+        imageUrl: 'bulwark.png',
+        playerId: null,
+        vehicleType: 'ship',
+        type: 'vehicle',
+        faction: FACTIONS.OW,
+        blueprintId: null,
+        keywords: [KEYWORDS.BLOCKER],
+        meta: {
+        }
+    },
+    {
+        name: 'Trebuchet',
+        isBuiltIn: true,
+        cardText: 'When Played, you may choose to have this vehicle battle an opponents vehicle from the same zone in a 1v1. If the trebuchet wins without becoming damaged beyond repair, fully heal it and you may repeat this effect.',
+        materialCost: 500000,
+        blueprintCost: 506000,
+        cpCost: 0,
+        imageUrl: 'trebuchet.png',
+        playerId: null,
+        vehicleType: 'ship',
+        type: 'vehicle',
+        faction: FACTIONS.OW,
+        blueprintId: null,
+        keywords: [KEYWORDS.SCRAPPY],
+        meta: {
+            [TRIGGERS.PLAY_ON_VEHICLE]: 'trebuchetEffect',
+        }
+    },
+    {
+        name: 'Sub Killer',
+        isBuiltIn: true,
+        cardText: 'Target an enemy submarine, plane, or airship vehicle in a zone that you do not have a GT vehicle in. Remove it from play but you cannot play a GT vehicle into that zone for the rest of the turn',
+        materialCost: 100000,
+        blueprintCost: 0,
+        cpCost: 1,
+        imageUrl: 'subKiller.png',
+        playerId: null,
+        vehicleType: null,
+        type: 'ability',
+        faction: FACTIONS.OW,
+        blueprintId: null,
+        meta: {
+            [TRIGGERS.PLAY_ON_VEHICLE]: 'subKillerEffect',
+        }
+    },    
+    {
+        name: 'Special Foundries',
+        isBuiltIn: true,
+        cardText: 'Draw one card from either the GT Airship or Heavy Airship deck (your choice)',
+        materialCost: 100000,
+        blueprintCost: 0,
+        cpCost: 0,
+        imageUrl: 'specialFoundries.png',
+        playerId: null,
+        vehicleType: null,
+        type: 'ability',
+        faction: FACTIONS.OW,
+        blueprintId: null,
+        meta: {
+            [TRIGGERS.ON_PLAY]: 'specialFoundriesEffect',
+        }
+    },{
+        name: 'Claymore',
+        isBuiltIn: true,
+        cardText: 'Draw a card when played',
+        materialCost: 50000,
+        blueprintCost: 84600,
+        cpCost: 0,
+        imageUrl: 'claymore.png',
+        playerId: null,
+        vehicleType: 'ship',
+        type: 'vehicle',
+        faction: FACTIONS.OW,
+        blueprintId: null,
+        meta: {
+            [TRIGGERS.ON_PLAY]: 'claymoreEffect'
+        }
+    },
+    {
+        name: 'Palisade',
+        isBuiltIn: true,
+        cardText: 'Draw a card when played',
+        materialCost: 310000,
+        blueprintCost: 317000,
+        cpCost: 0,
+        imageUrl: 'palisade.png',
+        playerId: null,
+        vehicleType: 'ship',
+        type: 'vehicle',
+        faction: FACTIONS.OW,
+        blueprintId: null,
+        keywords: [KEYWORDS.SUB_SCREEN],
+        meta: {
+            [TRIGGERS.ON_PLAY]: 'palisadeEffect'
+        }
+    },{
+        name: 'Defensive Parapet',
+        isBuiltIn: true,
+        cardText: 'Spawn two parapets into a zone. They gain Inoffensive, Scrappy, and blocker keywords.',
+        materialCost: 200000,
+        blueprintCost: 0,
+        cpCost: 0,
+        imageUrl: 'defensiveParapet.png',
+        playerId: null,
+        vehicleType: null,
+        type: 'ability',
+        faction: FACTIONS.OW,
+        blueprintId: null,
+        meta: {
+            [TRIGGERS.PLAY_ON_ZONE]: 'defensiveParapetEffect',
+        }
+    },{
+        name: 'The Onyx Throne',
+        isBuiltIn: true,
+        cardText: 'Whenever this vehicle would partake in a defensive battle, spawn an allied alongside it. Once per turn, you may pay 1cp to draw a GT heavy airship card.',
+        materialCost: 500000,
+        blueprintCost: 492482,
+        cpCost: 0,
+        imageUrl: 'onyxthrone.png',
+        playerId: null,
+        vehicleType: VEHICLE_TYPES.SHIP,
+        type: 'vehicle',
+        faction: FACTIONS.OW,
+        blueprintId: null,
+        keywords: [KEYWORDS.BLOCKER, KEYWORDS.INOFFENSIVE]
+    },
+    {
+        name: 'Eyrie',
+        isBuiltIn: true,
+        cardText: '',
+        materialCost: 780000,
+        blueprintCost: 781362,
+        cpCost: 0,
+        imageUrl: 'Eyrie.png',
+        playerId: null,
+        vehicleType: VEHICLE_TYPES.AIRSHIP,
+        type: 'vehicle',
+        faction: FACTIONS.OW,
+        blueprintId: null,
+        keywords: [KEYWORDS.HALF_COST, KEYWORDS.BLOCKER]
+    },
+    {
+        name: 'Rook',
+        isBuiltIn: true,
+        cardText: 'Draw a card when played',
+        materialCost: 50000,
+        blueprintCost: 98841,
+        cpCost: 0,
+        imageUrl: 'Rook.png',
+        playerId: null,
+        vehicleType: VEHICLE_TYPES.ship,
+        type: 'vehicle',
+        faction: FACTIONS.OW,
+        blueprintId: null,
+        keywords: []
+    },{
+        name: 'Partisan',
+        isBuiltIn: true,
+        cardText: 'When this card is destroyed, draw a random GT Airship',
+        materialCost: 50000,
+        blueprintCost: 50125,
+        cpCost: 0,
+        imageUrl: 'Partisan.png',
+        playerId: null,
+        vehicleType: VEHICLE_TYPES.ship,
+        type: 'vehicle',
+        faction: FACTIONS.OW,
+        blueprintId: null,
+        meta: {
+            [TRIGGERS.ON_DEATH]: 'partisanEffect'
+        }
+    },
+    {
+        name: 'Halberd',
+        isBuiltIn: true,
+        cardText: 'When this card is destroyed, draw a random GT Airship',
+        materialCost: 120000,
+        blueprintCost: 121363,
+        cpCost: 0,
+        imageUrl: 'halberd.png',
+        playerId: null,
+        vehicleType: VEHICLE_TYPES.ship,
+        type: 'vehicle',
+        faction: FACTIONS.OW,
+        blueprintId: null,
+        keywords: [KEYWORDS.SUB_SCREEN],
+        meta: {
+        }
+    },
+    {
+        name: 'Mandrel',
+        isBuiltIn: true,
+        cardText: 'When played, draw a card',
+        materialCost: 150000,
+        blueprintCost: 155000,
+        cpCost: 0,
+        imageUrl: 'mandrel.png',
+        playerId: null,
+        vehicleType: VEHICLE_TYPES.ship,
+        type: 'vehicle',
+        faction: FACTIONS.OW,
+        blueprintId: null,
+        keywords: [KEYWORDS.MOBILE]
+    },
+    {
+        name: 'Iron Cordon',
+        isBuiltIn: true,
+        cardText: 'Whenever this vehicle survives a battle in which an allied GT airship is destroyed, you may sacrifice this vehicle to save that airship',
+        materialCost: 300000,
+        blueprintCost: 302000,
+        cpCost: 0,
+        imageUrl: 'ironcordon.png',
+        playerId: null,
+        vehicleType: VEHICLE_TYPES.ship,
+        type: 'vehicle',
+        faction: FACTIONS.OW,
+        blueprintId: null,
+        keywords: []
+    },
+    {
+        name: 'Jormangund',
+        isBuiltIn: true,
+        cardText: 'When this vehicle is destroyed, draw a random GT airship',
+        materialCost: 320000,
+        blueprintCost: 329000,
+        cpCost: 0,
+        imageUrl: 'ironcordon.png',
+        playerId: null,
+        vehicleType: VEHICLE_TYPES.ship,
+        type: 'vehicle',
+        faction: FACTIONS.OW,
+        blueprintId: null,
+        keywords: []
+    },
+    {
+        name: 'Javelin',
+        isBuiltIn: true,
+        cardText: 'When this vehicle is destroyed, draw a card',
+        materialCost: 440000,
+        blueprintCost: 441000,
+        cpCost: 0,
+        imageUrl: 'ironcordon.png',
+        playerId: null,
+        vehicleType: VEHICLE_TYPES.ship,
+        type: 'vehicle',
+        faction: FACTIONS.OW,
+        blueprintId: null,
+        keywords: []
+    },
+    {
+        name: 'Clydesdale',
+        isBuiltIn: true,
+        cardText: 'If played into a zone in which you have no friendly vehicles, spawn another copy into that zone',
+        materialCost: 150000,
+        blueprintCost: 153000,
+        cpCost: 0,
+        imageUrl: 'clydesdale.png',
+        playerId: null,
+        vehicleType: VEHICLE_TYPES.ship,
+        type: 'vehicle',
+        faction: FACTIONS.OW,
+        blueprintId: null,
+        keywords: [KEYWORDS.STEALTHY],
+        meta: {
+            [TRIGGERS.ON_PLAY]: 'clydesdaleEffect' 
+        }
+    },
+    {
+        name: 'Cauldron',
+        isBuiltIn: true,
+        cardText: 'When played, put a random submarine card from your deck into your hand (if you have one)',
+        materialCost: 150000,
+        blueprintCost: 102000,
+        cpCost: 0,
+        imageUrl: 'Cauldron.png',
+        playerId: null,
+        vehicleType: VEHICLE_TYPES.ship,
+        type: 'vehicle',
+        faction: FACTIONS.OW,
+        blueprintId: null,
+        meta: {
+            [TRIGGERS.ON_PLAY]: 'CauldronEffect' 
+        }
+    },
+    {
+        name: 'Mace',
+        isBuiltIn: true,
+        cardText: 'When played, gain 1 cp',
+        materialCost: 280000,
+        blueprintCost: 288000,
+        cpCost: 0,
+        imageUrl: 'Cauldron.png',
+        playerId: null,
+        vehicleType: VEHICLE_TYPES.ship,
+        type: 'vehicle',
+        faction: FACTIONS.OW,
+        blueprintId: null,
+        meta: {
+            [TRIGGERS.ON_PLAY]: 'maceEffect' 
+        }
+    },
+    {
+        name: 'Sabotage',
+        isBuiltIn: true,
+        cardText: 'Target a vehicle and give it FRAGILE. If it survives the turn, draw a card.',
+        materialCost: 30000,
+        blueprintCost: 0,
+        cpCost: 0,
+        imageUrl: 'sabotage.png',
+        playerId: null,
+        vehicleType: null,
+        type: 'ability',
+        faction: FACTIONS.OW,
+        blueprintId: null,
+        meta: {
+            [TRIGGERS.PLAY_ON_VEHICLE]: 'sabotageEffect',
+        }
+    },
+    {
+        name: 'Garrison',
+        isBuiltIn: true,
+        cardText: 'Target an AI vehicle in hand. Give it the HALFCOST and INOFFENSIVE keywords.',
+        materialCost: 30000,
+        blueprintCost: 0,
+        cpCost: 0,
+        imageUrl: 'garrison.png',
+        playerId: null,
+        vehicleType: null,
+        type: 'ability',
+        faction: FACTIONS.OW,
+        blueprintId: null,
+        meta: {
+            [TRIGGERS.PLAY_ON_VEHICLE]: 'garrisonEffect',
+        }
+    }, 
+];

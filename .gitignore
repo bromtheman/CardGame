@@ -1,0 +1,11 @@
+node_modules/
+dist/
+*.local
+.env
+.env.*
+!.env.example
+.DS_Store
+.superpowers/
+.agents/
+.claude/
+skills-lock.json
