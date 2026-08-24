@@ -55,9 +55,13 @@ CardGame/
   netlify.toml              SPA redirects + build config
 ```
 
-`shared/` is imported by both the frontend (path alias) and edge functions (Deno
-relative import). It must stay dependency-free and side-effect-free so it runs in
-both runtimes and is trivially unit-testable.
+`shared/` is imported by both the frontend (path alias) and edge functions. It
+must stay dependency-free and side-effect-free so it runs in both runtimes and
+is trivially unit-testable, and its internal relative imports carry explicit
+`.ts` extensions (a Deno requirement). Because remote-only MCP deploys can't
+reach outside a function's directory, each edge function carries synced copies
+of the shared modules it needs (`npm run functions:sync`), kept honest by a
+byte-equality drift test in the root suite.
 
 ## 3. Game rules reference
 
@@ -250,8 +254,9 @@ RLS: owner-only (all operations). Client-side validation for UX; authoritative
 re-validation at game start.
 
 ### `hero_powers`
-`id uuid PK`, `name`, `faction text` (NEUTRAL or a faction), `text`,
-`cp_cost int`, `meta jsonb` (effect name for the shared registry), `created_at`.
+`id uuid PK`, `name`, `faction text` (NEUTRAL or a faction), `power_text`
+(named to avoid the SQL type name), `cp_cost int`, `meta jsonb` (effect name
+for the shared registry), `created_at`.
 Seeded from old BE `heroPowers.js` with deterministic UUIDs.
 RLS: everyone authed reads; edited via Studio only (like built-in cards).
 
