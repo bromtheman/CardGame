@@ -13,10 +13,15 @@ export function LoginPage() {
     e.preventDefault()
     setError(null)
     setBusy(true)
-    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
-    setBusy(false)
-    if (signInError) setError(signInError.message)
-    else navigate('/')
+    try {
+      const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
+      if (signInError) setError(signInError.message)
+      else navigate('/')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (

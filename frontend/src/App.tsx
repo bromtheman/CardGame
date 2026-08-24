@@ -21,10 +21,20 @@ function UserMenu() {
     },
   })
   if (!session) return null
+
+  async function handleSignOut() {
+    try {
+      const { error } = await supabase.auth.signOut()
+      if (error) console.error('Sign out failed:', error)
+    } catch (err) {
+      console.error('Sign out failed:', err)
+    }
+  }
+
   return (
     <div className="flex items-center gap-3">
       <span className="text-ocean-300">{profile?.username ?? '…'}</span>
-      <button className="underline" onClick={() => supabase.auth.signOut()}>Sign out</button>
+      <button className="underline" onClick={() => void handleSignOut()}>Sign out</button>
     </div>
   )
 }
