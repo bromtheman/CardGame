@@ -1,14 +1,43 @@
 import { Route, Routes } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
+import { AuthProvider, useAuth } from './lib/auth'
+import { supabase } from './lib/supabaseClient'
 import { NavBar } from './components/NavBar'
+import { RequireAuth } from './components/RequireAuth'
 import { HomePage } from './pages/HomePage'
+import { LoginPage } from './pages/LoginPage'
+import { SignupPage } from './pages/SignupPage'
+
+function UserMenu() {
+  const { session } = useAuth()
+  const { data: profile } = useQuery({
+    queryKey: ['profile', session?.user.id],
+    enabled: !!session,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('profiles').select('username').eq('id', session!.user.id).single()
+      if (error) throw error
+      return data
+    },
+  })
+  if (!session) return null
+  return (
+    <div className="flex items-center gap-3">
+      <span className="text-ocean-300">{profile?.username ?? '…'}</span>
+      <button className="underline" onClick={() => supabase.auth.signOut()}>Sign out</button>
+    </div>
+  )
+}
 
 export default function App() {
   return (
-    <>
-      <NavBar />
+    <AuthProvider>
+      <NavBar right={<UserMenu />} />
       <Routes>
-        <Route path="/" element={<HomePage />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/signup" element={<SignupPage />} />
+        <Route path="/" element={<RequireAuth><HomePage /></RequireAuth>} />
       </Routes>
-    </>
+    </AuthProvider>
   )
 }
