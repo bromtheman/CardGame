@@ -62,7 +62,17 @@ export function GameBoardPage() {
 
   return (
     <main className="mx-auto max-w-6xl p-6">
-      <StealthyResponseBar state={state} mySide={mySide} send={send} busy={busy} />
+      <StealthyResponseBar
+        key={
+          state.awaitingResponse
+            ? `${state.awaitingResponse.zoneId}-${state.awaitingResponse.attackerIds.join(',')}`
+            : 'none'
+        }
+        state={state}
+        mySide={mySide}
+        send={send}
+        busy={busy}
+      />
       <header className="flex flex-wrap items-center justify-between gap-3 rounded border border-ocean-600 bg-ocean-900/60 p-4">
         <div>
           <h1 className="font-display text-2xl">vs {names?.get(opponentId) ?? '…'}</h1>
