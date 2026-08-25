@@ -57,6 +57,10 @@ describe('buildInitialGame', () => {
     expect(game.state.counts).toEqual({
       a: { hand: 5, deck: 15 }, b: { hand: 5, deck: 15 },
     })
+    expect(game.state.destroyed).toEqual({ a: [], b: [] })
+    expect(game.state.awaitingResponse).toBeNull()
+    expect(game.state.activeBattle).toBeNull()
+    expect(game.state.pendingReport).toBeNull()
   })
 
   it('gives every copy a unique instanceId and preserves snapshots', () => {

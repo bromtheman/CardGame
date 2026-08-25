@@ -223,8 +223,10 @@ revealed as "in progress" until the required battle/report resolves.
 
 Create-card form: name, vehicle type, blueprint cost (manual entry), card image
 upload (Supabase Storage). Server-side rules: material cost = blueprint cost
-rounded **up** to nearest 5k (then Half-Cost halves it for planes); auto-keywords
-by type (plane → Half-Cost + Temporary; airship → Fragile); no custom card
+rounded **up** to nearest 5k and stored at FULL price — the Half-Cost keyword
+applies the flier discount at usage time via the engine's single cost
+authority (`effectiveMaterialCostOf`), never baked into stored cost;
+auto-keywords by type (plane → Half-Cost + Temporary; airship → Fragile); no custom card
 text or effects. Custom cards are visible to all players (opponents see what hits
 them) but only usable in their owner's decks. AI/built-in card costs are already
 rounded down to 10k in the source data.

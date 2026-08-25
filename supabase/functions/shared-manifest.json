@@ -6,5 +6,20 @@
     "lobbySettings.ts",
     "engine/deckValidation.ts",
     "engine/gameInit.ts"
+  ],
+  "game-action": [
+    "gameSettings.ts",
+    "types.ts",
+    "lobbySettings.ts",
+    "engine/deckValidation.ts",
+    "engine/gameInit.ts",
+    "engine/engineTypes.ts",
+    "engine/gameEngine.ts",
+    "engine/placement.ts",
+    "engine/baseAttack.ts",
+    "engine/battleDeclare.ts",
+    "engine/battleResolve.ts",
+    "engine/heroPowers.ts",
+    "engine/index.ts"
   ]
 }

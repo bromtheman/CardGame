@@ -45,8 +45,19 @@ export interface PublicGameState {
   resources: { a: { materials: number; cp: number }; b: { materials: number; cp: number } }
   counts: { a: { hand: number; deck: number }; b: { hand: number; deck: number } }
   usedHeroPowers: { a: string[]; b: string[] }
-  activeBattle: null
-  pendingReport: null
+  awaitingResponse: {
+    zoneId: number; aggressor: 'a' | 'b'
+    attackerIds: string[]; targetIds: string[]; stealthyIds: string[]
+  } | null
+  activeBattle: {
+    zoneId: number; aggressor: 'a' | 'b'
+    attackerIds: string[]; defenderIds: string[]
+    distanceM: number; distanceModifiedBy: ('a' | 'b')[]
+  } | null
+  pendingReport: {
+    submittedBy: 'a' | 'b'; results: Record<string, number>; repairs: string[]
+  } | null
+  destroyed: { a: SnapshotCard[]; b: SnapshotCard[] }
   log: string[]
 }
 
@@ -152,8 +163,10 @@ export function buildInitialGame(input: {
       b: { hand: bPrivate.hand.length, deck: bPrivate.deck.length },
     },
     usedHeroPowers: { a: [], b: [] },
+    awaitingResponse: null,
     activeBattle: null,
     pendingReport: null,
+    destroyed: { a: [], b: [] },
     log: [`Game started — first turn: ${activeIsA ? 'player A' : 'player B'}`],
   }
   return {
