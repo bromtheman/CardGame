@@ -101,6 +101,9 @@ export function checkVictory(game: EngineGame): void {
 }
 
 function endTurn(game: EngineGame, _ctx: EngineContext): ApplyResult {
+  // The side whose turn is ENDING is whoever is active right now — capture it
+  // before activePlayer flips below, so alert expiry checks the right side.
+  const endingSide = sideOf(game, game.activePlayer) as Side
   game.turnNumber = Math.round((game.turnNumber + 0.5) * 10) / 10
   const incoming = game.activePlayer === game.playerA ? game.playerB : game.playerA
   game.activePlayer = incoming
@@ -123,6 +126,13 @@ function endTurn(game: EngineGame, _ctx: EngineContext): ApplyResult {
   }
   game.state.resources[side].materials = Math.floor(game.turnNumber) * MATERIALS_PER_TURN
   drawCard(game, side)
+  // An alert card only lives through its owner's own turn — it expires the
+  // moment that turn ends, whether or not it was ever triggered.
+  const alert = game.state.alertCard
+  if (alert && alert.side === endingSide) {
+    game.state.log.push(`${alert.name} alert expired`)
+    game.state.alertCard = null
+  }
   game.state.log.push(`Turn ${game.turnNumber} — player ${side.toUpperCase()} to act`)
   return { ok: true, game }
 }

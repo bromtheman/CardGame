@@ -75,6 +75,26 @@ describe('END_TURN', () => {
   })
 })
 
+describe('END_TURN alert card expiry', () => {
+  it("clears the alert at its owner's END_TURN, with a log note", () => {
+    const g = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+    g.state.alertCard = { side: 'a', instanceId: 'x1', name: 'Ambush Alert', setOnTurn: 2 }
+    const r = applyAction(g, 'alice', { type: 'END_TURN' })
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.alertCard).toBeNull()
+    expect(r.game.state.log.some((l) => l.includes('Ambush Alert alert expired'))).toBe(true)
+  })
+
+  it("does NOT clear the alert when the opponent's turn ends instead", () => {
+    const g = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+    g.state.alertCard = { side: 'b', instanceId: 'x1', name: 'Ambush Alert', setOnTurn: 2 }
+    const r = applyAction(g, 'alice', { type: 'END_TURN' })
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.alertCard).not.toBeNull()
+    expect(r.game.state.log.some((l) => l.includes('alert expired'))).toBe(false)
+  })
+})
+
 describe('CONCEDE', () => {
   it('ends the game with the other player winning, from either seat, even off-turn', () => {
     const g = makeGame()

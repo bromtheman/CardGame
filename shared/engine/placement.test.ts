@@ -339,6 +339,58 @@ describe('PLAY_CARD_TARGETING_CARD_IN_HAND', () => {
   })
 })
 
+describe('SET_ALERT_CARD', () => {
+  it('reveals an ability card from hand, keeps it in hand, and logs the reveal', () => {
+    const { g, card } = withHand({ type: 'ability', vehicleType: null, materialCost: 0, name: 'Ambush Alert' })
+    const r = applyAction(g, 'alice', { type: 'SET_ALERT_CARD', instanceId: card.instanceId })
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.alertCard).toEqual({
+      side: 'a', instanceId: card.instanceId, name: 'Ambush Alert', setOnTurn: g.turnNumber,
+    })
+    expect(r.game.privates.a.hand).toHaveLength(1)
+    expect(
+      r.game.state.log.some((l) => l === 'Player A reveals Ambush Alert — effect in progress'),
+    ).toBe(true)
+  })
+
+  it('rejects a vehicle card', () => {
+    const { g, card } = withHand({ type: 'vehicle', vehicleType: 'ship' })
+    expect(applyAction(g, 'alice', { type: 'SET_ALERT_CARD', instanceId: card.instanceId }))
+      .toMatchObject({ ok: false, status: 400 })
+  })
+
+  it('rejects a card not in hand', () => {
+    const g = makeGame()
+    expect(applyAction(g, 'alice', { type: 'SET_ALERT_CARD', instanceId: 'ghost' }))
+      .toMatchObject({ ok: false, status: 400 })
+  })
+
+  it("409s when the opponent's alert is already up", () => {
+    const { g, card } = withHand({ type: 'ability', vehicleType: null, materialCost: 0, name: 'Counter' })
+    g.state.alertCard = { side: 'b', instanceId: 'enemy-1', name: 'Enemy Alert', setOnTurn: 1 }
+    expect(applyAction(g, 'alice', { type: 'SET_ALERT_CARD', instanceId: card.instanceId }))
+      .toMatchObject({ ok: false, status: 409, error: 'An alert card is already revealed' })
+  })
+
+  it('replaces your own already-revealed alert', () => {
+    const { g, card } = withHand({ type: 'ability', vehicleType: null, materialCost: 0, name: 'New Alert' })
+    g.state.alertCard = { side: 'a', instanceId: 'old-id', name: 'Old Alert', setOnTurn: 1 }
+    const r = applyAction(g, 'alice', { type: 'SET_ALERT_CARD', instanceId: card.instanceId })
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.alertCard).toMatchObject({ side: 'a', instanceId: card.instanceId, name: 'New Alert' })
+  })
+
+  it('clears when the revealed instance is later played via PLAY_ABILITY_CARD', () => {
+    const { g, card } = withHand({ type: 'ability', vehicleType: null, materialCost: 0, name: 'Rally' })
+    const set = applyAction(g, 'alice', { type: 'SET_ALERT_CARD', instanceId: card.instanceId })
+    if (!set.ok) throw new Error(set.error)
+    expect(set.game.state.alertCard).not.toBeNull()
+    const played = applyAction(set.game, 'alice', { type: 'PLAY_ABILITY_CARD', instanceId: card.instanceId })
+    if (!played.ok) throw new Error(played.error)
+    expect(played.game.state.alertCard).toBeNull()
+  })
+})
+
 describe('PLAY_CARD_TARGETING_CARD_ON_FIELD', () => {
   it('unimplemented playOnVehicleEffect (sabotageEffect) targeting an enemy vehicle on the field succeeds vanilla', () => {
     const { g, card } = withHand({

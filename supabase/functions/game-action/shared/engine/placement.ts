@@ -204,6 +204,24 @@ registerHandler('PLAY_CARD_TARGETING_CARD_ON_FIELD', (game, actor, action, ctx) 
   return { ok: true, game }
 })
 
+registerHandler('SET_ALERT_CARD', (game, actor, action) => {
+  if (action.type !== 'SET_ALERT_CARD') return err(400, 'Bad action')
+  const card = game.privates[actor].hand.find((c) => c.instanceId === action.instanceId)
+  if (!card) return err(400, 'That card is not in your hand')
+  if (card.type !== 'ability') return err(400, 'Only ability cards can be revealed as an alert')
+
+  // Single global slot: your own alert may be re-revealed (replacing it),
+  // but the opponent's live alert blocks a new reveal until it resolves.
+  const existing = game.state.alertCard
+  if (existing && existing.side !== actor) return err(409, 'An alert card is already revealed')
+
+  game.state.alertCard = {
+    side: actor, instanceId: action.instanceId, name: card.name, setOnTurn: game.turnNumber,
+  }
+  game.state.log.push(`Player ${actor.toUpperCase()} reveals ${card.name} — effect in progress`)
+  return { ok: true, game }
+})
+
 registerHandler('PLAY_CARD_TARGETING_CARD_IN_HAND', (game, actor, action, ctx) => {
   if (action.type !== 'PLAY_CARD_TARGETING_CARD_IN_HAND') return err(400, 'Bad action')
   if (typeof action.targetInstanceId !== 'string') return err(400, 'A target is required')

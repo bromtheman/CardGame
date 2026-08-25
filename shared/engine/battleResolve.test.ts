@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { applyAction, repairCostOf } from './index'
-import { makeGame, zoneEntry } from './testFixtures'
+import { makeCtx, makeGame, zoneEntry } from './testFixtures'
 
 function inBattle() {
   const g = makeGame({ turnNumber: 3 })
@@ -144,6 +144,42 @@ describe('DECIDE_BATTLE_REPORT', () => {
     if (!s.ok) throw new Error(s.error)
     expect(applyAction(s.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }))
       .toMatchObject({ ok: false, status: 400 })
+  })
+})
+
+describe('death triggers on report approval', () => {
+  it('dispatches an implemented onDeathEffect (Loggerhead) for a destroyed vehicle', () => {
+    const { g, atk, def } = inBattle()
+    def.name = 'Loggerhead'
+    def.meta = { onDeathEffect: 'loggerheadOnDeath' }
+    const s = applyAction(g, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT',
+      results: { [atk.instanceId]: 95, [def.instanceId]: 40 }, repairs: [],
+    })
+    if (!s.ok) throw new Error(s.error)
+    const r = applyAction(s.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.destroyed.b.map((c) => c.name)).toEqual(['Loggerhead'])
+    expect(r.game.privates.b.deck).toHaveLength(1)
+    const copy = r.game.privates.b.deck[0]
+    expect(copy.name).toBe('Loggerhead')
+    expect(copy.materialCost).toBe(0)
+    expect(r.game.state.counts.b.deck).toBe(1)
+    expect(r.game.state.log.some((l) => l.includes('leaves a free copy'))).toBe(true)
+  })
+
+  it('silently skips an unimplemented onDeathEffect — approval still succeeds, no extra log line', () => {
+    const { g, atk, def } = inBattle()
+    def.meta = { onDeathEffect: 'conduitEffect' }
+    const s = applyAction(g, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT',
+      results: { [atk.instanceId]: 95, [def.instanceId]: 40 }, repairs: [],
+    })
+    if (!s.ok) throw new Error(s.error)
+    const r = applyAction(s.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.destroyed.b).toHaveLength(1)
+    expect(r.game.state.log.some((l) => l.includes('conduitEffect'))).toBe(false)
   })
 })
 

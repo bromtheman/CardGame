@@ -67,6 +67,7 @@ export type GameAction =
   | { type: 'RESPOND_TO_ATTACK'; optOutIds: string[] }
   | { type: 'SUBMIT_BATTLE_REPORT'; results: Record<string, number>; repairs: string[] }
   | { type: 'DECIDE_BATTLE_REPORT'; approve: boolean }
+  | { type: 'SET_ALERT_CARD'; instanceId: string }
   | {
       type: 'USE_HERO_POWER'
       power: 'salvage' | 'tacticalPositioning' | 'draw' | 'rapidRedeployment'
