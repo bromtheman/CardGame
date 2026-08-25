@@ -82,6 +82,11 @@ function ReportForm({
   onToggleRepair: (id: string) => void
   onSubmit: () => void
 }) {
+  const owedBySide: Record<Side, number> = { a: 0, b: 0 }
+  for (const id of repairs) {
+    const p = participants.find((x) => x.entry.instanceId === id)
+    if (p) owedBySide[p.side] += repairCostOf(p.entry)
+  }
   return (
     <div className="mt-4 border-t border-ocean-600/50 pt-3">
       <h3 className="font-display text-lg">Battle report</h3>
@@ -100,7 +105,13 @@ function ReportForm({
             const inBand = hp >= REPAIR_WINDOW_MIN_PERCENT && hp < SURVIVE_HP_PERCENT
             const repairable = inBand && !fragile
             const cost = repairCostOf(entry)
-            const affordable = state.resources[side].materials >= cost
+            const checked = repairs.includes(entry.instanceId)
+            // Running per-side total of currently-checked repairs (plus this
+            // one's own cost when it isn't checked yet) — checking several
+            // repairs on the same side can exceed materials even when each
+            // is individually affordable.
+            const projectedOwed = owedBySide[side] + (checked ? 0 : cost)
+            const affordable = state.resources[side].materials >= projectedOwed
             return (
               <tr key={entry.instanceId} className="border-t border-ocean-600/30">
                 <td className="py-1 pr-2 text-parchment-100">{entry.name}</td>
@@ -281,10 +292,13 @@ export function BattleOverlay({
   const usedTactical = state.usedHeroPowers[mySide].includes('tacticalPositioning')
   const alreadyAdjusted = battle.distanceModifiedBy.includes(mySide)
   const noCp = state.resources[mySide].cp < 1
+  // Order matches HeroPowerBar's reasonFor(): used -> CP -> battle-specific
+  // (no-battle is impossible here since `battle` is already non-null).
   let tacticalReason: string | null = null
   if (usedTactical) tacticalReason = 'Already used this game'
-  else if (alreadyAdjusted) tacticalReason = 'You already adjusted this battle'
   else if (noCp) tacticalReason = 'Not enough CP'
+  else if (report) tacticalReason = 'Resolve the pending report first'
+  else if (alreadyAdjusted) tacticalReason = 'You already adjusted this battle'
 
   async function onApplyTactical() {
     const delta = Math.max(-HERO_POWER_DISTANCE_MOD_M, Math.min(HERO_POWER_DISTANCE_MOD_M, deltaInput))
