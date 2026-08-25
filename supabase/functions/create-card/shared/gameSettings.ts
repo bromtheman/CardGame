@@ -57,3 +57,7 @@ export const TRIGGERS = {
   ON_BATTLE_VICTORY: 'onBattleVictory', ON_BATTLE_DEFEAT: 'onBattleDefeat',
   ON_ACTIVATE: 'onActivate',
 } as const
+
+export const ZONE_COUNT = 3
+export const MAX_ZONE_BASE_HP = 10_000_000
+export const MAX_CUSTOM_CARDS_PER_PLAYER = 50
