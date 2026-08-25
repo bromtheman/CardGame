@@ -246,6 +246,18 @@ describe('doubleUpEffect', () => {
     expect(ok).toBe(false)
   })
 
+  it('returns false when the target exists but sits in the opponent\'s hand', () => {
+    const game = makeGame()
+    const enemyOwned = inst({ type: 'vehicle', faction: 'DWG', materialCost: 40_000 })
+    game.privates.b.hand.push(enemyOwned)
+    game.state.counts.b.hand = 1
+    const doubleUpCard = inst({ type: 'ability', name: 'Double Up' })
+    const ok = effectFor('doubleUpEffect')!({
+      game, actor: 'a', card: doubleUpCard, ctx: makeCtx(), targetInstanceId: enemyOwned.instanceId,
+    })
+    expect(ok).toBe(false)
+  })
+
   it('returns false when the target is not a vehicle', () => {
     const { game, target } = withHandTarget({ type: 'ability' })
     const doubleUpCard = inst({ type: 'ability', name: 'Double Up' })
