@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import type { ZoneState } from '@shared/engine/gameInit'
 import type { Side, ZoneCardEntry } from '@shared/engine/engineTypes'
-import { ZONE_TYPES } from '@shared/gameSettings'
+import { KEYWORDS, ZONE_TYPES } from '@shared/gameSettings'
 import { shortHandNumber } from '@shared/format'
 import { MiniVehicle } from './MiniVehicle'
 
@@ -33,7 +33,13 @@ function HpBar({ label, hp, max }: { label: string; hp: number; max: number }) {
 
 // One zone panel: enemy base HP on top, enemy vehicles, own vehicles, own
 // base HP on the bottom. `highlighted`/`onZoneClick` let HandBar's placing
-// mode target a legal zone; `children` is the Task 11 action-button slot.
+// mode (and move-mode's zone-picking step) target a legal zone; `children`
+// is the Task 11 action-button slot.
+//
+// Move-mode props (Task 12): `canMoveVehicles` gates the small per-vehicle
+// "move" affordance on eligible Mobile vehicles; `moveVehiclePickMode` makes
+// every own vehicle clickable to start a Rapid Redeployment move; both feed
+// the same move-mode GameBoardPage drives (see HeroPowerBar's MoveMode).
 export function BoardZone({
   zone,
   maxBaseHp,
@@ -43,6 +49,11 @@ export function BoardZone({
   highlighted,
   onZoneClick,
   children,
+  canMoveVehicles,
+  moveVehiclePickMode,
+  selectedForMoveId,
+  onPickVehicleForMove,
+  onMobileMoveClick,
 }: {
   zone: ZoneState
   maxBaseHp: number
@@ -52,6 +63,11 @@ export function BoardZone({
   highlighted?: boolean
   onZoneClick?: () => void
   children?: ReactNode
+  canMoveVehicles?: boolean
+  moveVehiclePickMode?: boolean
+  selectedForMoveId?: string | null
+  onPickVehicleForMove?: (instanceId: string) => void
+  onMobileMoveClick?: (instanceId: string) => void
 }) {
   return (
     <section
@@ -70,9 +86,20 @@ export function BoardZone({
         ))}
       </div>
       <div className="flex min-h-[76px] flex-wrap gap-1 border-t border-ocean-600/50 pt-2">
-        {(zone.cards[mySide] as ZoneCardEntry[]).map((c) => (
-          <MiniVehicle key={c.instanceId} entry={c} turnNumber={turnNumber} />
-        ))}
+        {(zone.cards[mySide] as ZoneCardEntry[]).map((c) => {
+          const mobileEligible = !!canMoveVehicles && c.keywords.includes(KEYWORDS.MOBILE) && c.movedOnTurn !== turnNumber
+          return (
+            <MiniVehicle
+              key={c.instanceId}
+              entry={c}
+              turnNumber={turnNumber}
+              selected={selectedForMoveId === c.instanceId}
+              onClick={moveVehiclePickMode ? () => onPickVehicleForMove?.(c.instanceId) : undefined}
+              moveAffordance={mobileEligible}
+              onMoveClick={mobileEligible ? () => onMobileMoveClick?.(c.instanceId) : undefined}
+            />
+          )
+        })}
       </div>
       <HpBar label="Your base" hp={zone.baseHp[mySide]} max={maxBaseHp} />
       {children}

@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import type { CardInstance, PublicGameState } from '@shared/engine/gameInit'
 import type { Side } from '@shared/engine/engineTypes'
 import type { LobbySettings } from '@shared/lobbySettings'
-import { battleFrozen, legalZonesFor } from '@shared/engine/index'
+import { battleFrozen, biomeAllows, findVehicle, legalZonesFor } from '@shared/engine/index'
 import { shortHandNumber } from '@shared/format'
 import { useGameQuery, useMyGamePlayerQuery, useUsernames } from '../../lib/games'
 import { useRealtimeInvalidate } from '../../lib/realtime'
@@ -13,6 +13,8 @@ import { BoardZone } from './BoardZone'
 import { HandBar } from './HandBar'
 import { ZoneActions } from './ZoneActions'
 import { StealthyResponseBar } from './StealthyResponseBar'
+import { BattleOverlay } from './BattleOverlay'
+import { HeroPowerBar, type MoveMode } from './HeroPowerBar'
 
 export function GameBoardPage() {
   const { id } = useParams<{ id: string }>()
@@ -24,6 +26,7 @@ export function GameBoardPage() {
   useRealtimeInvalidate(`gp-${id}`, 'game_players', [['gamePlayer', id]], `game_id=eq.${id}`)
   const { send, busy, error } = useGameActions(game?.id, game?.version)
   const [placingCard, setPlacingCard] = useState<CardInstance | null>(null)
+  const [moveMode, setMoveMode] = useState<MoveMode | null>(null)
   const logRef = useRef<HTMLDivElement>(null)
 
   const state = game?.state as unknown as PublicGameState | undefined
@@ -47,6 +50,38 @@ export function GameBoardPage() {
   const legalForPlacing = placingCard ? legalZonesFor(state, mySide, placingCard) : []
   const canActivateZones = isMyTurn && isActive && !battleFrozen(state)
 
+  // Move-mode: shared zone-picking step for Rapid Redeployment (any own
+  // vehicle) and the mobile-vehicle "move" affordance (Mobile keyword only).
+  // Legal zones mirror heroPowers.ts's moveEntry — any zone but the current
+  // one whose biome fits the vehicle, no screen-blocking check (that only
+  // applies to playing a new card from hand, not relocating one already out).
+  const moveSource = moveMode?.phase === 'pickZone' ? findVehicle(state, moveMode.instanceId) : null
+  const legalForMove = moveSource
+    ? state.zones
+        .filter((z) => z.id !== moveSource.zone.id && biomeAllows(moveSource.entry.vehicleType, z.biome))
+        .map((z) => z.id)
+    : []
+  const interactiveZoneIds = placingCard ? legalForPlacing : moveMode?.phase === 'pickZone' ? legalForMove : []
+
+  function onPlacingChange(card: CardInstance | null) {
+    if (card) setMoveMode(null)
+    setPlacingCard(card)
+  }
+  function onStartRapidRedeployment() {
+    setPlacingCard(null)
+    setMoveMode({ phase: 'pickVehicle' })
+  }
+  function onPickVehicleForMove(instanceId: string) {
+    setMoveMode({ phase: 'pickZone', instanceId, kind: 'heroPower' })
+  }
+  function onMobileMoveClick(instanceId: string) {
+    setPlacingCard(null)
+    setMoveMode({ phase: 'pickZone', instanceId, kind: 'mobile' })
+  }
+  function onCancelMove() {
+    setMoveMode(null)
+  }
+
   function onEndTurn() {
     void send({ type: 'END_TURN' })
   }
@@ -55,9 +90,19 @@ export function GameBoardPage() {
     void send({ type: 'CONCEDE' })
   }
   function onZoneClick(zoneId: number) {
-    if (!placingCard) return
-    void send({ type: 'PLAY_CARD_TO_ZONE', instanceId: placingCard.instanceId, zoneId })
-    setPlacingCard(null)
+    if (placingCard) {
+      void send({ type: 'PLAY_CARD_TO_ZONE', instanceId: placingCard.instanceId, zoneId })
+      setPlacingCard(null)
+      return
+    }
+    if (moveMode?.phase === 'pickZone') {
+      if (moveMode.kind === 'mobile') {
+        void send({ type: 'MOVE_VEHICLE', instanceId: moveMode.instanceId, zoneId })
+      } else {
+        void send({ type: 'USE_HERO_POWER', power: 'rapidRedeployment', instanceId: moveMode.instanceId, zoneId })
+      }
+      setMoveMode(null)
+    }
   }
 
   return (
@@ -66,6 +111,17 @@ export function GameBoardPage() {
         key={
           state.awaitingResponse
             ? `${state.awaitingResponse.zoneId}-${state.awaitingResponse.attackerIds.join(',')}`
+            : 'none'
+        }
+        state={state}
+        mySide={mySide}
+        send={send}
+        busy={busy}
+      />
+      <BattleOverlay
+        key={
+          state.activeBattle
+            ? `${state.activeBattle.zoneId}-${state.activeBattle.attackerIds.join(',')}-${state.activeBattle.defenderIds.join(',')}`
             : 'none'
         }
         state={state}
@@ -105,6 +161,18 @@ export function GameBoardPage() {
         </div>
       </header>
 
+      <HeroPowerBar
+        state={state}
+        mySide={mySide}
+        isMyTurn={isMyTurn}
+        isActive={isActive}
+        send={send}
+        busy={busy}
+        moveMode={moveMode}
+        onStartRapidRedeployment={onStartRapidRedeployment}
+        onCancelMove={onCancelMove}
+      />
+
       <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
         {state.zones.map((zone) => (
           <BoardZone
@@ -114,8 +182,13 @@ export function GameBoardPage() {
             mySide={mySide}
             theirSide={theirSide}
             turnNumber={game.turn_number}
-            highlighted={legalForPlacing.includes(zone.id)}
-            onZoneClick={legalForPlacing.includes(zone.id) ? () => onZoneClick(zone.id) : undefined}
+            highlighted={interactiveZoneIds.includes(zone.id)}
+            onZoneClick={interactiveZoneIds.includes(zone.id) ? () => onZoneClick(zone.id) : undefined}
+            canMoveVehicles={canActivateZones}
+            moveVehiclePickMode={moveMode?.phase === 'pickVehicle'}
+            selectedForMoveId={moveMode?.phase === 'pickZone' ? moveMode.instanceId : null}
+            onPickVehicleForMove={onPickVehicleForMove}
+            onMobileMoveClick={onMobileMoveClick}
           >
             {canActivateZones && (
               <ZoneActions
@@ -138,7 +211,7 @@ export function GameBoardPage() {
         send={send}
         busy={busy}
         placingCard={placingCard}
-        onPlacingChange={setPlacingCard}
+        onPlacingChange={onPlacingChange}
       />
 
       <h2 className="mt-4 font-display text-xl">Battle log</h2>

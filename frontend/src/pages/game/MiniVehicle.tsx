@@ -26,12 +26,17 @@ export function MiniVehicle({
   selected,
   onClick,
   dimmed,
+  moveAffordance,
+  onMoveClick,
 }: {
   entry: ZoneCardEntry
   turnNumber: number
   selected?: boolean
   onClick?: () => void
   dimmed?: boolean
+  /** Show the small "move" corner button (Mobile keyword, eligible to move this turn). */
+  moveAffordance?: boolean
+  onMoveClick?: () => void
 }) {
   const icon = VEHICLE_ICONS[entry.vehicleType ?? ''] ?? anchorIcon
   const fresh = entry.playedOnTurn === turnNumber
@@ -50,6 +55,19 @@ export function MiniVehicle({
         <span className="absolute -right-1 -top-1 rounded-full bg-ocean-300 px-1 text-[9px] font-bold text-ocean-950">
           new
         </span>
+      )}
+      {moveAffordance && onMoveClick && (
+        <button
+          type="button"
+          title="Move to another zone"
+          onClick={(e) => {
+            e.stopPropagation()
+            onMoveClick()
+          }}
+          className="absolute -left-1 -top-1 rounded-full bg-brass-400 px-1 text-[9px] font-bold text-ocean-950"
+        >
+          move
+        </button>
       )}
       <img src={icon} alt={entry.vehicleType ?? entry.type} className="h-8 w-8 opacity-80" />
       <span className="mt-1 w-full truncate font-display text-[13px]">{entry.name}</span>
