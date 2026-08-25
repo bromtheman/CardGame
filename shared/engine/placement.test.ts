@@ -389,6 +389,22 @@ describe('SET_ALERT_CARD', () => {
     if (!played.ok) throw new Error(played.error)
     expect(played.game.state.alertCard).toBeNull()
   })
+
+  it('is turn-gated by the generic guard: the off-turn player is rejected with 409', () => {
+    const { g, card } = withHand({ type: 'ability', vehicleType: null, materialCost: 0, name: 'Ambush Alert' })
+    expect(applyAction(g, 'bob', { type: 'SET_ALERT_CARD', instanceId: card.instanceId }))
+      .toMatchObject({ ok: false, status: 409 })
+  })
+
+  it('is blocked by the generic battle-frozen guard while a battle is active', () => {
+    const { g, card } = withHand({ type: 'ability', vehicleType: null, materialCost: 0, name: 'Ambush Alert' })
+    g.state.activeBattle = {
+      zoneId: 1, aggressor: 'a', attackerIds: ['x'], defenderIds: ['y'],
+      distanceM: 1200, distanceModifiedBy: [],
+    }
+    expect(applyAction(g, 'alice', { type: 'SET_ALERT_CARD', instanceId: card.instanceId }))
+      .toMatchObject({ ok: false, status: 409 })
+  })
 })
 
 describe('PLAY_CARD_TARGETING_CARD_ON_FIELD', () => {
