@@ -1,0 +1,10 @@
+{
+  "create-card": ["gameSettings.ts", "types.ts", "customCards.ts"],
+  "lobby-action": [
+    "gameSettings.ts",
+    "types.ts",
+    "lobbySettings.ts",
+    "engine/deckValidation.ts",
+    "engine/gameInit.ts"
+  ]
+}

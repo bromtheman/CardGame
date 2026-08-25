@@ -1,0 +1,63 @@
+// Single source of truth for every tunable game rule (spec §3).
+
+export const STARTING_HAND_SIZE = 5
+export const STARTING_CP_AMOUNT = 3
+export const DECK_SIZE = 20
+export const UNIQUE_COPY_LIMIT = 2
+export const PLAYER_CARD_LIMIT = 4 // max custom cards per deck
+export const FLIER_COPY_LIMIT = 6 // max plane+airship copies per deck
+export const SUB_COPY_LIMIT = 6
+
+export const DEFAULT_BASE_HP = 1000
+export const MATERIALS_PER_TURN = 50_000 // × floor(turnNumber)
+export const BASE_DAMAGE_DIVISOR = 1000 // base dmg = floor(materialCost / this)
+
+export const SPAWN_DISTANCE_DEFAULT_M = 1200
+export const SPAWN_DISTANCE_MIN_M = 50
+export const SPAWN_DISTANCE_MAX_M = 2000
+export const HERO_POWER_DISTANCE_MOD_M = 600
+export const IN_BATTLE_RESOURCE_RATE = 0.1
+
+export const SURVIVE_HP_PERCENT = 90
+export const REPAIR_WINDOW_MIN_PERCENT = 80
+export const REPAIR_COST_RATE = 0.5
+
+export const CUSTOM_CARD_ROUND_TO = 5000 // player cards round UP to this
+export const MAX_CUSTOM_BLUEPRINT_COST = 10_000_000
+export const CARD_IMAGE_MAX_BYTES = 2_097_152 // must match the storage bucket limit
+export const CARD_IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const
+
+export const FACTIONS = {
+  NEUTRAL: 'NEUTRAL', DWG: 'DWG', SS: 'SS', LH: 'LH', TG: 'TG',
+  OW: 'OW', SD: 'SD', WF: 'WF', GT: 'GT',
+} as const
+
+// Factions a deck may use as its base (spec §3.1)
+export const DECK_FACTIONS = ['DWG', 'GT', 'LH', 'OW', 'SS', 'WF'] as const
+
+export const CARD_TYPES = { VEHICLE: 'vehicle', ABILITY: 'ability' } as const
+
+export const VEHICLE_TYPES = {
+  SHIP: 'ship', AIRSHIP: 'airship', TANK: 'tank', PLANE: 'plane', SUB: 'sub',
+} as const
+
+export const ZONE_TYPES = { WATER: 'water', BEACH: 'beach', LAND: 'land' } as const
+
+export const KEYWORDS = {
+  AIR_SCREEN: 'airScreen', SUB_SCREEN: 'subScreen', BLOCKER: 'blocker',
+  SCRAPPY: 'scrappy', TEMPORARY: 'temporary', INOFFENSIVE: 'inoffensive',
+  HALF_COST: 'halfCost', FRAGILE: 'fragile', STEALTHY: 'stealthy',
+  MOBILE: 'mobile', ROBOTIC: 'robotic',
+} as const
+
+export const TRIGGERS = {
+  ON_PLAY: 'onPlayEffect', PLAY_ON_ZONE: 'playOnZoneEffect',
+  PLAY_ON_VEHICLE: 'playOnVehicleEffect', PLAY_ON_CARD: 'playOnCardEffect',
+  ON_DEATH: 'onDeathEffect', ON_BATTLE_EFFECT: 'onBattleEffect',
+  ON_BATTLE_VICTORY: 'onBattleVictory', ON_BATTLE_DEFEAT: 'onBattleDefeat',
+  ON_ACTIVATE: 'onActivate',
+} as const
+
+export const ZONE_COUNT = 3
+export const MAX_ZONE_BASE_HP = 10_000_000
+export const MAX_CUSTOM_CARDS_PER_PLAYER = 50
