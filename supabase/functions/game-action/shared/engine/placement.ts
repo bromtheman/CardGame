@@ -1,7 +1,7 @@
 import { ADDITIONAL_SPAWNS_CAP, KEYWORDS, VEHICLE_TYPES, ZONE_TYPES } from '../gameSettings.ts'
 import type { CardInstance, PublicGameState } from './gameInit.ts'
 import type { ApplyResult, EngineContext, EngineGame, Side, ZoneCardEntry } from './engineTypes.ts'
-import { err, otherSide, registerHandler } from './gameEngine.ts'
+import { err, findVehicle, otherSide, registerHandler } from './gameEngine.ts'
 import { costModifierFor, effectFor, effectName, noteUnimplemented } from '../effects/registry.ts'
 
 const BIOMES_BY_TYPE: Record<string, string[]> = {
@@ -79,17 +79,20 @@ function pay(game: EngineGame, side: Side, card: CardInstance): void {
   game.state.resources[side].cp -= card.cpCost
 }
 
-// Runs a played card's zone/on-play triggers, in that order, then notes any
-// unimplemented meta effects. Returns an error result if an implemented
+// Runs a played card's triggers (in the order given by `keys`), then notes
+// any unimplemented meta effects. Returns an error result if an implemented
 // effect reports failure (the caller returns this immediately — since
 // applyAction works on a structuredClone of the input, nothing taken/paid
-// up to this point sticks), or null on success. Reused by Task 5's
-// targeting handlers (spawnBuccaneerEffect, doubleUpEffect, …).
+// up to this point sticks), or null on success. Reused by every play-style
+// handler — each passes the trigger keys relevant to its own target shape
+// (spawnBuccaneerEffect/onPlayEffect for zone plays, playOnVehicleEffect/
+// playOnCardEffect for Task 5's targeting actions, doubleUpEffect, …).
 function resolvePlayEffects(
   game: EngineGame, actor: Side, card: CardInstance, ctx: EngineContext,
   targets: { targetZoneId?: number; targetInstanceId?: string },
+  keys: string[],
 ): ApplyResult | null {
-  for (const key of ['playOnZoneEffect', 'onPlayEffect'] as const) {
+  for (const key of keys) {
     const name = effectName(card, key)
     if (name === null) continue
     const fn = effectFor(name)
@@ -137,7 +140,9 @@ registerHandler('PLAY_CARD_TO_ZONE', (game, actor, action, ctx) => {
     }
   }
 
-  const failure = resolvePlayEffects(game, actor, card, ctx, { targetZoneId: action.zoneId })
+  const failure = resolvePlayEffects(
+    game, actor, card, ctx, { targetZoneId: action.zoneId }, ['playOnZoneEffect', 'onPlayEffect'],
+  )
   if (failure) return failure
 
   game.state.log.push(
@@ -165,7 +170,66 @@ registerHandler('PLAY_ABILITY_CARD', (game, actor, action, ctx) => {
   takeFromHand(game, actor, action.instanceId)
   pay(game, actor, card)
 
-  const failure = resolvePlayEffects(game, actor, card, ctx, {})
+  const failure = resolvePlayEffects(game, actor, card, ctx, {}, ['playOnZoneEffect', 'onPlayEffect'])
+  if (failure) return failure
+
+  game.state.log.push(`${card.name} resolved`)
+  return { ok: true, game }
+})
+
+registerHandler('PLAY_CARD_TARGETING_CARD_ON_FIELD', (game, actor, action, ctx) => {
+  if (action.type !== 'PLAY_CARD_TARGETING_CARD_ON_FIELD') return err(400, 'Bad action')
+  if (typeof action.targetInstanceId !== 'string') return err(400, 'A target is required')
+  const card = game.privates[actor].hand.find((c) => c.instanceId === action.instanceId)
+  if (!card) return err(400, 'That card is not in your hand')
+  if (card.type !== 'ability') return err(400, 'Vehicles must target a zone')
+
+  const effectMeta = effectName(card, 'playOnVehicleEffect')
+  if (effectMeta === null) return err(400, `${card.name} does not target a vehicle`)
+  if (!findVehicle(game.state, action.targetInstanceId)) return err(400, 'That target is not on the field')
+
+  if (!canAffordInGame(game, actor, card)) return err(400, 'You cannot afford that card')
+
+  if (game.state.alertCard?.instanceId === action.instanceId) game.state.alertCard = null
+
+  takeFromHand(game, actor, action.instanceId)
+  pay(game, actor, card)
+
+  const failure = resolvePlayEffects(
+    game, actor, card, ctx, { targetInstanceId: action.targetInstanceId }, ['playOnVehicleEffect', 'onPlayEffect'],
+  )
+  if (failure) return failure
+
+  game.state.log.push(`${card.name} resolved`)
+  return { ok: true, game }
+})
+
+registerHandler('PLAY_CARD_TARGETING_CARD_IN_HAND', (game, actor, action, ctx) => {
+  if (action.type !== 'PLAY_CARD_TARGETING_CARD_IN_HAND') return err(400, 'Bad action')
+  if (typeof action.targetInstanceId !== 'string') return err(400, 'A target is required')
+  const card = game.privates[actor].hand.find((c) => c.instanceId === action.instanceId)
+  if (!card) return err(400, 'That card is not in your hand')
+  if (card.type !== 'ability') return err(400, 'Vehicles must target a zone')
+
+  const effectMeta = effectName(card, 'playOnCardEffect')
+  if (effectMeta === null) return err(400, `${card.name} does not target a card in hand`)
+  // Handler-level check covers shape (own hand, not self) — the effect
+  // itself re-validates the specifics it cares about (type, faction, cost).
+  if (action.targetInstanceId === action.instanceId) return err(400, 'That card cannot target itself')
+  if (!game.privates[actor].hand.some((c) => c.instanceId === action.targetInstanceId)) {
+    return err(400, 'That target is not in your hand')
+  }
+
+  if (!canAffordInGame(game, actor, card)) return err(400, 'You cannot afford that card')
+
+  if (game.state.alertCard?.instanceId === action.instanceId) game.state.alertCard = null
+
+  takeFromHand(game, actor, action.instanceId)
+  pay(game, actor, card)
+
+  const failure = resolvePlayEffects(
+    game, actor, card, ctx, { targetInstanceId: action.targetInstanceId }, ['playOnCardEffect', 'onPlayEffect'],
+  )
   if (failure) return failure
 
   game.state.log.push(`${card.name} resolved`)

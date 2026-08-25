@@ -242,3 +242,153 @@ describe('PLAY_CARD_TO_ZONE ability-to-zone branch', () => {
       .toMatchObject({ ok: false, status: 400, error: 'That vehicle cannot deploy to that zone' })
   })
 })
+
+describe('PLAY_CARD_TARGETING_CARD_IN_HAND', () => {
+  it('Double Up end-to-end: buffs a DWG vehicle in hand, pays, and leaves the hand', () => {
+    const { g, card: doubleUp } = withHand({
+      type: 'ability', vehicleType: null, materialCost: 5000, cpCost: 1, name: 'Double Up',
+      meta: { playOnCardEffect: 'doubleUpEffect' },
+    })
+    const target = inst({ type: 'vehicle', faction: 'DWG', materialCost: 100000 })
+    g.privates.a.hand.push(target)
+    g.state.counts.a.hand = 2
+    const r = applyAction(g, 'alice', {
+      type: 'PLAY_CARD_TARGETING_CARD_IN_HAND', instanceId: doubleUp.instanceId, targetInstanceId: target.instanceId,
+    })
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.privates.a.hand).toHaveLength(1)
+    expect(r.game.privates.a.hand[0].instanceId).toBe(target.instanceId)
+    expect(r.game.privates.a.hand[0].meta.additionalSpawns).toBe(1)
+    expect(r.game.state.counts.a.hand).toBe(1)
+    expect(r.game.state.resources.a.materials).toBe(95000) // 100000 - 5000
+    expect(r.game.state.resources.a.cp).toBe(2) // 3 - 1
+  })
+
+  it('then playing the buffed vehicle spawns 2 entries', () => {
+    const { g, card: doubleUp } = withHand({
+      type: 'ability', vehicleType: null, materialCost: 0, name: 'Double Up',
+      meta: { playOnCardEffect: 'doubleUpEffect' },
+    })
+    const target = inst({ type: 'vehicle', faction: 'DWG', vehicleType: 'ship', materialCost: 40000 })
+    g.privates.a.hand.push(target)
+    g.state.counts.a.hand = 2
+    const r1 = applyAction(g, 'alice', {
+      type: 'PLAY_CARD_TARGETING_CARD_IN_HAND', instanceId: doubleUp.instanceId, targetInstanceId: target.instanceId,
+    })
+    if (!r1.ok) throw new Error(r1.error)
+    const r2 = applyAction(
+      r1.game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: target.instanceId, zoneId: 1 }, makeCtx(),
+    )
+    if (!r2.ok) throw new Error(r2.error)
+    expect(r2.game.state.zones[0].cards.a).toHaveLength(2)
+    const ids = r2.game.state.zones[0].cards.a.map((e) => e.instanceId)
+    expect(new Set(ids).size).toBe(2)
+  })
+
+  it('Double Up on an over-cost (800k) target fails atomically — nothing spent, additionalSpawns unset', () => {
+    const { g, card: doubleUp } = withHand({
+      type: 'ability', vehicleType: null, materialCost: 5000, name: 'Double Up',
+      meta: { playOnCardEffect: 'doubleUpEffect' },
+    })
+    const target = inst({ type: 'vehicle', faction: 'DWG', materialCost: 800000 })
+    g.privates.a.hand.push(target)
+    g.state.counts.a.hand = 2
+    const r = applyAction(g, 'alice', {
+      type: 'PLAY_CARD_TARGETING_CARD_IN_HAND', instanceId: doubleUp.instanceId, targetInstanceId: target.instanceId,
+    })
+    expect(r).toMatchObject({ ok: false, status: 400 })
+    expect(g.privates.a.hand).toHaveLength(2)
+    expect(g.state.resources.a.materials).toBe(100000)
+    expect(target.meta.additionalSpawns).toBeUndefined()
+  })
+
+  it('rejects a card lacking playOnCardEffect meta', () => {
+    const { g, card } = withHand({ type: 'ability', vehicleType: null, materialCost: 0, name: 'Rally' })
+    const target = inst({ type: 'vehicle', faction: 'DWG', materialCost: 40000 })
+    g.privates.a.hand.push(target)
+    g.state.counts.a.hand = 2
+    expect(applyAction(g, 'alice', {
+      type: 'PLAY_CARD_TARGETING_CARD_IN_HAND', instanceId: card.instanceId, targetInstanceId: target.instanceId,
+    })).toMatchObject({ ok: false, status: 400 })
+    expect(g.privates.a.hand).toHaveLength(2)
+  })
+
+  it('rejects targeting itself', () => {
+    const { g, card } = withHand({
+      type: 'ability', vehicleType: null, materialCost: 0, name: 'Double Up',
+      meta: { playOnCardEffect: 'doubleUpEffect' },
+    })
+    expect(applyAction(g, 'alice', {
+      type: 'PLAY_CARD_TARGETING_CARD_IN_HAND', instanceId: card.instanceId, targetInstanceId: card.instanceId,
+    })).toMatchObject({ ok: false, status: 400 })
+    expect(g.privates.a.hand).toHaveLength(1)
+  })
+
+  it('rejects missing or non-string targetInstanceId', () => {
+    const { g, card } = withHand({
+      type: 'ability', vehicleType: null, materialCost: 0, name: 'Double Up',
+      meta: { playOnCardEffect: 'doubleUpEffect' },
+    })
+    expect(applyAction(
+      g, 'alice', { type: 'PLAY_CARD_TARGETING_CARD_IN_HAND', instanceId: card.instanceId } as never,
+    )).toMatchObject({ ok: false, status: 400 })
+    expect(applyAction(
+      g, 'alice',
+      { type: 'PLAY_CARD_TARGETING_CARD_IN_HAND', instanceId: card.instanceId, targetInstanceId: 123 } as never,
+    )).toMatchObject({ ok: false, status: 400 })
+  })
+})
+
+describe('PLAY_CARD_TARGETING_CARD_ON_FIELD', () => {
+  it('unimplemented playOnVehicleEffect (sabotageEffect) targeting an enemy vehicle on the field succeeds vanilla', () => {
+    const { g, card } = withHand({
+      type: 'ability', vehicleType: null, materialCost: 0, name: 'Sabotage',
+      meta: { playOnVehicleEffect: 'sabotageEffect' },
+    })
+    const enemy = zoneEntry({ vehicleType: 'ship' })
+    g.state.zones[0].cards.b.push(enemy)
+    const r = applyAction(g, 'alice', {
+      type: 'PLAY_CARD_TARGETING_CARD_ON_FIELD', instanceId: card.instanceId, targetInstanceId: enemy.instanceId,
+    })
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.privates.a.hand).toHaveLength(0)
+    expect(
+      r.game.state.log.some((l) => l.includes('Sabotage') && l.includes('sabotageEffect') && l.includes('vanilla')),
+    ).toBe(true)
+  })
+
+  it('rejects a nonexistent target instanceId', () => {
+    const { g, card } = withHand({
+      type: 'ability', vehicleType: null, materialCost: 0, name: 'Sabotage',
+      meta: { playOnVehicleEffect: 'sabotageEffect' },
+    })
+    expect(applyAction(g, 'alice', {
+      type: 'PLAY_CARD_TARGETING_CARD_ON_FIELD', instanceId: card.instanceId, targetInstanceId: 'ghost',
+    })).toMatchObject({ ok: false, status: 400 })
+    expect(g.privates.a.hand).toHaveLength(1)
+  })
+
+  it('rejects a card lacking playOnVehicleEffect meta', () => {
+    const { g, card } = withHand({ type: 'ability', vehicleType: null, materialCost: 0, name: 'Rally' })
+    const enemy = zoneEntry({ vehicleType: 'ship' })
+    g.state.zones[0].cards.b.push(enemy)
+    expect(applyAction(g, 'alice', {
+      type: 'PLAY_CARD_TARGETING_CARD_ON_FIELD', instanceId: card.instanceId, targetInstanceId: enemy.instanceId,
+    })).toMatchObject({ ok: false, status: 400 })
+    expect(g.privates.a.hand).toHaveLength(1)
+  })
+
+  it('rejects missing or non-string targetInstanceId', () => {
+    const { g, card } = withHand({
+      type: 'ability', vehicleType: null, materialCost: 0, name: 'Sabotage',
+      meta: { playOnVehicleEffect: 'sabotageEffect' },
+    })
+    expect(applyAction(
+      g, 'alice', { type: 'PLAY_CARD_TARGETING_CARD_ON_FIELD', instanceId: card.instanceId } as never,
+    )).toMatchObject({ ok: false, status: 400 })
+    expect(applyAction(
+      g, 'alice',
+      { type: 'PLAY_CARD_TARGETING_CARD_ON_FIELD', instanceId: card.instanceId, targetInstanceId: 42 } as never,
+    )).toMatchObject({ ok: false, status: 400 })
+  })
+})

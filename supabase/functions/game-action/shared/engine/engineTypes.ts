@@ -59,6 +59,8 @@ export type GameAction =
   | { type: 'CONCEDE' }
   | { type: 'PLAY_CARD_TO_ZONE'; instanceId: string; zoneId: number }
   | { type: 'PLAY_ABILITY_CARD'; instanceId: string }
+  | { type: 'PLAY_CARD_TARGETING_CARD_ON_FIELD'; instanceId: string; targetInstanceId: string }
+  | { type: 'PLAY_CARD_TARGETING_CARD_IN_HAND'; instanceId: string; targetInstanceId: string }
   | { type: 'MOVE_VEHICLE'; instanceId: string; zoneId: number }
   | { type: 'ATTACK_ENEMY_BASE'; zoneId: number }
   | { type: 'ATTACK_ENEMY_FLEET'; zoneId: number; attackerIds: string[]; targetIds: string[] }
