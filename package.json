@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "seed:build": "tsx supabase/seed/cli.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "functions:sync": "node scripts/sync-function-shared.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
