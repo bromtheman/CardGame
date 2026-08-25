@@ -70,9 +70,12 @@ export type GameAction =
   | { type: 'SET_ALERT_CARD'; instanceId: string }
   | {
       type: 'USE_HERO_POWER'
-      power: 'salvage' | 'tacticalPositioning' | 'draw' | 'rapidRedeployment'
+      power:
+        | 'salvage' | 'tacticalPositioning' | 'draw' | 'rapidRedeployment'
+        | 'boardingParty' | 'changeOrder' | 'flyby'
       cardId?: string       // salvage: which destroyed card
-      instanceId?: string   // rapidRedeployment: which vehicle
+      instanceId?: string   // rapidRedeployment/boardingParty(mine)/changeOrder/flyby: which card
+      targetInstanceId?: string // boardingParty: the enemy ship being traded for
       zoneId?: number       // rapidRedeployment: destination
       distanceDeltaM?: number // tacticalPositioning: ±meters
     }

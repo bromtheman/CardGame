@@ -1,4 +1,4 @@
-import { KEYWORDS, LOG_MAX_ENTRIES, MATERIALS_PER_TURN } from '../gameSettings.ts'
+import { KEYWORDS, LOG_MAX_ENTRIES, MATERIALS_PER_TURN, VEHICLE_TYPES } from '../gameSettings.ts'
 import { secureRng } from './gameInit.ts'
 import type { PublicGameState } from './gameInit.ts'
 import type {
@@ -100,7 +100,7 @@ export function checkVictory(game: EngineGame): void {
   }
 }
 
-function endTurn(game: EngineGame, _ctx: EngineContext): ApplyResult {
+function endTurn(game: EngineGame, ctx: EngineContext): ApplyResult {
   // The side whose turn is ENDING is whoever is active right now — capture it
   // before activePlayer flips below, so alert expiry checks the right side.
   const endingSide = sideOf(game, game.activePlayer) as Side
@@ -126,6 +126,35 @@ function endTurn(game: EngineGame, _ctx: EngineContext): ApplyResult {
   }
   game.state.resources[side].materials = Math.floor(game.turnNumber) * MATERIALS_PER_TURN
   drawCard(game, side)
+
+  // Change Order redeliveries (Task 7): process every scheduled item due for
+  // the incoming side now that their materials/draw have already landed.
+  // Processed items (hit or fizzle) are dropped; anything not yet due, or
+  // belonging to the other side, is carried forward untouched.
+  const stillScheduled: PublicGameState['scheduled'] = []
+  for (const item of game.state.scheduled) {
+    if (item.side !== side || game.turnNumber < item.dueTurn) {
+      stillScheduled.push(item)
+      continue
+    }
+    if (item.type === 'changeOrderDraw') {
+      const priv = game.privates[side]
+      const pool = priv.deck.filter(
+        (c) => c.isBuiltIn === false && (c.vehicleType === VEHICLE_TYPES.SHIP || c.vehicleType === VEHICLE_TYPES.TANK),
+      )
+      if (pool.length === 0) {
+        game.state.log.push('Change Order finds no player-made ship or tank')
+      } else {
+        const pick = pool[Math.floor(ctx.rng() * pool.length)]
+        priv.deck = priv.deck.filter((c) => c.instanceId !== pick.instanceId)
+        priv.hand.push(pick)
+        game.state.counts[side] = { hand: priv.hand.length, deck: priv.deck.length }
+        game.state.log.push(`Change Order delivers ${pick.name}`)
+      }
+    }
+  }
+  game.state.scheduled = stillScheduled
+
   // An alert card only lives through its owner's own turn — it expires the
   // moment that turn ends, whether or not it was ever triggered.
   const alert = game.state.alertCard
