@@ -7,7 +7,10 @@ export function NavBar({ right }: { right?: React.ReactNode }) {
         <img src="/ftd-logo-large.png" alt="FTD Card Game" className="h-10" />
         <span className="font-display text-2xl text-parchment-100">FTD Card Game</span>
       </Link>
-      <nav className="ml-auto flex items-center gap-4">{right}</nav>
+      <nav className="ml-auto flex items-center gap-4">
+        <Link to="/cards" className="text-parchment-100 hover:text-brass-400">Cards</Link>
+        {right}
+      </nav>
     </header>
   )
 }
