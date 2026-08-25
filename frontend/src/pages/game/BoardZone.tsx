@@ -40,6 +40,10 @@ function HpBar({ label, hp, max }: { label: string; hp: number; max: number }) {
 // "move" affordance on eligible Mobile vehicles; `moveVehiclePickMode` makes
 // every own vehicle clickable to start a Rapid Redeployment move; both feed
 // the same move-mode GameBoardPage drives (see HeroPowerBar's MoveMode).
+//
+// Field-targeting (Task 9): `fieldTargetingActive` makes every vehicle chip
+// on the board — either side — clickable, for an ability with
+// playOnVehicleEffect; click reports `onFieldTargetClick(instanceId)`.
 export function BoardZone({
   zone,
   maxBaseHp,
@@ -54,6 +58,8 @@ export function BoardZone({
   selectedForMoveId,
   onPickVehicleForMove,
   onMobileMoveClick,
+  fieldTargetingActive,
+  onFieldTargetClick,
 }: {
   zone: ZoneState
   maxBaseHp: number
@@ -68,6 +74,8 @@ export function BoardZone({
   selectedForMoveId?: string | null
   onPickVehicleForMove?: (instanceId: string) => void
   onMobileMoveClick?: (instanceId: string) => void
+  fieldTargetingActive?: boolean
+  onFieldTargetClick?: (instanceId: string) => void
 }) {
   return (
     <section
@@ -82,7 +90,12 @@ export function BoardZone({
       <HpBar label="Enemy base" hp={zone.baseHp[theirSide]} max={maxBaseHp} />
       <div className="flex min-h-[76px] flex-wrap gap-1">
         {(zone.cards[theirSide] as ZoneCardEntry[]).map((c) => (
-          <MiniVehicle key={c.instanceId} entry={c} turnNumber={turnNumber} />
+          <MiniVehicle
+            key={c.instanceId}
+            entry={c}
+            turnNumber={turnNumber}
+            onClick={fieldTargetingActive ? () => onFieldTargetClick?.(c.instanceId) : undefined}
+          />
         ))}
       </div>
       <div className="flex min-h-[76px] flex-wrap gap-1 border-t border-ocean-600/50 pt-2">
@@ -94,7 +107,13 @@ export function BoardZone({
               entry={c}
               turnNumber={turnNumber}
               selected={selectedForMoveId === c.instanceId}
-              onClick={moveVehiclePickMode ? () => onPickVehicleForMove?.(c.instanceId) : undefined}
+              onClick={
+                fieldTargetingActive
+                  ? () => onFieldTargetClick?.(c.instanceId)
+                  : moveVehiclePickMode
+                    ? () => onPickVehicleForMove?.(c.instanceId)
+                    : undefined
+              }
               moveAffordance={mobileEligible}
               onMoveClick={mobileEligible ? () => onMobileMoveClick?.(c.instanceId) : undefined}
             />

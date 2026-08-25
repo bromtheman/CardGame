@@ -27,6 +27,7 @@ export function GameBoardPage() {
   const { send, busy, error } = useGameActions(game?.id, game?.version)
   const [placingCard, setPlacingCard] = useState<CardInstance | null>(null)
   const [moveMode, setMoveMode] = useState<MoveMode | null>(null)
+  const [fieldTargeting, setFieldTargeting] = useState<CardInstance | null>(null)
   const logRef = useRef<HTMLDivElement>(null)
 
   const state = game?.state as unknown as PublicGameState | undefined
@@ -47,7 +48,13 @@ export function GameBoardPage() {
   const hand = (mine?.hand ?? []) as unknown as CardInstance[]
   const isMyTurn = game.active_player === me
   const isActive = game.status === 'active'
-  const legalForPlacing = placingCard ? legalZonesFor(state, mySide, placingCard) : []
+  // Vehicles only deploy where legalZonesFor says; a zone-targeted ability
+  // (playOnZoneEffect) may target any zone, so every zone highlights for it.
+  const legalForPlacing = placingCard
+    ? placingCard.type === 'vehicle'
+      ? legalZonesFor(state, mySide, placingCard)
+      : state.zones.map((z) => z.id)
+    : []
   const canActivateZones = isMyTurn && isActive && !battleFrozen(state)
 
   // Move-mode: shared zone-picking step for Rapid Redeployment (any own
@@ -63,23 +70,42 @@ export function GameBoardPage() {
     : []
   const interactiveZoneIds = placingCard ? legalForPlacing : moveMode?.phase === 'pickZone' ? legalForMove : []
 
+  // Placing/fieldTargeting/moveMode are mutually exclusive: starting one
+  // clears the others. HandBar's handTargeting is internal to that
+  // component, but it watches these same three (via props) to clear itself
+  // when one of them starts, and calls cancelAllModes (passed down) before
+  // entering its own targeting mode.
+  function cancelAllModes() {
+    setPlacingCard(null)
+    setMoveMode(null)
+    setFieldTargeting(null)
+  }
   function onPlacingChange(card: CardInstance | null) {
-    if (card) setMoveMode(null)
+    if (card) cancelAllModes()
     setPlacingCard(card)
   }
+  function onFieldTargetingChange(card: CardInstance | null) {
+    if (card) cancelAllModes()
+    setFieldTargeting(card)
+  }
   function onStartRapidRedeployment() {
-    setPlacingCard(null)
+    cancelAllModes()
     setMoveMode({ phase: 'pickVehicle' })
   }
   function onPickVehicleForMove(instanceId: string) {
     setMoveMode({ phase: 'pickZone', instanceId, kind: 'heroPower' })
   }
   function onMobileMoveClick(instanceId: string) {
-    setPlacingCard(null)
+    cancelAllModes()
     setMoveMode({ phase: 'pickZone', instanceId, kind: 'mobile' })
   }
   function onCancelMove() {
     setMoveMode(null)
+  }
+  function onFieldTargetClick(targetInstanceId: string) {
+    if (!fieldTargeting) return
+    void send({ type: 'PLAY_CARD_TARGETING_CARD_ON_FIELD', instanceId: fieldTargeting.instanceId, targetInstanceId })
+    setFieldTargeting(null)
   }
 
   function onEndTurn() {
@@ -161,6 +187,13 @@ export function GameBoardPage() {
         </div>
       </header>
 
+      {state.alertCard && (
+        <div className="mt-3 rounded border border-brass-400 bg-ocean-900/60 p-2 text-center text-sm font-bold text-brass-400">
+          ⚠ {state.alertCard.name} revealed by {state.alertCard.side === mySide ? 'you' : 'your opponent'} — effect in
+          progress
+        </div>
+      )}
+
       <HeroPowerBar
         state={state}
         mySide={mySide}
@@ -184,11 +217,13 @@ export function GameBoardPage() {
             turnNumber={game.turn_number}
             highlighted={interactiveZoneIds.includes(zone.id)}
             onZoneClick={interactiveZoneIds.includes(zone.id) ? () => onZoneClick(zone.id) : undefined}
-            canMoveVehicles={canActivateZones}
+            canMoveVehicles={canActivateZones && !fieldTargeting}
             moveVehiclePickMode={moveMode?.phase === 'pickVehicle'}
             selectedForMoveId={moveMode?.phase === 'pickZone' ? moveMode.instanceId : null}
             onPickVehicleForMove={onPickVehicleForMove}
             onMobileMoveClick={onMobileMoveClick}
+            fieldTargetingActive={!!fieldTargeting}
+            onFieldTargetClick={onFieldTargetClick}
           >
             {canActivateZones && (
               <ZoneActions
@@ -212,6 +247,10 @@ export function GameBoardPage() {
         busy={busy}
         placingCard={placingCard}
         onPlacingChange={onPlacingChange}
+        fieldTargeting={fieldTargeting}
+        onFieldTargetingChange={onFieldTargetingChange}
+        moveMode={moveMode}
+        cancelBoardModes={cancelAllModes}
       />
 
       <h2 className="mt-4 font-display text-xl">Battle log</h2>
