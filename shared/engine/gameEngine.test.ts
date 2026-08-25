@@ -23,7 +23,7 @@ describe('guards', () => {
     const g = makeGame()
     g.state.activeBattle = {
       zoneId: 1, aggressor: 'a', attackerIds: ['x'], defenderIds: ['y'],
-      distanceM: 1200, distanceModifiedBy: null,
+      distanceM: 1200, distanceModifiedBy: [],
     }
     expect(applyAction(g, 'alice', { type: 'END_TURN' })).toMatchObject({ ok: false, status: 409 })
   })
@@ -84,7 +84,7 @@ describe('normalizeState', () => {
     expect(g.state.awaitingResponse).toBeNull()
     expect(g.state.activeBattle).toBeNull()
     expect(g.state.destroyed).toEqual({ a: [], b: [] })
-    expect((g.state.zones[0].cards.a[0] as { playedOnTurn: number }).playedOnTurn).toBe(0)
+    expect(g.state.zones[0].cards.a[0]).toMatchObject({ playedOnTurn: 0 })
     // normalized state passes the frozen check
     expect(applyAction(g, 'alice', { type: 'END_TURN' }).ok).toBe(true)
   })
