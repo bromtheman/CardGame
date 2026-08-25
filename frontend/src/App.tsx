@@ -9,6 +9,7 @@ import { LoginPage } from './pages/LoginPage'
 import { SignupPage } from './pages/SignupPage'
 import { CardsPage } from './pages/CardsPage'
 import { CreateCardPage } from './pages/CreateCardPage'
+import { DecksPage } from './pages/DecksPage'
 
 function UserMenu() {
   const { session } = useAuth()
@@ -49,6 +50,7 @@ export default function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/" element={<RequireAuth><HomePage /></RequireAuth>} />
+        <Route path="/decks" element={<RequireAuth><DecksPage /></RequireAuth>} />
         <Route path="/cards" element={<RequireAuth><CardsPage /></RequireAuth>} />
         <Route path="/cards/new" element={<RequireAuth><CreateCardPage /></RequireAuth>} />
       </Routes>
