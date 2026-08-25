@@ -6,7 +6,8 @@ Turn-based card game companion for From The Depths. Design spec:
 ## Layout
 - `frontend/` — Vite + React SPA
 - `shared/` — pure TS game constants/types (imported by frontend and edge functions)
-- `supabase/` — migrations, seed pipeline, (later) edge functions
+- `supabase/` — migrations, seed pipeline, edge functions
+- `supabase/functions/` — edge functions (create-card); `npm run functions:sync` refreshes their shared-module copies
 
 ## Setup
 1. `npm install` (root tooling), then `cd frontend && npm install`
@@ -14,4 +15,6 @@ Turn-based card game companion for From The Depths. Design spec:
 3. `cd frontend && npm run dev`
 
 ## Tests
-`npm test` (root: shared + seed pipeline)
+`npm test` (root: shared + seed pipeline). Includes a drift-guard test
+(`supabase/seed/functionSharedSync.test.ts`) that fails if the edge
+function's copied shared modules fall out of sync with `shared/`.
