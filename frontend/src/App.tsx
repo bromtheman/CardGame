@@ -13,7 +13,7 @@ import { DecksPage } from './pages/DecksPage'
 import { DeckBuilderPage } from './pages/DeckBuilderPage'
 import { LobbiesPage } from './pages/LobbiesPage'
 import { GamesPage } from './pages/GamesPage'
-import { GameStubPage } from './pages/GameStubPage'
+import { GameBoardPage } from './pages/game/GameBoardPage'
 
 function UserMenu() {
   const { session } = useAuth()
@@ -56,7 +56,7 @@ export default function App() {
         <Route path="/" element={<RequireAuth><HomePage /></RequireAuth>} />
         <Route path="/lobbies" element={<RequireAuth><LobbiesPage /></RequireAuth>} />
         <Route path="/games" element={<RequireAuth><GamesPage /></RequireAuth>} />
-        <Route path="/game/:id" element={<RequireAuth><GameStubPage /></RequireAuth>} />
+        <Route path="/game/:id" element={<RequireAuth><GameBoardPage /></RequireAuth>} />
         <Route path="/decks" element={<RequireAuth><DecksPage /></RequireAuth>} />
         <Route path="/decks/:id" element={<RequireAuth><DeckBuilderPage /></RequireAuth>} />
         <Route path="/cards" element={<RequireAuth><CardsPage /></RequireAuth>} />
