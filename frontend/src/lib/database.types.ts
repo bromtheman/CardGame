@@ -114,6 +114,122 @@ export type Database = {
           },
         ]
       }
+      game_players: {
+        Row: {
+          deck: Json
+          game_id: string
+          hand: Json
+          player_id: string
+          updated_at: string
+        }
+        Insert: {
+          deck?: Json
+          game_id: string
+          hand?: Json
+          player_id: string
+          updated_at?: string
+        }
+        Update: {
+          deck?: Json
+          game_id?: string
+          hand?: Json
+          player_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "game_players_game_id_fkey"
+            columns: ["game_id"]
+            isOneToOne: false
+            referencedRelation: "games"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "game_players_player_id_fkey"
+            columns: ["player_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      games: {
+        Row: {
+          active_player: string
+          created_at: string
+          id: string
+          lobby_id: string | null
+          player_a: string
+          player_b: string
+          settings: Json
+          state: Json
+          status: string
+          turn_number: number
+          updated_at: string
+          version: number
+          winner_id: string | null
+        }
+        Insert: {
+          active_player: string
+          created_at?: string
+          id?: string
+          lobby_id?: string | null
+          player_a: string
+          player_b: string
+          settings?: Json
+          state?: Json
+          status?: string
+          turn_number?: number
+          updated_at?: string
+          version?: number
+          winner_id?: string | null
+        }
+        Update: {
+          active_player?: string
+          created_at?: string
+          id?: string
+          lobby_id?: string | null
+          player_a?: string
+          player_b?: string
+          settings?: Json
+          state?: Json
+          status?: string
+          turn_number?: number
+          updated_at?: string
+          version?: number
+          winner_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "games_active_player_fkey"
+            columns: ["active_player"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "games_player_a_fkey"
+            columns: ["player_a"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "games_player_b_fkey"
+            columns: ["player_b"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "games_winner_id_fkey"
+            columns: ["winner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       hero_powers: {
         Row: {
           cp_cost: number
@@ -144,6 +260,81 @@ export type Database = {
         }
         Relationships: []
       }
+      lobbies: {
+        Row: {
+          created_at: string
+          game_id: string | null
+          guest_deck_id: string | null
+          guest_id: string | null
+          host_deck_id: string
+          host_id: string
+          id: string
+          name: string
+          settings: Json
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          game_id?: string | null
+          guest_deck_id?: string | null
+          guest_id?: string | null
+          host_deck_id: string
+          host_id: string
+          id?: string
+          name: string
+          settings?: Json
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          game_id?: string | null
+          guest_deck_id?: string | null
+          guest_id?: string | null
+          host_deck_id?: string
+          host_id?: string
+          id?: string
+          name?: string
+          settings?: Json
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lobbies_game_id_fkey"
+            columns: ["game_id"]
+            isOneToOne: false
+            referencedRelation: "games"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lobbies_guest_deck_id_fkey"
+            columns: ["guest_deck_id"]
+            isOneToOne: false
+            referencedRelation: "decks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lobbies_guest_id_fkey"
+            columns: ["guest_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lobbies_host_deck_id_fkey"
+            columns: ["host_deck_id"]
+            isOneToOne: false
+            referencedRelation: "decks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lobbies_host_id_fkey"
+            columns: ["host_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           created_at: string
@@ -167,6 +358,15 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      start_game_tx: {
+        Args: {
+          p_game: Json
+          p_lobby_id: string
+          p_player_a_state: Json
+          p_player_b_state: Json
+        }
+        Returns: string
+      }
       username_available: { Args: { check_name: string }; Returns: boolean }
     }
     Enums: {

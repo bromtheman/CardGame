@@ -1,6 +1,10 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { autoKeywords, computeMaterialCost, validateCustomCardInput } from './shared/customCards.ts'
-import { CARD_IMAGE_MAX_BYTES, CARD_IMAGE_MIME_TYPES } from './shared/gameSettings.ts'
+import {
+  CARD_IMAGE_MAX_BYTES,
+  CARD_IMAGE_MIME_TYPES,
+  MAX_CUSTOM_CARDS_PER_PLAYER,
+} from './shared/gameSettings.ts'
 import type { VehicleType } from './shared/types.ts'
 
 const corsHeaders = {
@@ -34,6 +38,18 @@ Deno.serve(async (req) => {
   if (userError || !userData.user) return json(401, { errors: ['Not signed in'] })
   const userId = userData.user.id
 
+  const admin = createClient(supabaseUrl, serviceKey)
+  const { count } = await admin
+    .from('cards')
+    .select('id', { count: 'exact', head: true })
+    .eq('owner_id', userId)
+    .eq('is_built_in', false)
+  if ((count ?? 0) >= MAX_CUSTOM_CARDS_PER_PLAYER) {
+    return json(400, {
+      errors: [`Custom card limit reached (${MAX_CUSTOM_CARDS_PER_PLAYER}); delete one first`],
+    })
+  }
+
   let form: FormData
   try {
     form = await req.formData()
@@ -58,7 +74,6 @@ Deno.serve(async (req) => {
   }
   if (errors.length > 0) return json(400, { errors })
 
-  const admin = createClient(supabaseUrl, serviceKey)
   let imageUrl = ''
   if (image instanceof File) {
     const ext = image.type === 'image/png' ? 'png' : image.type === 'image/webp' ? 'webp' : 'jpg'

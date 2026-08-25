@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { FACTIONS } from '@shared/gameSettings'
 import type { DeckCardInfo } from '@shared/engine/deckValidation'
@@ -16,7 +16,7 @@ export function DeckBuilderPage() {
   const { session } = useAuth()
   const queryClient = useQueryClient()
   const { data: allCards } = useCardsQuery()
-  const { data: decks } = useDecksQuery()
+  const { data: decks, isLoading: decksLoading, error: decksError } = useDecksQuery()
   const deck = decks?.find((d) => d.id === id)
 
   const [cards, setCards] = useState<Record<string, number>>({})
@@ -93,7 +93,18 @@ export function DeckBuilderPage() {
     setSaveState('saved')
   }
 
-  if (!deck) return <main className="p-8 text-center">Loading deck…</main>
+  if (decksLoading) return <main className="p-8 text-center">Loading deck…</main>
+  if (decksError) {
+    return <main className="p-8 text-center text-red-400">Failed to load deck: {String(decksError)}</main>
+  }
+  if (!deck) {
+    return (
+      <main className="p-8 text-center">
+        <p>That deck doesn't exist (or isn't yours).</p>
+        <Link className="underline" to="/decks">Back to your fleets</Link>
+      </main>
+    )
+  }
 
   const cardById = new Map((allCards ?? []).map((c) => [c.id, c]))
   return (
