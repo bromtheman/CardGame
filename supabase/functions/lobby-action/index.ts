@@ -113,67 +113,77 @@ Deno.serve(async (req) => {
       return json(409, { errors: ['Waiting for an opponent with a deck (or already starting)'] })
     }
 
-    const fail = async (status: number, errors: string[]) => {
-      await admin.from('lobbies').update({ status: 'open' }).eq('id', lobbyId)
-      return json(status, { errors })
+    try {
+      const fail = async (status: number, errors: string[]) => {
+        await admin.from('lobbies').update({ status: 'open' }).eq('id', lobbyId)
+        return json(status, { errors })
+      }
+
+      const { data: decks } = await admin
+        .from('decks').select('*').in('id', [locked.host_deck_id, locked.guest_deck_id])
+      const hostDeck = decks?.find((d) => d.id === locked.host_deck_id)
+      const guestDeck = decks?.find((d) => d.id === locked.guest_deck_id)
+      if (!hostDeck || !guestDeck) return fail(409, ['A selected deck no longer exists'])
+
+      const hostCards = (hostDeck.cards ?? {}) as Record<string, number>
+      const guestCards = (guestDeck.cards ?? {}) as Record<string, number>
+      const cardIds = [...new Set([...Object.keys(hostCards), ...Object.keys(guestCards)])]
+      const { data: cardRows } = await admin.from('cards').select('*').in('id', cardIds)
+      const infoMap = new Map<string, DeckCardInfo>(
+        (cardRows ?? []).map((c) => [c.id, {
+          id: c.id, isBuiltIn: c.is_built_in, faction: c.faction,
+          vehicleType: c.vehicle_type, ownerId: c.owner_id,
+        }]),
+      )
+      const snapshots = new Map<string, SnapshotCard>(
+        (cardRows ?? []).map((c) => [c.id, snapshotCard(c)]),
+      )
+
+      // Lobby-overridable deck rules (spec §4): defaults merged with any
+      // validated per-lobby overrides, then frozen into the game's settings.
+      const deckRules = { ...DEFAULT_DECK_RULES, ...(parsed.settings.deckRules ?? {}) }
+
+      const hostResult = validateDeck(
+        { faction: hostDeck.faction, cards: hostCards }, infoMap, locked.host_id, deckRules,
+      )
+      if (!hostResult.valid) {
+        return fail(400, hostResult.errors.map((e) => `Host deck: ${e}`))
+      }
+      const guestResult = validateDeck(
+        { faction: guestDeck.faction, cards: guestCards }, infoMap, locked.guest_id, deckRules,
+      )
+      if (!guestResult.valid) {
+        return fail(400, guestResult.errors.map((e) => `Guest deck: ${e}`))
+      }
+
+      const built = buildInitialGame({
+        gameId: crypto.randomUUID(),
+        playerA: locked.host_id,
+        playerB: locked.guest_id,
+        settings: parsed.settings,
+        deckA: { cards: hostCards, snapshots },
+        deckB: { cards: guestCards, snapshots },
+        instanceId: () => crypto.randomUUID(),
+        rng: secureRng,
+      })
+
+      const { data: gameId, error: txError } = await admin.rpc('start_game_tx', {
+        p_lobby_id: lobbyId,
+        p_game: built.game,
+        p_player_a_state: built.aPrivate,
+        p_player_b_state: built.bPrivate,
+      })
+      if (txError) return fail(500, [txError.message])
+      return json(200, { gameId })
+    } catch (err) {
+      // Any unexpected failure after the lock must revert the lobby, or a
+      // host's Cancel silently no-ops forever (delete policy only allows
+      // open/closed) and the UI has no other recovery path. Conditioned on
+      // still being 'starting' so a lobby that already closed via a
+      // successful start_game_tx can never be reopened by a late throw.
+      await admin.from('lobbies').update({ status: 'open' }).eq('id', lobbyId).eq('status', 'starting')
+      return json(500, { errors: [err instanceof Error ? err.message : 'Unexpected error starting game'] })
     }
-
-    const { data: decks } = await admin
-      .from('decks').select('*').in('id', [locked.host_deck_id, locked.guest_deck_id])
-    const hostDeck = decks?.find((d) => d.id === locked.host_deck_id)
-    const guestDeck = decks?.find((d) => d.id === locked.guest_deck_id)
-    if (!hostDeck || !guestDeck) return fail(409, ['A selected deck no longer exists'])
-
-    const hostCards = (hostDeck.cards ?? {}) as Record<string, number>
-    const guestCards = (guestDeck.cards ?? {}) as Record<string, number>
-    const cardIds = [...new Set([...Object.keys(hostCards), ...Object.keys(guestCards)])]
-    const { data: cardRows } = await admin.from('cards').select('*').in('id', cardIds)
-    const infoMap = new Map<string, DeckCardInfo>(
-      (cardRows ?? []).map((c) => [c.id, {
-        id: c.id, isBuiltIn: c.is_built_in, faction: c.faction,
-        vehicleType: c.vehicle_type, ownerId: c.owner_id,
-      }]),
-    )
-    const snapshots = new Map<string, SnapshotCard>(
-      (cardRows ?? []).map((c) => [c.id, snapshotCard(c)]),
-    )
-
-    // Lobby-overridable deck rules (spec §4): defaults merged with any
-    // validated per-lobby overrides, then frozen into the game's settings.
-    const deckRules = { ...DEFAULT_DECK_RULES, ...(parsed.settings.deckRules ?? {}) }
-
-    const hostResult = validateDeck(
-      { faction: hostDeck.faction, cards: hostCards }, infoMap, locked.host_id, deckRules,
-    )
-    if (!hostResult.valid) {
-      return fail(400, hostResult.errors.map((e) => `Host deck: ${e}`))
-    }
-    const guestResult = validateDeck(
-      { faction: guestDeck.faction, cards: guestCards }, infoMap, locked.guest_id, deckRules,
-    )
-    if (!guestResult.valid) {
-      return fail(400, guestResult.errors.map((e) => `Guest deck: ${e}`))
-    }
-
-    const built = buildInitialGame({
-      gameId: crypto.randomUUID(),
-      playerA: locked.host_id,
-      playerB: locked.guest_id,
-      settings: parsed.settings,
-      deckA: { cards: hostCards, snapshots },
-      deckB: { cards: guestCards, snapshots },
-      instanceId: () => crypto.randomUUID(),
-      rng: secureRng,
-    })
-
-    const { data: gameId, error: txError } = await admin.rpc('start_game_tx', {
-      p_lobby_id: lobbyId,
-      p_game: built.game,
-      p_player_a_state: built.aPrivate,
-      p_player_b_state: built.bPrivate,
-    })
-    if (txError) return fail(500, [txError.message])
-    return json(200, { gameId })
   }
 
   return json(400, { errors: [`Unknown action: ${action}`] })
