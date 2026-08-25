@@ -217,7 +217,7 @@ export function GameBoardPage() {
             turnNumber={game.turn_number}
             highlighted={interactiveZoneIds.includes(zone.id)}
             onZoneClick={interactiveZoneIds.includes(zone.id) ? () => onZoneClick(zone.id) : undefined}
-            canMoveVehicles={canActivateZones && !fieldTargeting}
+            canMoveVehicles={canActivateZones && !fieldTargeting && !placingCard}
             moveVehiclePickMode={moveMode?.phase === 'pickVehicle'}
             selectedForMoveId={moveMode?.phase === 'pickZone' ? moveMode.instanceId : null}
             onPickVehicleForMove={onPickVehicleForMove}

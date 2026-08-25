@@ -19,8 +19,11 @@ function instanceToCardRow(c: CardInstance): CardRow {
 }
 
 // A card "has an effect" if any of its meta trigger keys (or costModifier)
-// resolve to a name — mirrors registry.ts's noteUnimplemented/ALL_META_KEYS,
-// used only to decide whether the no-op confirm dialog is warranted.
+// resolve to a name — used only to decide whether the no-op confirm dialog
+// is warranted. Deliberately duplicates shared/effects/registry.ts's
+// private (unexported) ALL_META_KEYS = [...Object.values(TRIGGERS),
+// 'costModifier'] used by noteUnimplemented — if TRIGGERS ever grows a new
+// key there, mirror it here too.
 const ALL_TRIGGER_KEYS: string[] = [...Object.values(TRIGGERS), 'costModifier']
 function hasAnyMetaEffect(card: CardInstance): boolean {
   return ALL_TRIGGER_KEYS.some((key) => effectName(card, key) !== null)
@@ -118,6 +121,7 @@ export function HandBar({
       if (!ok) return
     }
     cancelBoardModes()
+    setHandTargeting(null)
     void send({ type: 'PLAY_ABILITY_CARD', instanceId: card.instanceId })
   }
 
