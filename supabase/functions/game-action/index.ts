@@ -2,7 +2,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 import { applyAction, CATALOG_EFFECTS, normalizeState } from './shared/engine/index.ts'
 import { secureRng, snapshotCard } from './shared/engine/gameInit.ts'
 import type { SnapshotCard } from './shared/engine/gameInit.ts'
-import type { EngineGame, GameAction, PrivateState } from './shared/engine/engineTypes.ts'
+import type { EngineGame, GameAction, PrivateState, Side } from './shared/engine/engineTypes.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -85,16 +85,17 @@ Deno.serve(async (req) => {
   // Load the built-in card catalog only when the played card's meta references
   // an effect that needs it (reservesEffect / spawnBuccaneerEffect).
   let catalog: SnapshotCard[] = []
+  const mySide: Side = row.player_a === userId ? 'a' : 'b'
   const actionInstanceId = (action as { instanceId?: unknown }).instanceId
   const played = typeof actionInstanceId === 'string'
-    ? [...engineGame.privates.a.hand, ...engineGame.privates.b.hand]
-        .find((c) => c.instanceId === actionInstanceId)
+    ? engineGame.privates[mySide].hand.find((c) => c.instanceId === actionInstanceId)
     : undefined
-  const needsCatalog = played !== undefined && Object.values(played.meta).some(
+  const needsCatalog = played !== undefined && Object.values(played.meta ?? {}).some(
     (v) => typeof v === 'string' && CATALOG_EFFECTS.has(v.trim()),
   )
   if (needsCatalog) {
-    const { data: cardRows } = await admin.from('cards').select('*').eq('is_built_in', true)
+    const { data: cardRows, error: catalogError } = await admin.from('cards').select('*').eq('is_built_in', true)
+    if (catalogError) return json(500, { errors: ['Failed to load the card catalog'] })
     catalog = (cardRows ?? []).map(snapshotCard)
   }
   const ctx = { rng: secureRng, newId: () => crypto.randomUUID(), catalog }

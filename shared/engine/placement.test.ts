@@ -241,6 +241,18 @@ describe('PLAY_CARD_TO_ZONE ability-to-zone branch', () => {
     expect(applyAction(g, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }))
       .toMatchObject({ ok: false, status: 400, error: 'That vehicle cannot deploy to that zone' })
   })
+
+  it('rejects a nonexistent zoneId for a zone-targeted ability, nothing spent', () => {
+    const { g, card } = withHand({
+      type: 'ability', vehicleType: null, materialCost: 5000, cpCost: 1, name: 'Ambush',
+      meta: { playOnZoneEffect: 'ambushEffect' },
+    })
+    const r = applyAction(g, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 99 })
+    expect(r).toMatchObject({ ok: false, status: 400, error: 'No such zone' })
+    expect(g.privates.a.hand).toHaveLength(1)
+    expect(g.state.resources.a.materials).toBe(100000)
+    expect(g.state.resources.a.cp).toBe(3)
+  })
 })
 
 describe('PLAY_CARD_TARGETING_CARD_IN_HAND', () => {

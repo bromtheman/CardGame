@@ -52,6 +52,7 @@ export function HandBar({
   moveMode,
   swapMode,
   cancelBoardModes,
+  canReveal,
 }: {
   hand: CardInstance[]
   state: PublicGameState
@@ -65,6 +66,9 @@ export function HandBar({
   moveMode: MoveMode | null
   swapMode: SwapMode | null
   cancelBoardModes: () => void
+  // Reveal (SET_ALERT_CARD) is only meaningful on your own turn with no
+  // battle in progress — mirrors GameBoardPage's canActivateZones gate.
+  canReveal: boolean
 }) {
   const [handTargeting, setHandTargeting] = useState<CardInstance | null>(null)
 
@@ -184,7 +188,7 @@ export function HandBar({
                   <button
                     type="button"
                     title="Show this card to your opponent as an in-progress effect"
-                    disabled={busy}
+                    disabled={busy || !canReveal}
                     onClick={() => handleReveal(c)}
                     className="absolute inset-x-6 bottom-16 rounded border border-ocean-600 bg-ocean-900/80 px-2 py-1 text-xs font-bold text-parchment-100 disabled:opacity-50"
                   >

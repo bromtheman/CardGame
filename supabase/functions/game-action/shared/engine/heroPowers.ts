@@ -10,7 +10,7 @@ import { biomeAllows, effectiveMaterialCostOf } from './placement.ts'
 
 // power → faction that alone may use it. Powers absent from this map (the
 // four universal ones) are open to any faction.
-const FACTION_POWERS: Record<string, string> = {
+const FACTION_POWERS: Record<'boardingParty' | 'changeOrder' | 'flyby', string> = {
   boardingParty: 'DWG', changeOrder: 'OW', flyby: 'LH',
 }
 
@@ -79,7 +79,7 @@ function flyby(game: EngineGame, actor: Side, instanceId: string | undefined): A
   }
   if (!card.keywords.includes(KEYWORDS.HALF_COST)) card.keywords.push(KEYWORDS.HALF_COST)
   if (!card.keywords.includes(KEYWORDS.TEMPORARY)) card.keywords.push(KEYWORDS.TEMPORARY)
-  game.state.log.push(`${card.name} readied for a Flyby run`)
+  game.state.log.push('A vehicle was readied for a Flyby run')
   return { ok: true, game }
 }
 
@@ -115,7 +115,9 @@ registerHandler('USE_HERO_POWER', (game, actor, action) => {
     return err(400, 'That hero power was already used this game')
   }
   if (res.cp < 1) return err(400, 'Not enough CP')
-  const requiredFaction = FACTION_POWERS[action.power]
+  const requiredFaction = Object.hasOwn(FACTION_POWERS, action.power)
+    ? FACTION_POWERS[action.power as keyof typeof FACTION_POWERS]
+    : undefined
   if (requiredFaction && game.state.factions[actor] !== requiredFaction) {
     return err(403, 'That power belongs to another faction')
   }

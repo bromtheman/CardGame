@@ -1,7 +1,7 @@
 import { ADDITIONAL_SPAWNS_CAP, KEYWORDS, VEHICLE_TYPES, ZONE_TYPES } from '../gameSettings.ts'
 import type { CardInstance, PublicGameState } from './gameInit.ts'
 import type { ApplyResult, EngineContext, EngineGame, Side, ZoneCardEntry } from './engineTypes.ts'
-import { err, findVehicle, otherSide, registerHandler } from './gameEngine.ts'
+import { err, findVehicle, otherSide, registerHandler, zoneById } from './gameEngine.ts'
 import { costModifierFor, effectFor, effectName, noteUnimplemented } from '../effects/registry.ts'
 
 const BIOMES_BY_TYPE: Record<string, string[]> = {
@@ -120,6 +120,9 @@ registerHandler('PLAY_CARD_TO_ZONE', (game, actor, action, ctx) => {
   if (card.type === 'vehicle' && !legalZonesFor(game.state, actor, card).includes(action.zoneId)) {
     return err(400, 'That vehicle cannot deploy to that zone')
   }
+  if (card.type !== 'vehicle' && !zoneById(game.state, action.zoneId)) {
+    return err(400, 'No such zone')
+  }
 
   if (game.state.alertCard?.instanceId === action.instanceId) game.state.alertCard = null
 
@@ -170,7 +173,9 @@ registerHandler('PLAY_ABILITY_CARD', (game, actor, action, ctx) => {
   takeFromHand(game, actor, action.instanceId)
   pay(game, actor, card)
 
-  const failure = resolvePlayEffects(game, actor, card, ctx, {}, ['playOnZoneEffect', 'onPlayEffect'])
+  // 'playOnZoneEffect' is deliberately excluded: needsTarget above already
+  // rejects any card carrying that key, so only onPlayEffect can ever fire here.
+  const failure = resolvePlayEffects(game, actor, card, ctx, {}, ['onPlayEffect'])
   if (failure) return failure
 
   game.state.log.push(`${card.name} resolved`)

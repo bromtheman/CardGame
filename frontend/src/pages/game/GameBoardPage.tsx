@@ -283,6 +283,7 @@ export function GameBoardPage() {
         moveMode={moveMode}
         swapMode={swapMode}
         cancelBoardModes={cancelAllModes}
+        canReveal={canActivateZones}
       />
 
       <h2 className="mt-4 font-display text-xl">Battle log</h2>

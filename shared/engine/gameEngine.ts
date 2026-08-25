@@ -149,7 +149,7 @@ function endTurn(game: EngineGame, ctx: EngineContext): ApplyResult {
         priv.deck = priv.deck.filter((c) => c.instanceId !== pick.instanceId)
         priv.hand.push(pick)
         game.state.counts[side] = { hand: priv.hand.length, deck: priv.deck.length }
-        game.state.log.push(`Change Order delivers ${pick.name}`)
+        game.state.log.push('Change Order delivers a replacement')
       }
     }
   }

@@ -149,6 +149,14 @@ describe('USE_HERO_POWER faction gate', () => {
     const r = applyAction(g, 'alice', { type: 'USE_HERO_POWER', power: 'boardingParty', instanceId: 'nope' })
     expect(r).toMatchObject({ ok: false, status: 400 })
   })
+  it('rejects an inherited-property power name with an ordinary 400, never a 403', () => {
+    // FACTION_POWERS lookup must use Object.hasOwn (or equivalent) so a
+    // prototype property name like '__proto__' can't be mistaken for a
+    // registered power and short-circuit into the faction gate's 403.
+    const g = makeGame()
+    const r = applyAction(g, 'alice', { type: 'USE_HERO_POWER', power: '__proto__' as never })
+    expect(r).toMatchObject({ ok: false, status: 400, error: 'Unknown hero power' })
+  })
 })
 
 describe('USE_HERO_POWER boardingParty (DWG)', () => {
@@ -294,7 +302,7 @@ describe('changeOrder delivery via END_TURN', () => {
     expect(r.game.privates.b.deck.map((c) => c.instanceId)).toEqual([builtInShip.instanceId])
     expect(r.game.state.counts.b.deck).toBe(r.game.privates.b.deck.length)
     expect(r.game.state.counts.b.hand).toBe(r.game.privates.b.hand.length)
-    expect(r.game.state.log).toContain('Change Order delivers Custom Tank')
+    expect(r.game.state.log).toContain('Change Order delivers a replacement')
   })
   it('fizzles with a log note when the incoming side has no custom ship/tank in deck', () => {
     const g = makeGame({ turnNumber: 2, activePlayer: 'alice' })
