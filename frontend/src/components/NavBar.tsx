@@ -9,6 +9,7 @@ export function NavBar({ right }: { right?: React.ReactNode }) {
       </Link>
       <nav className="ml-auto flex items-center gap-4">
         <Link to="/lobbies" className="text-parchment-100 hover:text-brass-400">Lobbies</Link>
+        <Link to="/games" className="text-parchment-100 hover:text-brass-400">Games</Link>
         <Link to="/decks" className="text-parchment-100 hover:text-brass-400">Decks</Link>
         <Link to="/cards" className="text-parchment-100 hover:text-brass-400">Cards</Link>
         {right}
