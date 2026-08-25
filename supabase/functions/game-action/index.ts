@@ -1,6 +1,8 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
-import { applyAction, normalizeState } from './shared/engine/index.ts'
-import type { EngineGame, GameAction, PrivateState } from './shared/engine/engineTypes.ts'
+import { applyAction, CATALOG_EFFECTS, normalizeState } from './shared/engine/index.ts'
+import { secureRng, snapshotCard } from './shared/engine/gameInit.ts'
+import type { SnapshotCard } from './shared/engine/gameInit.ts'
+import type { EngineGame, GameAction, PrivateState, Side } from './shared/engine/engineTypes.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -80,9 +82,27 @@ Deno.serve(async (req) => {
   // the new state fields — repair the shape before the engine sees it.
   normalizeState(engineGame.state)
 
+  // Load the built-in card catalog only when the played card's meta references
+  // an effect that needs it (reservesEffect / spawnBuccaneerEffect).
+  let catalog: SnapshotCard[] = []
+  const mySide: Side = row.player_a === userId ? 'a' : 'b'
+  const actionInstanceId = (action as { instanceId?: unknown }).instanceId
+  const played = typeof actionInstanceId === 'string'
+    ? engineGame.privates[mySide].hand.find((c) => c.instanceId === actionInstanceId)
+    : undefined
+  const needsCatalog = played !== undefined && Object.values(played.meta ?? {}).some(
+    (v) => typeof v === 'string' && CATALOG_EFFECTS.has(v.trim()),
+  )
+  if (needsCatalog) {
+    const { data: cardRows, error: catalogError } = await admin.from('cards').select('*').eq('is_built_in', true)
+    if (catalogError) return json(500, { errors: ['Failed to load the card catalog'] })
+    catalog = (cardRows ?? []).map(snapshotCard)
+  }
+  const ctx = { rng: secureRng, newId: () => crypto.randomUUID(), catalog }
+
   let result: ReturnType<typeof applyAction>
   try {
-    result = applyAction(engineGame, userId, action)
+    result = applyAction(engineGame, userId, action, ctx)
   } catch {
     return json(400, { errors: ['Malformed action'] })
   }

@@ -59,6 +59,9 @@ export interface PublicGameState {
   } | null
   destroyed: { a: SnapshotCard[]; b: SnapshotCard[] }
   log: string[]
+  factions: { a: string; b: string }
+  alertCard: { side: 'a' | 'b'; instanceId: string; name: string; setOnTurn: number } | null
+  scheduled: { type: 'changeOrderDraw'; side: 'a' | 'b'; dueTurn: number }[]
 }
 
 export function snapshotCard(row: {
@@ -130,6 +133,8 @@ export function buildInitialGame(input: {
   deckB: { cards: Record<string, number>; snapshots: Map<string, SnapshotCard> }
   instanceId: () => string
   rng: Rng
+  factionA: string
+  factionB: string
 }) {
   const deckAInstances = shuffleMutating(expandDeck(input.deckA, input.instanceId), input.rng)
   const deckBInstances = shuffleMutating(expandDeck(input.deckB, input.instanceId), input.rng)
@@ -168,6 +173,9 @@ export function buildInitialGame(input: {
     pendingReport: null,
     destroyed: { a: [], b: [] },
     log: [`Game started — first turn: ${activeIsA ? 'player A' : 'player B'}`],
+    factions: { a: input.factionA, b: input.factionB },
+    alertCard: null,
+    scheduled: [],
   }
   return {
     game: {

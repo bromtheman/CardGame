@@ -1,6 +1,12 @@
-import type { CardInstance, PublicGameState } from './gameInit.ts'
+import type { CardInstance, PublicGameState, SnapshotCard } from './gameInit.ts'
 
 export type Side = 'a' | 'b'
+
+export interface EngineContext {
+  rng: () => number
+  newId: () => string
+  catalog: SnapshotCard[]
+}
 
 export interface ZoneCardEntry extends CardInstance {
   playedOnTurn: number
@@ -53,17 +59,23 @@ export type GameAction =
   | { type: 'CONCEDE' }
   | { type: 'PLAY_CARD_TO_ZONE'; instanceId: string; zoneId: number }
   | { type: 'PLAY_ABILITY_CARD'; instanceId: string }
+  | { type: 'PLAY_CARD_TARGETING_CARD_ON_FIELD'; instanceId: string; targetInstanceId: string }
+  | { type: 'PLAY_CARD_TARGETING_CARD_IN_HAND'; instanceId: string; targetInstanceId: string }
   | { type: 'MOVE_VEHICLE'; instanceId: string; zoneId: number }
   | { type: 'ATTACK_ENEMY_BASE'; zoneId: number }
   | { type: 'ATTACK_ENEMY_FLEET'; zoneId: number; attackerIds: string[]; targetIds: string[] }
   | { type: 'RESPOND_TO_ATTACK'; optOutIds: string[] }
   | { type: 'SUBMIT_BATTLE_REPORT'; results: Record<string, number>; repairs: string[] }
   | { type: 'DECIDE_BATTLE_REPORT'; approve: boolean }
+  | { type: 'SET_ALERT_CARD'; instanceId: string }
   | {
       type: 'USE_HERO_POWER'
-      power: 'salvage' | 'tacticalPositioning' | 'draw' | 'rapidRedeployment'
+      power:
+        | 'salvage' | 'tacticalPositioning' | 'draw' | 'rapidRedeployment'
+        | 'boardingParty' | 'changeOrder' | 'flyby'
       cardId?: string       // salvage: which destroyed card
-      instanceId?: string   // rapidRedeployment: which vehicle
+      instanceId?: string   // rapidRedeployment/boardingParty(mine)/changeOrder/flyby: which card
+      targetInstanceId?: string // boardingParty: the enemy ship being traded for
       zoneId?: number       // rapidRedeployment: destination
       distanceDeltaM?: number // tacticalPositioning: ±meters
     }

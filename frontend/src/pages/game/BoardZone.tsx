@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import type { ZoneState } from '@shared/engine/gameInit'
 import type { Side, ZoneCardEntry } from '@shared/engine/engineTypes'
-import { KEYWORDS, ZONE_TYPES } from '@shared/gameSettings'
+import { KEYWORDS, VEHICLE_TYPES, ZONE_TYPES } from '@shared/gameSettings'
 import { shortHandNumber } from '@shared/format'
 import { MiniVehicle } from './MiniVehicle'
 
@@ -40,6 +40,18 @@ function HpBar({ label, hp, max }: { label: string; hp: number; max: number }) {
 // "move" affordance on eligible Mobile vehicles; `moveVehiclePickMode` makes
 // every own vehicle clickable to start a Rapid Redeployment move; both feed
 // the same move-mode GameBoardPage drives (see HeroPowerBar's MoveMode).
+//
+// Field-targeting (Task 9): `fieldTargetingActive` makes every vehicle chip
+// on the board — either side — clickable, for an ability with
+// playOnVehicleEffect; click reports `onFieldTargetClick(instanceId)`.
+//
+// Swap-mode (Task 10, DWG's Boarding Party): `swapPickOwnMode` makes own DWG
+// ships clickable to start the trade; `swapPickEnemyMode` (true only in the
+// zone holding the already-picked own ship) makes enemy ships clickable to
+// complete it. Both filters mirror the engine's own validation in
+// shared/engine/heroPowers.ts's boardingParty (faction/vehicleType/zone) —
+// display-only, the server re-validates (including the cost check, which
+// this component deliberately does not pre-filter on).
 export function BoardZone({
   zone,
   maxBaseHp,
@@ -54,6 +66,13 @@ export function BoardZone({
   selectedForMoveId,
   onPickVehicleForMove,
   onMobileMoveClick,
+  fieldTargetingActive,
+  onFieldTargetClick,
+  swapPickOwnMode,
+  swapPickEnemyMode,
+  selectedForSwapOwnId,
+  onPickOwnForSwap,
+  onPickEnemyForSwap,
 }: {
   zone: ZoneState
   maxBaseHp: number
@@ -68,6 +87,13 @@ export function BoardZone({
   selectedForMoveId?: string | null
   onPickVehicleForMove?: (instanceId: string) => void
   onMobileMoveClick?: (instanceId: string) => void
+  fieldTargetingActive?: boolean
+  onFieldTargetClick?: (instanceId: string) => void
+  swapPickOwnMode?: boolean
+  swapPickEnemyMode?: boolean
+  selectedForSwapOwnId?: string | null
+  onPickOwnForSwap?: (instanceId: string) => void
+  onPickEnemyForSwap?: (instanceId: string) => void
 }) {
   return (
     <section
@@ -81,20 +107,43 @@ export function BoardZone({
       </p>
       <HpBar label="Enemy base" hp={zone.baseHp[theirSide]} max={maxBaseHp} />
       <div className="flex min-h-[76px] flex-wrap gap-1">
-        {(zone.cards[theirSide] as ZoneCardEntry[]).map((c) => (
-          <MiniVehicle key={c.instanceId} entry={c} turnNumber={turnNumber} />
-        ))}
-      </div>
-      <div className="flex min-h-[76px] flex-wrap gap-1 border-t border-ocean-600/50 pt-2">
-        {(zone.cards[mySide] as ZoneCardEntry[]).map((c) => {
-          const mobileEligible = !!canMoveVehicles && c.keywords.includes(KEYWORDS.MOBILE) && c.movedOnTurn !== turnNumber
+        {(zone.cards[theirSide] as ZoneCardEntry[]).map((c) => {
+          const swapEnemyEligible = !!swapPickEnemyMode && c.vehicleType === VEHICLE_TYPES.SHIP
           return (
             <MiniVehicle
               key={c.instanceId}
               entry={c}
               turnNumber={turnNumber}
-              selected={selectedForMoveId === c.instanceId}
-              onClick={moveVehiclePickMode ? () => onPickVehicleForMove?.(c.instanceId) : undefined}
+              onClick={
+                fieldTargetingActive
+                  ? () => onFieldTargetClick?.(c.instanceId)
+                  : swapEnemyEligible
+                    ? () => onPickEnemyForSwap?.(c.instanceId)
+                    : undefined
+              }
+            />
+          )
+        })}
+      </div>
+      <div className="flex min-h-[76px] flex-wrap gap-1 border-t border-ocean-600/50 pt-2">
+        {(zone.cards[mySide] as ZoneCardEntry[]).map((c) => {
+          const mobileEligible = !!canMoveVehicles && c.keywords.includes(KEYWORDS.MOBILE) && c.movedOnTurn !== turnNumber
+          const swapOwnEligible = !!swapPickOwnMode && c.faction === 'DWG' && c.vehicleType === VEHICLE_TYPES.SHIP
+          return (
+            <MiniVehicle
+              key={c.instanceId}
+              entry={c}
+              turnNumber={turnNumber}
+              selected={selectedForMoveId === c.instanceId || selectedForSwapOwnId === c.instanceId}
+              onClick={
+                fieldTargetingActive
+                  ? () => onFieldTargetClick?.(c.instanceId)
+                  : moveVehiclePickMode
+                    ? () => onPickVehicleForMove?.(c.instanceId)
+                    : swapOwnEligible
+                      ? () => onPickOwnForSwap?.(c.instanceId)
+                      : undefined
+              }
               moveAffordance={mobileEligible}
               onMoveClick={mobileEligible ? () => onMobileMoveClick?.(c.instanceId) : undefined}
             />

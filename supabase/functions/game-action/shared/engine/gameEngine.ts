@@ -1,8 +1,13 @@
-import { KEYWORDS, LOG_MAX_ENTRIES, MATERIALS_PER_TURN } from '../gameSettings.ts'
+import { KEYWORDS, LOG_MAX_ENTRIES, MATERIALS_PER_TURN, VEHICLE_TYPES } from '../gameSettings.ts'
+import { secureRng } from './gameInit.ts'
 import type { PublicGameState } from './gameInit.ts'
 import type {
-  ApplyResult, EngineGame, GameAction, Side, ZoneCardEntry,
+  ApplyResult, EngineContext, EngineGame, GameAction, Side, ZoneCardEntry,
 } from './engineTypes.ts'
+
+export function defaultEngineContext(): EngineContext {
+  return { rng: secureRng, newId: () => crypto.randomUUID(), catalog: [] }
+}
 
 export function sideOf(game: EngineGame, playerId: string): Side | null {
   if (playerId === game.playerA) return 'a'
@@ -46,7 +51,7 @@ const OFF_TURN_ACTIONS = new Set<GameAction['type']>([
 export const err = (status: number, error: string): ApplyResult => ({ ok: false, status, error })
 
 // Handler registry — later modules add entries via registerHandler.
-type Handler = (game: EngineGame, actor: Side, action: GameAction) => ApplyResult
+type Handler = (game: EngineGame, actor: Side, action: GameAction, ctx: EngineContext) => ApplyResult
 const handlers = new Map<GameAction['type'], Handler>()
 export function registerHandler(type: GameAction['type'], handler: Handler) {
   handlers.set(type, handler)
@@ -61,6 +66,9 @@ export function normalizeState(state: PublicGameState): void {
   if (s.activeBattle === undefined) s.activeBattle = null
   if (s.pendingReport === undefined) s.pendingReport = null
   if (s.destroyed === undefined) s.destroyed = { a: [], b: [] }
+  if (s.factions === undefined) s.factions = { a: 'NEUTRAL', b: 'NEUTRAL' }
+  if (s.alertCard === undefined) s.alertCard = null
+  if (s.scheduled === undefined) s.scheduled = []
   for (const zone of state.zones) {
     for (const side of ['a', 'b'] as Side[]) {
       for (const entry of zone.cards[side] as Partial<ZoneCardEntry>[]) {
@@ -92,7 +100,10 @@ export function checkVictory(game: EngineGame): void {
   }
 }
 
-function endTurn(game: EngineGame): ApplyResult {
+function endTurn(game: EngineGame, ctx: EngineContext): ApplyResult {
+  // The side whose turn is ENDING is whoever is active right now — capture it
+  // before activePlayer flips below, so alert expiry checks the right side.
+  const endingSide = sideOf(game, game.activePlayer) as Side
   game.turnNumber = Math.round((game.turnNumber + 0.5) * 10) / 10
   const incoming = game.activePlayer === game.playerA ? game.playerB : game.playerA
   game.activePlayer = incoming
@@ -115,6 +126,42 @@ function endTurn(game: EngineGame): ApplyResult {
   }
   game.state.resources[side].materials = Math.floor(game.turnNumber) * MATERIALS_PER_TURN
   drawCard(game, side)
+
+  // Change Order redeliveries (Task 7): process every scheduled item due for
+  // the incoming side now that their materials/draw have already landed.
+  // Processed items (hit or fizzle) are dropped; anything not yet due, or
+  // belonging to the other side, is carried forward untouched.
+  const stillScheduled: PublicGameState['scheduled'] = []
+  for (const item of game.state.scheduled) {
+    if (item.side !== side || game.turnNumber < item.dueTurn) {
+      stillScheduled.push(item)
+      continue
+    }
+    if (item.type === 'changeOrderDraw') {
+      const priv = game.privates[side]
+      const pool = priv.deck.filter(
+        (c) => c.isBuiltIn === false && (c.vehicleType === VEHICLE_TYPES.SHIP || c.vehicleType === VEHICLE_TYPES.TANK),
+      )
+      if (pool.length === 0) {
+        game.state.log.push('Change Order finds no player-made ship or tank')
+      } else {
+        const pick = pool[Math.floor(ctx.rng() * pool.length)]
+        priv.deck = priv.deck.filter((c) => c.instanceId !== pick.instanceId)
+        priv.hand.push(pick)
+        game.state.counts[side] = { hand: priv.hand.length, deck: priv.deck.length }
+        game.state.log.push('Change Order delivers a replacement')
+      }
+    }
+  }
+  game.state.scheduled = stillScheduled
+
+  // An alert card only lives through its owner's own turn — it expires the
+  // moment that turn ends, whether or not it was ever triggered.
+  const alert = game.state.alertCard
+  if (alert && alert.side === endingSide) {
+    game.state.log.push(`${alert.name} alert expired`)
+    game.state.alertCard = null
+  }
   game.state.log.push(`Turn ${game.turnNumber} — player ${side.toUpperCase()} to act`)
   return { ok: true, game }
 }
@@ -136,7 +183,9 @@ function finish(result: ApplyResult): ApplyResult {
   return result
 }
 
-export function applyAction(input: EngineGame, actorId: string, action: GameAction): ApplyResult {
+export function applyAction(
+  input: EngineGame, actorId: string, action: GameAction, ctx: EngineContext = defaultEngineContext(),
+): ApplyResult {
   const game = structuredClone(input)
   const actor = sideOf(game, actorId)
   if (!actor) return err(403, 'You are not in this game')
@@ -147,9 +196,9 @@ export function applyAction(input: EngineGame, actorId: string, action: GameActi
   if (!OFF_TURN_ACTIONS.has(action.type) && game.activePlayer !== actorId) {
     return err(409, 'Not your turn')
   }
-  if (action.type === 'END_TURN') return finish(endTurn(game))
+  if (action.type === 'END_TURN') return finish(endTurn(game, ctx))
   if (action.type === 'CONCEDE') return finish(concede(game, actor))
   const handler = handlers.get(action.type)
   if (!handler) return err(400, `Unknown or not-yet-supported action: ${action.type}`)
-  return finish(handler(game, actor, action))
+  return finish(handler(game, actor, action, ctx))
 }

@@ -75,6 +75,26 @@ describe('END_TURN', () => {
   })
 })
 
+describe('END_TURN alert card expiry', () => {
+  it("clears the alert at its owner's END_TURN, with a log note", () => {
+    const g = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+    g.state.alertCard = { side: 'a', instanceId: 'x1', name: 'Ambush Alert', setOnTurn: 2 }
+    const r = applyAction(g, 'alice', { type: 'END_TURN' })
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.alertCard).toBeNull()
+    expect(r.game.state.log.some((l) => l.includes('Ambush Alert alert expired'))).toBe(true)
+  })
+
+  it("does NOT clear the alert when the opponent's turn ends instead", () => {
+    const g = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+    g.state.alertCard = { side: 'b', instanceId: 'x1', name: 'Ambush Alert', setOnTurn: 2 }
+    const r = applyAction(g, 'alice', { type: 'END_TURN' })
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.alertCard).not.toBeNull()
+    expect(r.game.state.log.some((l) => l.includes('alert expired'))).toBe(false)
+  })
+})
+
 describe('CONCEDE', () => {
   it('ends the game with the other player winning, from either seat, even off-turn', () => {
     const g = makeGame()
@@ -100,5 +120,22 @@ describe('normalizeState', () => {
     expect(g.state.zones[0].cards.a[0]).toMatchObject({ playedOnTurn: 0 })
     // normalized state passes the frozen check
     expect(applyAction(g, 'alice', { type: 'END_TURN' }).ok).toBe(true)
+  })
+})
+
+describe('phase 5 state shape', () => {
+  it('normalizeState defaults factions, alertCard, and scheduled', () => {
+    const game = makeGame()
+    const s = game.state as unknown as Record<string, unknown>
+    delete s.factions; delete s.alertCard; delete s.scheduled
+    normalizeState(game.state)
+    expect(game.state.factions).toEqual({ a: 'NEUTRAL', b: 'NEUTRAL' })
+    expect(game.state.alertCard).toBeNull()
+    expect(game.state.scheduled).toEqual([])
+  })
+  it('applyAction runs with a default context when none is given', () => {
+    const game = makeGame()
+    const result = applyAction(game, 'alice', { type: 'END_TURN' })
+    expect(result.ok).toBe(true)
   })
 })

@@ -1,8 +1,20 @@
 import type { CardInstance, SnapshotCard } from './gameInit.ts'
-import type { EngineGame, ZoneCardEntry } from './engineTypes.ts'
+import type { EngineContext, EngineGame, ZoneCardEntry } from './engineTypes.ts'
 
 let counter = 0
 export const nextId = (): string => `t-${counter++}`
+
+export function makeCtx(over: Partial<EngineContext> = {}): EngineContext {
+  const rngValues = [0.1, 0.5, 0.9]
+  let rngIndex = 0
+  let idCounter = 0
+  return {
+    rng: () => rngValues[rngIndex++ % rngValues.length],
+    newId: () => `e-${idCounter++}`,
+    catalog: [],
+    ...over,
+  }
+}
 
 export function snap(over: Partial<SnapshotCard> = {}): SnapshotCard {
   return {
@@ -47,6 +59,7 @@ export function makeGame(over: Partial<EngineGame> = {}): EngineGame {
       awaitingResponse: null, activeBattle: null, pendingReport: null,
       destroyed: { a: [], b: [] },
       log: [],
+      factions: { a: 'DWG', b: 'OW' }, alertCard: null, scheduled: [],
     },
     privates: { a: { hand: [], deck: [] }, b: { hand: [], deck: [] } },
     ...over,

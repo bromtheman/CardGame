@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { applyAction, repairCostOf } from './index'
-import { makeGame, zoneEntry } from './testFixtures'
+import { registerEffect } from '../effects/registry.ts'
+import { makeCtx, makeGame, zoneEntry } from './testFixtures'
 
 function inBattle() {
   const g = makeGame({ turnNumber: 3 })
@@ -144,6 +145,66 @@ describe('DECIDE_BATTLE_REPORT', () => {
     if (!s.ok) throw new Error(s.error)
     expect(applyAction(s.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }))
       .toMatchObject({ ok: false, status: 400 })
+  })
+})
+
+describe('death triggers on report approval', () => {
+  // The attacker (side a / Loggerhead's owner) dies while the DEFENDER
+  // ('bob', side b) is the one approving — owner and approver deliberately
+  // differ so a regression that threads the DECIDE actor's side instead of
+  // the destroyed card's own side into the death-effect payload (`actor:
+  // actor` instead of `actor: side`) fails this test: the free copy would
+  // land in bob's deck instead of alice's.
+  it("dispatches an implemented onDeathEffect (Loggerhead) into its OWNER's deck, not the approver's", () => {
+    const { g, atk, def } = inBattle()
+    atk.name = 'Loggerhead'
+    atk.meta = { onDeathEffect: 'loggerheadOnDeath' }
+    const s = applyAction(g, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT',
+      results: { [atk.instanceId]: 40, [def.instanceId]: 95 }, repairs: [],
+    })
+    if (!s.ok) throw new Error(s.error)
+    const r = applyAction(s.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.destroyed.a.map((c) => c.name)).toEqual(['Loggerhead'])
+    expect(r.game.privates.a.deck).toHaveLength(1)
+    const copy = r.game.privates.a.deck[0]
+    expect(copy.name).toBe('Loggerhead')
+    expect(copy.materialCost).toBe(0)
+    expect(r.game.state.counts.a.deck).toBe(1)
+    // the approver's (bob's / side b) deck must be untouched
+    expect(r.game.privates.b.deck).toHaveLength(0)
+    expect(r.game.state.counts.b.deck).toBe(0)
+    expect(r.game.state.log.some((l) => l.includes('leaves a free copy'))).toBe(true)
+  })
+
+  it("logs a could-not-resolve note when an implemented onDeathEffect returns false — approval still succeeds", () => {
+    registerEffect('testAlwaysFailOnDeath', () => false)
+    const { g, atk, def } = inBattle()
+    def.meta = { onDeathEffect: 'testAlwaysFailOnDeath' }
+    const s = applyAction(g, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT',
+      results: { [atk.instanceId]: 95, [def.instanceId]: 40 }, repairs: [],
+    })
+    if (!s.ok) throw new Error(s.error)
+    const r = applyAction(s.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.destroyed.b).toHaveLength(1)
+    expect(r.game.state.log.some((l) => l.includes("Bastion's death effect could not resolve"))).toBe(true)
+  })
+
+  it('silently skips an unimplemented onDeathEffect — approval still succeeds, no extra log line', () => {
+    const { g, atk, def } = inBattle()
+    def.meta = { onDeathEffect: 'conduitEffect' }
+    const s = applyAction(g, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT',
+      results: { [atk.instanceId]: 95, [def.instanceId]: 40 }, repairs: [],
+    })
+    if (!s.ok) throw new Error(s.error)
+    const r = applyAction(s.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.destroyed.b).toHaveLength(1)
+    expect(r.game.state.log.some((l) => l.includes('conduitEffect'))).toBe(false)
   })
 })
 

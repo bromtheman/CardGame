@@ -63,3 +63,8 @@ export const MAX_ZONE_BASE_HP = 10_000_000
 export const MAX_CUSTOM_CARDS_PER_PLAYER = 50
 
 export const LOG_MAX_ENTRIES = 200 // capped action log (spec §3) — oldest entries drop first
+
+export const ADDITIONAL_SPAWNS_CAP = 10
+export const DOUBLE_UP_MAX_COST = 400_000
+export const RESERVES_CARD_COUNT = 3
+export const CHANGE_ORDER_DELAY_TURNS = 2

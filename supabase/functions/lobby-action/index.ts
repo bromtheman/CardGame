@@ -169,6 +169,8 @@ Deno.serve(async (req) => {
         settings: parsed.settings,
         deckA: { cards: hostCards, snapshots },
         deckB: { cards: guestCards, snapshots },
+        factionA: String(hostDeck.faction),
+        factionB: String(guestDeck.faction),
         instanceId: () => crypto.randomUUID(),
         rng: secureRng,
       })

@@ -5,6 +5,7 @@ import type { SnapshotCard } from './gameInit.ts'
 import type { EngineGame, Side, ZoneCardEntry } from './engineTypes.ts'
 import { err, registerHandler, zoneById } from './gameEngine.ts'
 import { effectiveMaterialCostOf } from './placement.ts'
+import { effectFor, effectName } from '../effects/registry.ts'
 
 export function repairCostOf(card: { materialCost: number; keywords: string[] }): number {
   if (card.keywords.includes(KEYWORDS.SCRAPPY)) return 0
@@ -65,7 +66,7 @@ registerHandler('SUBMIT_BATTLE_REPORT', (game, actor, action) => {
   return { ok: true, game }
 })
 
-registerHandler('DECIDE_BATTLE_REPORT', (game, actor, action) => {
+registerHandler('DECIDE_BATTLE_REPORT', (game, actor, action, ctx) => {
   if (action.type !== 'DECIDE_BATTLE_REPORT') return err(400, 'Bad action')
   const report = game.state.pendingReport
   if (!report) return err(409, 'No report awaits a decision')
@@ -90,6 +91,7 @@ registerHandler('DECIDE_BATTLE_REPORT', (game, actor, action) => {
   for (const side of ['a', 'b'] as Side[]) game.state.resources[side].materials -= owed[side]
   const zone = zoneById(game.state, game.state.activeBattle!.zoneId)!
   let destroyedCount = 0
+  const destroyedEntries: { entry: ZoneCardEntry; side: Side }[] = []
   for (const [id, { entry, side }] of participants) {
     const hp = report.results[id]
     const survives = hp >= SURVIVE_HP_PERCENT ||
@@ -100,6 +102,7 @@ registerHandler('DECIDE_BATTLE_REPORT', (game, actor, action) => {
       game.state.destroyed[side].push(snapshot as SnapshotCard)
       destroyedCount++
       game.state.log.push(`${entry.name} was destroyed (${hp}%)`)
+      destroyedEntries.push({ entry, side })
     } else if (report.repairs.includes(id)) {
       game.state.log.push(`${entry.name} was repaired (${hp}%)`)
     }
@@ -107,5 +110,20 @@ registerHandler('DECIDE_BATTLE_REPORT', (game, actor, action) => {
   game.state.activeBattle = null
   game.state.pendingReport = null
   game.state.log.push(`Battle resolved — ${destroyedCount} vehicle(s) lost`)
+
+  // Death triggers fire after the battle is fully resolved. The battle
+  // already happened, so a failing effect only gets a log note — it never
+  // rejects the (already-approved) report. Unimplemented names are skipped
+  // silently; their vanilla note already ran at play time (spec §3.9).
+  for (const { entry, side } of destroyedEntries) {
+    const name = effectName(entry, 'onDeathEffect')
+    if (name === null) continue
+    const fn = effectFor(name)
+    if (!fn) continue
+    if (!fn({ game, actor: side, card: entry, ctx })) {
+      game.state.log.push(`${entry.name}'s death effect could not resolve`)
+    }
+  }
+
   return { ok: true, game }
 })

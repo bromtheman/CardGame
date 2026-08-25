@@ -20,6 +20,8 @@
     "engine/battleDeclare.ts",
     "engine/battleResolve.ts",
     "engine/heroPowers.ts",
-    "engine/index.ts"
+    "engine/index.ts",
+    "effects/registry.ts",
+    "effects/dwgEffects.ts"
   ]
 }

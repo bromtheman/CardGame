@@ -193,21 +193,28 @@ Universal (NEUTRAL):
 Faction:
 
 - **DWG — Boarding Party**: choose a friendly DWG faction ship; you may exchange
-  it with one of your opponent's faction ships of equal or lesser cost from the
-  same zone
-- **OW — Change Order**: discard an OW vehicle card; draw a copy of a
-  player-made ship or tank from your deck in two turns
+  it with one of your opponent's ships (any faction) of equal or lesser
+  effective cost from the same zone — both traded hulls count as freshly
+  deployed on their new side
+- **OW — Change Order**: discard an OW vehicle card (it goes to the graveyard);
+  a random player-made ship or tank is drawn from your deck at the start of
+  your turn two turns later (none in deck → the order fizzles with a log note)
 - **LH — Flyby**: choose an LH vehicle card in hand; give it the Half-Cost and
   Temporary keywords
 
-SS, WF, and GT have no faction power authored yet — those decks get only the 4
+Faction powers use the same once-per-game, 1 CP economy as the universal ones
+and are usable only on your own turn outside battles. SS, WF, and GT have no
+faction power authored yet — those decks get only the 4
 universal powers until new rows (and matching effect implementations) are added.
 
 ### 3.9 Card effects
 
 Cards carry `meta` trigger keys mapping to named functions in the shared effect
-registry (e.g. `onPlayEffect: 'marauderOnPlay'`), plus `additionalCopies` (spawn
-extra copies, cap 10) and `costModifier`. Triggers: onPlayEffect,
+registry (e.g. `onPlayEffect: 'marauderOnPlay'`), plus `additionalSpawns` (spawn
+extra copies of the vehicle on play, cap 10 — one payment, N+1 hulls; the key
+matches the seeded data) and `costModifier`. Cost modifiers apply at play time
+only — base damage, repairs, and in-battle resources use the unmodified
+effective cost. Triggers: onPlayEffect,
 playOnZoneEffect, playOnVehicleEffect, playOnCardEffect, onDeathEffect,
 onActivate, onBattleEffect, onBattleVictory, onBattleDefeat. Effects implemented
 in the old BE are ported; cards referencing unimplemented effect names play as

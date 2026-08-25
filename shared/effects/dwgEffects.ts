@@ -1,0 +1,82 @@
+import { DOUBLE_UP_MAX_COST, KEYWORDS, RESERVES_CARD_COUNT } from '../gameSettings.ts'
+import type { ZoneCardEntry } from '../engine/engineTypes.ts'
+import { drawCard, zoneById } from '../engine/gameEngine.ts'
+import { effectiveMaterialCostOf } from '../engine/placement.ts'
+import { registerCostModifier, registerEffect } from './registry.ts'
+import type { EffectPayload } from './registry.ts'
+
+// draw a card and gain 1 CP (Marauder / Crossbones)
+const drawPlusCp = ({ game, actor }: EffectPayload): boolean => {
+  drawCard(game, actor)
+  game.state.resources[actor].cp += 1
+  return true
+}
+registerEffect('marauderOnPlay', drawPlusCp)
+registerEffect('crossbonesOnPlay', drawPlusCp)
+
+// cost -20k per friendly DWG vehicle on the field (Plunderer)
+registerCostModifier('plundererCostModifier', (state, side) => {
+  let count = 0
+  for (const zone of state.zones) {
+    count += zone.cards[side].filter((c) => c.type === 'vehicle' && c.faction === 'DWG').length
+  }
+  return count * -20_000
+})
+
+// shuffle a 0-cost copy into its owner's deck (Loggerhead, on death)
+registerEffect('loggerheadOnDeath', ({ game, actor, card, ctx }) => {
+  const deck = game.privates[actor].deck
+  // card arrives as a ZoneCardEntry at death — strip the zone stamps so the
+  // deck copy is a clean CardInstance
+  const { playedOnTurn: _p, movedOnTurn: _m, ...snapshot } = card as ZoneCardEntry
+  deck.push({ ...snapshot, instanceId: ctx.newId(), materialCost: 0 })
+  for (let i = deck.length - 1; i > 0; i--) {
+    const j = Math.floor(ctx.rng() * (i + 1))
+    ;[deck[i], deck[j]] = [deck[j], deck[i]]
+  }
+  game.state.counts[actor].deck = deck.length
+  game.state.log.push(`${card.name} leaves a free copy in the deck`)
+  return true
+})
+
+// add RESERVES_CARD_COUNT distinct random built-in DWG vehicles to hand
+// (Reserves — old BE shuffles the pool and shifts, so picks never repeat)
+registerEffect('reservesEffect', ({ game, actor, ctx }) => {
+  const pool = ctx.catalog.filter((c) => c.isBuiltIn && c.faction === 'DWG' && c.type === 'vehicle')
+  if (pool.length === 0) return false
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(ctx.rng() * (i + 1))
+    ;[pool[i], pool[j]] = [pool[j], pool[i]]
+  }
+  for (const pick of pool.slice(0, RESERVES_CARD_COUNT)) {
+    game.privates[actor].hand.push({ ...pick, instanceId: ctx.newId() })
+  }
+  game.state.counts[actor].hand = game.privates[actor].hand.length
+  return true
+})
+
+// spawn a Scrappy, non-Temporary Buccaneer into the target zone (Spawn Buccaneer)
+registerEffect('spawnBuccaneerEffect', ({ game, actor, ctx, targetZoneId }) => {
+  if (typeof targetZoneId !== 'number') return false
+  const zone = zoneById(game.state, targetZoneId)
+  const buccaneer = ctx.catalog.find((c) => c.isBuiltIn && c.name === 'Buccaneer')
+  if (!zone || !buccaneer) return false
+  const entry: ZoneCardEntry = {
+    ...buccaneer, instanceId: ctx.newId(), keywords: [KEYWORDS.SCRAPPY],
+    playedOnTurn: game.turnNumber, movedOnTurn: null,
+  }
+  zone.cards[actor].push(entry)
+  game.state.log.push(`A Buccaneer joins zone ${zone.id} (Scrappy)`)
+  return true
+})
+
+// target DWG vehicle card in hand spawns an extra copy when played (Double Up)
+registerEffect('doubleUpEffect', ({ game, actor, card, targetInstanceId }) => {
+  if (typeof targetInstanceId !== 'string' || targetInstanceId === card.instanceId) return false
+  const target = game.privates[actor].hand.find((c) => c.instanceId === targetInstanceId)
+  if (!target || target.type !== 'vehicle' || target.faction !== 'DWG') return false
+  if (effectiveMaterialCostOf(target) > DOUBLE_UP_MAX_COST) return false
+  const current = typeof target.meta.additionalSpawns === 'number' ? target.meta.additionalSpawns : 0
+  target.meta = { ...target.meta, additionalSpawns: current + 1 }
+  return true
+})
