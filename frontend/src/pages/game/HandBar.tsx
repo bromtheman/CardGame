@@ -6,7 +6,7 @@ import { TRIGGERS } from '@shared/gameSettings'
 import { shortHandNumber } from '@shared/format'
 import type { CardRow } from '../../lib/cards'
 import { PhysicalCard } from '../../components/PhysicalCard'
-import type { MoveMode } from './HeroPowerBar'
+import type { MoveMode, SwapMode } from './HeroPowerBar'
 
 function instanceToCardRow(c: CardInstance): CardRow {
   return {
@@ -50,6 +50,7 @@ export function HandBar({
   placingCard, onPlacingChange,
   fieldTargeting, onFieldTargetingChange,
   moveMode,
+  swapMode,
   cancelBoardModes,
 }: {
   hand: CardInstance[]
@@ -62,6 +63,7 @@ export function HandBar({
   fieldTargeting: CardInstance | null
   onFieldTargetingChange: (card: CardInstance | null) => void
   moveMode: MoveMode | null
+  swapMode: SwapMode | null
   cancelBoardModes: () => void
 }) {
   const [handTargeting, setHandTargeting] = useState<CardInstance | null>(null)
@@ -69,8 +71,8 @@ export function HandBar({
   // Mode exclusivity: whenever one of GameBoardPage's own modes starts, drop
   // our internal handTargeting selection.
   useEffect(() => {
-    if (placingCard || fieldTargeting || moveMode) setHandTargeting(null)
-  }, [placingCard, fieldTargeting, moveMode])
+    if (placingCard || fieldTargeting || moveMode || swapMode) setHandTargeting(null)
+  }, [placingCard, fieldTargeting, moveMode, swapMode])
 
   function handleVehicleClick(card: CardInstance) {
     if (placingCard?.instanceId === card.instanceId) {

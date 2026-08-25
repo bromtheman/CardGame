@@ -14,7 +14,7 @@ import { HandBar } from './HandBar'
 import { ZoneActions } from './ZoneActions'
 import { StealthyResponseBar } from './StealthyResponseBar'
 import { BattleOverlay } from './BattleOverlay'
-import { HeroPowerBar, type MoveMode } from './HeroPowerBar'
+import { HeroPowerBar, type MoveMode, type SwapMode } from './HeroPowerBar'
 
 export function GameBoardPage() {
   const { id } = useParams<{ id: string }>()
@@ -28,6 +28,7 @@ export function GameBoardPage() {
   const [placingCard, setPlacingCard] = useState<CardInstance | null>(null)
   const [moveMode, setMoveMode] = useState<MoveMode | null>(null)
   const [fieldTargeting, setFieldTargeting] = useState<CardInstance | null>(null)
+  const [swapMode, setSwapMode] = useState<SwapMode | null>(null)
   const logRef = useRef<HTMLDivElement>(null)
 
   const state = game?.state as unknown as PublicGameState | undefined
@@ -70,15 +71,21 @@ export function GameBoardPage() {
     : []
   const interactiveZoneIds = placingCard ? legalForPlacing : moveMode?.phase === 'pickZone' ? legalForMove : []
 
-  // Placing/fieldTargeting/moveMode are mutually exclusive: starting one
-  // clears the others. HandBar's handTargeting is internal to that
-  // component, but it watches these same three (via props) to clear itself
+  // Swap-mode (DWG's Boarding Party): mirrors move-mode's two-step shape.
+  // Once an own ship is picked, only enemy ships in that same zone become
+  // clickable — a display-only filter; the server re-validates zone and cost.
+  const swapOwnVehicle = swapMode?.phase === 'pickEnemy' ? findVehicle(state, swapMode.ownInstanceId) : null
+
+  // Placing/fieldTargeting/moveMode/swapMode are mutually exclusive: starting
+  // one clears the others. HandBar's handTargeting is internal to that
+  // component, but it watches these same modes (via props) to clear itself
   // when one of them starts, and calls cancelAllModes (passed down) before
   // entering its own targeting mode.
   function cancelAllModes() {
     setPlacingCard(null)
     setMoveMode(null)
     setFieldTargeting(null)
+    setSwapMode(null)
   }
   function onPlacingChange(card: CardInstance | null) {
     if (card) cancelAllModes()
@@ -106,6 +113,21 @@ export function GameBoardPage() {
     if (!fieldTargeting) return
     void send({ type: 'PLAY_CARD_TARGETING_CARD_ON_FIELD', instanceId: fieldTargeting.instanceId, targetInstanceId })
     setFieldTargeting(null)
+  }
+  function onStartBoardingParty() {
+    cancelAllModes()
+    setSwapMode({ phase: 'pickOwn' })
+  }
+  function onCancelSwap() {
+    setSwapMode(null)
+  }
+  function onPickOwnForSwap(instanceId: string) {
+    setSwapMode({ phase: 'pickEnemy', ownInstanceId: instanceId })
+  }
+  function onPickEnemyForSwap(targetInstanceId: string) {
+    if (swapMode?.phase !== 'pickEnemy') return
+    void send({ type: 'USE_HERO_POWER', power: 'boardingParty', instanceId: swapMode.ownInstanceId, targetInstanceId })
+    setSwapMode(null)
   }
 
   function onEndTurn() {
@@ -201,9 +223,13 @@ export function GameBoardPage() {
         isActive={isActive}
         send={send}
         busy={busy}
+        hand={hand}
         moveMode={moveMode}
         onStartRapidRedeployment={onStartRapidRedeployment}
         onCancelMove={onCancelMove}
+        swapMode={swapMode}
+        onStartBoardingParty={onStartBoardingParty}
+        onCancelSwap={onCancelSwap}
       />
 
       <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -217,13 +243,18 @@ export function GameBoardPage() {
             turnNumber={game.turn_number}
             highlighted={interactiveZoneIds.includes(zone.id)}
             onZoneClick={interactiveZoneIds.includes(zone.id) ? () => onZoneClick(zone.id) : undefined}
-            canMoveVehicles={canActivateZones && !fieldTargeting && !placingCard}
+            canMoveVehicles={canActivateZones && !fieldTargeting && !placingCard && !swapMode}
             moveVehiclePickMode={moveMode?.phase === 'pickVehicle'}
             selectedForMoveId={moveMode?.phase === 'pickZone' ? moveMode.instanceId : null}
             onPickVehicleForMove={onPickVehicleForMove}
             onMobileMoveClick={onMobileMoveClick}
             fieldTargetingActive={!!fieldTargeting}
             onFieldTargetClick={onFieldTargetClick}
+            swapPickOwnMode={swapMode?.phase === 'pickOwn'}
+            swapPickEnemyMode={swapMode?.phase === 'pickEnemy' && zone.id === swapOwnVehicle?.zone.id}
+            selectedForSwapOwnId={swapMode?.phase === 'pickEnemy' ? swapMode.ownInstanceId : null}
+            onPickOwnForSwap={onPickOwnForSwap}
+            onPickEnemyForSwap={onPickEnemyForSwap}
           >
             {canActivateZones && (
               <ZoneActions
@@ -250,6 +281,7 @@ export function GameBoardPage() {
         fieldTargeting={fieldTargeting}
         onFieldTargetingChange={onFieldTargetingChange}
         moveMode={moveMode}
+        swapMode={swapMode}
         cancelBoardModes={cancelAllModes}
       />
 
