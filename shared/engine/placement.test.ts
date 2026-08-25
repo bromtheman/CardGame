@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { applyAction, effectiveMaterialCostOf, legalZonesFor } from './index'
+import { applyAction, effectiveCostInGame, effectiveMaterialCostOf, legalZonesFor } from './index'
+import { registerCostModifier } from '../effects/registry.ts'
 import { inst, makeGame, zoneEntry } from './testFixtures'
 
 function withHand(cardOver: Record<string, unknown>) {
@@ -75,5 +76,22 @@ describe('PLAY_ABILITY_CARD', () => {
     const { g, card } = withHand({ type: 'vehicle', vehicleType: 'ship' })
     expect(applyAction(g, 'alice', { type: 'PLAY_ABILITY_CARD', instanceId: card.instanceId }))
       .toMatchObject({ ok: false, status: 400 })
+  })
+})
+
+describe('effectiveCostInGame', () => {
+  it('applies a registered cost modifier before the Half-Cost halving, clamping at 0', () => {
+    registerCostModifier('testDiscount', () => -30_000)
+    const state = makeGame().state
+    const plain = inst({ materialCost: 100_000, meta: { costModifier: 'testDiscount' } })
+    const halved = inst({ materialCost: 100_000, keywords: ['halfCost'], meta: { costModifier: 'testDiscount' } })
+    const cheap = inst({ materialCost: 10_000, meta: { costModifier: 'testDiscount' } })
+    expect(effectiveCostInGame(state, 'a', plain)).toBe(70_000)
+    expect(effectiveCostInGame(state, 'a', halved)).toBe(35_000)   // (100k−30k)/2
+    expect(effectiveCostInGame(state, 'a', cheap)).toBe(0)          // clamped
+  })
+  it('ignores unimplemented modifier names', () => {
+    const card = inst({ materialCost: 50_000, meta: { costModifier: 'mysteryModifier' } })
+    expect(effectiveCostInGame(makeGame().state, 'a', card)).toBe(50_000)
   })
 })

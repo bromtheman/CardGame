@@ -2,6 +2,7 @@ import { KEYWORDS, VEHICLE_TYPES, ZONE_TYPES } from '../gameSettings.ts'
 import type { CardInstance, PublicGameState } from './gameInit.ts'
 import type { EngineGame, Side, ZoneCardEntry } from './engineTypes.ts'
 import { err, otherSide, registerHandler } from './gameEngine.ts'
+import { costModifierFor, effectName } from '../effects/registry.ts'
 
 const BIOMES_BY_TYPE: Record<string, string[]> = {
   [VEHICLE_TYPES.SHIP]: [ZONE_TYPES.WATER, ZONE_TYPES.BEACH],
@@ -47,6 +48,23 @@ export function canAfford(state: PublicGameState, side: Side, card: CardInstance
   )
 }
 
+// Play-time cost: (base + registered modifier), Half-Cost halving, clamp ≥ 0.
+// Base damage, repairs, and in-battle resources keep using
+// effectiveMaterialCostOf — modifiers are a play-time-only mechanic.
+export function effectiveCostInGame(state: PublicGameState, side: Side, card: CardInstance): number {
+  const name = effectName(card, 'costModifier')
+  const fn = name !== null ? costModifierFor(name) : null
+  const modified = card.materialCost + (fn ? fn(state, side, card) : 0)
+  return Math.max(0, effectiveMaterialCostOf({ ...card, materialCost: modified }))
+}
+
+function canAffordInGame(game: EngineGame, side: Side, card: CardInstance): boolean {
+  return (
+    game.state.resources[side].materials >= effectiveCostInGame(game.state, side, card) &&
+    game.state.resources[side].cp >= card.cpCost
+  )
+}
+
 function takeFromHand(game: EngineGame, side: Side, instanceId: string): CardInstance | null {
   const hand = game.privates[side].hand
   const index = hand.findIndex((c) => c.instanceId === instanceId)
@@ -57,7 +75,7 @@ function takeFromHand(game: EngineGame, side: Side, instanceId: string): CardIns
 }
 
 function pay(game: EngineGame, side: Side, card: CardInstance): void {
-  game.state.resources[side].materials -= effectiveMaterialCostOf(card)
+  game.state.resources[side].materials -= effectiveCostInGame(game.state, side, card)
   game.state.resources[side].cp -= card.cpCost
 }
 
@@ -66,7 +84,7 @@ registerHandler('PLAY_CARD_TO_ZONE', (game, actor, action) => {
   const card = game.privates[actor].hand.find((c) => c.instanceId === action.instanceId)
   if (!card) return err(400, 'That card is not in your hand')
   if (card.type !== 'vehicle') return err(400, 'Ability cards are played without a zone')
-  if (!canAfford(game.state, actor, card)) return err(400, 'You cannot afford that card')
+  if (!canAffordInGame(game, actor, card)) return err(400, 'You cannot afford that card')
   if (!legalZonesFor(game.state, actor, card).includes(action.zoneId)) {
     return err(400, 'That vehicle cannot deploy to that zone')
   }
@@ -83,7 +101,7 @@ registerHandler('PLAY_ABILITY_CARD', (game, actor, action) => {
   const card = game.privates[actor].hand.find((c) => c.instanceId === action.instanceId)
   if (!card) return err(400, 'That card is not in your hand')
   if (card.type !== 'ability') return err(400, 'Vehicles must target a zone')
-  if (!canAfford(game.state, actor, card)) return err(400, 'You cannot afford that card')
+  if (!canAffordInGame(game, actor, card)) return err(400, 'You cannot afford that card')
   takeFromHand(game, actor, action.instanceId)
   pay(game, actor, card)
   game.state.log.push(`${card.name} resolved (no effect yet — effects arrive in Phase 5)`)
