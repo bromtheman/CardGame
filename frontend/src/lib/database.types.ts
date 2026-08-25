@@ -358,6 +358,16 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      apply_action_tx: {
+        Args: {
+          p_a_state: Json
+          p_b_state: Json
+          p_expected_version: number
+          p_game: Json
+          p_game_id: string
+        }
+        Returns: number
+      }
       start_game_tx: {
         Args: {
           p_game: Json
