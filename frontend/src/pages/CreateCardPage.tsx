@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { FunctionsHttpError } from '@supabase/supabase-js'
@@ -20,6 +20,14 @@ export function CreateCardPage() {
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [errors, setErrors] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
+  const [previewUrl, setPreviewUrl] = useState('')
+
+  useEffect(() => {
+    if (!imageFile) { setPreviewUrl(''); return }
+    const url = URL.createObjectURL(imageFile)
+    setPreviewUrl(url)
+    return () => URL.revokeObjectURL(url)
+  }, [imageFile])
 
   const inputErrors = validateCustomCardInput({ name, vehicleType, blueprintCost })
   const preview = useMemo<CardRow>(() => ({
@@ -27,9 +35,9 @@ export function CreateCardPage() {
     faction: 'NEUTRAL', type: 'vehicle', vehicle_type: vehicleType,
     blueprint_cost: blueprintCost,
     material_cost: inputErrors.length === 0 ? computeMaterialCost(blueprintCost, vehicleType) : 0,
-    cp_cost: 0, card_text: '', image_url: imageFile ? URL.createObjectURL(imageFile) : '',
+    cp_cost: 0, card_text: '', image_url: previewUrl,
     keywords: autoKeywords(vehicleType) as CardRow['keywords'], meta: {}, created_at: '',
-  }), [name, vehicleType, blueprintCost, imageFile, inputErrors.length, session])
+  }), [name, vehicleType, blueprintCost, previewUrl, inputErrors.length, session])
 
   function onPickFile(f: File | null) {
     if (!f) return setImageFile(null)
