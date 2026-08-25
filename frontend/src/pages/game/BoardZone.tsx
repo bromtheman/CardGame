@@ -23,7 +23,7 @@ function HpBar({ label, hp, max }: { label: string; hp: number; max: number }) {
       </div>
       <div className="h-2 w-full overflow-hidden rounded bg-ocean-950">
         <div
-          className={`h-full transition-all ${low ? 'bg-red-500' : 'bg-brass-400'}`}
+          className={`h-full transition-all duration-500 ${low ? 'bg-red-500' : 'bg-brass-400'}`}
           style={{ width: `${pct}%` }}
         />
       </div>

@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import type { CardInstance, PublicGameState } from '@shared/engine/gameInit'
 import type { Side } from '@shared/engine/engineTypes'
 import type { LobbySettings } from '@shared/lobbySettings'
-import { legalZonesFor } from '@shared/engine/index'
+import { battleFrozen, legalZonesFor } from '@shared/engine/index'
 import { shortHandNumber } from '@shared/format'
 import { useGameQuery, useMyGamePlayerQuery, useUsernames } from '../../lib/games'
 import { useRealtimeInvalidate } from '../../lib/realtime'
@@ -11,6 +11,8 @@ import { useAuth } from '../../lib/auth'
 import { useGameActions } from './useGameActions'
 import { BoardZone } from './BoardZone'
 import { HandBar } from './HandBar'
+import { ZoneActions } from './ZoneActions'
+import { StealthyResponseBar } from './StealthyResponseBar'
 
 export function GameBoardPage() {
   const { id } = useParams<{ id: string }>()
@@ -43,6 +45,7 @@ export function GameBoardPage() {
   const isMyTurn = game.active_player === me
   const isActive = game.status === 'active'
   const legalForPlacing = placingCard ? legalZonesFor(state, mySide, placingCard) : []
+  const canActivateZones = isMyTurn && isActive && !battleFrozen(state)
 
   function onEndTurn() {
     void send({ type: 'END_TURN' })
@@ -59,6 +62,7 @@ export function GameBoardPage() {
 
   return (
     <main className="mx-auto max-w-6xl p-6">
+      <StealthyResponseBar state={state} mySide={mySide} send={send} busy={busy} />
       <header className="flex flex-wrap items-center justify-between gap-3 rounded border border-ocean-600 bg-ocean-900/60 p-4">
         <div>
           <h1 className="font-display text-2xl">vs {names?.get(opponentId) ?? '…'}</h1>
@@ -102,7 +106,18 @@ export function GameBoardPage() {
             turnNumber={game.turn_number}
             highlighted={legalForPlacing.includes(zone.id)}
             onZoneClick={legalForPlacing.includes(zone.id) ? () => onZoneClick(zone.id) : undefined}
-          />
+          >
+            {canActivateZones && (
+              <ZoneActions
+                zone={zone}
+                mySide={mySide}
+                theirSide={theirSide}
+                turnNumber={game.turn_number}
+                send={send}
+                busy={busy}
+              />
+            )}
+          </BoardZone>
         ))}
       </div>
 
