@@ -88,7 +88,9 @@ overrides come from lobby settings. Nothing is hardcoded at usage sites.
 
 ### 3.2 Turn flow
 
-- `turnNumber` starts at 1.0 and advances +0.5 per end-turn (x.0 = playerA, x.5 = playerB).
+- `turnNumber` starts at 1.0 and advances +0.5 per end-turn. The active player
+  is tracked explicitly (first player is rolled at game start) — turn-number
+  parity is NOT authoritative and carries no rules meaning.
 - At the start of each turn (either player's): remove all **Temporary** vehicles
   (both sides), then the active player draws 1 (empty deck → no draw, no penalty)
   and sets materials to `floor(turnNumber) × 50,000` (materials do NOT carry over
