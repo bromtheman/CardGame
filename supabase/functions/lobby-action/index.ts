@@ -115,7 +115,7 @@ Deno.serve(async (req) => {
 
     try {
       const fail = async (status: number, errors: string[]) => {
-        await admin.from('lobbies').update({ status: 'open' }).eq('id', lobbyId)
+        await admin.from('lobbies').update({ status: 'open' }).eq('id', lobbyId).eq('status', 'starting')
         return json(status, { errors })
       }
 
@@ -124,6 +124,12 @@ Deno.serve(async (req) => {
       const hostDeck = decks?.find((d) => d.id === locked.host_deck_id)
       const guestDeck = decks?.find((d) => d.id === locked.guest_deck_id)
       if (!hostDeck || !guestDeck) return fail(409, ['A selected deck no longer exists'])
+      if (hostDeck.owner_id !== locked.host_id) {
+        return fail(403, ['Host deck is not owned by the host'])
+      }
+      if (guestDeck.owner_id !== locked.guest_id) {
+        return fail(403, ['Guest deck is not owned by the guest'])
+      }
 
       const hostCards = (hostDeck.cards ?? {}) as Record<string, number>
       const guestCards = (guestDeck.cards ?? {}) as Record<string, number>
