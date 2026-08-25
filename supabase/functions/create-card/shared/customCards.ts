@@ -7,10 +7,11 @@ export function roundUpCost(blueprintCost: number): number {
   return Math.ceil(blueprintCost / CUSTOM_CARD_ROUND_TO) * CUSTOM_CARD_ROUND_TO
 }
 
-// Spec §3.10: round up to 5k first, then Half-Cost halves it for planes.
+// Spec §3.7/§3.10: round up to 5k only. Half-Cost is an engine-time discount
+// (see shared/engine/placement.ts effectiveMaterialCostOf) — it is never
+// baked into the stored material_cost, for built-ins or custom planes alike.
 export function computeMaterialCost(blueprintCost: number, vehicleType: VehicleType): number {
-  const rounded = roundUpCost(blueprintCost)
-  return vehicleType === VEHICLE_TYPES.PLANE ? Math.floor(rounded / 2) : rounded
+  return roundUpCost(blueprintCost)
 }
 
 export function autoKeywords(vehicleType: VehicleType): string[] {

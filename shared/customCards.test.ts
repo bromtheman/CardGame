@@ -16,9 +16,9 @@ describe('computeMaterialCost', () => {
     expect(computeMaterialCost(40205, 'ship')).toBe(45000)
     expect(computeMaterialCost(40205, 'airship')).toBe(45000)
   })
-  it('halves after rounding for planes (Half-Cost rule)', () => {
-    expect(computeMaterialCost(40205, 'plane')).toBe(22500)
-    expect(computeMaterialCost(5000, 'plane')).toBe(2500)
+  it('does NOT pre-halve planes — Half-Cost is applied by the engine at play time (spec §3.7)', () => {
+    expect(computeMaterialCost(40205, 'plane')).toBe(45000)
+    expect(computeMaterialCost(5000, 'plane')).toBe(5000)
   })
 })
 

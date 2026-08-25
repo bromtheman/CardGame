@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyAction, normalizeState } from './gameEngine'
+import { applyAction, normalizeState } from './index'
 import { inst, makeGame, zoneEntry } from './testFixtures'
 
 describe('guards', () => {
