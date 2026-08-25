@@ -44,6 +44,7 @@ function build(rngValues: number[]) {
     deckA: deckOf(Array.from({ length: 10 }, (_, k) => `a${k}`)),
     deckB: deckOf(Array.from({ length: 10 }, (_, k) => `b${k}`)),
     instanceId: counterIds(), rng,
+    factionA: 'DWG', factionB: 'OW',
   })
 }
 
@@ -61,6 +62,13 @@ describe('buildInitialGame', () => {
     expect(game.state.awaitingResponse).toBeNull()
     expect(game.state.activeBattle).toBeNull()
     expect(game.state.pendingReport).toBeNull()
+  })
+
+  it('records both deck factions', () => {
+    const { game } = build([0.9])
+    expect(game.state.factions).toEqual({ a: 'DWG', b: 'OW' })
+    expect(game.state.alertCard).toBeNull()
+    expect(game.state.scheduled).toEqual([])
   })
 
   it('gives every copy a unique instanceId and preserves snapshots', () => {

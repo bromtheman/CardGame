@@ -1,6 +1,12 @@
-import type { CardInstance, PublicGameState } from './gameInit.ts'
+import type { CardInstance, PublicGameState, SnapshotCard } from './gameInit.ts'
 
 export type Side = 'a' | 'b'
+
+export interface EngineContext {
+  rng: () => number
+  newId: () => string
+  catalog: SnapshotCard[]
+}
 
 export interface ZoneCardEntry extends CardInstance {
   playedOnTurn: number

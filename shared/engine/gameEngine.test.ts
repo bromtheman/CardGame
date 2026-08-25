@@ -102,3 +102,20 @@ describe('normalizeState', () => {
     expect(applyAction(g, 'alice', { type: 'END_TURN' }).ok).toBe(true)
   })
 })
+
+describe('phase 5 state shape', () => {
+  it('normalizeState defaults factions, alertCard, and scheduled', () => {
+    const game = makeGame()
+    const s = game.state as unknown as Record<string, unknown>
+    delete s.factions; delete s.alertCard; delete s.scheduled
+    normalizeState(game.state)
+    expect(game.state.factions).toEqual({ a: 'NEUTRAL', b: 'NEUTRAL' })
+    expect(game.state.alertCard).toBeNull()
+    expect(game.state.scheduled).toEqual([])
+  })
+  it('applyAction runs with a default context when none is given', () => {
+    const game = makeGame()
+    const result = applyAction(game, 'alice', { type: 'END_TURN' })
+    expect(result.ok).toBe(true)
+  })
+})

@@ -1,8 +1,13 @@
 import { KEYWORDS, LOG_MAX_ENTRIES, MATERIALS_PER_TURN } from '../gameSettings.ts'
+import { secureRng } from './gameInit.ts'
 import type { PublicGameState } from './gameInit.ts'
 import type {
-  ApplyResult, EngineGame, GameAction, Side, ZoneCardEntry,
+  ApplyResult, EngineContext, EngineGame, GameAction, Side, ZoneCardEntry,
 } from './engineTypes.ts'
+
+export function defaultEngineContext(): EngineContext {
+  return { rng: secureRng, newId: () => crypto.randomUUID(), catalog: [] }
+}
 
 export function sideOf(game: EngineGame, playerId: string): Side | null {
   if (playerId === game.playerA) return 'a'
@@ -46,7 +51,7 @@ const OFF_TURN_ACTIONS = new Set<GameAction['type']>([
 export const err = (status: number, error: string): ApplyResult => ({ ok: false, status, error })
 
 // Handler registry — later modules add entries via registerHandler.
-type Handler = (game: EngineGame, actor: Side, action: GameAction) => ApplyResult
+type Handler = (game: EngineGame, actor: Side, action: GameAction, ctx: EngineContext) => ApplyResult
 const handlers = new Map<GameAction['type'], Handler>()
 export function registerHandler(type: GameAction['type'], handler: Handler) {
   handlers.set(type, handler)
@@ -61,6 +66,9 @@ export function normalizeState(state: PublicGameState): void {
   if (s.activeBattle === undefined) s.activeBattle = null
   if (s.pendingReport === undefined) s.pendingReport = null
   if (s.destroyed === undefined) s.destroyed = { a: [], b: [] }
+  if (s.factions === undefined) s.factions = { a: 'NEUTRAL', b: 'NEUTRAL' }
+  if (s.alertCard === undefined) s.alertCard = null
+  if (s.scheduled === undefined) s.scheduled = []
   for (const zone of state.zones) {
     for (const side of ['a', 'b'] as Side[]) {
       for (const entry of zone.cards[side] as Partial<ZoneCardEntry>[]) {
@@ -92,7 +100,7 @@ export function checkVictory(game: EngineGame): void {
   }
 }
 
-function endTurn(game: EngineGame): ApplyResult {
+function endTurn(game: EngineGame, _ctx: EngineContext): ApplyResult {
   game.turnNumber = Math.round((game.turnNumber + 0.5) * 10) / 10
   const incoming = game.activePlayer === game.playerA ? game.playerB : game.playerA
   game.activePlayer = incoming
@@ -136,7 +144,9 @@ function finish(result: ApplyResult): ApplyResult {
   return result
 }
 
-export function applyAction(input: EngineGame, actorId: string, action: GameAction): ApplyResult {
+export function applyAction(
+  input: EngineGame, actorId: string, action: GameAction, ctx: EngineContext = defaultEngineContext(),
+): ApplyResult {
   const game = structuredClone(input)
   const actor = sideOf(game, actorId)
   if (!actor) return err(403, 'You are not in this game')
@@ -147,9 +157,9 @@ export function applyAction(input: EngineGame, actorId: string, action: GameActi
   if (!OFF_TURN_ACTIONS.has(action.type) && game.activePlayer !== actorId) {
     return err(409, 'Not your turn')
   }
-  if (action.type === 'END_TURN') return finish(endTurn(game))
+  if (action.type === 'END_TURN') return finish(endTurn(game, ctx))
   if (action.type === 'CONCEDE') return finish(concede(game, actor))
   const handler = handlers.get(action.type)
   if (!handler) return err(400, `Unknown or not-yet-supported action: ${action.type}`)
-  return finish(handler(game, actor, action))
+  return finish(handler(game, actor, action, ctx))
 }
