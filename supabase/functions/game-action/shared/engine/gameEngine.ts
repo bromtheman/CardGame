@@ -1,4 +1,4 @@
-import { KEYWORDS, MATERIALS_PER_TURN } from '../gameSettings.ts'
+import { KEYWORDS, LOG_MAX_ENTRIES, MATERIALS_PER_TURN } from '../gameSettings.ts'
 import type { PublicGameState } from './gameInit.ts'
 import type {
   ApplyResult, EngineGame, GameAction, Side, ZoneCardEntry,
@@ -126,6 +126,16 @@ function concede(game: EngineGame, actor: Side): ApplyResult {
   return { ok: true, game }
 }
 
+// Single exit point for every success path: trims the action log to the
+// spec's cap (LOG_MAX_ENTRIES) so a long game never grows the row unbounded.
+// Keeps the newest entries.
+function finish(result: ApplyResult): ApplyResult {
+  if (result.ok && result.game.state.log.length > LOG_MAX_ENTRIES) {
+    result.game.state.log = result.game.state.log.slice(-LOG_MAX_ENTRIES)
+  }
+  return result
+}
+
 export function applyAction(input: EngineGame, actorId: string, action: GameAction): ApplyResult {
   const game = structuredClone(input)
   const actor = sideOf(game, actorId)
@@ -137,9 +147,9 @@ export function applyAction(input: EngineGame, actorId: string, action: GameActi
   if (!OFF_TURN_ACTIONS.has(action.type) && game.activePlayer !== actorId) {
     return err(409, 'Not your turn')
   }
-  if (action.type === 'END_TURN') return endTurn(game)
-  if (action.type === 'CONCEDE') return concede(game, actor)
+  if (action.type === 'END_TURN') return finish(endTurn(game))
+  if (action.type === 'CONCEDE') return finish(concede(game, actor))
   const handler = handlers.get(action.type)
   if (!handler) return err(400, `Unknown or not-yet-supported action: ${action.type}`)
-  return handler(game, actor, action)
+  return finish(handler(game, actor, action))
 }

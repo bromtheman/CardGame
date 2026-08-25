@@ -34,6 +34,22 @@ describe('SUBMIT_BATTLE_REPORT', () => {
       repairs: [atk.instanceId, atk.instanceId],
     })).toMatchObject({ ok: false, status: 400 })
   })
+  it('rejects a malformed (non-object) results body instead of throwing', () => {
+    const { g } = inBattle()
+    expect(applyAction(g, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT', results: null as never, repairs: [],
+    })).toMatchObject({ ok: false, status: 400 })
+    expect(applyAction(g, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT', results: [] as never, repairs: [],
+    })).toMatchObject({ ok: false, status: 400 })
+  })
+  it('rejects a malformed (non-array) repairs list instead of throwing', () => {
+    const { g, atk, def } = inBattle()
+    expect(applyAction(g, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT',
+      results: { [atk.instanceId]: 95, [def.instanceId]: 40 }, repairs: {} as never,
+    })).toMatchObject({ ok: false, status: 400 })
+  })
   it('rejects incomplete or out-of-range results and illegal repairs', () => {
     const { g, atk, def } = inBattle()
     expect(applyAction(g, 'alice', {
@@ -64,6 +80,18 @@ describe('DECIDE_BATTLE_REPORT', () => {
     if (!rej.ok) throw new Error(rej.error)
     expect(rej.game.state.pendingReport).toBeNull()
     expect(rej.game.state.activeBattle).not.toBeNull()
+  })
+  it('treats anything other than approve === true as a rejection', () => {
+    const { g, atk, def } = inBattle()
+    const s = applyAction(g, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT',
+      results: { [atk.instanceId]: 95, [def.instanceId]: 40 }, repairs: [],
+    })
+    if (!s.ok) throw new Error(s.error)
+    const r = applyAction(s.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: 'false' as never })
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.pendingReport).toBeNull()
+    expect(r.game.state.activeBattle).not.toBeNull()
   })
   it('approve applies thresholds: survive / destroy / repair', () => {
     const { g, atk, def } = inBattle()

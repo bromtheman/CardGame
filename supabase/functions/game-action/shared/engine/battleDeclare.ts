@@ -18,6 +18,15 @@ function lockBattle(
 
 registerHandler('ATTACK_ENEMY_FLEET', (game, actor, action) => {
   if (action.type !== 'ATTACK_ENEMY_FLEET') return err(400, 'Bad action')
+  if (!Array.isArray(action.attackerIds) || !Array.isArray(action.targetIds)) {
+    return err(400, 'attackerIds and targetIds must be arrays')
+  }
+  if (
+    new Set(action.attackerIds).size !== action.attackerIds.length ||
+    new Set(action.targetIds).size !== action.targetIds.length
+  ) {
+    return err(400, 'Selections contain duplicates')
+  }
   const zone = zoneById(game.state, action.zoneId)
   if (!zone) return err(400, 'No such zone')
   if (zone.lastActivatedTurn === game.turnNumber) return err(409, 'That zone was already activated this turn')
@@ -54,6 +63,7 @@ registerHandler('ATTACK_ENEMY_FLEET', (game, actor, action) => {
 
 registerHandler('RESPOND_TO_ATTACK', (game, actor, action) => {
   if (action.type !== 'RESPOND_TO_ATTACK') return err(400, 'Bad action')
+  if (!Array.isArray(action.optOutIds)) return err(400, 'optOutIds must be an array')
   const pending = game.state.awaitingResponse
   if (!pending) return err(409, 'No attack awaits a response')
   if (actor === pending.aggressor) return err(403, 'Only the defender responds')

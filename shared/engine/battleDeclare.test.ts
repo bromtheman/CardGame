@@ -38,6 +38,26 @@ describe('ATTACK_ENEMY_FLEET', () => {
       type: 'ATTACK_ENEMY_FLEET', zoneId: 1, attackerIds: [], targetIds: [def.instanceId],
     })).toMatchObject({ ok: false, status: 400 })
   })
+  it('rejects malformed (non-array) attacker/target selections instead of throwing', () => {
+    const { g, def } = battleground()
+    expect(applyAction(g, 'alice', {
+      type: 'ATTACK_ENEMY_FLEET', zoneId: 1, attackerIds: {} as never, targetIds: [def.instanceId],
+    })).toMatchObject({ ok: false, status: 400 })
+    expect(applyAction(g, 'alice', {
+      type: 'ATTACK_ENEMY_FLEET', zoneId: 1, attackerIds: [def.instanceId], targetIds: {} as never,
+    })).toMatchObject({ ok: false, status: 400 })
+  })
+  it('rejects duplicate ids within a selection', () => {
+    const { g, atk, def } = battleground()
+    expect(applyAction(g, 'alice', {
+      type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
+      attackerIds: [atk.instanceId, atk.instanceId], targetIds: [def.instanceId],
+    })).toMatchObject({ ok: false, status: 400 })
+    expect(applyAction(g, 'alice', {
+      type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
+      attackerIds: [atk.instanceId], targetIds: [def.instanceId, def.instanceId],
+    })).toMatchObject({ ok: false, status: 400 })
+  })
   it('routes stealthy targets through the response window', () => {
     const { g, atk, def } = battleground()
     const sneak = zoneEntry({ keywords: ['stealthy'] })

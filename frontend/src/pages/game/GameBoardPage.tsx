@@ -110,7 +110,7 @@ export function GameBoardPage() {
       <StealthyResponseBar
         key={
           state.awaitingResponse
-            ? `${state.awaitingResponse.zoneId}-${state.awaitingResponse.attackerIds.join(',')}`
+            ? `${state.awaitingResponse.zoneId}-${state.awaitingResponse.attackerIds.join(',')}-${state.awaitingResponse.targetIds.join(',')}`
             : 'none'
         }
         state={state}

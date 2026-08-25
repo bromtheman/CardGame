@@ -45,7 +45,10 @@ registerHandler('USE_HERO_POWER', (game, actor, action) => {
     if (battle.distanceModifiedBy.includes(actor)) {
       return err(409, 'You already adjusted this battle')
     }
-    const delta = action.distanceDeltaM ?? 0
+    if (typeof action.distanceDeltaM !== 'number' || !Number.isFinite(action.distanceDeltaM)) {
+      return err(400, 'Distance shift must be a number')
+    }
+    const delta = action.distanceDeltaM
     if (delta === 0 || Math.abs(delta) > HERO_POWER_DISTANCE_MOD_M) {
       return err(400, `Distance shift must be within ±${HERO_POWER_DISTANCE_MOD_M}m`)
     }

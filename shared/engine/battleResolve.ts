@@ -29,6 +29,10 @@ function participantsOf(game: EngineGame): Map<string, { entry: ZoneCardEntry; s
 
 registerHandler('SUBMIT_BATTLE_REPORT', (game, actor, action) => {
   if (action.type !== 'SUBMIT_BATTLE_REPORT') return err(400, 'Bad action')
+  if (typeof action.results !== 'object' || action.results === null || Array.isArray(action.results)) {
+    return err(400, 'results must be an object mapping instanceId to ending HP')
+  }
+  if (!Array.isArray(action.repairs)) return err(400, 'repairs must be an array')
   if (!game.state.activeBattle) return err(409, 'No battle to report')
   if (game.state.pendingReport) return err(409, 'A report is already awaiting a decision')
   const participants = participantsOf(game)
@@ -66,7 +70,7 @@ registerHandler('DECIDE_BATTLE_REPORT', (game, actor, action) => {
   const report = game.state.pendingReport
   if (!report) return err(409, 'No report awaits a decision')
   if (actor === report.submittedBy) return err(403, 'The other captain must approve your report')
-  if (!action.approve) {
+  if (action.approve !== true) {
     game.state.pendingReport = null
     game.state.log.push('Battle report rejected — submit a corrected one')
     return { ok: true, game }

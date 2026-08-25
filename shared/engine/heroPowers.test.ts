@@ -80,6 +80,19 @@ describe('USE_HERO_POWER', () => {
     if (!rHigh.ok) throw new Error(rHigh.error)
     expect(rHigh.game.state.activeBattle!.distanceM).toBe(2000)
   })
+  it('rejects a non-numeric distanceDeltaM instead of coercing it', () => {
+    const g = makeGame()
+    g.state.activeBattle = {
+      zoneId: 1, aggressor: 'a', attackerIds: ['x'], defenderIds: ['y'],
+      distanceM: 1200, distanceModifiedBy: [],
+    }
+    expect(applyAction(g, 'bob', {
+      type: 'USE_HERO_POWER', power: 'tacticalPositioning', distanceDeltaM: '600' as never,
+    })).toMatchObject({ ok: false, status: 400 })
+    expect(applyAction(g, 'bob', {
+      type: 'USE_HERO_POWER', power: 'tacticalPositioning', distanceDeltaM: '-600' as never,
+    })).toMatchObject({ ok: false, status: 400 })
+  })
   it('rapidRedeployment moves any own vehicle to a biome-legal zone', () => {
     const g = makeGame()
     const ship = zoneEntry({ vehicleType: 'ship', playedOnTurn: 1 })

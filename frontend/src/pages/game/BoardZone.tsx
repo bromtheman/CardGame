@@ -102,7 +102,11 @@ export function BoardZone({
         })}
       </div>
       <HpBar label="Your base" hp={zone.baseHp[mySide]} max={maxBaseHp} />
-      {children}
+      {children && (
+        <div onClick={(e) => e.stopPropagation()}>
+          {children}
+        </div>
+      )}
     </section>
   )
 }

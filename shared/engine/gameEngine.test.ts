@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { LOG_MAX_ENTRIES } from '../gameSettings'
 import { applyAction, normalizeState } from './index'
 import { inst, makeGame, zoneEntry } from './testFixtures'
 
@@ -59,6 +60,18 @@ describe('END_TURN', () => {
     if (!r.ok) throw new Error(r.error)
     expect(r.game.privates.b.hand).toHaveLength(0)
     expect(r.game.state.log.some((l) => l.includes('no cards left'))).toBe(true)
+  })
+  it('caps the action log at LOG_MAX_ENTRIES, keeping the newest entries', () => {
+    const g = makeGame()
+    g.privates.b.deck = [inst()] // avoid an extra "no cards left" log line from the draw
+    g.state.counts.b.deck = 1
+    for (let i = 0; i < 205; i++) g.state.log.push(`seed entry ${i}`)
+    const r = applyAction(g, 'alice', { type: 'END_TURN' })
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.log.length).toBeLessThanOrEqual(LOG_MAX_ENTRIES)
+    expect(r.game.state.log[r.game.state.log.length - 1]).toContain('Turn 2.5')
+    expect(r.game.state.log[0]).not.toBe('seed entry 0')
+    expect(r.game.state.log[r.game.state.log.length - 2]).toBe('seed entry 204')
   })
 })
 

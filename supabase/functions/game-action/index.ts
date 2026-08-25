@@ -80,7 +80,12 @@ Deno.serve(async (req) => {
   // the new state fields — repair the shape before the engine sees it.
   normalizeState(engineGame.state)
 
-  const result = applyAction(engineGame, userId, action)
+  let result: ReturnType<typeof applyAction>
+  try {
+    result = applyAction(engineGame, userId, action)
+  } catch {
+    return json(400, { errors: ['Malformed action'] })
+  }
   if (!result.ok) return json(result.status, { errors: [result.error] })
   const next = result.game
 
