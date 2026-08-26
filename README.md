@@ -7,7 +7,9 @@ Turn-based card game companion for From The Depths. Design spec:
 - `frontend/` — Vite + React SPA
 - `shared/` — pure TS game constants/types (imported by frontend and edge functions)
 - `supabase/` — migrations, seed pipeline, edge functions
-- `supabase/functions/` — edge functions (create-card); `npm run functions:sync` refreshes their shared-module copies
+- `supabase/functions/` — edge functions (create-card, lobby-action, game-action); `npm run functions:sync` refreshes their shared-module copies
+
+AI agents: start at `CLAUDE.md` (essentials) and `docs/claude/` (task-specific guides).
 
 ## Setup
 1. `npm install` (root tooling), then `cd frontend && npm install`
