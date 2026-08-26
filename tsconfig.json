@@ -11,5 +11,5 @@
     "types": ["node"]
   },
   "include": ["shared", "supabase/seed"],
-  "exclude": ["node_modules", "frontend"]
+  "exclude": ["node_modules", "frontend", "**/*.test.ts", "**/*.spec.ts"]
 }
