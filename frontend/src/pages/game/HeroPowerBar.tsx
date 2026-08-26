@@ -3,6 +3,7 @@ import type { CardInstance, PublicGameState } from '@shared/engine/gameInit'
 import type { GameAction, Side } from '@shared/engine/engineTypes'
 import { battleFrozen } from '@shared/engine/index'
 import { HERO_POWER_DISTANCE_MOD_M, VEHICLE_TYPES } from '@shared/gameSettings'
+import { PromptDialog } from '../../components/ConfirmDialog'
 
 // Move-mode shared between Rapid Redeployment (pick any own vehicle, then a
 // legal zone) and the mobile-vehicle "move" affordance on MiniVehicle (skips
@@ -56,6 +57,7 @@ export function HeroPowerBar({
 }) {
   const [salvageOpen, setSalvageOpen] = useState(false)
   const [factionPickerOpen, setFactionPickerOpen] = useState(false)
+  const [tacticalPromptOpen, setTacticalPromptOpen] = useState(false)
   const myDestroyedVehicles = state.destroyed[mySide].filter((c) => c.type === 'vehicle')
 
   function reasonFor(power: UniversalPower | FactionPower): string | null {
@@ -109,9 +111,12 @@ export function HeroPowerBar({
     await send({ type: 'USE_HERO_POWER', power: 'draw' })
   }
 
-  async function onTacticalFromHeader() {
-    const raw = window.prompt(`Adjust the active battle's spawn distance by how many meters? (±${HERO_POWER_DISTANCE_MOD_M})`, '0')
-    if (raw === null) return
+  function onTacticalFromHeader() {
+    setTacticalPromptOpen(true)
+  }
+
+  async function onTacticalConfirm(raw: string) {
+    setTacticalPromptOpen(false)
     const parsed = Number(raw)
     const delta = Math.max(-HERO_POWER_DISTANCE_MOD_M, Math.min(HERO_POWER_DISTANCE_MOD_M, Number.isNaN(parsed) ? 0 : parsed))
     if (delta === 0) return
@@ -254,6 +259,17 @@ export function HeroPowerBar({
           </button>
         </span>
       )}
+
+      <PromptDialog
+        open={tacticalPromptOpen}
+        title="Tactical Positioning"
+        body={`Adjust the active battle's spawn distance by up to ±${HERO_POWER_DISTANCE_MOD_M}m.`}
+        confirmLabel="Adjust"
+        inputType="number"
+        placeholder="0"
+        onConfirm={(value) => void onTacticalConfirm(value)}
+        onCancel={() => setTacticalPromptOpen(false)}
+      />
     </div>
   )
 }

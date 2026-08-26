@@ -15,6 +15,7 @@ import { ZoneActions } from './ZoneActions'
 import { StealthyResponseBar } from './StealthyResponseBar'
 import { BattleOverlay } from './BattleOverlay'
 import { HeroPowerBar, type MoveMode, type SwapMode } from './HeroPowerBar'
+import { ConfirmDialog } from '../../components/ConfirmDialog'
 
 export function GameBoardPage() {
   const { id } = useParams<{ id: string }>()
@@ -29,6 +30,7 @@ export function GameBoardPage() {
   const [moveMode, setMoveMode] = useState<MoveMode | null>(null)
   const [fieldTargeting, setFieldTargeting] = useState<CardInstance | null>(null)
   const [swapMode, setSwapMode] = useState<SwapMode | null>(null)
+  const [confirmingConcede, setConfirmingConcede] = useState(false)
   const logRef = useRef<HTMLDivElement>(null)
 
   const state = game?.state as unknown as PublicGameState | undefined
@@ -134,8 +136,7 @@ export function GameBoardPage() {
     void send({ type: 'END_TURN' })
   }
   function onConcede() {
-    if (!window.confirm('Concede this battle? You will lose immediately.')) return
-    void send({ type: 'CONCEDE' })
+    setConfirmingConcede(true)
   }
   function onZoneClick(zoneId: number) {
     if (placingCard) {
@@ -296,6 +297,19 @@ export function GameBoardPage() {
           {error}
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmingConcede}
+        title="Strike your colors?"
+        body="Conceding ends the battle immediately — your opponent takes the win."
+        confirmLabel="Concede"
+        danger
+        onConfirm={() => {
+          setConfirmingConcede(false)
+          void send({ type: 'CONCEDE' })
+        }}
+        onCancel={() => setConfirmingConcede(false)}
+      />
 
       {game.status === 'complete' && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-ocean-950/80">
