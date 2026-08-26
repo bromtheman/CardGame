@@ -1,19 +1,21 @@
+import { lazy, Suspense } from 'react'
 import { Route, Routes } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { AuthProvider, useAuth } from './lib/auth'
 import { supabase } from './lib/supabaseClient'
 import { NavBar } from './components/NavBar'
 import { RequireAuth } from './components/RequireAuth'
-import { HomePage } from './pages/HomePage'
-import { LoginPage } from './pages/LoginPage'
-import { SignupPage } from './pages/SignupPage'
-import { CardsPage } from './pages/CardsPage'
-import { CreateCardPage } from './pages/CreateCardPage'
-import { DecksPage } from './pages/DecksPage'
-import { DeckBuilderPage } from './pages/DeckBuilderPage'
-import { LobbiesPage } from './pages/LobbiesPage'
-import { GamesPage } from './pages/GamesPage'
-import { GameBoardPage } from './pages/game/GameBoardPage'
+
+const HomePage = lazy(() => import('./pages/HomePage').then((m) => ({ default: m.HomePage })))
+const LoginPage = lazy(() => import('./pages/LoginPage').then((m) => ({ default: m.LoginPage })))
+const SignupPage = lazy(() => import('./pages/SignupPage').then((m) => ({ default: m.SignupPage })))
+const CardsPage = lazy(() => import('./pages/CardsPage').then((m) => ({ default: m.CardsPage })))
+const CreateCardPage = lazy(() => import('./pages/CreateCardPage').then((m) => ({ default: m.CreateCardPage })))
+const DecksPage = lazy(() => import('./pages/DecksPage').then((m) => ({ default: m.DecksPage })))
+const DeckBuilderPage = lazy(() => import('./pages/DeckBuilderPage').then((m) => ({ default: m.DeckBuilderPage })))
+const LobbiesPage = lazy(() => import('./pages/LobbiesPage').then((m) => ({ default: m.LobbiesPage })))
+const GamesPage = lazy(() => import('./pages/GamesPage').then((m) => ({ default: m.GamesPage })))
+const GameBoardPage = lazy(() => import('./pages/game/GameBoardPage').then((m) => ({ default: m.GameBoardPage })))
 
 function UserMenu() {
   const { session } = useAuth()
@@ -50,18 +52,20 @@ export default function App() {
   return (
     <AuthProvider>
       <NavBar right={<UserMenu />} />
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/signup" element={<SignupPage />} />
-        <Route path="/" element={<RequireAuth><HomePage /></RequireAuth>} />
-        <Route path="/lobbies" element={<RequireAuth><LobbiesPage /></RequireAuth>} />
-        <Route path="/games" element={<RequireAuth><GamesPage /></RequireAuth>} />
-        <Route path="/game/:id" element={<RequireAuth><GameBoardPage /></RequireAuth>} />
-        <Route path="/decks" element={<RequireAuth><DecksPage /></RequireAuth>} />
-        <Route path="/decks/:id" element={<RequireAuth><DeckBuilderPage /></RequireAuth>} />
-        <Route path="/cards" element={<RequireAuth><CardsPage /></RequireAuth>} />
-        <Route path="/cards/new" element={<RequireAuth><CreateCardPage /></RequireAuth>} />
-      </Routes>
+      <Suspense fallback={<main className="p-12 text-center font-display text-2xl text-ocean-300">Charting a course…</main>}>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/signup" element={<SignupPage />} />
+          <Route path="/" element={<RequireAuth><HomePage /></RequireAuth>} />
+          <Route path="/lobbies" element={<RequireAuth><LobbiesPage /></RequireAuth>} />
+          <Route path="/games" element={<RequireAuth><GamesPage /></RequireAuth>} />
+          <Route path="/game/:id" element={<RequireAuth><GameBoardPage /></RequireAuth>} />
+          <Route path="/decks" element={<RequireAuth><DecksPage /></RequireAuth>} />
+          <Route path="/decks/:id" element={<RequireAuth><DeckBuilderPage /></RequireAuth>} />
+          <Route path="/cards" element={<RequireAuth><CardsPage /></RequireAuth>} />
+          <Route path="/cards/new" element={<RequireAuth><CreateCardPage /></RequireAuth>} />
+        </Routes>
+      </Suspense>
     </AuthProvider>
   )
 }
