@@ -43,6 +43,19 @@ export function useMyGamePlayerQuery(gameId: string | undefined) {
   })
 }
 
+// True when this game is waiting on ME: my normal turn, a stealthy-withdrawal
+// response I owe as defender, or a battle report awaiting MY approval.
+export function isMyMove(g: {
+  active_player: string
+  player_a: string
+  state: { awaitingResponse: { aggressor: 'a' | 'b' } | null; pendingReport: { submittedBy: 'a' | 'b' } | null }
+}, me: string): boolean {
+  const mySide: 'a' | 'b' = g.player_a === me ? 'a' : 'b'
+  if (g.state?.pendingReport) return g.state.pendingReport.submittedBy !== mySide
+  if (g.state?.awaitingResponse) return g.state.awaitingResponse.aggressor !== mySide
+  return g.active_player === me
+}
+
 export function useUsernames(ids: (string | null | undefined)[]) {
   const clean = [...new Set(ids.filter((x): x is string => !!x))].sort()
   return useQuery({

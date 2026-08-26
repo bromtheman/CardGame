@@ -15,6 +15,8 @@ import { ZoneActions } from './ZoneActions'
 import { StealthyResponseBar } from './StealthyResponseBar'
 import { BattleOverlay } from './BattleOverlay'
 import { HeroPowerBar, type MoveMode, type SwapMode } from './HeroPowerBar'
+import { ConfirmDialog } from '../../components/ConfirmDialog'
+import ironIcon from '../../assets/icons/ironSVG.svg'
 
 export function GameBoardPage() {
   const { id } = useParams<{ id: string }>()
@@ -29,6 +31,7 @@ export function GameBoardPage() {
   const [moveMode, setMoveMode] = useState<MoveMode | null>(null)
   const [fieldTargeting, setFieldTargeting] = useState<CardInstance | null>(null)
   const [swapMode, setSwapMode] = useState<SwapMode | null>(null)
+  const [confirmingConcede, setConfirmingConcede] = useState(false)
   const logRef = useRef<HTMLDivElement>(null)
 
   const state = game?.state as unknown as PublicGameState | undefined
@@ -134,8 +137,7 @@ export function GameBoardPage() {
     void send({ type: 'END_TURN' })
   }
   function onConcede() {
-    if (!window.confirm('Concede this battle? You will lose immediately.')) return
-    void send({ type: 'CONCEDE' })
+    setConfirmingConcede(true)
   }
   function onZoneClick(zoneId: number) {
     if (placingCard) {
@@ -155,28 +157,32 @@ export function GameBoardPage() {
 
   return (
     <main className="mx-auto max-w-6xl p-6">
-      <StealthyResponseBar
-        key={
-          state.awaitingResponse
-            ? `${state.awaitingResponse.zoneId}-${state.awaitingResponse.attackerIds.join(',')}-${state.awaitingResponse.targetIds.join(',')}`
-            : 'none'
-        }
-        state={state}
-        mySide={mySide}
-        send={send}
-        busy={busy}
-      />
-      <BattleOverlay
-        key={
-          state.activeBattle
-            ? `${state.activeBattle.zoneId}-${state.activeBattle.attackerIds.join(',')}-${state.activeBattle.defenderIds.join(',')}`
-            : 'none'
-        }
-        state={state}
-        mySide={mySide}
-        send={send}
-        busy={busy}
-      />
+      {isActive && (
+        <StealthyResponseBar
+          key={
+            state.awaitingResponse
+              ? `${state.awaitingResponse.zoneId}-${state.awaitingResponse.attackerIds.join(',')}-${state.awaitingResponse.targetIds.join(',')}`
+              : 'none'
+          }
+          state={state}
+          mySide={mySide}
+          send={send}
+          busy={busy}
+        />
+      )}
+      {isActive && (
+        <BattleOverlay
+          key={
+            state.activeBattle
+              ? `${state.activeBattle.zoneId}-${state.activeBattle.attackerIds.join(',')}-${state.activeBattle.defenderIds.join(',')}`
+              : 'none'
+          }
+          state={state}
+          mySide={mySide}
+          send={send}
+          busy={busy}
+        />
+      )}
       <header className="flex flex-wrap items-center justify-between gap-3 rounded border border-ocean-600 bg-ocean-900/60 p-4">
         <div>
           <h1 className="font-display text-2xl">vs {names?.get(opponentId) ?? '…'}</h1>
@@ -190,7 +196,10 @@ export function GameBoardPage() {
           {isMyTurn ? 'Your turn' : 'Their turn'}
         </span>
         <div className="flex flex-wrap gap-4 text-sm text-ocean-300">
-          <span>Materials: {shortHandNumber(state.resources[mySide].materials)}</span>
+          <span className="flex items-center gap-1">
+            <img src={ironIcon} alt="materials" className="h-4 w-4" />
+            {shortHandNumber(state.resources[mySide].materials)}
+          </span>
           <span>CP: {state.resources[mySide].cp}</span>
           <span>Opponent hand: {state.counts[theirSide].hand}</span>
           <span>Opponent deck: {state.counts[theirSide].deck}</span>
@@ -297,11 +306,30 @@ export function GameBoardPage() {
         </div>
       )}
 
-      {game.status === 'complete' && (
+      <ConfirmDialog
+        open={confirmingConcede}
+        title="Strike your colors?"
+        body="Conceding ends the battle immediately — your opponent takes the win."
+        confirmLabel="Concede"
+        danger
+        onConfirm={() => {
+          setConfirmingConcede(false)
+          void send({ type: 'CONCEDE' })
+        }}
+        onCancel={() => setConfirmingConcede(false)}
+      />
+
+      {game.status !== 'active' && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-ocean-950/80">
           <div className="rounded-xl border-2 border-brass-400 bg-ocean-900 p-8 text-center shadow-plank">
             <h2 className="font-display text-3xl">
-              {game.winner_id === me ? 'Victory!' : `${names?.get(game.winner_id ?? '') ?? 'Your opponent'} wins`}
+              {game.status === 'complete'
+                ? game.winner_id === me
+                  ? 'Victory!'
+                  : `${names?.get(game.winner_id ?? '') ?? 'Your opponent'} wins`
+                : game.winner_id === me
+                  ? `${names?.get(opponentId) ?? 'Your opponent'} abandoned ship — the day is yours`
+                  : 'You abandoned the battle'}
             </h2>
             <Link to="/games" className="mt-4 inline-block rounded bg-brass-400 px-4 py-2 font-bold text-ocean-950">
               Back to battles

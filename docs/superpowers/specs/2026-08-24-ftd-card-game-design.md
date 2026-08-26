@@ -150,6 +150,11 @@ A base at 0 HP means that zone is **lost** for its owner. Losing **2+ zones** lo
 the game. A destroyed base cannot be attacked again; vehicles in that zone remain
 and may still fight fleet battles.
 
+A player may also **concede** (in-game surrender; the game is marked `complete`
+with the opponent as winner) or **abandon** an unfinished game at any time —
+even off-turn or mid-battle; the game is marked `abandoned` and the opponent
+takes the win. There are no inactivity timeouts (§10).
+
 ### 3.7 Keywords
 
 MVP-implemented (from the design doc + old BE `gameSettings.js` comments):
@@ -302,7 +307,7 @@ Bucket `card-images`: public read; authed upload restricted to a per-user folder
 
 | Function | Actions |
 |---|---|
-| `game-action` | `{gameId, actionType, actionBody}` — the entire in-game vocabulary: PLAY_CARD_TO_ZONE, PLAY_CARD_WITHOUT_TARGET, PLAY_CARD_TARGETING_CARD_ON_FIELD, PLAY_CARD_TARGETING_CARD_IN_HAND, SET_ALERT_CARD, MOVE_VEHICLE (Mobile keyword), ATTACK_ENEMY_BASE, ATTACK_ENEMY_FLEET, SUBMIT_BATTLE_REPORT, DECIDE_BATTLE_REPORT, USE_HERO_POWER, END_TURN, CONCEDE |
+| `game-action` | `{gameId, actionType, actionBody}` — the entire in-game vocabulary: PLAY_CARD_TO_ZONE, PLAY_CARD_WITHOUT_TARGET, PLAY_CARD_TARGETING_CARD_ON_FIELD, PLAY_CARD_TARGETING_CARD_IN_HAND, SET_ALERT_CARD, MOVE_VEHICLE (Mobile keyword), ATTACK_ENEMY_BASE, ATTACK_ENEMY_FLEET, SUBMIT_BATTLE_REPORT, DECIDE_BATTLE_REPORT, USE_HERO_POWER, END_TURN, CONCEDE, ABANDON |
 | `lobby-action` | JOIN, LEAVE, START (START validates both decks, rolls first player, builds initial game + game_players rows in one transaction) |
 | `create-card` | Validates + applies custom-card rules (rounding, auto-keywords), inserts card |
 

@@ -6,6 +6,7 @@ import { TRIGGERS } from '@shared/gameSettings'
 import { shortHandNumber } from '@shared/format'
 import type { CardRow } from '../../lib/cards'
 import { PhysicalCard } from '../../components/PhysicalCard'
+import { ConfirmDialog } from '../../components/ConfirmDialog'
 import type { MoveMode, SwapMode } from './HeroPowerBar'
 
 function instanceToCardRow(c: CardInstance): CardRow {
@@ -71,6 +72,7 @@ export function HandBar({
   canReveal: boolean
 }) {
   const [handTargeting, setHandTargeting] = useState<CardInstance | null>(null)
+  const [confirmingNoEffectPlay, setConfirmingNoEffectPlay] = useState<CardInstance | null>(null)
 
   // Mode exclusivity: whenever one of GameBoardPage's own modes starts, drop
   // our internal handTargeting selection.
@@ -123,9 +125,13 @@ export function HandBar({
     }
 
     if (!hasAnyMetaEffect(card)) {
-      const ok = window.confirm(`Play "${card.name}"? It has no effect — this only spends the card.`)
-      if (!ok) return
+      setConfirmingNoEffectPlay(card)
+      return
     }
+    playAbilityCard(card)
+  }
+
+  function playAbilityCard(card: CardInstance) {
     cancelBoardModes()
     setHandTargeting(null)
     void send({ type: 'PLAY_ABILITY_CARD', instanceId: card.instanceId })
@@ -223,6 +229,17 @@ export function HandBar({
           Choose another card in hand to target with {handTargeting.name}, or click its Play button again to cancel.
         </p>
       )}
+      <ConfirmDialog
+        open={confirmingNoEffectPlay !== null}
+        title={`Play ${confirmingNoEffectPlay?.name ?? ''}?`}
+        body="It has no effect — this only spends the card."
+        confirmLabel="Play it"
+        onConfirm={() => {
+          if (confirmingNoEffectPlay) playAbilityCard(confirmingNoEffectPlay)
+          setConfirmingNoEffectPlay(null)
+        }}
+        onCancel={() => setConfirmingNoEffectPlay(null)}
+      />
     </div>
   )
 }

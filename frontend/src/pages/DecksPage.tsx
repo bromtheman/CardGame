@@ -5,6 +5,7 @@ import { DECK_FACTIONS, DECK_SIZE } from '@shared/gameSettings'
 import { deckCardCount, useDecksQuery } from '../lib/decks'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../lib/auth'
+import { ConfirmDialog } from '../components/ConfirmDialog'
 
 export function DecksPage() {
   const { session } = useAuth()
@@ -14,6 +15,7 @@ export function DecksPage() {
   const [name, setName] = useState('')
   const [faction, setFaction] = useState<string>(DECK_FACTIONS[0])
   const [formError, setFormError] = useState<string | null>(null)
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(null)
 
   async function onCreate(e: React.FormEvent) {
     e.preventDefault()
@@ -31,8 +33,7 @@ export function DecksPage() {
     navigate(`/decks/${data.id}`)
   }
 
-  async function onDelete(id: string, deckName: string) {
-    if (!window.confirm(`Scuttle deck "${deckName}"? This cannot be undone.`)) return
+  async function onDelete(id: string) {
     const { error: deleteError } = await supabase.from('decks').delete().eq('id', id)
     if (deleteError) { setFormError(deleteError.message); return }
     await queryClient.invalidateQueries({ queryKey: ['decks'] })
@@ -62,11 +63,23 @@ export function DecksPage() {
               <span className="ml-3 rounded bg-ocean-600 px-2 py-0.5 text-sm">{d.faction}</span>
               <span className="ml-3 text-ocean-300">{deckCardCount(d)}/{DECK_SIZE} cards</span>
             </Link>
-            <button onClick={() => onDelete(d.id, d.name)} className="text-red-400 underline">Delete</button>
+            <button onClick={() => setPendingDelete({ id: d.id, name: d.name })} className="text-red-400 underline">Delete</button>
           </li>
         ))}
         {(decks ?? []).length === 0 && <p className="text-ocean-300">No fleets yet — build one above.</p>}
       </ul>
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title="Scuttle this deck?"
+        body={`Scuttle deck "${pendingDelete?.name ?? ''}"? This cannot be undone.`}
+        confirmLabel="Scuttle"
+        danger
+        onConfirm={() => {
+          if (pendingDelete) void onDelete(pendingDelete.id)
+          setPendingDelete(null)
+        }}
+        onCancel={() => setPendingDelete(null)}
+      />
     </main>
   )
 }

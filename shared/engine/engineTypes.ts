@@ -57,6 +57,7 @@ export interface EngineGame {
 export type GameAction =
   | { type: 'END_TURN' }
   | { type: 'CONCEDE' }
+  | { type: 'ABANDON' }
   | { type: 'PLAY_CARD_TO_ZONE'; instanceId: string; zoneId: number }
   | { type: 'PLAY_ABILITY_CARD'; instanceId: string }
   | { type: 'PLAY_CARD_TARGETING_CARD_ON_FIELD'; instanceId: string; targetInstanceId: string }
