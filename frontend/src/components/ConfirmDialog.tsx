@@ -36,13 +36,16 @@ export function ConfirmDialog({
       onClick={onCancel}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
         className="rounded border border-brass-400 bg-ocean-900 p-6 shadow-plank"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="font-display text-xl">{title}</h2>
         <p className="mt-2 text-ocean-300">{body}</p>
         <div className="mt-4 flex justify-end gap-2">
-          <button onClick={onCancel} className="rounded border border-ocean-600 px-3 py-2 font-bold text-parchment-100">
+          <button onClick={onCancel} autoFocus className="rounded border border-ocean-600 px-3 py-2 font-bold text-parchment-100">
             Cancel
           </button>
           <button
@@ -91,6 +94,9 @@ export function PromptDialog({
       onClick={onCancel}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
         className="rounded border border-brass-400 bg-ocean-900 p-6 shadow-plank"
         onClick={(e) => e.stopPropagation()}
       >

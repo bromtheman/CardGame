@@ -10,6 +10,20 @@ import { actionForStatus, backoffDelayMs, wakeAction } from './reconnectPolicy'
 // events, and waking the tab (online / visible) checks the channel and
 // refetches. Each connect attempt carries a generation token so callbacks
 // from a superseded channel (removeChannel fires its CLOSED) are ignored.
+//
+// Each connect() uses a unique client-local topic (channelKey + a monotonic
+// counter) rather than reusing channelKey directly. supabase.channel(topic)
+// returns the SAME channel instance when a channel with that topic is still
+// in the client's list, and removeChannel() only closes it once the server
+// acks the leave (async) — so a fast reconnect that reused the old topic
+// would get back the dying channel, and RealtimeChannel.subscribe() silently
+// no-ops unless the channel's adapter state is 'closed'. A unique topic per
+// connect attempt sidesteps that dedupe entirely. The topic is purely a
+// client-local channel name; the postgres_changes filter below is what
+// defines the server-side subscription, so this doesn't change what events
+// are received.
+let topicSeq = 0
+
 export function useRealtimeInvalidate(
   channelKey: string,
   table: string,
@@ -38,7 +52,7 @@ export function useRealtimeInvalidate(
       const mine = ++generation
       if (channel) supabase.removeChannel(channel)
       channel = supabase
-        .channel(channelKey)
+        .channel(`${channelKey}#${++topicSeq}`)
         .on(
           'postgres_changes',
           { event: '*', schema: 'public', table, ...(filter ? { filter } : {}) },
@@ -49,6 +63,14 @@ export function useRealtimeInvalidate(
           const action = actionForStatus(status)
           if (action === 'settled') {
             attempt = 0
+            // A settled join can follow a phoenix self-rejoin that raced a
+            // scheduled backoff retry; clear it so that stale timer doesn't
+            // later fire connect() against this now-joined channel (the
+            // same dedupe trap the unique topic above avoids).
+            if (timer !== undefined) {
+              window.clearTimeout(timer)
+              timer = undefined
+            }
             invalidateAll()
           } else if (action === 'reconnect' && timer === undefined) {
             timer = window.setTimeout(() => {
