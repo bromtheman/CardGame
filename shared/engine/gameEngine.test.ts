@@ -105,6 +105,35 @@ describe('CONCEDE', () => {
   })
 })
 
+describe('ABANDON', () => {
+  it('lets the OFF-TURN player abandon: status abandoned, opponent wins, log line', () => {
+    const game = makeGame() // activePlayer 'alice' (side a)
+    const r = applyAction(game, 'bob', { type: 'ABANDON' })
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.game.status).toBe('abandoned')
+    expect(r.game.winnerId).toBe('alice')
+    expect(r.game.state.log).toContain('Player B abandoned the battle')
+  })
+  it('works for the active player too, and during a frozen battle', () => {
+    const game = makeGame()
+    game.state.activeBattle = {
+      zoneId: 1, aggressor: 'a', attackerIds: [], defenderIds: [],
+      distanceM: 1200, distanceModifiedBy: [],
+    }
+    const r = applyAction(game, 'alice', { type: 'ABANDON' })
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.game.status).toBe('abandoned')
+    expect(r.game.winnerId).toBe('bob')
+  })
+  it('rejects abandoning a finished game', () => {
+    const game = makeGame({ status: 'complete', winnerId: 'alice' })
+    const r = applyAction(game, 'bob', { type: 'ABANDON' })
+    expect(r).toEqual({ ok: false, status: 409, error: 'Game is over' })
+  })
+})
+
 describe('normalizeState', () => {
   it('fills fields missing from pre-Phase-4 game rows', () => {
     const g = makeGame()

@@ -41,11 +41,11 @@ export function zonesLostBy(game: EngineGame, side: Side): number {
 }
 
 const BATTLE_ACTIONS = new Set<GameAction['type']>([
-  'RESPOND_TO_ATTACK', 'SUBMIT_BATTLE_REPORT', 'DECIDE_BATTLE_REPORT', 'CONCEDE', 'USE_HERO_POWER',
+  'RESPOND_TO_ATTACK', 'SUBMIT_BATTLE_REPORT', 'DECIDE_BATTLE_REPORT', 'CONCEDE', 'ABANDON', 'USE_HERO_POWER',
 ])
 
 const OFF_TURN_ACTIONS = new Set<GameAction['type']>([
-  'CONCEDE', 'RESPOND_TO_ATTACK', 'SUBMIT_BATTLE_REPORT', 'DECIDE_BATTLE_REPORT', 'USE_HERO_POWER',
+  'CONCEDE', 'ABANDON', 'RESPOND_TO_ATTACK', 'SUBMIT_BATTLE_REPORT', 'DECIDE_BATTLE_REPORT', 'USE_HERO_POWER',
 ])
 
 export const err = (status: number, error: string): ApplyResult => ({ ok: false, status, error })
@@ -173,6 +173,15 @@ function concede(game: EngineGame, actor: Side): ApplyResult {
   return { ok: true, game }
 }
 
+// Walking away from an unfinished game — same loss as conceding, but the
+// game is marked abandoned so My Games can tell the two apart.
+function abandon(game: EngineGame, actor: Side): ApplyResult {
+  game.status = 'abandoned'
+  game.winnerId = actor === 'a' ? game.playerB : game.playerA
+  game.state.log.push(`Player ${actor.toUpperCase()} abandoned the battle`)
+  return { ok: true, game }
+}
+
 // Single exit point for every success path: trims the action log to the
 // spec's cap (LOG_MAX_ENTRIES) so a long game never grows the row unbounded.
 // Keeps the newest entries.
@@ -198,6 +207,7 @@ export function applyAction(
   }
   if (action.type === 'END_TURN') return finish(endTurn(game, ctx))
   if (action.type === 'CONCEDE') return finish(concede(game, actor))
+  if (action.type === 'ABANDON') return finish(abandon(game, actor))
   const handler = handlers.get(action.type)
   if (!handler) return err(400, `Unknown or not-yet-supported action: ${action.type}`)
   return finish(handler(game, actor, action, ctx))
