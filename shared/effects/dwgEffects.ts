@@ -1,19 +1,33 @@
-import { DOUBLE_UP_MAX_COST, KEYWORDS, RESERVES_CARD_COUNT } from '../gameSettings.ts'
+import { DOUBLE_UP_MAX_COST, KEYWORDS, MARAUDER_DISCOUNT, RESERVES_CARD_COUNT } from '../gameSettings.ts'
 import type { ZoneCardEntry } from '../engine/engineTypes.ts'
 import { drawCard, zoneById } from '../engine/gameEngine.ts'
 import { effectiveMaterialCostOf } from '../engine/placement.ts'
-import { grant } from './primitives.ts'
+import { grant, takeFromEnemyDeck } from './primitives.ts'
 import { registerCostModifier, registerEffect } from './registry.ts'
 import type { EffectPayload } from './registry.ts'
 
-// draw a card and gain 1 CP (Marauder / Crossbones)
+// draw a card and gain 1 CP (Crossbones)
 const drawPlusCp = ({ game, actor, ctx }: EffectPayload): boolean => {
   drawCard(game, actor, ctx)
   game.state.resources[actor].cp += 1
   return true
 }
-registerEffect('marauderOnPlay', drawPlusCp)
 registerEffect('crossbonesOnPlay', drawPlusCp)
+
+// "When this vehicle is played, draw a vehicle card from the enemy deck
+// reduce its cost by 50k." The ported implementation aliased this to
+// Crossbones' own-deck draw plus 1 CP; card text is authoritative
+// (spec 2 §6), so that ruling is superseded.
+registerEffect('marauderOnPlay', ({ game, actor, ctx }) => {
+  const before = game.privates[actor].hand.length
+  takeFromEnemyDeck(game, actor, ctx, (c) => c.type === 'vehicle')
+  const taken = game.privates[actor].hand[before]
+  if (!taken) return true
+  const current = typeof taken.meta.costDelta === 'number' ? taken.meta.costDelta : 0
+  taken.meta = { ...taken.meta, costDelta: current - MARAUDER_DISCOUNT }
+  return true
+})
+
 registerEffect('ransackOnPlay', grant({ draw: 1, cp: 1 }))
 registerEffect('paddlegunEffect', grant({ draw: 1, from: 'enemy' }))
 

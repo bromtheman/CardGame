@@ -153,3 +153,17 @@ export function zoneOccupants(p: EffectPayload, side: 'own' | 'either'): CardIns
 export function whenPlayed(predicate: (p: EffectPayload) => boolean, body: EffectFn): EffectFn {
   return (payload) => (predicate(payload) ? body(payload) : true)
 }
+
+// Stamp a persistent per-instance cost change onto a card in the actor's
+// hand, the way doubleUpEffect stamps additionalSpawns. Read only by
+// effectiveCostInGame — never by effectiveMaterialCostOf.
+export function costDelta(spec: { delta: number; filter: PoolFilter }): EffectFn {
+  return ({ game, actor, targetInstanceId }) => {
+    if (typeof targetInstanceId !== 'string') return false
+    const target = game.privates[actor].hand.find((c) => c.instanceId === targetInstanceId)
+    if (!target || !matches(target, spec.filter)) return false
+    const current = typeof target.meta.costDelta === 'number' ? target.meta.costDelta : 0
+    target.meta = { ...target.meta, costDelta: current + spec.delta }
+    return true
+  }
+}

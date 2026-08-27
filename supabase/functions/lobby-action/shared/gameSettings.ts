@@ -71,3 +71,6 @@ export const CHANGE_ORDER_DELAY_TURNS = 2
 
 export const RHEA_MAX_PLANE_COST = 300_000 // Rhea: "base cost under 300k" (exclusive)
 export const GT_HEAVY_AIRSHIP_MIN_COST = 400_000 // spec §7.3: the GT airship cost cliff
+
+export const MARAUDER_DISCOUNT = 50_000  // Marauder: enemy vehicle costs 50k less
+export const EXCALIBUR_DISCOUNT = 200_000 // Excalibur: AI ship in hand costs 200k less

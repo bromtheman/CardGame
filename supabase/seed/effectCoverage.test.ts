@@ -18,7 +18,7 @@ const EXEMPT: Record<string, string> = {
 // lands — the third test rejects stale ones, so this list only shrinks.
 const KNOWN_GAPS: Record<string, string> = {
   'SS:PredatorX': 'wave 1', 'LH:Orbit': 'wave 1',
-  'SS:Excalibur': 'wave 1', 'OW:Garrison': 'wave 1', 'SS:Repairmen Ready': 'wave 1',
+  'OW:Garrison': 'wave 1', 'SS:Repairmen Ready': 'wave 1',
   'GT:[GT] Osprey': 'wave 1',
 
   'GT:[GT] Hunchback': 'wave 2', 'GT:[GT] Monsoon': 'wave 2', 'LH:Spectrum': 'wave 2',
@@ -29,6 +29,7 @@ const KNOWN_GAPS: Record<string, string> = {
   'DWG:Flying Squirrel Attack': 'wave 3', 'WF:Martyr Attack': 'wave 3',
   'SS:Air Strafe': 'wave 3', 'LH:Orbit Flank': 'wave 3', 'DWG:Gang Up': 'wave 3',
   'SS:Braveheart': 'wave 3', 'LH:Eclipse': 'wave 3', 'OW:Trebuchet': 'wave 3',
+  'SS:Excalibur': 'wave 3 — a vehicle with a hand target has no play path',
 
   'SS:Catshark': 'wave 4', 'SS:Dryad': 'wave 4', 'OW:The Onyx Throne': 'wave 4',
   'SS:Sacrilego': 'wave 4', 'OW:Iron Cordon': 'wave 4', 'LH:Terawatt': 'wave 4',

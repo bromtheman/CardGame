@@ -164,3 +164,33 @@ describe('sapphireEffect', () => {
     expect(r.game.state.resources.a.materials).toBe(before - 30_000)
   })
 })
+
+describe('excaliburOnPlay', () => {
+  it('stamps a -200k costDelta on a built-in ship in hand', () => {
+    const target = inst({ name: 'Victoria', isBuiltIn: true, vehicleType: 'ship', materialCost: 270_000 })
+    const game = makeGame({ privates: { a: { hand: [target], deck: [] }, b: { hand: [], deck: [] } } })
+    const ok = effectFor('excaliburOnPlay')!({
+      game, actor: 'a', card: inst({ name: 'Excalibur' }), ctx: makeCtx(),
+      targetInstanceId: target.instanceId,
+    })
+    expect(ok).toBe(true)
+    expect(game.privates.a.hand[0].meta.costDelta).toBe(-200_000)
+  })
+
+  it('stacks with an existing delta', () => {
+    const target = inst({ isBuiltIn: true, vehicleType: 'ship', meta: { costDelta: -50_000 } })
+    const game = makeGame({ privates: { a: { hand: [target], deck: [] }, b: { hand: [], deck: [] } } })
+    effectFor('excaliburOnPlay')!({
+      game, actor: 'a', card: inst(), ctx: makeCtx(), targetInstanceId: target.instanceId,
+    })
+    expect(game.privates.a.hand[0].meta.costDelta).toBe(-250_000)
+  })
+
+  it('rejects a player-made target', () => {
+    const target = inst({ isBuiltIn: false, vehicleType: 'ship' })
+    const game = makeGame({ privates: { a: { hand: [target], deck: [] }, b: { hand: [], deck: [] } } })
+    expect(effectFor('excaliburOnPlay')!({
+      game, actor: 'a', card: inst(), ctx: makeCtx(), targetInstanceId: target.instanceId,
+    })).toBe(false)
+  })
+})

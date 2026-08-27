@@ -4,19 +4,31 @@ import { DOUBLE_UP_MAX_COST, KEYWORDS, RESERVES_CARD_COUNT } from '../gameSettin
 import { inst, makeCtx, makeGame, snap, zoneEntry } from '../engine/testFixtures.ts'
 import './dwgEffects.ts'
 
-describe('marauderOnPlay / crossbonesOnPlay', () => {
-  it('marauderOnPlay draws a card and grants 1 CP', () => {
+describe('marauderOnPlay', () => {
+  it('takes a vehicle from the enemy deck and discounts it by 50k', () => {
     const game = makeGame()
-    game.privates.a.deck.push(inst({ name: 'Deck Top' }))
-    game.state.counts.a.deck = 1
+    game.privates.b.deck.push(
+      inst({ name: 'Enemy Ability', type: 'ability' }),
+      inst({ name: 'Enemy Ship', type: 'vehicle', materialCost: 200_000 }),
+    )
+    game.state.counts.b.deck = 2
     const ok = effectFor('marauderOnPlay')!({ game, actor: 'a', card: inst(), ctx: makeCtx() })
     expect(ok).toBe(true)
-    expect(game.privates.a.hand.map((c) => c.name)).toContain('Deck Top')
-    expect(game.state.resources.a.cp).toBe(4)
-    expect(game.state.counts.a.hand).toBe(1)
-    expect(game.state.counts.a.deck).toBe(0)
+    expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Enemy Ship'])
+    expect(game.privates.a.hand[0].meta.costDelta).toBe(-50_000)
+    expect(game.state.counts.b.deck).toBe(1)
+    expect(game.state.log.join(' ')).not.toContain('Enemy Ship')
   })
 
+  it('grants no CP — that was the ported behaviour, not the card text', () => {
+    const game = makeGame()
+    game.privates.b.deck.push(inst({ type: 'vehicle' }))
+    effectFor('marauderOnPlay')!({ game, actor: 'a', card: inst(), ctx: makeCtx() })
+    expect(game.state.resources.a.cp).toBe(3)
+  })
+})
+
+describe('crossbonesOnPlay', () => {
   it('crossbonesOnPlay draws a card and grants 1 CP', () => {
     const game = makeGame()
     game.privates.b.deck.push(inst({ name: 'Crossbones Deck Top' }))

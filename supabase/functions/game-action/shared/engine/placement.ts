@@ -48,13 +48,14 @@ export function canAfford(state: PublicGameState, side: Side, card: CardInstance
   )
 }
 
-// Play-time cost: (base + registered modifier), Half-Cost halving, clamp ≥ 0.
-// Base damage, repairs, and in-battle resources keep using
-// effectiveMaterialCostOf — modifiers are a play-time-only mechanic.
+// Play-time cost: (base + registered modifier + stored costDelta), Half-Cost
+// halving, clamp ≥ 0. Base damage, repairs, and in-battle resources keep
+// using effectiveMaterialCostOf — these are play-time-only mechanics.
 export function effectiveCostInGame(state: PublicGameState, side: Side, card: CardInstance): number {
   const name = effectName(card, 'costModifier')
   const fn = name !== null ? costModifierFor(name) : null
-  const modified = card.materialCost + (fn ? fn(state, side, card) : 0)
+  const delta = typeof card.meta.costDelta === 'number' ? card.meta.costDelta : 0
+  const modified = card.materialCost + (fn ? fn(state, side, card) : 0) + delta
   return Math.max(0, effectiveMaterialCostOf({ ...card, materialCost: modified }))
 }
 

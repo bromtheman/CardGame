@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { applyAction, effectiveCostInGame, effectiveMaterialCostOf, legalZonesFor } from './index'
 import { registerCostModifier, registerEffect } from '../effects/registry.ts'
-import { ADDITIONAL_SPAWNS_CAP } from '../gameSettings.ts'
+import { ADDITIONAL_SPAWNS_CAP, KEYWORDS } from '../gameSettings.ts'
 import { inst, makeCtx, makeGame, zoneEntry } from './testFixtures'
 
 function withHand(cardOver: Record<string, unknown>) {
@@ -136,15 +136,16 @@ describe('additionalSpawns', () => {
 })
 
 describe('play-pipeline effect dispatch', () => {
-  it('vehicle with onPlayEffect marauderOnPlay draws a card and grants CP after deploy', () => {
+  it('vehicle with onPlayEffect marauderOnPlay takes an enemy vehicle and discounts it by 50k after deploy', () => {
     const { g, card } = withHand({ vehicleType: 'ship', materialCost: 10000, meta: { onPlayEffect: 'marauderOnPlay' } })
-    g.privates.a.deck.push(inst({ name: 'Deck Top' }))
-    g.state.counts.a.deck = 1
+    g.privates.b.deck.push(inst({ name: 'Enemy Ship', type: 'vehicle', materialCost: 200000 }))
+    g.state.counts.b.deck = 1
     const r = applyAction(g, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx())
     if (!r.ok) throw new Error(r.error)
     expect(r.game.state.zones[0].cards.a).toHaveLength(1)
-    expect(r.game.privates.a.hand.map((c) => c.name)).toContain('Deck Top')
-    expect(r.game.state.resources.a.cp).toBe(4) // 3 + 1
+    expect(r.game.privates.a.hand.map((c) => c.name)).toEqual(['Enemy Ship'])
+    expect(r.game.privates.a.hand[0].meta.costDelta).toBe(-50000)
+    expect(r.game.state.resources.a.cp).toBe(3) // unchanged — Marauder's card text grants no CP
   })
 
   it('ability with unimplemented playOnZoneEffect ambushEffect played to zone 1 succeeds vanilla, no entry added', () => {
@@ -485,5 +486,30 @@ describe('PLAY_CARD_TARGETING_CARD_ON_FIELD', () => {
       g, 'alice',
       { type: 'PLAY_CARD_TARGETING_CARD_ON_FIELD', instanceId: card.instanceId, targetInstanceId: 42 } as never,
     )).toMatchObject({ ok: false, status: 400 })
+  })
+})
+
+describe('effectiveCostInGame — costDelta', () => {
+  it('subtracts a stored costDelta from the printed cost', () => {
+    const game = makeGame()
+    const card = inst({ materialCost: 550_000, meta: { costDelta: -200_000 } })
+    expect(effectiveCostInGame(game.state, 'a', card)).toBe(350_000)
+  })
+
+  it('clamps at zero', () => {
+    const game = makeGame()
+    const card = inst({ materialCost: 40_000, meta: { costDelta: -100_000 } })
+    expect(effectiveCostInGame(game.state, 'a', card)).toBe(0)
+  })
+
+  it('applies before the Half-Cost halving', () => {
+    const game = makeGame()
+    const card = inst({ materialCost: 500_000, keywords: [KEYWORDS.HALF_COST], meta: { costDelta: -100_000 } })
+    expect(effectiveCostInGame(game.state, 'a', card)).toBe(200_000)
+  })
+
+  it('never reaches effectiveMaterialCostOf', () => {
+    const card = inst({ materialCost: 550_000, meta: { costDelta: -200_000 } })
+    expect(effectiveMaterialCostOf(card)).toBe(550_000)
   })
 })

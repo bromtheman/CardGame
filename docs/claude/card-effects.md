@@ -44,8 +44,9 @@ the duplicate (open backlog item).
 ## Adding a new effect — checklist
 
 1. Rules first: confirm the card's intended behavior against the spec / seeded
-   `card_text`. (Known mismatch: Marauder's seeded text describes a different
-   effect than the ported one — a recorded ruling, not a template.)
+   `card_text`. **Card text is authoritative** over any ported implementation
+   that disagrees (2026-08-27 effect-coverage spec, decision 1). Marauder's
+   ported own-deck-draw behavior was corrected to match its text.
 2. Implement in `shared/effects/` (new faction file → add its side-effect import
    to `shared/engine/index.ts` and to `supabase/functions/shared-manifest.json`
    under `game-action`).
@@ -77,3 +78,8 @@ the duplicate (open backlog item).
 `effectiveCostInGame(state, side, card)`: (base + modifier) → halve if `halfCost`
 → clamp ≥ 0. `effectiveMaterialCostOf(card)` (base with Half-Cost floor) stays
 the authority for damage, repairs, and in-battle resources — never mix them.
+
+`meta.costDelta` is a stored per-instance discount stamped onto a card in hand
+(Marauder −50k, Excalibur −200k). It is summed into `effectiveCostInGame`
+alongside the registered `costModifier` and, like it, never reaches
+`effectiveMaterialCostOf`.
