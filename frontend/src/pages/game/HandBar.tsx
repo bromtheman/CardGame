@@ -189,7 +189,14 @@ export function HandBar({
               key={c.instanceId}
               tabIndex={0}
               onPointerEnter={() => lift(c.instanceId)}
-              onPointerLeave={() => drop(c.instanceId)}
+              // A touch tap fires pointerenter -> pointerdown -> focus -> pointerup
+              // -> pointerleave all within the same tap, so an unconditional drop()
+              // here would lift and immediately drop the card before the Play/Target
+              // buttons (gated on `lifted`) ever render — no ability card could be
+              // played on touch. Only a real mouse should drop on pointerleave;
+              // touch and keyboard rely on onBlur below instead. Do not "simplify"
+              // this back to an unconditional drop.
+              onPointerLeave={(e) => { if (e.pointerType === 'mouse') drop(c.instanceId) }}
               onFocus={() => lift(c.instanceId)}
               onBlur={(e) => {
                 if (!e.currentTarget.contains(e.relatedTarget as Node)) drop(c.instanceId)
