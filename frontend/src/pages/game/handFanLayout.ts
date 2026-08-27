@@ -13,7 +13,10 @@ export const REST_SCALE = 0.75 // resting size of a card in the fan
 export const MAX_STEP_RATIO = 0.55 // cap on spread, so a small hand stays a fan
 export const DEG_PER_CARD = 4 // ~20° total sweep across five cards
 export const ARC_K = 1.6 // px of vertical drop per squared step from centre
-export const LIFT_PX = 48 // how far the hovered card rises
+// No lift translation constant on purpose: the hovered card rises by scaling
+// about `bottom center`, never by moving. A translate would slide the card's
+// bottom edge out from under a cursor hovering there, and the resulting
+// enter/leave loop made overlapping cards flicker between each other.
 
 export const RENDERED_CARD_W = CARD_W * REST_SCALE // 210
 export const RENDERED_CARD_H = CARD_H * REST_SCALE // 322.5
