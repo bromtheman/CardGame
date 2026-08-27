@@ -98,7 +98,7 @@ function pay(game: EngineGame, side: Side, card: CardInstance): void {
 // playOnCardEffect for Task 5's targeting actions, doubleUpEffect, …).
 function resolvePlayEffects(
   game: EngineGame, actor: Side, card: CardInstance, ctx: EngineContext,
-  targets: { targetZoneId?: number; targetInstanceId?: string },
+  targets: { targetZoneId?: number; targetInstanceId?: string; placedInstanceIds?: string[] },
   keys: string[],
 ): ApplyResult | null {
   for (const key of keys) {
@@ -138,10 +138,12 @@ registerHandler('PLAY_CARD_TO_ZONE', (game, actor, action, ctx) => {
   takeFromHand(game, actor, action.instanceId)
   pay(game, actor, card)
 
+  const placedInstanceIds: string[] = []
   if (card.type === 'vehicle') {
     const zone = game.state.zones.find((z) => z.id === action.zoneId)!
     const entry: ZoneCardEntry = { ...card, playedOnTurn: game.turnNumber, movedOnTurn: null }
     zone.cards[actor].push(entry)
+    placedInstanceIds.push(entry.instanceId)
     // additionalSpawns: one payment lands N+1 hulls (spec §3.9).
     const extra = Math.min(Math.max(0, Math.floor(Number(card.meta.additionalSpawns) || 0)), ADDITIONAL_SPAWNS_CAP)
     for (let i = 0; i < extra; i++) {
@@ -149,11 +151,14 @@ registerHandler('PLAY_CARD_TO_ZONE', (game, actor, action, ctx) => {
         ...card, instanceId: ctx.newId(), playedOnTurn: game.turnNumber, movedOnTurn: null,
       }
       zone.cards[actor].push(copy)
+      placedInstanceIds.push(copy.instanceId)
     }
   }
 
   const failure = resolvePlayEffects(
-    game, actor, card, ctx, { targetZoneId: action.zoneId }, ['playOnZoneEffect', 'onPlayEffect'],
+    game, actor, card, ctx,
+    { targetZoneId: action.zoneId, placedInstanceIds },
+    ['playOnZoneEffect', 'onPlayEffect'],
   )
   if (failure) return failure
   if (card.type !== 'vehicle') spendCard(game, actor, card)

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { effectFor } from './registry.ts'
-import { inst, makeCtx, makeGame, snap } from '../engine/testFixtures.ts'
-import '../engine/index.ts'
+import { inst, makeCtx, makeGame, snap, zoneEntry } from '../engine/testFixtures.ts'
+import { applyAction } from '../engine/index.ts'
 
 const DRAW_ONE = [
   'mandrelOnPlay', 'rookOnPlay', 'resoluteOnPlay', 'excruciatorOnPlay',
@@ -107,5 +107,60 @@ describe('drawFromPool-backed cards', () => {
     )
     expect(effectFor('conduitEffect')!({ game, actor: 'a', card: inst(), ctx: makeCtx() })).toBe(true)
     expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Custom Ship'])
+  })
+})
+
+describe('clydesdaleEffect', () => {
+  const play = (existing: boolean) => {
+    const card = inst({
+      name: 'Clydesdale', vehicleType: 'ship', materialCost: 0,
+      meta: { onPlayEffect: 'clydesdaleEffect' },
+    })
+    const game = makeGame({ privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } } })
+    if (existing) game.state.zones[0].cards.a.push(zoneEntry({ name: 'Escort', vehicleType: 'ship' }))
+    const r = applyAction(game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    return r.game.state.zones[0].cards.a.filter((c) => c.name === 'Clydesdale').length
+  }
+
+  it('spawns a second copy into an empty-of-friendlies zone', () => {
+    expect(play(false)).toBe(2)
+  })
+
+  it('spawns nothing when a friendly vehicle is already there', () => {
+    expect(play(true)).toBe(1)
+  })
+})
+
+describe('sapphireEffect', () => {
+  it('draws and refunds when the zone is empty on both sides', () => {
+    const card = inst({
+      name: 'Sapphire', vehicleType: 'plane', materialCost: 30_000,
+      meta: { onPlayEffect: 'sapphireEffect' },
+    })
+    const game = makeGame({
+      privates: { a: { hand: [card], deck: [inst({ name: 'Top' })] }, b: { hand: [], deck: [] } },
+    })
+    const before = game.state.resources.a.materials
+    const r = applyAction(game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.privates.a.hand.map((c) => c.name)).toEqual(['Top'])
+    expect(r.game.state.resources.a.materials).toBe(before)
+  })
+
+  it('does nothing when an enemy vehicle holds the zone', () => {
+    const card = inst({
+      name: 'Sapphire', vehicleType: 'plane', materialCost: 30_000,
+      meta: { onPlayEffect: 'sapphireEffect' },
+    })
+    const game = makeGame({
+      privates: { a: { hand: [card], deck: [inst({ name: 'Top' })] }, b: { hand: [], deck: [] } },
+    })
+    game.state.zones[0].cards.b.push(zoneEntry({ name: 'Enemy', vehicleType: 'ship' }))
+    const before = game.state.resources.a.materials
+    const r = applyAction(game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.privates.a.hand).toHaveLength(0)
+    expect(r.game.state.resources.a.materials).toBe(before - 30_000)
   })
 })

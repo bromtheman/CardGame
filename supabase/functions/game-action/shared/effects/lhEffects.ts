@@ -1,4 +1,5 @@
-import { drawFromPool, grant } from './primitives.ts'
+import { effectiveCostInGame } from '../engine/placement.ts'
+import { drawFromPool, grant, sequence, whenPlayed, zoneOccupants } from './primitives.ts'
 import type { EffectFn } from './registry.ts'
 import { registerEffect } from './registry.ts'
 
@@ -24,3 +25,18 @@ const conduitOnDeath: EffectFn = (payload) => {
   return drawCustomTank(payload)
 }
 registerEffect('conduitEffect', conduitOnDeath)
+
+// "When this vehicle is played into an empty zone, draw a card and refund
+// its cost." Recomputing the cost is exact here: Sapphire carries no
+// costModifier, so nothing about it depends on board state.
+registerEffect('sapphireEffect', whenPlayed(
+  (p) => zoneOccupants(p, 'either').length === 0,
+  sequence(
+    grant({ draw: 1 }),
+    ({ game, actor, card }) => {
+      game.state.resources[actor].materials += effectiveCostInGame(game.state, actor, card)
+      game.state.log.push(`${card.name} slips in unopposed — its cost is refunded`)
+      return true
+    },
+  ),
+))

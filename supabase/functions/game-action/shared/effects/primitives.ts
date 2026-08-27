@@ -1,7 +1,7 @@
 import type { CardInstance } from '../engine/gameInit.ts'
 import type { EngineContext, EngineGame, Side } from '../engine/engineTypes.ts'
 import { drawCard, otherSide } from '../engine/gameEngine.ts'
-import type { EffectFn } from './registry.ts'
+import type { EffectFn, EffectPayload } from './registry.ts'
 
 // Move one card from the enemy's deck into the actor's hand. The log line
 // must not name it — it is going into a hidden hand. A fresh instanceId is
@@ -134,4 +134,22 @@ export function drawFromPool(spec: PoolSpec): EffectFn {
     game.state.log.push(`Player ${actor.toUpperCase()} adds a card to their hand`)
     return true
   }
+}
+
+// Vehicles already in the target zone, excluding whatever this play just
+// placed. `side: 'own'` counts only the actor's; 'either' counts both.
+export function zoneOccupants(p: EffectPayload, side: 'own' | 'either'): CardInstance[] {
+  const zone = p.game.state.zones.find((z) => z.id === p.targetZoneId)
+  if (!zone) return []
+  const placed = new Set(p.placedInstanceIds ?? [])
+  const mine = zone.cards[p.actor].filter((c) => !placed.has(c.instanceId))
+  if (side === 'own') return mine
+  const theirs = zone.cards[otherSide(p.actor)].filter((c) => !placed.has(c.instanceId))
+  return [...mine, ...theirs]
+}
+
+// Run `body` only when `predicate` holds. A false predicate is not a
+// failure — the effect resolved, it simply did nothing.
+export function whenPlayed(predicate: (p: EffectPayload) => boolean, body: EffectFn): EffectFn {
+  return (payload) => (predicate(payload) ? body(payload) : true)
 }

@@ -1,5 +1,6 @@
-import { drawFromPool, grant } from './primitives.ts'
+import { drawFromPool, grant, whenPlayed, zoneOccupants } from './primitives.ts'
 import { registerEffect } from './registry.ts'
+import type { ZoneCardEntry } from '../engine/engineTypes.ts'
 
 // OW built-in card effects. Cards whose faction is GT but whose seed row
 // lives in OW-Built-in.js are registered here too.
@@ -23,3 +24,19 @@ registerEffect('partisanEffect', gtAirship, { needsCatalog: true })
 registerEffect('cauldronEffect', drawFromPool({
   source: 'deck', filter: { vehicleType: 'sub' }, count: 1, allowEmpty: true,
 }))
+
+// "If played into a zone in which you have no friendly vehicles, spawn
+// another copy into that zone."
+registerEffect('clydesdaleEffect', whenPlayed(
+  (p) => zoneOccupants(p, 'own').length === 0,
+  ({ game, actor, card, ctx, targetZoneId }) => {
+    const zone = game.state.zones.find((z) => z.id === targetZoneId)
+    if (!zone) return false
+    const copy: ZoneCardEntry = {
+      ...card, instanceId: ctx.newId(), playedOnTurn: game.turnNumber, movedOnTurn: null,
+    }
+    zone.cards[actor].push(copy)
+    game.state.log.push(`A second ${card.name} rolls off the line in zone ${zone.id}`)
+    return true
+  },
+))

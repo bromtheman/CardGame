@@ -9,6 +9,10 @@ export interface EffectPayload {
   ctx: EngineContext
   targetZoneId?: number
   targetInstanceId?: string
+  // Ids this play just placed on the board (the card plus any
+  // additionalSpawns copies). Predicates that ask "was this zone empty?"
+  // must exclude them — PLAY_CARD_TO_ZONE places before effects fire.
+  placedInstanceIds?: string[]
 }
 export type EffectFn = (payload: EffectPayload) => boolean
 export type CostModifierFn = (state: PublicGameState, side: Side, card: CardInstance) => number
