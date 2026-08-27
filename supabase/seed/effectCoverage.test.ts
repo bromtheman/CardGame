@@ -13,16 +13,11 @@ const EXEMPT: Record<string, string> = {
   'SS:Falcon Squadron': 'Robotic-shaped conduct text: players apply it when reporting results',
 }
 
-// 64 of the 65 gaps (Falcon Squadron is permanently EXEMPT above),
+// 47 of the 65 gaps (Falcon Squadron is permanently EXEMPT above),
 // baselined so the guard is green from day one. Delete entries as their wave
 // lands — the third test rejects stale ones, so this list only shrinks.
 const KNOWN_GAPS: Record<string, string> = {
-  'DWG:Ransack': 'wave 1', 'OW:Mandrel': 'wave 1', 'OW:Rook': 'wave 1',
-  'SS:Resolute': 'wave 1', 'WF:Excruciator': 'wave 1', 'OW:Claymore': 'wave 1',
-  'OW:Palisade': 'wave 1', 'WF:Purifier': 'wave 1', 'OW:Bulwark': 'wave 1',
-  'SS:Maelstrom': 'wave 1', 'OW:Mace': 'wave 1', 'DWG:Paddlegun': 'wave 1',
-  'OW:Javelin': 'wave 1', 'SS:Iron Maiden': 'wave 1', 'SS:Victoria': 'wave 1',
-  'SS:Trondheim': 'wave 1', 'LH:Coulomb': 'wave 1', 'LH:Ampere': 'wave 1',
+  'LH:Ampere': 'wave 1',
   'LH:Candela': 'wave 1', 'LH:Quadrupole': 'wave 1', 'SS:Rhea': 'wave 1',
   'OW:Halberd': 'wave 1', 'OW:Jormangund': 'wave 1', 'OW:Partisan': 'wave 1',
   'OW:Cauldron': 'wave 1', 'LH:Conduit': 'wave 1', 'OW:Clydesdale': 'wave 1',
@@ -98,7 +93,7 @@ describe('built-in card effect coverage', () => {
     expect(stale).toEqual([])
   })
 
-  it('the gap is exactly 65 cards at wave 0', () => {
-    expect(Object.keys(KNOWN_GAPS)).toHaveLength(64)
+  it('the gap shrinks as waves land', () => {
+    expect(Object.keys(KNOWN_GAPS)).toHaveLength(47)
   })
 })

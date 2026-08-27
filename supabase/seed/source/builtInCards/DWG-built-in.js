@@ -51,6 +51,7 @@ export const dwgVehicles = [
         blueprintId: null,
         keywords: [KEYWORDS.SCRAPPY],
         meta: {
+            [TRIGGERS.ON_PLAY]: 'ransackOnPlay',
         }
     },{
         name: 'Plunderer',

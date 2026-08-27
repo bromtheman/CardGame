@@ -141,6 +141,7 @@ export const owVehicles = [
         blueprintId: null,
         keywords: [KEYWORDS.BLOCKER],
         meta: {
+            [TRIGGERS.ON_PLAY]: 'bulwarkOnPlay',
         }
     },
     {
@@ -287,7 +288,10 @@ export const owVehicles = [
         type: 'vehicle',
         faction: FACTIONS.OW,
         blueprintId: null,
-        keywords: []
+        keywords: [],
+        meta: {
+            [TRIGGERS.ON_PLAY]: 'rookOnPlay',
+        }
     },{
         name: 'Partisan',
         isBuiltIn: true,
@@ -335,7 +339,10 @@ export const owVehicles = [
         type: 'vehicle',
         faction: FACTIONS.OW,
         blueprintId: null,
-        keywords: [KEYWORDS.MOBILE]
+        keywords: [KEYWORDS.MOBILE],
+        meta: {
+            [TRIGGERS.ON_PLAY]: 'mandrelOnPlay',
+        }
     },
     {
         name: 'Iron Cordon',
@@ -380,7 +387,10 @@ export const owVehicles = [
         type: 'vehicle',
         faction: FACTIONS.OW,
         blueprintId: null,
-        keywords: []
+        keywords: [],
+        meta: {
+            [TRIGGERS.ON_DEATH]: 'javelinOnDeath',
+        }
     },
     {
         name: 'Clydesdale',

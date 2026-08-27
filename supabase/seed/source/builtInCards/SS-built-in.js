@@ -16,6 +16,7 @@ export const ssVehicles = [
         blueprintId: null,
         keywords: [KEYWORDS.BLOCKER],
         meta: {
+            [TRIGGERS.ON_DEATH]: 'ironMaidenOnDeath',
         }
     },{
         name: 'Victoria',
@@ -32,6 +33,7 @@ export const ssVehicles = [
         blueprintId: null,
         keywords: [],
         meta: {
+            [TRIGGERS.ON_DEATH]: 'victoriaOnDeath',
         }
     },
     {
@@ -49,6 +51,7 @@ export const ssVehicles = [
         blueprintId: null,
         keywords: [KEYWORDS.BLOCKER],
         meta: {
+            [TRIGGERS.ON_DEATH]: 'trondheimOnDeath',
         }
     },
     {
@@ -213,6 +216,7 @@ export const ssVehicles = [
         blueprintId: null,
         keywords: [],
         meta: {
+            [TRIGGERS.ON_PLAY]: 'resoluteOnPlay',
         }
     }, {
         name: 'Dryad',
@@ -330,6 +334,7 @@ export const ssVehicles = [
         blueprintId: null,
         keywords: [KEYWORDS.HALF_COST, KEYWORDS.TEMPORARY],
         meta: {
+            [TRIGGERS.ON_PLAY]: 'maelstromOnPlay',
         }
     },
     {

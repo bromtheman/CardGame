@@ -2,6 +2,7 @@ import { DOUBLE_UP_MAX_COST, KEYWORDS, RESERVES_CARD_COUNT } from '../gameSettin
 import type { ZoneCardEntry } from '../engine/engineTypes.ts'
 import { drawCard, zoneById } from '../engine/gameEngine.ts'
 import { effectiveMaterialCostOf } from '../engine/placement.ts'
+import { grant } from './primitives.ts'
 import { registerCostModifier, registerEffect } from './registry.ts'
 import type { EffectPayload } from './registry.ts'
 
@@ -13,6 +14,8 @@ const drawPlusCp = ({ game, actor, ctx }: EffectPayload): boolean => {
 }
 registerEffect('marauderOnPlay', drawPlusCp)
 registerEffect('crossbonesOnPlay', drawPlusCp)
+registerEffect('ransackOnPlay', grant({ draw: 1, cp: 1 }))
+registerEffect('paddlegunEffect', grant({ draw: 1, from: 'enemy' }))
 
 // cost -20k per friendly DWG vehicle on the field (Plunderer)
 registerCostModifier('plundererCostModifier', (state, side) => {
