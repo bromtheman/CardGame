@@ -9,7 +9,7 @@ import { PhysicalCard } from '../../components/PhysicalCard'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
 import type { MoveMode, SwapMode } from './HeroPowerBar'
 import {
-  CARD_H, CARD_W, LIFT_PX, RENDERED_CARD_H, REST_SCALE, fanLayout,
+  CARD_H, CARD_W, RENDERED_CARD_H, REST_SCALE, fanLayout,
 } from './handFanLayout'
 
 // A card "has an effect" if any of its meta trigger keys (or costModifier)
@@ -203,7 +203,17 @@ export function HandBar({
               }}
               style={{
                 left: slot.left,
-                bottom: lifted ? LIFT_PX : -slot.arcY,
+                // The lift must NEVER translate this card. `bottom` stays on the
+                // resting arc and the rise comes purely from scaling about
+                // `bottom center`, which grows the card upward while pinning its
+                // bottom edge. Translating up instead moved the card's bottom
+                // edge out from under a cursor hovering near it: the card left
+                // the pointer, pointerleave dropped it, it fell back under the
+                // pointer, pointerenter lifted it again — a flicker loop, and
+                // with two overlapping cards they alternated. Scaling from a
+                // fixed origin cannot do that, because every point inside the
+                // resting card is still inside the grown one.
+                bottom: -slot.arcY,
                 width: CARD_W,
                 height: CARD_H,
                 zIndex: lifted ? 50 : i,

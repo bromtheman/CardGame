@@ -100,7 +100,6 @@ by eye during the browser pass, but the plan implements these:
 | `MAX_STEP_RATIO` | 0.55 | Cap on spread, so a small hand stays a fan rather than a spaced-out row |
 | `DEG_PER_CARD` | 4 | Total sweep of ~20° at five cards |
 | `ARC_K` | 1.6 | Vertical drop in px at the fan's edges |
-| `LIFT_PX` | 48 | Rise of the lifted card |
 
 Worked example at the current `max-w-6xl` page (~1104px usable, `cardWidth` = 210):
 five cards give `step` = 115 (ratio-capped), spanning 670px; twelve give `step` = 81,
@@ -110,8 +109,16 @@ spanning 1101px. Both fit without scrolling.
 
 `HandBar` holds a `liftedId` in state, set by `onPointerEnter` and `onFocus`, cleared
 by `onPointerLeave` and `onBlur`. The lifted card straightens to vertical (`rotate(0)`),
-scales from `REST_SCALE` to `1`, translates up by `LIFT_PX`, and raises `z-index`, over
-a ~150ms transition.
+scales from `REST_SCALE` to `1` about `bottom center`, and raises `z-index`, over a
+~150ms transition.
+
+**The lift must never translate the card.** An earlier revision also moved it up by a
+`LIFT_PX` constant, which slid the card's bottom edge out from under a cursor hovering
+near it: the card left the pointer, `pointerleave` dropped it, it fell back under the
+pointer, `pointerenter` lifted it again. Overlapping cards alternated in that loop.
+Scaling about a pinned bottom edge is immune, because every point inside the resting
+card is still inside the grown one — the rise comes entirely from the card getting
+taller.
 
 **Only the lifted card renders its action buttons** (`Play`, `Target`; see §7 for
 `Reveal`). This resolves the overlap problem by construction rather than by z-index
