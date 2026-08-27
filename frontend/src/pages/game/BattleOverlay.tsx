@@ -93,6 +93,10 @@ function ReportForm({
     const p = participants.find((x) => x.entry.instanceId === id)
     if (p) owedBySide[p.side] += repairCostOf(p.entry)
   }
+  // Single source of truth for which vehicles the engine will auto-repair —
+  // mirrors DecisionPanel below, so the submitter's preview can never drift
+  // from what SUBMIT_BATTLE_REPORT actually resolves to.
+  const autoIds = autoRepairIds(participants, results)
   return (
     <div className="mt-4 border-t border-ocean-600/50 pt-3">
       <h3 className="font-display text-lg">Battle report</h3>
@@ -110,8 +114,12 @@ function ReportForm({
             const fragile = entry.keywords.includes(KEYWORDS.FRAGILE)
             const inBand = hp >= REPAIR_WINDOW_MIN_PERCENT && hp < SURVIVE_HP_PERCENT
             const mine = side === mySide
-            const auto = inBand && !fragile && entry.keywords.includes(KEYWORDS.SCRAPPY)
-            const repairable = inBand && !fragile && mine && !auto
+            const isAuto = autoIds.includes(entry.instanceId)
+            const repairable = inBand && !fragile && mine && !isAuto
+            // "Their captain decides" implies a pending decision — only true
+            // where a repair decision could genuinely be made. Otherwise (out
+            // of band, Fragile, or already auto-repaired) show a neutral dash.
+            const theirsToDecide = inBand && !fragile && !mine && !isAuto
             const cost = repairCostOf(entry)
             const checked = repairs.includes(entry.instanceId)
             // Running per-side total of currently-checked repairs (plus this
@@ -138,10 +146,12 @@ function ReportForm({
                   />
                 </td>
                 <td className="py-1">
-                  {auto ? (
+                  {isAuto ? (
                     <span className="text-xs text-brass-400">Auto-repaired (free)</span>
                   ) : !mine ? (
-                    <span className="text-xs text-ocean-300/60">Their captain decides</span>
+                    <span className="text-xs text-ocean-300/60">
+                      {theirsToDecide ? 'Their captain decides' : '—'}
+                    </span>
                   ) : (
                     <label className={`flex items-center gap-1 ${repairable ? '' : 'opacity-40'}`}>
                       <input
