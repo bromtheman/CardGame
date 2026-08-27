@@ -12,6 +12,26 @@ export function repairCostOf(card: { materialCost: number; keywords: string[] })
   return Math.ceil(effectiveMaterialCostOf(card) * REPAIR_COST_RATE)
 }
 
+// Scrappy vehicles repair for free, so the engine applies it unconditionally
+// rather than asking — there is no decision to make when the cost is zero.
+// Fragile can never repair, and the band still gates everything. Exported so
+// BattleOverlay previews exactly what the engine will do.
+export function autoRepairIds(
+  participants: { entry: { instanceId: string; keywords: string[] }; side: Side }[],
+  results: Record<string, number>,
+): string[] {
+  const ids: string[] = []
+  for (const { entry } of participants) {
+    const hp = results[entry.instanceId]
+    if (hp === undefined) continue
+    if (hp < REPAIR_WINDOW_MIN_PERCENT || hp >= SURVIVE_HP_PERCENT) continue
+    if (entry.keywords.includes(KEYWORDS.FRAGILE)) continue
+    if (!entry.keywords.includes(KEYWORDS.SCRAPPY)) continue
+    ids.push(entry.instanceId)
+  }
+  return ids
+}
+
 function participantsOf(game: EngineGame): Map<string, { entry: ZoneCardEntry; side: Side }> {
   const battle = game.state.activeBattle!
   const zone = zoneById(game.state, battle.zoneId)!
@@ -54,6 +74,9 @@ registerHandler('SUBMIT_BATTLE_REPORT', (game, actor, action) => {
     const participant = participants.get(id)
     const hp = action.results[id]
     if (!participant) return err(400, 'Repair selection includes a non-participant')
+    if (participant.side !== actor) {
+      return err(400, `${participant.entry.name} is not yours to repair — its captain decides`)
+    }
     if (hp === undefined || hp < REPAIR_WINDOW_MIN_PERCENT || hp >= SURVIVE_HP_PERCENT) {
       return err(400, `${participant.entry.name} is not in the repairable band`)
     }
@@ -77,9 +100,35 @@ registerHandler('DECIDE_BATTLE_REPORT', (game, actor, action, ctx) => {
     return { ok: true, game }
   }
   const participants = participantsOf(game)
-  // Repair affordability first (all-or-nothing).
+  const roster = [...participants.values()]
+
+  // Each side chooses only for its own vehicles: the submitter's picks came
+  // with the report, the approver's arrive with the decision.
+  const approverRepairs = Array.isArray(action.repairs) ? action.repairs : []
+  for (const id of approverRepairs) {
+    const p = participants.get(id)
+    if (!p) return err(400, 'Repair selection includes a non-participant')
+    if (p.side !== actor) return err(400, `${p.entry.name} is not yours to repair — its captain decides`)
+    const hp = report.results[id]
+    if (hp === undefined || hp < REPAIR_WINDOW_MIN_PERCENT || hp >= SURVIVE_HP_PERCENT) {
+      return err(400, `${p.entry.name} is not in the repairable band`)
+    }
+    if (p.entry.keywords.includes(KEYWORDS.FRAGILE)) {
+      return err(400, `${p.entry.name} is Fragile and cannot be repaired`)
+    }
+  }
+
+  // A Set both unions the two sides' picks and makes an explicitly-listed
+  // Scrappy vehicle redundant rather than double-charged.
+  const repairIds = new Set([
+    ...report.repairs,
+    ...approverRepairs,
+    ...autoRepairIds(roster, report.results),
+  ])
+
+  // Repair affordability first (all-or-nothing), per owner.
   const owed: Record<Side, number> = { a: 0, b: 0 }
-  for (const id of report.repairs) {
+  for (const id of repairIds) {
     const p = participants.get(id)
     if (p) owed[p.side] += repairCostOf(p.entry)
   }
@@ -95,7 +144,7 @@ registerHandler('DECIDE_BATTLE_REPORT', (game, actor, action, ctx) => {
   for (const [id, { entry, side }] of participants) {
     const hp = report.results[id]
     const survives = hp >= SURVIVE_HP_PERCENT ||
-      (hp >= REPAIR_WINDOW_MIN_PERCENT && report.repairs.includes(id))
+      (hp >= REPAIR_WINDOW_MIN_PERCENT && repairIds.has(id))
     if (!survives) {
       zone.cards[side] = zone.cards[side].filter((c) => c.instanceId !== id)
       const { instanceId: _i, playedOnTurn: _p, movedOnTurn: _m, ...snapshot } = entry
@@ -103,7 +152,7 @@ registerHandler('DECIDE_BATTLE_REPORT', (game, actor, action, ctx) => {
       destroyedCount++
       game.state.log.push(`${entry.name} was destroyed (${hp}%)`)
       destroyedEntries.push({ entry, side })
-    } else if (report.repairs.includes(id)) {
+    } else if (repairIds.has(id)) {
       game.state.log.push(`${entry.name} was repaired (${hp}%)`)
     }
   }
