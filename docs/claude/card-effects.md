@@ -14,10 +14,10 @@ triggers them. Prereq: skim [architecture.md](architecture.md) for engine basics
 - `noteUnimplemented(game, card)` scans every meta key on the card and logs a
   play-time note for effect names with no implementation. Unimplemented cards play
   vanilla — never reject a card for having an unknown effect name.
-- `CATALOG_EFFECTS` — the set of effect names that need `ctx.catalog` (currently
-  `reservesEffect`, `spawnBuccaneerEffect`). If your new effect mints cards from
-  the DB catalog, add its name here AND make sure `game-action`'s catalog probe
-  covers the cards it needs.
+- `CATALOG_EFFECTS` — derived from `registerEffect(name, fn, { needsCatalog: true })`,
+  so it can never drift from the implementations. If your effect mints cards from
+  the DB catalog, pass the flag; `game-action`'s probe scans the played hand card
+  plus every on-field card on both sides.
 - Implemented DWG effects live in `shared/effects/dwgEffects.ts`; its import in
   `shared/engine/index.ts` is what registers them.
 
@@ -71,6 +71,26 @@ the duplicate (open backlog item).
     vehicles auto-repair in the 80–89.999% band with no player prompt, so a beneficial
     death trigger on a Scrappy card would be silently unreachable. (Loggerhead hit this
     and had `SCRAPPY` removed.)
+
+## Primitives (`shared/effects/primitives.ts`)
+
+Most cards are a parameterised factory, not a bespoke function. Registrations
+live in per-faction modules (`dwgEffects.ts`, `owEffects.ts`, `ssEffects.ts`,
+`lhEffects.ts`, `wfEffects.ts`), each of which needs a side-effect import in
+`shared/engine/index.ts` AND an entry in `shared-manifest.json`.
+
+| Factory | Use |
+|---|---|
+| `grant({draw, cp, materials, from})` | draw cards and/or add CP/materials; `from: 'enemy'` takes from the opponent's deck |
+| `drawFromPool({source, filter, count, strip, allowEmpty})` | mint from the catalog or pull from your own deck |
+| `whenPlayed(predicate, body)` | condition on the zone the card landed in; use `zoneOccupants(p, 'own' \| 'either')`, which excludes what this play just placed |
+| `grantKeywords({keywords, target, filter})` | idempotently add keywords to a card in hand or on the field |
+| `costDelta({delta, filter})` | stamp a persistent per-instance discount on a card in hand |
+| `sequence(...fns)` | run effects in order, stopping at the first failure |
+
+Coverage is enforced by `supabase/seed/effectCoverage.test.ts`. Its `KNOWN_GAPS`
+map is shrink-only — a third assertion rejects stale entries, so closing a card
+without deleting its entry fails the build.
 
 ## Play-time cost modifiers
 

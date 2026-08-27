@@ -50,6 +50,7 @@ export const GT_AIRSHIP = [
         blueprintId: null,
         keywords: [KEYWORDS.TEMPORARY],
         meta: {
+            additionalSpawns: 1,
         }
     },
     {
