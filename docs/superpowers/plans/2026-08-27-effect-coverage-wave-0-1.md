@@ -25,6 +25,8 @@ Every task's requirements implicitly include this section.
 - `effectiveCostInGame` (play-time, modifier-aware) and `effectiveMaterialCostOf` (damage, repairs, in-battle resources) are **different authorities**. Never mix them.
 - Seed source changes require `npm run seed:build`, which rewrites `supabase/seed/seed_data.sql`. Commit both.
 - Effect names are matched exactly after `.trim()`. Seeded data contains stray whitespace — always resolve through `effectName`.
+- **Read a file's existing imports before adding any.** Several tasks append tests to files that already import what they need — `shared/effects/registry.test.ts` already imports `CATALOG_EFFECTS`, `noteUnimplemented`, `registerEffect`, `inst` and `makeGame`; `shared/engine/placement.test.ts` already imports `applyAction`, `effectiveCostInGame`, `effectiveMaterialCostOf`, `inst`, `makeCtx`, `makeGame` and `zoneEntry`. Merge new names into the existing statement for a specifier; never add a second `import` from the same path. Where a task's snippet shows an import you already have, take the names, not the line.
+- **Do not delete or rewrite code a previous task added to a shared file.** Tasks 10, 11 and 12 all edit `shared/engine/placement.ts`, and Tasks 5, 8, 10, 11 and 13 all append to `shared/effects/primitives.ts`. Apply your task's change surgically and leave everything else exactly as you found it.
 
 ---
 
@@ -242,18 +244,16 @@ export const DATA_EFFECT_KEYS = ['additionalSpawns', 'resourceSurge'] as const
 // effect at all gets its own note — otherwise it would fail in total silence.
 export function noteUnimplemented(game: EngineGame, card: CardInstance): void {
   let namedAny = false
-  let implementedAny = false
   for (const key of ALL_META_KEYS) {
     const name = effectName(card, key)
     if (name === null) continue
     namedAny = true
-    if (isImplemented(name)) {
-      implementedAny = true
-      continue
-    }
+    if (isImplemented(name)) continue
     game.state.log.push(`${card.name}: effect "${name}" is not implemented yet — plays as vanilla`)
   }
-  if (namedAny || implementedAny) return
+  // A card that named any effect already had its say above — implemented
+  // ones work, unimplemented ones were just reported.
+  if (namedAny) return
   const hasData = DATA_EFFECT_KEYS.some((k) => card.meta[k] !== undefined && card.meta[k] !== null)
   if (!hasData && card.cardText.trim() !== '') {
     game.state.log.push(`${card.name}: its card text has no implemented effect yet — plays as vanilla`)
@@ -341,7 +341,8 @@ const KNOWN_GAPS: Record<string, string> = {
   'DWG:Recurring Threat': 'wave 5', 'OW:Sabotage': 'wave 5',
 }
 
-function classify(card: { faction: string; name: string; cardText: string; meta?: unknown }) {
+// cardText is optional on SeedCard, so it must be optional here too.
+function classify(card: { faction: string; name: string; cardText?: string; meta?: unknown }) {
   const meta = (card.meta ?? {}) as Record<string, unknown>
   const names = ALL_META_KEYS
     .map((k) => effectName({ meta }, k))
@@ -1696,7 +1697,7 @@ git commit -m "feat(effects): add whenPlayed and wire Clydesdale and Sapphire"
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `shared/engine/placement.test.ts`:
+Append to `shared/engine/placement.test.ts`. The file already imports `effectiveCostInGame`, `effectiveMaterialCostOf`, `inst` and `makeGame`, but **not** `KEYWORDS` — add it to the existing `'../gameSettings.ts'` import beside `ADDITIONAL_SPAWNS_CAP`.
 
 ```ts
 describe('effectiveCostInGame — costDelta', () => {
@@ -1935,7 +1936,7 @@ Conditional Half-Cost suppression. Per spec decision 8 this is a **price-time** 
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `shared/engine/placement.test.ts`:
+Append to `shared/engine/placement.test.ts`. The file already imports `applyAction`, `effectiveCostInGame`, `effectiveMaterialCostOf`, `inst`, `makeCtx` and `makeGame`, but **not** `KEYWORDS` — add it to the existing `'../gameSettings.ts'` import beside `ADDITIONAL_SPAWNS_CAP`.
 
 ```ts
 const PREDATOR_META = { resourceSurge: { materialsOver: 120_000, extraSpawns: 1 } }
@@ -2039,7 +2040,7 @@ export function surgeSpawnsFor(card: CardInstance): number {
 }
 ```
 
-Then use it inside `effectiveCostInGame` — replace its final line:
+Then use it inside `effectiveCostInGame` — replace **only its final `return` line**, keeping Task 11's `delta` lookup and the `modified` computation exactly as they are:
 
 ```ts
   const keywords = halfCostSuppressed(state, side, card)
@@ -2047,6 +2048,8 @@ Then use it inside `effectiveCostInGame` — replace its final line:
     : card.keywords
   return Math.max(0, effectiveMaterialCostOf({ materialCost: modified, keywords }))
 ```
+
+`effectiveMaterialCostOf` reads only `materialCost` and `keywords`, so dropping the `...card` spread is safe. `KEYWORDS` is already imported in `placement.ts`.
 
 - [ ] **Step 4: Add the extra hull**
 
@@ -2063,12 +2066,14 @@ In `PLAY_CARD_TO_ZONE`, capture the surge **before** `pay()` — `pay` reduces m
   pay(game, actor, card)
 ```
 
-and change the spawn count:
+and change **only the spawn-count computation** — the two lines that produce `extra`:
 
 ```ts
     const printed = Math.max(0, Math.floor(Number(card.meta.additionalSpawns) || 0))
     const extra = Math.min(printed + (surged ? surgeSpawnsFor(card) : 0), ADDITIONAL_SPAWNS_CAP)
 ```
+
+⚠️ **Task 10 already added `placedInstanceIds` collection to this same block**, including a `placedInstanceIds.push(copy.instanceId)` inside the spawn loop. Leave every one of those lines in place — you are replacing the `extra` calculation, not the block. Verify after editing that both `placedInstanceIds.push(...)` calls survive, or Clydesdale and Sapphire silently break.
 
 - [ ] **Step 5: Run tests to verify they pass**
 
