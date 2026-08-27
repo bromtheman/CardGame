@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 
-// Shared Escape-to-cancel behavior for both dialogs below — only listens
+// Shared Escape-to-cancel behavior for the dialogs below (and CardDetailsModal) — only listens
 // while open, and always binds the latest onCancel via a ref-free effect
 // dependency (re-registers when onCancel identity changes, which is fine
 // since call sites pass a stable-per-render closure).
-function useEscapeToCancel(open: boolean, onCancel: () => void) {
+export function useEscapeToCancel(open: boolean, onCancel: () => void) {
   useEffect(() => {
     if (!open) return
     function onKeyDown(e: KeyboardEvent) {

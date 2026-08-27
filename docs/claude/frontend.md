@@ -19,6 +19,13 @@ Stack: Vite + React 19 + TypeScript strict + Tailwind v4 (CSS-first tokens in
 - Dialogs: use `ConfirmDialog` / `PromptDialog` from
   `src/components/ConfirmDialog.tsx`. Native `window.confirm/prompt/alert` are
   banned (all removed in Phase 6).
+- Card faces: `PhysicalCard` (collection/hand) and `MiniVehicle` (in-zone) each
+  own a Details affordance that opens `CardDetailsModal` — a full-screen blow-up
+  plus the keyword/vehicle-type glossary from `src/lib/keywords.ts`. The modal is
+  portalled to `document.body` because both are rendered inside `scale-*`
+  wrappers, which would otherwise capture `position: fixed`. Keyword rule text
+  lives in that one module (frontend-only, so it is outside functions:sync);
+  `keywords.test.ts` fails if a KEYWORDS/VEHICLE_TYPES value has no entry.
 - Function errors: `FunctionsHttpError` → `await error.context.json()` →
   `errors.join('; ')` rendered inline near the triggering control (pattern in
   `GamesPage.tsx` / `useGameActions.ts`).

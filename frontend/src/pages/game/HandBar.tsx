@@ -4,20 +4,10 @@ import type { GameAction, Side } from '@shared/engine/engineTypes'
 import { effectiveCostInGame, effectName, legalZonesFor } from '@shared/engine/index'
 import { TRIGGERS } from '@shared/gameSettings'
 import { shortHandNumber } from '@shared/format'
-import type { CardRow } from '../../lib/cards'
+import { cardInstanceToRow } from '../../lib/cards'
 import { PhysicalCard } from '../../components/PhysicalCard'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
 import type { MoveMode, SwapMode } from './HeroPowerBar'
-
-function instanceToCardRow(c: CardInstance): CardRow {
-  return {
-    id: c.instanceId, name: c.name, is_built_in: c.isBuiltIn, owner_id: c.ownerId,
-    faction: c.faction, type: c.type, vehicle_type: c.vehicleType,
-    blueprint_cost: c.blueprintCost, material_cost: c.materialCost, cp_cost: c.cpCost,
-    card_text: c.cardText, image_url: c.imageUrl,
-    keywords: c.keywords, meta: c.meta, created_at: '',
-  } as CardRow
-}
 
 // A card "has an effect" if any of its meta trigger keys (or costModifier)
 // resolve to a name — used only to decide whether the no-op confirm dialog
@@ -167,7 +157,8 @@ export function HandBar({
               }`}
             >
               <PhysicalCard
-                card={instanceToCardRow(c)}
+                card={cardInstanceToRow(c)}
+                effectiveCost={effectiveCost}
                 onClick={c.type === 'vehicle' ? () => handleVehicleClick(c) : undefined}
               />
               {effectiveCost !== c.materialCost && (
