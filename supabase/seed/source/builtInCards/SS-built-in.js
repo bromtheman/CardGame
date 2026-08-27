@@ -353,8 +353,9 @@ export const ssVehicles = [
         blueprintId: null,
         keywords: [KEYWORDS.HALF_COST, KEYWORDS.TEMPORARY],
         meta: {
+            resourceSurge: { materialsOver: 120000, extraSpawns: 1 },
         }
-    },  
+    },
     {
         name: 'Mobula',
         isBuiltIn: true,

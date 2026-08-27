@@ -48,6 +48,29 @@ export function canAfford(state: PublicGameState, side: Side, card: CardInstance
   )
 }
 
+interface ResourceSurge { materialsOver?: number; materialsAtLeast?: number; extraSpawns?: number }
+
+const surgeOf = (card: CardInstance): ResourceSurge | null => {
+  const raw = card.meta.resourceSurge
+  return raw !== null && typeof raw === 'object' && !Array.isArray(raw) ? (raw as ResourceSurge) : null
+}
+
+// Spec §4.6: a card whose resource condition holds loses Half-Cost for
+// PRICING ONLY. Hulls that land keep their printed keywords, so repairs,
+// base damage, in-battle resources and the Temporary cull are untouched.
+export function halfCostSuppressed(state: PublicGameState, side: Side, card: CardInstance): boolean {
+  const surge = surgeOf(card)
+  if (!surge) return false
+  const materials = state.resources[side].materials
+  if (typeof surge.materialsOver === 'number') return materials > surge.materialsOver
+  if (typeof surge.materialsAtLeast === 'number') return materials >= surge.materialsAtLeast
+  return false
+}
+
+export function surgeSpawnsFor(card: CardInstance): number {
+  return Math.max(0, Math.floor(Number(surgeOf(card)?.extraSpawns) || 0))
+}
+
 // Play-time cost: (base + registered modifier + stored costDelta), Half-Cost
 // halving, clamp ≥ 0. Base damage, repairs, and in-battle resources keep
 // using effectiveMaterialCostOf — these are play-time-only mechanics.
@@ -56,7 +79,10 @@ export function effectiveCostInGame(state: PublicGameState, side: Side, card: Ca
   const fn = name !== null ? costModifierFor(name) : null
   const delta = typeof card.meta.costDelta === 'number' ? card.meta.costDelta : 0
   const modified = card.materialCost + (fn ? fn(state, side, card) : 0) + delta
-  return Math.max(0, effectiveMaterialCostOf({ ...card, materialCost: modified }))
+  const keywords = halfCostSuppressed(state, side, card)
+    ? card.keywords.filter((k) => k !== KEYWORDS.HALF_COST)
+    : card.keywords
+  return Math.max(0, effectiveMaterialCostOf({ materialCost: modified, keywords }))
 }
 
 function canAffordInGame(game: EngineGame, side: Side, card: CardInstance): boolean {
@@ -136,6 +162,10 @@ registerHandler('PLAY_CARD_TO_ZONE', (game, actor, action, ctx) => {
 
   if (game.state.alertCard?.instanceId === action.instanceId) game.state.alertCard = null
 
+  // Read the surge before paying — pay() reduces materials, which would flip
+  // the condition off before the spawn count is decided.
+  const surged = halfCostSuppressed(game.state, actor, card)
+
   takeFromHand(game, actor, action.instanceId)
   pay(game, actor, card)
 
@@ -145,8 +175,10 @@ registerHandler('PLAY_CARD_TO_ZONE', (game, actor, action, ctx) => {
     const entry: ZoneCardEntry = { ...card, playedOnTurn: game.turnNumber, movedOnTurn: null }
     zone.cards[actor].push(entry)
     placedInstanceIds.push(entry.instanceId)
-    // additionalSpawns: one payment lands N+1 hulls (spec §3.9).
-    const extra = Math.min(Math.max(0, Math.floor(Number(card.meta.additionalSpawns) || 0)), ADDITIONAL_SPAWNS_CAP)
+    // additionalSpawns: one payment lands N+1 hulls (spec §3.9). resourceSurge
+    // (spec §4.6) adds more on top, but only when the surge condition held.
+    const printed = Math.max(0, Math.floor(Number(card.meta.additionalSpawns) || 0))
+    const extra = Math.min(printed + (surged ? surgeSpawnsFor(card) : 0), ADDITIONAL_SPAWNS_CAP)
     for (let i = 0; i < extra; i++) {
       const copy: ZoneCardEntry = {
         ...card, instanceId: ctx.newId(), playedOnTurn: game.turnNumber, movedOnTurn: null,

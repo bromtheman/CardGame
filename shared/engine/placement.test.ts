@@ -513,3 +513,69 @@ describe('effectiveCostInGame — costDelta', () => {
     expect(effectiveMaterialCostOf(card)).toBe(550_000)
   })
 })
+
+const PREDATOR_META = { resourceSurge: { materialsOver: 120_000, extraSpawns: 1 } }
+const ORBIT_META = { resourceSurge: { materialsAtLeast: 140_000, extraSpawns: 1 } }
+
+describe('resourceSurge — conditional Half-Cost suppression', () => {
+  const priced = (materials: number, meta: Record<string, unknown>, cost: number) => {
+    const game = makeGame()
+    game.state.resources.a.materials = materials
+    const card = inst({ materialCost: cost, keywords: [KEYWORDS.HALF_COST], meta })
+    return effectiveCostInGame(game.state, 'a', card)
+  }
+
+  it('PredatorX halves below the threshold', () => {
+    expect(priced(120_000, PREDATOR_META, 120_000)).toBe(60_000)
+  })
+
+  it('PredatorX charges full price strictly above the threshold', () => {
+    expect(priced(120_001, PREDATOR_META, 120_000)).toBe(120_000)
+  })
+
+  it('Orbit charges full price at exactly the threshold', () => {
+    expect(priced(140_000, ORBIT_META, 140_000)).toBe(140_000)
+  })
+
+  it('Orbit halves below the threshold', () => {
+    expect(priced(139_999, ORBIT_META, 140_000)).toBe(70_000)
+  })
+
+  it('leaves effectiveMaterialCostOf alone', () => {
+    const card = inst({ materialCost: 120_000, keywords: [KEYWORDS.HALF_COST], meta: PREDATOR_META })
+    expect(effectiveMaterialCostOf(card)).toBe(60_000)
+  })
+})
+
+describe('resourceSurge — the extra hull', () => {
+  const deploy = (materials: number) => {
+    const card = inst({
+      name: 'PredatorX', vehicleType: 'plane', materialCost: 120_000,
+      keywords: [KEYWORDS.HALF_COST, KEYWORDS.TEMPORARY], meta: PREDATOR_META,
+    })
+    const game = makeGame({ privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } } })
+    game.state.resources.a.materials = materials
+    const r = applyAction(game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    return r.game
+  }
+
+  it('lands two hulls when surged, charging full price', () => {
+    const game = deploy(200_000)
+    expect(game.state.zones[0].cards.a).toHaveLength(2)
+    expect(game.state.resources.a.materials).toBe(80_000)
+  })
+
+  it('lands one hull at half price when not surged', () => {
+    const game = deploy(100_000)
+    expect(game.state.zones[0].cards.a).toHaveLength(1)
+    expect(game.state.resources.a.materials).toBe(40_000)
+  })
+
+  it('the landed hulls keep their printed Half-Cost keyword', () => {
+    const game = deploy(200_000)
+    for (const entry of game.state.zones[0].cards.a) {
+      expect(entry.keywords).toContain(KEYWORDS.HALF_COST)
+    }
+  })
+})

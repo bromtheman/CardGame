@@ -352,7 +352,7 @@ export const lhVehicles = [
         blueprintId: null,
         keywords: [KEYWORDS.HALF_COST, KEYWORDS.TEMPORARY],
         meta: {
-            [TRIGGERS.ON_PLAY]: 'orbitEffect',
+            resourceSurge: { materialsAtLeast: 140000, extraSpawns: 1 },
         }
     },
     {
