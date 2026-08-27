@@ -62,8 +62,8 @@ describe('SUBMIT_BATTLE_REPORT', () => {
     })).toMatchObject({ ok: false, status: 400 })
     expect(applyAction(g, 'alice', {
       type: 'SUBMIT_BATTLE_REPORT',
-      results: { [atk.instanceId]: 95, [def.instanceId]: 40 }, repairs: [def.instanceId],
-    })).toMatchObject({ ok: false, status: 400 }) // 40 is below the repair window
+      results: { [atk.instanceId]: 40, [def.instanceId]: 95 }, repairs: [atk.instanceId],
+    })).toMatchObject({ ok: false, status: 400 }) // 40 is below the repair window; atk is alice's own vehicle
   })
 })
 
