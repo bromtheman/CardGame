@@ -210,17 +210,42 @@ export function HandBar({
                 transform: `scale(${lifted ? 1 : REST_SCALE}) rotate(${lifted ? 0 : slot.angleDeg}deg)`,
                 transformOrigin: 'bottom center',
               }}
-              className={`absolute transition-all duration-150 ease-out focus:outline-none ${
-                affordable ? '' : 'opacity-50'
-              } ${selected ? 'rounded-xl ring-4 ring-brass-400' : ''}`}
+              // Unaffordable cards are marked with a red ring and a red cost
+              // badge, never by dimming: cards overlap in the fan, so a
+              // translucent card shows the one behind it through its face.
+              // Selection wins the ring — a vehicle can enter placing mode
+              // while unaffordable, and the server rejects it on play.
+              className={`absolute rounded-xl transition-all duration-150 ease-out focus:outline-none ${
+                selected ? 'ring-4 ring-brass-400' : affordable ? '' : 'ring-2 ring-red-400'
+              }`}
             >
+              {/* In an active game a card press ACTS — deploy the vehicle, play
+                  the ability — for both card types alike; details move to the
+                  corner button PhysicalCard renders whenever onClick is given.
+                  Elsewhere (deck builder, collection, create-card preview) no
+                  onClick is passed, so a press inspects instead.
+
+                  This is also what makes the hand usable on touch. A tap fires
+                  pointerenter (lift) and click together; if the press only
+                  inspected, the portalled details modal would autoFocus, blur
+                  the card, drop the lift, and unmount the Play button before it
+                  could ever be tapped. */}
               <PhysicalCard
                 card={cardInstanceToRow(c)}
                 effectiveCost={effectiveCost}
-                onClick={c.type === 'vehicle' ? () => handleVehicleClick(c) : undefined}
+                unaffordable={!affordable}
+                onClick={
+                  c.type === 'vehicle'
+                    ? () => handleVehicleClick(c)
+                    : () => { if (!busy && affordable) handleAbilityPlay(c) }
+                }
               />
               {effectiveCost !== c.materialCost && (
-                <span className="absolute bottom-3 left-3 flex items-center gap-1 rounded-full bg-ocean-900/90 px-2 py-1 text-xs font-bold text-parchment-100">
+                <span
+                  className={`absolute bottom-3 left-3 flex items-center gap-1 rounded-full px-2 py-1 text-xs font-bold text-parchment-100 ${
+                    affordable ? 'bg-ocean-900/90' : 'bg-red-700/90'
+                  }`}
+                >
                   <span className="text-ocean-300 line-through">{shortHandNumber(c.materialCost)}</span>
                   <span>{shortHandNumber(effectiveCost)}</span>
                 </span>

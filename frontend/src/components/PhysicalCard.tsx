@@ -15,13 +15,19 @@ import { CardDetailsModal } from './CardDetailsModal'
 //     corner "Details" button carries the modal instead.
 // The modal state lives here so no call site has to wire it up.
 export function PhysicalCard({
-  card, onClick, effectiveCost, footer,
+  card, onClick, effectiveCost, unaffordable = false, footer,
 }: {
   card: CardRow
   /** Claims the face's press (play / target). Omit to let it open details. */
   onClick?: () => void
   /** In-game cost when it differs from the printed one — shown in the modal. */
   effectiveCost?: number
+  /**
+   * In-game: the viewer cannot currently pay for this card, so the cost badge
+   * reddens. Deliberately not a dimming/opacity treatment — the hand fans its
+   * cards with overlap, and a translucent card shows the one behind it.
+   */
+  unaffordable?: boolean
   /**
    * Bottom-right corner slot (the deck builder puts its copy stepper here).
    * Takes the place of the "Details" button when both would apply.
@@ -62,7 +68,11 @@ export function PhysicalCard({
       <p className="mt-2 flex-1 overflow-y-auto text-sm leading-snug">{card.card_text}</p>
       <div className="mt-2 flex items-end justify-between">
         <span className="flex items-center gap-1">
-          <span className="rounded-full bg-ocean-900 px-3 py-1 font-bold text-parchment-100">
+          <span
+            className={`rounded-full px-3 py-1 font-bold text-parchment-100 ${
+              unaffordable ? 'bg-red-700' : 'bg-ocean-900'
+            }`}
+          >
             {shortHandNumber(card.material_cost)}
           </span>
           {card.cp_cost > 0 && (
