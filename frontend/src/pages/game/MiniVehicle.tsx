@@ -1,25 +1,16 @@
+import { useState } from 'react'
 import { shortHandNumber } from '@shared/format'
 import { effectiveMaterialCostOf } from '@shared/engine/index'
 import type { ZoneCardEntry } from '@shared/engine/engineTypes'
-import { VEHICLE_TYPES } from '@shared/gameSettings'
 import { KeywordIcons } from '../../components/KeywordIcons'
-import shipIcon from '../../assets/icons/shipSVG.svg'
-import planeIcon from '../../assets/icons/planeSVG.svg'
-import subIcon from '../../assets/icons/submarineSVG.svg'
-import tankIcon from '../../assets/icons/tankSVG.svg'
-import airshipIcon from '../../assets/icons/airShield1SVG.svg'
-import anchorIcon from '../../assets/icons/anchorSVG.svg'
-
-const VEHICLE_ICONS: Record<string, string> = {
-  [VEHICLE_TYPES.SHIP]: shipIcon,
-  [VEHICLE_TYPES.PLANE]: planeIcon,
-  [VEHICLE_TYPES.SUB]: subIcon,
-  [VEHICLE_TYPES.TANK]: tankIcon,
-  [VEHICLE_TYPES.AIRSHIP]: airshipIcon,
-}
+import { CardDetailsModal } from '../../components/CardDetailsModal'
+import { cardInstanceToRow } from '../../lib/cards'
+import { vehicleTypeIcon } from '../../lib/keywords'
 
 // Compact in-zone representation of a played vehicle — always shows the
 // vehicle-type icon (never card art) since it must stay legible at this size.
+// The corner "?" opens the same CardDetailsModal the full card face uses, so a
+// vehicle's keywords stay readable in play and not just in the collection.
 export function MiniVehicle({
   entry,
   turnNumber,
@@ -38,7 +29,8 @@ export function MiniVehicle({
   moveAffordance?: boolean
   onMoveClick?: () => void
 }) {
-  const icon = VEHICLE_ICONS[entry.vehicleType ?? ''] ?? anchorIcon
+  const [detailsOpen, setDetailsOpen] = useState(false)
+  const icon = vehicleTypeIcon(entry.vehicleType)
   const fresh = entry.playedOnTurn === turnNumber
 
   return (
@@ -79,6 +71,24 @@ export function MiniVehicle({
           <KeywordIcons keywords={entry.keywords} />
         </div>
       )}
+      <button
+        type="button"
+        title={`Show ${entry.name} full screen and explain its attributes`}
+        aria-label={`Details for ${entry.name}`}
+        onClick={(e) => {
+          e.stopPropagation()
+          setDetailsOpen(true)
+        }}
+        className="absolute -bottom-1 -right-1 h-4 w-4 rounded-full border border-ocean-600 bg-ocean-900 text-[10px] font-bold leading-none text-parchment-100 hover:bg-brass-400 hover:text-ocean-950"
+      >
+        ?
+      </button>
+      <CardDetailsModal
+        card={cardInstanceToRow(entry)}
+        open={detailsOpen}
+        onClose={() => setDetailsOpen(false)}
+        effectiveCost={effectiveMaterialCostOf(entry)}
+      />
     </div>
   )
 }
