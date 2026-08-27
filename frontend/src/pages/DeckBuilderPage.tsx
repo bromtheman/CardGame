@@ -122,7 +122,7 @@ export function DeckBuilderPage() {
                     max={MAX_COPIES_PER_CARD}
                     onStep={(delta) => stepCopies(c.id, delta)}
                     label={`Copies of ${c.name} in this deck`}
-                    className="border-ocean-600 bg-parchment-300 px-1 py-0.5 text-sm text-ocean-950"
+                    className="border-ocean-600 bg-parchment-300 px-1.5 py-1 text-xl text-ocean-950"
                   />
                 }
               />

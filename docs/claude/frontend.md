@@ -28,7 +28,13 @@ Stack: Vite + React 19 + TypeScript strict + Tailwind v4 (CSS-first tokens in
   The optional `footer` slot fills the bottom-right corner — the deck builder
   puts its `CopyStepper` there — and takes the button's place. The modal is
   portalled to `document.body` because both are rendered inside `scale-*`
-  wrappers, which would otherwise capture `position: fixed`. Keyword rule text
+  wrappers, which would otherwise capture `position: fixed`. **A portal only
+  moves the DOM node, not the React tree** — events still bubble to the card
+  face's `onClick`, so the modal's backdrop handler must `stopPropagation()`
+  or clicking away closes the modal and the same event immediately re-opens
+  it. Its fade-in rides CSS `@starting-style` (Tailwind's `starting:` variant)
+  rather than a rAF-flipped class, which would never fire on a page that isn't
+  compositing; the fade-out holds the overlay mounted for `FADE_MS`. Keyword rule text
   lives in that one module (frontend-only, so it is outside functions:sync);
   `keywords.test.ts` fails if a KEYWORDS/VEHICLE_TYPES value has no entry.
 - Function errors: `FunctionsHttpError` → `await error.context.json()` →
