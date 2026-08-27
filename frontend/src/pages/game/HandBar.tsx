@@ -191,7 +191,9 @@ export function HandBar({
               onPointerEnter={() => lift(c.instanceId)}
               onPointerLeave={() => drop(c.instanceId)}
               onFocus={() => lift(c.instanceId)}
-              onBlur={() => drop(c.instanceId)}
+              onBlur={(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget as Node)) drop(c.instanceId)
+              }}
               style={{
                 left: slot.left,
                 bottom: lifted ? LIFT_PX : -slot.arcY,
