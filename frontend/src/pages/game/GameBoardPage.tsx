@@ -191,7 +191,11 @@ export function GameBoardPage() {
           busy={busy}
         />
       )}
-      <header className="flex flex-wrap items-center justify-between gap-3 rounded border border-ocean-600 bg-ocean-900/60 p-4">
+      {/* Sticky because the board is taller than a viewport: the resource
+          figures were scrolling out of view at exactly the moment a player
+          looks at their hand to decide what they can afford. z-20 keeps it
+          under the lifted hand card (z-50), so a raised card passes over it. */}
+      <header className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-3 rounded border border-ocean-600 bg-ocean-900/95 p-4 backdrop-blur">
         <div>
           <h1 className="font-display text-2xl">vs {names?.get(opponentId) ?? '…'}</h1>
           <p className="text-sm text-ocean-300">Turn {String(game.turn_number)}</p>
@@ -203,14 +207,24 @@ export function GameBoardPage() {
         >
           {isMyTurn ? 'Your turn' : 'Their turn'}
         </span>
-        <div className="flex flex-wrap gap-4 text-sm text-ocean-300">
-          <span className={`flex items-center gap-1 ${liftedUnaffordable ? 'text-red-400' : ''}`}>
-            <img src={ironIcon} alt="materials" className="h-4 w-4" />
+        <div className="flex flex-wrap items-center gap-5">
+          <span
+            className={`flex items-center gap-2 text-2xl font-bold ${
+              liftedUnaffordable ? 'text-red-400' : 'text-brass-400'
+            }`}
+            title={`${state.resources[mySide].materials.toLocaleString()} materials`}
+          >
+            <img src={ironIcon} alt="materials" className="h-6 w-6" />
             {shortHandNumber(state.resources[mySide].materials)}
           </span>
-          <span>CP: {state.resources[mySide].cp}</span>
-          <span>Opponent hand: {state.counts[theirSide].hand}</span>
-          <span>Opponent deck: {state.counts[theirSide].deck}</span>
+          <span className="text-2xl font-bold text-brass-400">
+            {state.resources[mySide].cp}
+            <span className="ml-1 text-sm font-normal text-ocean-300">CP</span>
+          </span>
+          <span className="flex flex-col border-l border-ocean-600 pl-5 text-xs text-ocean-400">
+            <span>Opponent hand: {state.counts[theirSide].hand}</span>
+            <span>Opponent deck: {state.counts[theirSide].deck}</span>
+          </span>
         </div>
         <div className="flex gap-2">
           <button
