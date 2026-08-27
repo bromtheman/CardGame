@@ -64,6 +64,21 @@ engine/effects change; `lobby-action` after game-init/deck/lobby changes.
   and flag any hit to a human — this doc does not prescribe what to do about
   one, only that it be found first.
 
+- **A deployed function legitimately reads back with fewer files than you sent.**
+  `get_edge_function` returns the *bundled reachable* module set, not the raw
+  upload: anything reached only through `import type` is erased during
+  transpilation and never appears. This is easy to mistake for the partial
+  payload warned about above. Two data points — `game-action` v5 read back as
+  12 modules of a 16-file manifest, v6 as 17 of 21, and both times the
+  absentees were exactly the type-only files (`types.ts`, `lobbySettings.ts`,
+  `engine/engineTypes.ts`, `engine/deckValidation.ts`).
+
+  So **verify a deploy by content, not by file count**: confirm the version
+  number incremented, grep the returned bundle for symbols the new code should
+  introduce and for ones it should have removed, and check `function_logs` for
+  clean boots. A genuinely partial payload shows up as a missing *runtime*
+  module — which fails at boot, loudly — not as a missing type-only one.
+
 (Backlog: a script that assembles the full-directory payload automatically.)
 
 ## Migrations & data
