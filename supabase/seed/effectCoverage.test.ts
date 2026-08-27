@@ -13,14 +13,11 @@ const EXEMPT: Record<string, string> = {
   'SS:Falcon Squadron': 'Robotic-shaped conduct text: players apply it when reporting results',
 }
 
-// 47 of the 65 gaps (Falcon Squadron is permanently EXEMPT above),
+// 38 of the 65 gaps (Falcon Squadron is permanently EXEMPT above),
 // baselined so the guard is green from day one. Delete entries as their wave
 // lands — the third test rejects stale ones, so this list only shrinks.
 const KNOWN_GAPS: Record<string, string> = {
-  'LH:Ampere': 'wave 1',
-  'LH:Candela': 'wave 1', 'LH:Quadrupole': 'wave 1', 'SS:Rhea': 'wave 1',
-  'OW:Halberd': 'wave 1', 'OW:Jormangund': 'wave 1', 'OW:Partisan': 'wave 1',
-  'OW:Cauldron': 'wave 1', 'LH:Conduit': 'wave 1', 'OW:Clydesdale': 'wave 1',
+  'OW:Clydesdale': 'wave 1',
   'LH:Sapphire': 'wave 1', 'SS:PredatorX': 'wave 1', 'LH:Orbit': 'wave 1',
   'SS:Excalibur': 'wave 1', 'OW:Garrison': 'wave 1', 'SS:Repairmen Ready': 'wave 1',
   'GT:[GT] Osprey': 'wave 1',
@@ -94,6 +91,6 @@ describe('built-in card effect coverage', () => {
   })
 
   it('the gap shrinks as waves land', () => {
-    expect(Object.keys(KNOWN_GAPS)).toHaveLength(47)
+    expect(Object.keys(KNOWN_GAPS)).toHaveLength(38)
   })
 })

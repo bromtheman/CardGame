@@ -168,6 +168,7 @@ export const ssVehicles = [
         blueprintId: null,
         keywords: [KEYWORDS.BLOCKER],
         meta: {
+            [TRIGGERS.ON_PLAY]: 'rheaOnPlay',
         }
     },{
         name: 'Catshark',

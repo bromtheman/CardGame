@@ -89,6 +89,7 @@ export const lhVehicles = [
         blueprintId: null,
         keywords: [],
         meta: {
+            [TRIGGERS.ON_PLAY]: 'ampereOnPlay',
         }
     },
     {
@@ -176,6 +177,7 @@ export const lhVehicles = [
         blueprintId: null,
         keywords: [KEYWORDS.BLOCKER, KEYWORDS.SCRAPPY],
         meta: {
+            [TRIGGERS.ON_PLAY]: 'quadrupoleOnPlay',
         }
     },
     {
@@ -227,6 +229,7 @@ export const lhVehicles = [
         blueprintId: null,
         keywords: [KEYWORDS.BLOCKER, KEYWORDS.SUB_SCREEN],
         meta: {
+            [TRIGGERS.ON_PLAY]: 'candelaOnPlay',
         }
     },
     {

@@ -324,6 +324,7 @@ export const owVehicles = [
         blueprintId: null,
         keywords: [KEYWORDS.SUB_SCREEN],
         meta: {
+            [TRIGGERS.ON_DEATH]: 'halberdOnDeath',
         }
     },
     {
@@ -372,7 +373,10 @@ export const owVehicles = [
         type: 'vehicle',
         faction: FACTIONS.OW,
         blueprintId: null,
-        keywords: []
+        keywords: [],
+        meta: {
+            [TRIGGERS.ON_DEATH]: 'jormangundOnDeath',
+        }
     },
     {
         name: 'Javelin',
@@ -424,7 +428,7 @@ export const owVehicles = [
         faction: FACTIONS.OW,
         blueprintId: null,
         meta: {
-            [TRIGGERS.ON_PLAY]: 'CauldronEffect' 
+            [TRIGGERS.ON_PLAY]: 'cauldronEffect'
         }
     },
     {

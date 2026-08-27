@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { effectFor } from './registry.ts'
-import { inst, makeCtx, makeGame } from '../engine/testFixtures.ts'
+import { inst, makeCtx, makeGame, snap } from '../engine/testFixtures.ts'
 import '../engine/index.ts'
 
 const DRAW_ONE = [
@@ -46,5 +46,66 @@ describe('grant-backed cards', () => {
     expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Enemy Top'])
     expect(game.privates.a.deck.map((c) => c.name)).toEqual(['Own Top'])
     expect(game.state.log.join(' ')).not.toContain('Enemy Top')
+  })
+})
+
+describe('drawFromPool-backed cards', () => {
+  const catalog = [
+    snap({ name: 'TG Obsession', faction: 'TG', type: 'vehicle', materialCost: 330_000 }),
+    snap({ name: 'Warbird', faction: 'GT', vehicleType: 'airship', materialCost: 190_000 }),
+    snap({ name: 'Nimbus', faction: 'GT', vehicleType: 'airship', materialCost: 530_000 }),
+    snap({ name: 'PredatorX', faction: 'SS', vehicleType: 'plane', materialCost: 120_000, keywords: ['halfCost', 'temporary'] }),
+    snap({ name: 'Hydra', faction: 'SS', vehicleType: 'airship', materialCost: 230_000 }),
+  ]
+
+  it.each(['ampereOnPlay', 'candelaOnPlay', 'quadrupoleOnPlay'])(
+    '%s draws a TG Robotics card',
+    (name) => {
+      const game = makeGame()
+      expect(effectFor(name)!({ game, actor: 'a', card: inst(), ctx: makeCtx({ catalog }) })).toBe(true)
+      expect(game.privates.a.hand.map((c) => c.faction)).toEqual(['TG'])
+    },
+  )
+
+  it.each(['halberdOnDeath', 'jormangundOnDeath', 'partisanEffect'])(
+    '%s draws a GT airship',
+    (name) => {
+      const game = makeGame()
+      expect(effectFor(name)!({ game, actor: 'a', card: inst(), ctx: makeCtx({ catalog }) })).toBe(true)
+      const drawn = game.privates.a.hand[0]
+      expect(drawn.faction).toBe('GT')
+      expect(drawn.vehicleType).toBe('airship')
+    },
+  )
+
+  it('rheaOnPlay draws a sub-300k SS plane and strips its temporary keyword', () => {
+    const game = makeGame()
+    expect(effectFor('rheaOnPlay')!({ game, actor: 'a', card: inst(), ctx: makeCtx({ catalog }) })).toBe(true)
+    expect(game.privates.a.hand[0].name).toBe('PredatorX')
+    expect(game.privates.a.hand[0].keywords).toEqual(['halfCost'])
+  })
+
+  it('cauldronEffect pulls a submarine out of your own deck', () => {
+    const game = makeGame()
+    game.privates.a.deck.push(inst({ name: 'My Sub', vehicleType: 'sub' }), inst({ name: 'My Ship' }))
+    expect(effectFor('cauldronEffect')!({ game, actor: 'a', card: inst(), ctx: makeCtx() })).toBe(true)
+    expect(game.privates.a.hand.map((c) => c.name)).toEqual(['My Sub'])
+  })
+
+  it('cauldronEffect resolves when you have no submarine', () => {
+    const game = makeGame()
+    game.privates.a.deck.push(inst({ name: 'My Ship' }))
+    expect(effectFor('cauldronEffect')!({ game, actor: 'a', card: inst(), ctx: makeCtx() })).toBe(true)
+    expect(game.privates.a.hand).toHaveLength(0)
+  })
+
+  it('conduitEffect pulls a player-made ship or tank out of your own deck', () => {
+    const game = makeGame()
+    game.privates.a.deck.push(
+      inst({ name: 'Built-in Ship', isBuiltIn: true, vehicleType: 'ship' }),
+      inst({ name: 'Custom Ship', isBuiltIn: false, vehicleType: 'ship' }),
+    )
+    expect(effectFor('conduitEffect')!({ game, actor: 'a', card: inst(), ctx: makeCtx() })).toBe(true)
+    expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Custom Ship'])
   })
 })

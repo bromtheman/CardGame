@@ -68,3 +68,6 @@ export const ADDITIONAL_SPAWNS_CAP = 10
 export const DOUBLE_UP_MAX_COST = 400_000
 export const RESERVES_CARD_COUNT = 3
 export const CHANGE_ORDER_DELAY_TURNS = 2
+
+export const RHEA_MAX_PLANE_COST = 300_000 // Rhea: "base cost under 300k" (exclusive)
+export const GT_HEAVY_AIRSHIP_MIN_COST = 400_000 // spec §7.3: the GT airship cost cliff
