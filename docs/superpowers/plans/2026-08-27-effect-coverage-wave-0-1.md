@@ -701,13 +701,15 @@ import '../engine/index.ts'
 // "Unknown or not-yet-supported action" — this catches it in CI instead.
 describe('faction effect modules are registered via the engine barrel', () => {
   it('registers a canary from each faction module', () => {
-    expect(effectFor('mandrelOnPlay')).not.toBeNull()   // owEffects
-    expect(effectFor('resoluteOnPlay')).not.toBeNull()  // ssEffects
-    expect(effectFor('ampereOnPlay')).not.toBeNull()    // lhEffects
-    expect(effectFor('purifierEffect')).not.toBeNull()  // wfEffects
+    expect(effectFor('mandrelOnPlay')).not.toBeNull()      // owEffects
+    expect(effectFor('resoluteOnPlay')).not.toBeNull()     // ssEffects
+    expect(effectFor('ampereOnPlay')).not.toBeNull()       // lhEffects
+    expect(effectFor('excruciatorOnPlay')).not.toBeNull()  // wfEffects
   })
 })
 ```
+
+⚠️ **Every canary name must be one that does NOT appear in seed data yet.** `mandrelOnPlay`, `resoluteOnPlay`, `ampereOnPlay` and `excruciatorOnPlay` are all new names invented by this plan — their cards currently carry `meta: {}`, so registering them changes no card's classification. `purifierEffect` would be wrong here: it is an existing seeded name on WF Purifier, so registering it flips that card to "clean" while it is still listed in `KNOWN_GAPS`, and Task 3's stale-entry assertion fails. Task 7 registers `purifierEffect` and removes Purifier from `KNOWN_GAPS` in the same task, which is the only safe pairing.
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -754,10 +756,10 @@ import { grant } from './primitives.ts'
 import { registerEffect } from './registry.ts'
 
 // WF built-in card effects.
-registerEffect('purifierEffect', grant({ draw: 1 }))
+registerEffect('excruciatorOnPlay', grant({ draw: 1 }))
 ```
 
-`ampereOnPlay` is a placeholder body here; Task 9 replaces it with `drawFromPool`.
+`ampereOnPlay` is a placeholder body here; Task 9 replaces it with `drawFromPool`. The other three are already their final bodies — Task 7 keeps them and adds the rest.
 
 - [ ] **Step 4: Wire the barrel**
 
