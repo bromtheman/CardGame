@@ -108,7 +108,7 @@ registerHandler('MOVE_VEHICLE', (game, actor, action) => {
   return moveEntry(game, actor, action.instanceId, action.zoneId, true)
 })
 
-registerHandler('USE_HERO_POWER', (game, actor, action) => {
+registerHandler('USE_HERO_POWER', (game, actor, action, ctx) => {
   if (action.type !== 'USE_HERO_POWER') return err(400, 'Bad action')
   const res = game.state.resources[actor]
   if (game.state.usedHeroPowers[actor].includes(action.power)) {
@@ -143,7 +143,7 @@ registerHandler('USE_HERO_POWER', (game, actor, action) => {
     if (!isMyTurn) return err(409, 'Not your turn')
     if (battleFrozen(game.state)) return err(409, 'Resolve the battle first')
     if (action.power === 'draw') {
-      drawCard(game, actor)
+      drawCard(game, actor, ctx)
       game.state.log.push('Hero Power Draw')
     } else if (action.power === 'salvage') {
       const index = game.state.destroyed[actor].findIndex(

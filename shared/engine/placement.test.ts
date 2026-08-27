@@ -71,7 +71,10 @@ describe('PLAY_ABILITY_CARD', () => {
     expect(r.game.privates.a.hand).toHaveLength(0)
     expect(r.game.state.resources.a.cp).toBe(2)
     expect(r.game.state.log.some((l) => l.includes('Rally resolved'))).toBe(true)
-    expect(r.game.state.destroyed.a).toHaveLength(0)
+    // Spent ability cards land in the discard (state.destroyed) — Task 4.
+    expect(r.game.state.destroyed.a).toHaveLength(1)
+    expect(r.game.state.destroyed.a[0]).toMatchObject({ name: 'Rally' })
+    expect(r.game.state.destroyed.a[0]).not.toHaveProperty('instanceId')
   })
   it('rejects playing a vehicle via the ability action', () => {
     const { g, card } = withHand({ type: 'vehicle', vehicleType: 'ship' })
