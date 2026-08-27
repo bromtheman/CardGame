@@ -17,9 +17,16 @@ const effects = new Map<string, EffectFn>()
 const costModifiers = new Map<string, CostModifierFn>()
 
 // Effects that need the built-in card catalog supplied via EngineContext.
-export const CATALOG_EFFECTS = new Set(['reservesEffect', 'spawnBuccaneerEffect'])
+// Derived from registration so it can never drift from the implementations.
+const catalogEffects = new Set<string>()
+export const CATALOG_EFFECTS: ReadonlySet<string> = catalogEffects
 
-export function registerEffect(name: string, fn: EffectFn): void { effects.set(name, fn) }
+export function registerEffect(
+  name: string, fn: EffectFn, opts?: { needsCatalog?: boolean },
+): void {
+  effects.set(name, fn)
+  if (opts?.needsCatalog) catalogEffects.add(name)
+}
 export function registerCostModifier(name: string, fn: CostModifierFn): void { costModifiers.set(name, fn) }
 export const effectFor = (name: string): EffectFn | null => effects.get(name) ?? null
 export const costModifierFor = (name: string): CostModifierFn | null => costModifiers.get(name) ?? null

@@ -3,6 +3,7 @@ import {
   CATALOG_EFFECTS, effectFor, effectName, isImplemented, noteUnimplemented,
   registerEffect,
 } from './registry.ts'
+import './dwgEffects.ts'
 import { inst, makeGame } from '../engine/testFixtures.ts'
 
 describe('effect registry', () => {
@@ -26,6 +27,20 @@ describe('effect registry', () => {
     expect(game.state.log.some((l) => l.includes('knownEffect'))).toBe(false)
   })
   it('exposes the catalog-requiring set', () => {
+    expect(CATALOG_EFFECTS.has('reservesEffect')).toBe(true)
+    expect(CATALOG_EFFECTS.has('spawnBuccaneerEffect')).toBe(true)
+  })
+})
+
+describe('needsCatalog registration flag', () => {
+  it('adds flagged effects to CATALOG_EFFECTS and leaves unflagged ones out', () => {
+    registerEffect('t_needsCatalog', () => true, { needsCatalog: true })
+    registerEffect('t_plain', () => true)
+    expect(CATALOG_EFFECTS.has('t_needsCatalog')).toBe(true)
+    expect(CATALOG_EFFECTS.has('t_plain')).toBe(false)
+  })
+
+  it('still reports the two pre-existing catalog effects', () => {
     expect(CATALOG_EFFECTS.has('reservesEffect')).toBe(true)
     expect(CATALOG_EFFECTS.has('spawnBuccaneerEffect')).toBe(true)
   })

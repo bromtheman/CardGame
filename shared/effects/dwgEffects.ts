@@ -53,7 +53,7 @@ registerEffect('reservesEffect', ({ game, actor, ctx }) => {
   }
   game.state.counts[actor].hand = game.privates[actor].hand.length
   return true
-})
+}, { needsCatalog: true })
 
 // spawn a Scrappy, non-Temporary Buccaneer into the target zone (Spawn Buccaneer)
 registerEffect('spawnBuccaneerEffect', ({ game, actor, ctx, targetZoneId }) => {
@@ -68,7 +68,7 @@ registerEffect('spawnBuccaneerEffect', ({ game, actor, ctx, targetZoneId }) => {
   zone.cards[actor].push(entry)
   game.state.log.push(`A Buccaneer joins zone ${zone.id} (Scrappy)`)
   return true
-})
+}, { needsCatalog: true })
 
 // target DWG vehicle card in hand spawns an extra copy when played (Double Up)
 registerEffect('doubleUpEffect', ({ game, actor, card, targetInstanceId }) => {
