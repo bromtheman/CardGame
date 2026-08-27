@@ -66,6 +66,10 @@ the duplicate (open backlog item).
 9. If the effect needs UI (targeting mode, alert badge, …), see
    [frontend.md](frontend.md); HandBar drives targeting modes off meta keys via
    `effectName`.
+10. **A built-in card must not carry both `SCRAPPY` and an `onDeathEffect`.** Scrappy
+    vehicles auto-repair in the 80–89.999% band with no player prompt, so a beneficial
+    death trigger on a Scrappy card would be silently unreachable. (Loggerhead hit this
+    and had `SCRAPPY` removed.)
 
 ## Play-time cost modifiers
 
