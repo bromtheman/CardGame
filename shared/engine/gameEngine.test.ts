@@ -223,6 +223,32 @@ describe('deck-out reshuffle', () => {
     expect(ids.every((id) => typeof id === 'string' && id.length > 0)).toBe(true)
   })
 
+  // state.destroyed is public, so an unshuffled recycle would hand both
+  // players the exact discard order. This pins the actual permutation the
+  // Fisher-Yates loop produces under makeCtx()'s fixed rng cycle
+  // [0.1, 0.5, 0.9], for a 3-card pile [A, B, C]:
+  //   ids are minted in original pile order, BEFORE the shuffle runs:
+  //     A -> e-0, B -> e-1, C -> e-2
+  //   loop (i from length-1 down to 1), j = floor(rng() * (i+1)):
+  //     i=2: rng()=0.1, j=floor(0.1*3)=0  -> swap(2,0): [C(e-2), B(e-1), A(e-0)]
+  //     i=1: rng()=0.5, j=floor(0.5*2)=1  -> swap(1,1): no-op
+  //   pushed to the deck as [C(e-2), B(e-1), A(e-0)]; drawCard shifts the
+  //   front card (C) into the hand, leaving [B(e-1), A(e-0)] in the deck —
+  //   neither the original A/B/C order nor its plain reverse (C/A/B would be
+  //   the reverse), so this is sensitive to the shuffle actually running.
+  it('pins the exact reshuffled order under the fixed rng, not the original discard order', () => {
+    const g = makeGame({ activePlayer: 'alice' })
+    g.privates.b.deck = []
+    g.state.destroyed.b = [snap({ name: 'A' }), snap({ name: 'B' }), snap({ name: 'C' })]
+    const r = applyAction(g, 'alice', { type: 'END_TURN' }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.privates.b.hand.map((c) => [c.name, c.instanceId])).toEqual([['C', 'e-2']])
+    expect(r.game.privates.b.deck.map((c) => [c.name, c.instanceId])).toEqual([
+      ['B', 'e-1'],
+      ['A', 'e-0'],
+    ])
+  })
+
   it('logs and does not throw when both deck and discard are empty', () => {
     const g = makeGame({ activePlayer: 'alice' })
     g.privates.b.deck = []
