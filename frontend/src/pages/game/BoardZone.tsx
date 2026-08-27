@@ -4,6 +4,12 @@ import type { Side, ZoneCardEntry } from '@shared/engine/engineTypes'
 import { KEYWORDS, VEHICLE_TYPES, ZONE_TYPES } from '@shared/gameSettings'
 import { shortHandNumber } from '@shared/format'
 import { MiniVehicle } from './MiniVehicle'
+import type { ZoneEffectBadge, ZoneEffectIcon } from './zoneEffectBadges'
+import anchorIcon from '../../assets/icons/anchorSVG.svg'
+
+const ZONE_EFFECT_ICONS: Record<ZoneEffectIcon, string> = {
+  anchor: anchorIcon,
+}
 
 const BIOME_TINT: Record<string, string> = {
   [ZONE_TYPES.WATER]: 'bg-ocean-600/20',
@@ -28,6 +34,30 @@ function HpBar({ label, hp, max }: { label: string; hp: number; max: number }) {
         />
       </div>
     </div>
+  )
+}
+
+// Persistent zone markers (DWG Waters and any later ones) shown beside the
+// zone title: own markers in brass, the opponent's in red.
+function ZoneEffectBadges({ badges }: { badges: ZoneEffectBadge[] }) {
+  if (badges.length === 0) return null
+  return (
+    <span className="flex flex-wrap items-center gap-1">
+      {badges.map((badge) => (
+        <span
+          key={badge.key}
+          title={badge.detail}
+          className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+            badge.mine
+              ? 'border-brass-400 bg-brass-400/15 text-brass-400'
+              : 'border-red-500 bg-red-500/15 text-red-400'
+          }`}
+        >
+          <img src={ZONE_EFFECT_ICONS[badge.icon]} alt="" className="h-3 w-3" />
+          {badge.label}
+        </span>
+      ))}
+    </span>
   )
 }
 
@@ -73,6 +103,7 @@ export function BoardZone({
   selectedForSwapOwnId,
   onPickOwnForSwap,
   onPickEnemyForSwap,
+  zoneEffectBadgeList,
 }: {
   zone: ZoneState
   maxBaseHp: number
@@ -94,6 +125,8 @@ export function BoardZone({
   selectedForSwapOwnId?: string | null
   onPickOwnForSwap?: (instanceId: string) => void
   onPickEnemyForSwap?: (instanceId: string) => void
+  /** Persistent markers on THIS zone, from ./zoneEffectBadges. */
+  zoneEffectBadgeList?: ZoneEffectBadge[]
 }) {
   return (
     <section
@@ -102,10 +135,12 @@ export function BoardZone({
         highlighted ? 'cursor-pointer border-brass-400 ring-2 ring-brass-400' : 'border-ocean-600'
       }`}
     >
-      <p className="font-display text-lg">
-        Zone {zone.id} <span className="text-sm capitalize text-ocean-300">({zone.biome})</span>
-      </p>
-      <HpBar label="Enemy base" hp={zone.baseHp[theirSide]} max={maxBaseHp} />
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="font-display text-lg">
+          Zone {zone.id} <span className="text-sm capitalize text-ocean-300">({zone.biome})</span>
+        </p>
+        <ZoneEffectBadges badges={zoneEffectBadgeList ?? []} />
+      </div>
       <div className="flex min-h-[76px] flex-wrap gap-1">
         {(zone.cards[theirSide] as ZoneCardEntry[]).map((c) => {
           const swapEnemyEligible = !!swapPickEnemyMode && c.vehicleType === VEHICLE_TYPES.SHIP

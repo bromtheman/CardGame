@@ -40,6 +40,17 @@ export interface ZoneState {
   lastActivatedTurn: number | null
 }
 
+// A persistent, board-visible marker a card leaves on one zone for one side
+// (e.g. DWG Waters). Keyed by the registry effect name so the next persistent
+// zone card reuses the same array and the same UI badge slot.
+export interface ZoneEffect {
+  effect: string
+  zoneId: number
+  side: 'a' | 'b'
+  cardName: string
+  setOnTurn: number
+}
+
 export interface PublicGameState {
   zones: ZoneState[]
   resources: { a: { materials: number; cp: number }; b: { materials: number; cp: number } }
@@ -62,6 +73,7 @@ export interface PublicGameState {
   factions: { a: string; b: string }
   alertCard: { side: 'a' | 'b'; instanceId: string; name: string; setOnTurn: number } | null
   scheduled: { type: 'changeOrderDraw'; side: 'a' | 'b'; dueTurn: number }[]
+  zoneEffects: ZoneEffect[]
 }
 
 export function snapshotCard(row: {
@@ -176,6 +188,7 @@ export function buildInitialGame(input: {
     factions: { a: input.factionA, b: input.factionB },
     alertCard: null,
     scheduled: [],
+    zoneEffects: [],
   }
   return {
     game: {
