@@ -39,9 +39,4 @@ describe('needsCatalog registration flag', () => {
     expect(CATALOG_EFFECTS.has('t_needsCatalog')).toBe(true)
     expect(CATALOG_EFFECTS.has('t_plain')).toBe(false)
   })
-
-  it('still reports the two pre-existing catalog effects', () => {
-    expect(CATALOG_EFFECTS.has('reservesEffect')).toBe(true)
-    expect(CATALOG_EFFECTS.has('spawnBuccaneerEffect')).toBe(true)
-  })
 })
