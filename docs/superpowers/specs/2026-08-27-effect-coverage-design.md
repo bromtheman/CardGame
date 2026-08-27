@@ -52,7 +52,7 @@ Inherited and binding:
 |---|---|
 | 1 | **Card text is authoritative** over any ported implementation that disagrees |
 | 2 | A built-in card must not carry both `SCRAPPY` and an `onDeathEffect` |
-| 3 | `SET_ALERT_CARD` becomes automatic — the engine sets it; no hand button is restored |
+| 3 | `SET_ALERT_CARD` becomes automatic — the engine sets it; no hand button is restored. **Narrowed in wave 2** to effects that force opponent interaction; a pure choice sets no alert (§4.2) |
 | 4 | Fragile is auto-assigned to player-made airships only |
 
 Taken during this design:
@@ -65,6 +65,14 @@ Taken during this design:
 | 8 | Conditional Half-Cost is a **hand-side, price-time** property; hulls on the board keep their printed keywords (§4.6) |
 | 9 | Effects are **parameterised TypeScript factories**, not a data DSL in `meta` (§5) |
 | 10 | Battle summons are **combatants inside `activeBattle`**, never board units (§4.4) |
+
+Taken during wave 2:
+
+| # | Decision |
+|---|---|
+| 11 | **Spawning is not playing.** A vehicle placed by `spawnVehicles` does not fire its own `onPlayEffect` (§7.4) |
+| 12 | A suspended choice can be **declined**, and `pendingEffect.options` is **public** (§4.2, departures 3 and 5) |
+| 13 | Partially-implemented cards are tracked in a `PARTIAL` map beside `KNOWN_GAPS`, not left invisible (§4.1) |
 
 ## 3. Scope
 
@@ -102,59 +110,133 @@ against the real seed data:
 - **G2** — every built-in card with non-empty `card_text` resolves at least one
   *implemented* effect, carries `additionalSpawns`, or appears in an explicit
   exemption map with a written reason.
+- **G3** — every trigger key a card carries is one the engine dispatches for a
+  card of its `type`. Wave 2 adds `onActivate` to the vehicle row; without that,
+  closing Spectrum’s gap makes G3 fail.
 
-Both exemption maps live in the test. Only one card is exempt at completion:
-**Falcon Squadron**, whose text ("considered destroyed if any of its sub-vehicles
-is destroyed in battle") is player-conduct guidance for the spawn sheet, the same
-shape as the Robotic keyword's second clause — there is nothing for the engine to
-fire. Buzzsaw and Veles read like conduct text but are not: "may be omitted from
-defensive battles unless…" is Stealthy-shaped and is implemented (§8, wave 4).
+All three maps — `EXEMPT`, `KNOWN_GAPS` and `PARTIAL` — live in the test. Only
+one card is permanently exempt: **Falcon Squadron**, whose text ("considered
+destroyed if any of its sub-vehicles is destroyed in battle") is player-conduct
+guidance for the spawn sheet, the same shape as the Robotic keyword’s second
+clause — there is nothing for the engine to fire. Buzzsaw and Veles read like
+conduct text but are not: "may be omitted from defensive battles unless…" is
+Stealthy-shaped and is implemented (§8, wave 4).
+
+The guard protects a card only while it is listed. Three blind spots are known,
+and wave 2 closes the third:
+
+1. A card that leaves `KNOWN_GAPS` is no longer checked — Garrison’s trigger-key
+   correction can be reverted today with the suite still green.
+2. G3 catches a *type*-level mis-wiring only. A same-type mix-up —
+   `playOnVehicleEffect` where the text needs `playOnCardEffect`, exactly
+   Garrison’s bug — needs a human reading the card text against the key.
+3. A **partially**-implemented card passes G2, which asks "resolves at least one
+   implemented effect", not "all of its card text works". Such a card cannot go
+   in `KNOWN_GAPS` without tripping the stale-entry assertion, so wave 2 adds a
+   separate `PARTIAL` map: same key shape, a wave label per entry, asserted to
+   name real cards and to never intersect `KNOWN_GAPS`. It opens with Plunderer
+   (clause 2, wave 4) and DWG Waters (clauses 2–3, wave 4).
 
 This guard is the item that stops the gap reopening, and it lands first.
 
 ### 4.2 `state.pendingEffect` — one suspension slot
 
-Every effect today is `(payload) => boolean` and fully resolves inside one
-action. Two families cannot: a choice must wait for the player, and Trebuchet's
-"you may repeat this effect" must wait for a battle report. One slot serves both.
+Every effect before wave 2 was `(payload) => boolean` and fully resolved inside
+one action. Two families cannot: a choice must wait for the player, and
+Trebuchet's "you may repeat this effect" must wait for a battle report. One
+slot serves both.
+
+**This section describes what wave 2 built, not a sketch.** It departs from the
+original design in five places, each marked.
 
 ```ts
 interface PendingEffect {
-  effect: string            // registry name that suspended
-  side: Side                // who owes the decision
-  cardName: string
-  instanceId: string        // the suspending card
-  kind: 'choice' | 'battle'
-  options?: { id: string; label: string }[]
-  data?: Record<string, unknown>   // effect-owned continuation state
+  effect: string                    // registry name to re-enter
+  side: Side                        // who owes the decision
+  card: CardInstance                // the suspending card, verbatim
+  kind: 'choice'                    // 'battle' arrives with wave 3
+  prompt: string                    // the dialog's one-line question
+  options: { id: string; label: string }[]
+  data?: Record<string, unknown>    // effect-owned continuation state
 }
 ```
 
-- Added to `PublicGameState`; defaulted in **both** `normalizeState` and
-  `buildInitialGame`.
-- `battleFrozen(state)` extends to include `pendingEffect !== null`, so a game
-  awaiting a choice accepts only the resolving action plus `CONCEDE` / `ABANDON`.
-- New action `RESOLVE_PENDING_EFFECT { choiceId?, targetInstanceId?, zoneId? }`,
-  added to `BATTLE_ACTIONS` (legal while frozen) but **not** `OFF_TURN_ACTIONS` —
-  a choice is always owed by the player who played the card.
-- The suspending effect returns `true` after writing `pendingEffect`; the
-  continuation is dispatched by name on resolve.
+**The card, not its name (departure 1).** The original sketch carried
+`cardName` and `instanceId`. By resolve time an ability card has already been
+`spendCard`'d into `state.destroyed` — it is in neither hand nor field — so a
+name cannot rebuild the continuation's `EffectPayload`, and `game-action`'s
+catalog probe has nothing carrying `meta` to scan. Storing the card verbatim
+gives both for free and leaks nothing: it was played publicly one action
+earlier. `prompt` is new for the same reason — the resolving dialog needs a
+question, and only the effect knows it.
 
-**Alert card (decision 3).** Most forced battles need no suspension — the effect
-declares the battle and the existing report flow finishes it. What the opponent
-lacks is the *cause*: `activeBattle` does not say why they are suddenly in a
-1-vs-4. So the engine sets `state.alertCard` to the causing card whenever an
-effect declares a battle or plants a rider on the opponent's next battle, and
-clears it when that resolves. No hand button is restored.
+- Added to `PublicGameState`; defaulted in **both** `normalizeState` and
+  `buildInitialGame`, following `zoneEffects` (commit `9d93f13`).
+- New action `RESOLVE_PENDING_EFFECT { choiceId?, targetInstanceId?, zoneId?, cancel? }`.
+
+**A dedicated freeze, not `battleFrozen` (departure 2).** The sketch extended
+`battleFrozen`. It must not: `BATTLE_ACTIONS` admits `USE_HERO_POWER`,
+`RESPOND_TO_ATTACK`, `SUBMIT_BATTLE_REPORT` and `DECIDE_BATTLE_REPORT`, none of
+which should be legal while a choice is owed. `applyAction` instead checks
+`state.pendingEffect !== null` ahead of the battle check and admits only
+`PENDING_ACTIONS` — `RESOLVE_PENDING_EFFECT`, `CONCEDE`, `ABANDON`.
+
+**Resume: one name, re-entered.** The suspending effect keeps a single registry
+entry, so the coverage guard still counts one implementation per card. Two
+optional fields on `EffectPayload` carry the second phase:
+
+```ts
+resolution?: { choiceId?: string; targetInstanceId?: string; zoneId?: number }
+pending?: PendingEffect
+```
+
+`RESOLVE_PENDING_EFFECT` clears the slot **before** calling the effect, so a
+continuation may suspend again (wave 3's Trebuchet does). The `choice`
+primitive branches on `payload.resolution`:
+
+| Entry | Behaviour |
+|---|---|
+| First, options non-empty | write `pendingEffect`, return `true` |
+| First, options **empty** | call `resolve(payload, null)` immediately — no suspension |
+| Re-entry, `choiceId` in `pending.options` | call `resolve(payload, choiceId)` |
+| Re-entry, unknown `choiceId` | return `false` → 400; the slot survives, the player may retry |
+
+The empty-options rule is load-bearing. Kraken reads "refresh one of your hero
+powers then gain 1cp", so a player with no used powers must still get the CP.
+
+**Cancel, and a rollback escape (departure 3).** `{ cancel: true }` clears the
+slot and logs that the effect was declined. The player has already paid, so
+declining only forfeits their own upside — checked against all three wave-2
+choices, none of which can be exploited by refusing. Separately, if
+`effectFor(pending.effect)` returns `null` — a deploy rolled back underneath a
+live suspension — the handler clears the slot and logs, rather than leaving a
+game neither player can advance.
+
+**Alert card (departure 4, narrowing decision 3).** A pure choice sets **no**
+alert card. `pendingEffect` is public and carries the card, so the opponent
+already sees what froze the game; and an engine-set alert would hit
+`SET_ALERT_CARD`'s "opponent holds the slot → 409" rule and could reject the
+card play outright. Decision 3 therefore covers effects that **force opponent
+interaction** — forced battles, and riders planted on the opponent's next
+battle, from wave 3 on — not a choice owed by the player who acted. No hand
+button is restored either way.
+
+**Options are public (departure 5 — a new constraint).** `pendingEffect` lives
+in `PublicGameState`, so `options` is visible to both players. A choice may only
+be offered over information the opponent already has. Wave 2's three qualify
+(your used hero powers, two named catalog pools, the four public [TG] Robotics
+built-ins) and waves 3–4's do too, but **a choice over your own hand or deck
+would leak it**, and the private-options mechanism that would need does not
+exist. Check this before adding a choice.
 
 ### 4.3 Six dispatch points
 
 | # | Point | Shape |
 |---|---|---|
-| DP1 | `onActivate` | New `ACTIVATE_VEHICLE { instanceId, targetInstanceId?, zoneId? }` action. New `activatedOnTurn: number \| null` stamp on `ZoneCardEntry` (defaulted in `normalizeState`) enforces once-per-turn. The CP price is card data: `meta.activateCpCost` — a number, the same class as `additionalSpawns`, so no registry change |
+| DP1 | `onActivate` | New `ACTIVATE_VEHICLE { instanceId, targetInstanceId?, zoneId? }` action, handled in `shared/engine/activate.ts`. `activatedOnTurn: number | null` on `ZoneCardEntry` (**required**, so `tsc` finds every entry literal; defaulted in `normalizeState`) enforces once-per-turn, and is stamped **before** the effect fires so a suspending activation cannot re-enter. The CP price is card data: `meta.activateCpCost` — a number, the same class as `additionalSpawns`, so no registry change. No freshly-deployed restriction: the card text says "once per turn" and nothing more |
 | DP2 | Battle triggers | `onBattleEffect` fires at **lock** and at **resolve** with a `BattleContext` payload (`phase`, `zoneId`, `isDefender`, `survived`, `won`). `onBattleVictory` / `onBattleDefeat` are resolve-only sugar dispatched per side outcome. A side **wins** when the enemy has no surviving participant and **loses** when it has none of its own; both false is a draw |
 | DP3 | Forced battle | `declareForcedBattle(game, ctx, { zoneId, aggressor, attackerIds, defenderIds, summons, cause })`, exported from `battleDeclare.ts`, reusing `lockBattle`. Skips the Stealthy opt-out — the card *forces* the fight — and sets the alert card |
-| DP4 | Choice | `state.pendingEffect` (§4.2) |
+| DP4 | Choice | `state.pendingEffect`, built in wave 2 — see §4.2 for the shipped shape, freeze rule and resume mechanics |
 | DP5 | Rest-of-turn riders | Extends the existing `state.scheduled[]` discriminated union rather than adding a state field: it already carries `side` and `dueTurn` and is already processed in `endTurn` |
 | DP6 | `playOnVehicleEffect` on **vehicle** cards | The gap recorded in `architecture.md`. `PLAY_CARD_TARGETING_CARD_ON_FIELD` gains an optional `zoneId` and accepts a vehicle carrying that key: the vehicle deploys to the zone (with `additionalSpawns`), then the effect fires |
 
@@ -260,6 +342,10 @@ Jormangund, Partisan) fires inside `DECIDE_BATTLE_REPORT`, which carries no
 broadens to scan the played hand card **plus** the actor's on-field entries
 **plus**, for battle actions, every participant on both sides.
 
+Wave 2 adds a third source: **`state.pendingEffect.card`**. A resolving choice’s
+card is in neither hand nor field — it was spent when it was played — so without
+it Special Foundries and Robotic Assemblers resolve against an empty catalog.
+
 **`CATALOG_EFFECTS` becomes a registration flag.** With roughly fifteen catalog
 effects arriving, a hand-maintained `Set` in `registry.ts` will drift from the
 implementations it describes:
@@ -298,10 +384,10 @@ registerEffect('paddlegunEffect', grant({ draw: 1, from: 'enemy' }))
 | `grantKeywords` | `{ keywords, target: 'hand' \| 'field', condition?, then? }` | Garrison, Repairmen Ready, Sabotage |
 | `costDelta` | `{ delta, filter }` | Marauder, Excalibur |
 | `resourceSurge` | card data (§4.6) | PredatorX, Orbit |
-| `spawnVehicles` | `{ card, count, zones, keywords }` | Parapet, Sapphire Screen, All for the Cause |
+| `spawnVehicles` | `{ cardName, count, zones: 'target' | 'all', keywords }`, `needsCatalog` | Parapet, Sapphire Screen, All for the Cause |
 | `summonBattle` | `{ summon, count, countIf?, mode }` | 7 cards (§4.4) |
 | `zoneRider` | `{ kind, expiresAtEndOfTurn, onExpiryUnused? }` | 4 cards |
-| `choice` | `{ options }` → `pendingEffect` | 3 cards + Iron Cordon, Terawatt, Sacrilego |
+| `choice` | `{ prompt, options(p), resolve(p, choiceId) }` → `pendingEffect` (§4.2) | 3 cards + Iron Cordon, Terawatt, Sacrilego |
 
 Only four plain-data meta keys are added, all with `additionalSpawns` as
 precedent: `costDelta`, `activateCpCost`, `resourceSurge`, `summonOnly`. None
@@ -364,6 +450,12 @@ blocker keywords".
 becomes a draftable card. Enforced at all three exits: the Temporary cull in
 `endTurn`, the death path in `DECIDE_BATTLE_REPORT`, and the battle-summon sweep.
 
+**Rejecting them from decks costs two call sites.** `DeckCardInfo` gains
+`summonOnly`, populated where the map is built in `lobby-action` and in
+`DeckBuilderPage`; the builder’s visible `pool` filter must exclude them too, or
+it offers a card that its own validation then rejects. `CardsPage` keeps showing
+them — they are real cards, and a player should be able to read a Martyr.
+
 ### 7.2 Stubs for cards with no authored effect
 
 **Spectrum** (LH plane, 370k, Half-Cost + Temporary — 185k effective) ships with
@@ -407,6 +499,22 @@ battle, repeatable, on a 500k card.
   condition is friendly-only, per its own wording. Both predicates are evaluated
   **before** the played card lands, so they must exclude its own instance and any
   `additionalSpawns` copies.
+
+### 7.4 Spawning is not playing
+
+A vehicle placed by `spawnVehicles` enters `zone.cards` with its printed
+keywords plus whatever the summoning card grants, and **nothing else runs**.
+Its own `onPlayEffect` does not fire; only the `PLAY_CARD_*` handlers play a
+card. Sapphire Screen forces the ruling: Sapphire prints "played into an empty
+zone → draw a card and refund its cost", so firing it on spawn would turn a 90k
+ability into three bodies, up to three cards and a 90k refund.
+
+Two consequences follow for the summon-only rows (§7.1):
+
+- Spawns **bypass placement legality** — biome and screen rules gate plays, not
+  summons (§4.3) — so a Martyr reaches a land zone.
+- `summonOnly` cards are excluded from `drawFromPool`’s catalog pools. No
+  current pool matches one, but nothing should ever mint a Martyr into a hand.
 
 ## 8. The 65 cards
 
@@ -575,7 +683,7 @@ an effect break tests.
 |---|---|---:|
 | **0** | Diagnostic fix, `effectCoverage.test.ts` (G1/G2), catalog-probe broadening, `registerEffect(…, { needsCatalog })` | 0 |
 | **1** | `grant`, `drawFromPool`, `whenPlayed`, `resourceSurge`, `costDelta`, `grantKeywords`, Osprey data, Marauder correction, `card-effects.md` update | **34** |
-| **2** | DP1 `ACTIVATE_VEHICLE`, DP4 `pendingEffect`, the three summon rows, `spawnVehicles` | 9 |
+| **2** | DP1 `ACTIVATE_VEHICLE`, DP4 `pendingEffect`, the three summon rows, `spawnVehicles`, the `PARTIAL` guard map, and the UI for both dispatch points | 9 |
 | **3** | DP3 forced battle, DP6 Trebuchet, battle summons | 8 |
 | **4** | DP2 battle triggers, Buzzsaw/Veles defender rule, Plunderer clause 2 | 8 |
 | **5** | DP5 riders | 5 |
@@ -593,7 +701,7 @@ is independently playable and covers half the population with no new machinery.
 | Card wiring | One table-driven test over all 65: each resolves to a registered implementation and produces its expected observable outcome on a fixture |
 | Coverage guard | G1 and G2 over real seed data, with exemption maps asserted non-empty only where documented |
 | Cost authorities | `costDelta` and `resourceSurge` change `effectiveCostInGame` and never `effectiveMaterialCostOf`; suppression read before payment; deltas stack |
-| Suspension | `pendingEffect` freezes the game; only the owed side may resolve; `RESOLVE_PENDING_EFFECT` rejected when nothing is pending; alert set and cleared around it |
+| Suspension | `pendingEffect` freezes the game to `PENDING_ACTIONS`; only the owed side may resolve; `RESOLVE_PENDING_EFFECT` rejected when nothing is pending; an unknown `choiceId` leaves the slot intact; `cancel` clears it; empty options resolve without suspending; an unregistered pending effect clears rather than bricking the game |
 | Battle summons | Summons never enter `zone.cards`; evaporate on approval at every HP; never repairable; never pushed to `destroyed`; `summonOnly` excluded from `destroyed` at all three exits |
 | Dispatch points | Once-per-turn enforcement via `activatedOnTurn`; forced battles skip the Stealthy opt-out and do not consume `lastActivatedTurn` (Eclipse excepted); DP6 deploys the vehicle before firing |
 | Hidden info | No log line names a card entering a hand; `counts` resync on both sides after an enemy-deck draw |
