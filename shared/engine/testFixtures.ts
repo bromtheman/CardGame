@@ -60,6 +60,7 @@ export function makeGame(over: Partial<EngineGame> = {}): EngineGame {
       destroyed: { a: [], b: [] },
       log: [],
       factions: { a: 'DWG', b: 'OW' }, alertCard: null, scheduled: [],
+      zoneEffects: [],
     },
     privates: { a: { hand: [], deck: [] }, b: { hand: [], deck: [] } },
     ...over,

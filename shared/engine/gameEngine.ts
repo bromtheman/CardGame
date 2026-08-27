@@ -69,6 +69,7 @@ export function normalizeState(state: PublicGameState): void {
   if (s.factions === undefined) s.factions = { a: 'NEUTRAL', b: 'NEUTRAL' }
   if (s.alertCard === undefined) s.alertCard = null
   if (s.scheduled === undefined) s.scheduled = []
+  if (s.zoneEffects === undefined) s.zoneEffects = []
   for (const zone of state.zones) {
     for (const side of ['a', 'b'] as Side[]) {
       for (const entry of zone.cards[side] as Partial<ZoneCardEntry>[]) {

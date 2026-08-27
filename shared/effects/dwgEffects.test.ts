@@ -296,3 +296,45 @@ describe('doubleUpEffect', () => {
     expect(ok).toBe(false)
   })
 })
+
+describe('dwgWatersEffect', () => {
+  const watersCard = () =>
+    inst({ type: 'ability', name: 'DWG Waters', meta: { playOnZoneEffect: 'dwgWatersEffect' } })
+
+  it('records a persistent DWG Waters marker on the chosen zone for the actor', () => {
+    const game = makeGame()
+    const card = watersCard()
+    const ok = effectFor('dwgWatersEffect')!({
+      game, actor: 'a', card, ctx: makeCtx(), targetZoneId: 2,
+    })
+    expect(ok).toBe(true)
+    expect(game.state.zoneEffects).toEqual([
+      { effect: 'dwgWatersEffect', zoneId: 2, side: 'a', cardName: 'DWG Waters', setOnTurn: game.turnNumber },
+    ])
+    expect(game.state.log.join('\n')).toContain('Zone 2')
+  })
+
+  it('returns false when the same side claims a zone it already holds', () => {
+    const game = makeGame()
+    const ctx = makeCtx()
+    expect(effectFor('dwgWatersEffect')!({ game, actor: 'a', card: watersCard(), ctx, targetZoneId: 1 })).toBe(true)
+    expect(effectFor('dwgWatersEffect')!({ game, actor: 'a', card: watersCard(), ctx, targetZoneId: 1 })).toBe(false)
+    expect(game.state.zoneEffects).toHaveLength(1)
+  })
+
+  it('lets each side claim the same zone independently', () => {
+    const game = makeGame()
+    const ctx = makeCtx()
+    expect(effectFor('dwgWatersEffect')!({ game, actor: 'a', card: watersCard(), ctx, targetZoneId: 3 })).toBe(true)
+    expect(effectFor('dwgWatersEffect')!({ game, actor: 'b', card: watersCard(), ctx, targetZoneId: 3 })).toBe(true)
+    expect(game.state.zoneEffects.map((e) => e.side)).toEqual(['a', 'b'])
+  })
+
+  it('returns false for a zone that does not exist or a missing target', () => {
+    const game = makeGame()
+    const ctx = makeCtx()
+    expect(effectFor('dwgWatersEffect')!({ game, actor: 'a', card: watersCard(), ctx, targetZoneId: 99 })).toBe(false)
+    expect(effectFor('dwgWatersEffect')!({ game, actor: 'a', card: watersCard(), ctx })).toBe(false)
+    expect(game.state.zoneEffects).toEqual([])
+  })
+})

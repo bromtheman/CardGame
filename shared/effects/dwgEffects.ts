@@ -80,3 +80,30 @@ registerEffect('doubleUpEffect', ({ game, actor, card, targetInstanceId }) => {
   target.meta = { ...target.meta, additionalSpawns: current + 1 }
   return true
 })
+
+const DWG_WATERS_EFFECT = 'dwgWatersEffect'
+
+// claim a zone as DWG Waters for the rest of the game (DWG Waters).
+// Phase 1: the marker itself — persistent state plus the board badge. The
+// battle-time riders in the card text (a guest DWG vehicle under 60k joining
+// your defensive battles there, and gating direct base attacks behind it)
+// need a battle-declare dispatch point that does not exist yet.
+registerEffect('dwgWatersEffect', ({ game, actor, card, targetZoneId }) => {
+  if (typeof targetZoneId !== 'number') return false
+  const zone = zoneById(game.state, targetZoneId)
+  if (!zone) return false
+  // Re-claiming a zone you already hold would buy nothing — reject before the
+  // handler commits, so the materials are not spent on a no-op.
+  const held = game.state.zoneEffects.some(
+    (e) => e.effect === DWG_WATERS_EFFECT && e.zoneId === targetZoneId && e.side === actor,
+  )
+  if (held) return false
+  game.state.zoneEffects.push({
+    effect: DWG_WATERS_EFFECT, zoneId: targetZoneId, side: actor,
+    cardName: card.name, setOnTurn: game.turnNumber,
+  })
+  game.state.log.push(
+    `Zone ${targetZoneId} becomes DWG Waters for player ${actor.toUpperCase()} — for the rest of the game`,
+  )
+  return true
+})

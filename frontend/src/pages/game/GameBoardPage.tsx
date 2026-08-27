@@ -10,6 +10,7 @@ import { useRealtimeInvalidate } from '../../lib/realtime'
 import { useAuth } from '../../lib/auth'
 import { useGameActions } from './useGameActions'
 import { BoardZone } from './BoardZone'
+import { zoneEffectBadges } from './zoneEffectBadges'
 import { HandBar } from './HandBar'
 import { ZoneActions } from './ZoneActions'
 import { StealthyResponseBar } from './StealthyResponseBar'
@@ -264,6 +265,7 @@ export function GameBoardPage() {
             selectedForSwapOwnId={swapMode?.phase === 'pickEnemy' ? swapMode.ownInstanceId : null}
             onPickOwnForSwap={onPickOwnForSwap}
             onPickEnemyForSwap={onPickEnemyForSwap}
+            zoneEffectBadgeList={zoneEffectBadges(state.zoneEffects, zone.id, mySide)}
           >
             {canActivateZones && (
               <ZoneActions

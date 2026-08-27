@@ -168,3 +168,32 @@ describe('phase 5 state shape', () => {
     expect(result.ok).toBe(true)
   })
 })
+
+describe('persistent zone effects', () => {
+  it('normalizeState defaults zoneEffects on rows written before the field existed', () => {
+    const game = makeGame()
+    const s = game.state as unknown as Record<string, unknown>
+    delete s.zoneEffects
+    normalizeState(game.state)
+    expect(game.state.zoneEffects).toEqual([])
+  })
+
+  it('playing DWG Waters to a zone records the marker without an unimplemented note', () => {
+    const game = makeGame()
+    const waters = inst({
+      type: 'ability', name: 'DWG Waters', faction: 'DWG', vehicleType: null,
+      materialCost: 50_000, meta: { playOnZoneEffect: 'dwgWatersEffect' },
+    })
+    game.privates.a.hand.push(waters)
+    game.state.counts.a.hand = 1
+    const result = applyAction(game, 'alice', {
+      type: 'PLAY_CARD_TO_ZONE', instanceId: waters.instanceId, zoneId: 2,
+    })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.game.state.zoneEffects).toMatchObject([
+      { effect: 'dwgWatersEffect', zoneId: 2, side: 'a' },
+    ])
+    expect(result.game.state.log.join('\n')).not.toContain('not implemented yet')
+  })
+})
