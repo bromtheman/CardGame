@@ -21,7 +21,10 @@ export function CopyStepper({
   label: string
   className?: string
 }) {
-  const btn = 'px-1.5 font-bold leading-none disabled:cursor-not-allowed disabled:opacity-30'
+  // Hit area is sized in `em` so the caller's text size is the only knob: the
+  // card face wants a target big enough not to misclick against the card's own
+  // press-for-details, the deck list wants a tighter one.
+  const btn = 'inline-flex min-h-[1.7em] min-w-[1.7em] items-center justify-center font-bold leading-none disabled:cursor-not-allowed disabled:opacity-30'
   return (
     <span
       role="group"

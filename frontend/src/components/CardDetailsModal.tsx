@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { shortHandNumber } from '@shared/format'
 import { effectiveMaterialCostOf } from '@shared/engine/index'
@@ -20,6 +20,8 @@ function CostChip({ label, value, muted }: { label: string; value: string; muted
   )
 }
 
+const FADE_MS = 150
+
 // Full-screen blow-up of one card plus a plain-English glossary of every
 // attribute it carries (vehicle type + keywords), so a player never has to
 // guess what "Stealthy" or "Scrappy" does mid-game.
@@ -39,14 +41,34 @@ export function CardDetailsModal({
 }) {
   useEscapeToCancel(open, onClose)
 
+  // `open` going false would unmount the overlay on the spot, so hold it one
+  // fade longer on the way out. The fade IN is left to CSS `@starting-style`
+  // (Tailwind's `starting:` variant) rather than a rAF that flips a class:
+  // rAF does not run while the page isn't compositing, which would leave the
+  // overlay stuck at opacity 0.
+  const [mounted, setMounted] = useState(false)
   useEffect(() => {
-    if (!open) return
+    if (open) {
+      setMounted(true)
+      return
+    }
+    const timer = setTimeout(() => setMounted(false), FADE_MS)
+    return () => clearTimeout(timer)
+  }, [open])
+
+  // Only a press that STARTS on the backdrop closes: dragging from inside the
+  // panel (selecting card text) and releasing outside fires `click` on the
+  // overlay too, and that must not count as clicking away.
+  const pressedBackdrop = useRef(false)
+
+  useEffect(() => {
+    if (!mounted) return
     const previous = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     return () => { document.body.style.overflow = previous }
-  }, [open])
+  }, [mounted])
 
-  if (!open) return null
+  if (!mounted) return null
 
   const img = cardImageOrFallback(card)
   const keywords = keywordsOf(card)
@@ -56,15 +78,27 @@ export function CardDetailsModal({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 overflow-y-auto bg-ocean-950/90 p-4 sm:p-8"
-      onClick={onClose}
+      className={`fixed inset-0 z-50 overflow-y-auto bg-ocean-950/90 p-4 transition-opacity duration-150 ease-out motion-reduce:transition-none sm:p-8 ${
+        open ? 'opacity-100 starting:opacity-0' : 'pointer-events-none opacity-0'
+      }`}
+      onPointerDown={(e) => { pressedBackdrop.current = e.target === e.currentTarget }}
+      onClick={(e) => {
+        // The modal is portalled, but React replays events along the React
+        // tree — where it is still a child of the clickable card face. Without
+        // this the backdrop click closed the modal and the very same event
+        // re-opened it via PhysicalCard's own handler.
+        e.stopPropagation()
+        if (e.target === e.currentTarget && pressedBackdrop.current) onClose()
+      }}
     >
       <div
         role="dialog"
         aria-modal="true"
         aria-label={`${card.name} — card details`}
         onClick={(e) => e.stopPropagation()}
-        className="mx-auto flex min-h-full max-w-5xl flex-col gap-6 rounded-xl border-2 border-brass-400 bg-ocean-900 p-6 shadow-plank md:flex-row"
+        className={`mx-auto flex min-h-full max-w-5xl flex-col gap-6 rounded-xl border-2 border-brass-400 bg-ocean-900 p-6 shadow-plank transition-transform duration-150 ease-out motion-reduce:transition-none md:flex-row ${
+          open ? 'translate-y-0 starting:translate-y-1' : 'translate-y-1'
+        }`}
       >
         <section className="flex w-full flex-col md:w-[360px] md:shrink-0">
           <div className="flex h-[280px] items-center justify-center overflow-hidden rounded bg-parchment-300 shadow-inner">
