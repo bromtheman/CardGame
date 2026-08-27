@@ -221,7 +221,7 @@ export function GameBoardPage() {
             {state.resources[mySide].cp}
             <span className="ml-1 text-sm font-normal text-ocean-300">CP</span>
           </span>
-          <span className="flex flex-col border-l border-ocean-600 pl-5 text-xs text-ocean-400">
+          <span className="flex flex-col border-l border-ocean-600 pl-5 text-xs text-ocean-300/60">
             <span>Opponent hand: {state.counts[theirSide].hand}</span>
             <span>Opponent deck: {state.counts[theirSide].deck}</span>
           </span>
