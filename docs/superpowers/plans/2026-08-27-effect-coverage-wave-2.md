@@ -500,11 +500,12 @@ describe('pendingEffect freeze', () => {
 })
 ```
 
-Append one assertion to `shared/engine/gameInit.test.ts`, inside whichever `describe` already exercises `buildInitialGame` and reusing that block's existing setup — read the file and match it rather than inventing a helper:
+Append one assertion to `shared/engine/gameInit.test.ts`, inside its existing `describe('buildInitialGame')` block. That file's helper is `build(rngValues: number[])`, which returns `{ game, aPrivate, bPrivate }`:
 
 ```ts
   it('starts with no pending effect', () => {
-    expect(built.game.state.pendingEffect).toBeNull()
+    const { game } = build([0.9])
+    expect(game.state.pendingEffect).toBeNull()
   })
 ```
 
@@ -2078,6 +2079,8 @@ describe('wave 2 — board spawns', () => {
     })
     game.privates.a.hand.push(card)
     game.state.counts.a.hand = 1
+    // makeGame starts each side on 100000 materials — not enough for this card.
+    game.state.resources.a.materials = 300000
     const res = applyAction(game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: 'dp1', zoneId: 3 }, ctx)
     if (!res.ok) throw new Error(res.error)
     const spawned = res.game.state.zones[2].cards.a
@@ -2406,7 +2409,7 @@ Without this, playing Kraken, Special Foundries or Robotic Assemblers freezes th
 - Create: `frontend/src/pages/game/PendingChoiceDialog.tsx`
 - Modify: `frontend/src/pages/game/GameBoardPage.tsx`
 - Modify: `frontend/src/lib/games.ts`
-- Test: `frontend/src/lib/games.test.ts` if one exists; otherwise no new test file.
+- Create: `frontend/src/lib/games.test.ts` (does not exist yet; `deckEditing`, `keywords`, `reconnectPolicy` and `time` all have one, so a pure-logic `lib/` change is expected to carry tests)
 
 **Interfaces:**
 - Consumes: `state.pendingEffect` (Task 3), `RESOLVE_PENDING_EFFECT` (Task 4).
@@ -2436,7 +2439,43 @@ export function isMyMove(g: {
 
 The `g.state?.` guard is kept on the new branch for the same reason the others have it: a row from an older deploy may not carry the field.
 
-If `frontend/src/lib/games.test.ts` exists, add a case for each side owing the choice before changing the function.
+`frontend/src/lib/games.test.ts` does not exist yet — create it, and write these before changing the function. `isMyMove` is pure, so no React testing setup is needed:
+
+```ts
+import { describe, expect, it } from 'vitest'
+import { isMyMove } from './games'
+
+const row = (state: Partial<Parameters<typeof isMyMove>[0]['state']>) => ({
+  active_player: 'alice',
+  player_a: 'alice',
+  state: { awaitingResponse: null, pendingReport: null, pendingEffect: null, ...state },
+})
+
+describe('isMyMove', () => {
+  it('is my move when I owe the pending choice', () => {
+    expect(isMyMove(row({ pendingEffect: { side: 'a' } }), 'alice')).toBe(true)
+  })
+
+  it('is not my move when my opponent owes it', () => {
+    expect(isMyMove(row({ pendingEffect: { side: 'b' } }), 'alice')).toBe(false)
+  })
+
+  it('a pending choice outranks the active player', () => {
+    expect(isMyMove(row({ pendingEffect: { side: 'b' } }), 'alice')).toBe(false)
+    expect(isMyMove(row({ pendingEffect: { side: 'b' } }), 'bob')).toBe(true)
+  })
+
+  it('still classifies a pending report and an awaited response', () => {
+    expect(isMyMove(row({ pendingReport: { submittedBy: 'a' } }), 'alice')).toBe(false)
+    expect(isMyMove(row({ awaitingResponse: { aggressor: 'a' } }), 'alice')).toBe(false)
+  })
+
+  it('falls back to the active player', () => {
+    expect(isMyMove(row({}), 'alice')).toBe(true)
+    expect(isMyMove(row({}), 'bob')).toBe(false)
+  })
+})
+```
 
 - [ ] **Step 2: Write the dialog**
 
