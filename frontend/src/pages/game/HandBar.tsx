@@ -219,11 +219,26 @@ export function HandBar({
                 selected ? 'ring-4 ring-brass-400' : affordable ? '' : 'ring-2 ring-red-400'
               }`}
             >
+              {/* In an active game a card press ACTS — deploy the vehicle, play
+                  the ability — for both card types alike; details move to the
+                  corner button PhysicalCard renders whenever onClick is given.
+                  Elsewhere (deck builder, collection, create-card preview) no
+                  onClick is passed, so a press inspects instead.
+
+                  This is also what makes the hand usable on touch. A tap fires
+                  pointerenter (lift) and click together; if the press only
+                  inspected, the portalled details modal would autoFocus, blur
+                  the card, drop the lift, and unmount the Play button before it
+                  could ever be tapped. */}
               <PhysicalCard
                 card={cardInstanceToRow(c)}
                 effectiveCost={effectiveCost}
                 unaffordable={!affordable}
-                onClick={c.type === 'vehicle' ? () => handleVehicleClick(c) : undefined}
+                onClick={
+                  c.type === 'vehicle'
+                    ? () => handleVehicleClick(c)
+                    : () => { if (!busy && affordable) handleAbilityPlay(c) }
+                }
               />
               {effectiveCost !== c.materialCost && (
                 <span
