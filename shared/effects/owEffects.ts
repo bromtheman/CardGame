@@ -29,7 +29,7 @@ registerEffect('cauldronEffect', drawFromPool({
 // "If played into a zone in which you have no friendly vehicles, spawn
 // another copy into that zone."
 registerEffect('clydesdaleEffect', whenPlayed(
-  (p) => zoneOccupants(p, 'own').length === 0,
+  (p) => zoneOccupants(p, 'own')?.length === 0,
   ({ game, actor, card, ctx, targetZoneId }) => {
     const zone = game.state.zones.find((z) => z.id === targetZoneId)
     if (!zone) return false

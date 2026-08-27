@@ -14,12 +14,13 @@ const CP_ONLY: [string, number][] = [
 ]
 
 describe('grant-backed cards', () => {
-  it.each(DRAW_ONE)('%s draws exactly one card', (name) => {
+  it.each(DRAW_ONE)('%s draws exactly one card and leaves CP untouched', (name) => {
     const game = makeGame()
     game.privates.a.deck.push(inst({ name: 'Top' }), inst({ name: 'Next' }))
     expect(effectFor(name)!({ game, actor: 'a', card: inst(), ctx: makeCtx() })).toBe(true)
     expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Top'])
     expect(game.state.counts.a).toEqual({ hand: 1, deck: 1 })
+    expect(game.state.resources.a.cp).toBe(3)
   })
 
   it.each(CP_ONLY)('%s grants %i CP and draws nothing', (name, cp) => {
@@ -85,6 +86,13 @@ describe('drawFromPool-backed cards', () => {
     expect(game.privates.a.hand[0].keywords).toEqual(['halfCost'])
   })
 
+  it('rheaOnPlay does not draw an SS plane at exactly the 300k boundary — the card says "under 300k"', () => {
+    const game = makeGame()
+    const edgeCatalog = [snap({ name: 'Edge Plane', faction: 'SS', vehicleType: 'plane', materialCost: 300_000 })]
+    expect(effectFor('rheaOnPlay')!({ game, actor: 'a', card: inst(), ctx: makeCtx({ catalog: edgeCatalog }) })).toBe(false)
+    expect(game.privates.a.hand).toHaveLength(0)
+  })
+
   it('cauldronEffect pulls a submarine out of your own deck', () => {
     const game = makeGame()
     game.privates.a.deck.push(inst({ name: 'My Sub', vehicleType: 'sub' }), inst({ name: 'My Ship' }))
@@ -107,6 +115,24 @@ describe('drawFromPool-backed cards', () => {
     )
     expect(effectFor('conduitEffect')!({ game, actor: 'a', card: inst(), ctx: makeCtx() })).toBe(true)
     expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Custom Ship'])
+  })
+
+  it('conduitEffect draws only the ship when both a qualifying ship and tank are in the deck', () => {
+    const game = makeGame()
+    game.privates.a.deck.push(
+      inst({ name: 'Custom Ship', isBuiltIn: false, vehicleType: 'ship' }),
+      inst({ name: 'Custom Tank', isBuiltIn: false, vehicleType: 'tank' }),
+    )
+    expect(effectFor('conduitEffect')!({ game, actor: 'a', card: inst(), ctx: makeCtx() })).toBe(true)
+    expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Custom Ship'])
+    expect(game.privates.a.deck.map((c) => c.name)).toEqual(['Custom Tank'])
+  })
+
+  it('conduitEffect falls back to a tank when no qualifying ship is in the deck', () => {
+    const game = makeGame()
+    game.privates.a.deck.push(inst({ name: 'Custom Tank', isBuiltIn: false, vehicleType: 'tank' }))
+    expect(effectFor('conduitEffect')!({ game, actor: 'a', card: inst(), ctx: makeCtx() })).toBe(true)
+    expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Custom Tank'])
   })
 })
 
@@ -251,6 +277,12 @@ describe('repairmenReadyEffect', () => {
 
   it('grants Scrappy but draws nothing for a player-made target', () => {
     const { game, target } = run({ isBuiltIn: false, materialCost: 100_000 })
+    expect(target.keywords).toContain('scrappy')
+    expect(game.privates.a.hand).toHaveLength(0)
+  })
+
+  it('grants Scrappy but draws nothing for a built-in target at exactly the 200k boundary — the card says "less than 200k"', () => {
+    const { game, target } = run({ isBuiltIn: true, materialCost: 200_000 })
     expect(target.keywords).toContain('scrappy')
     expect(game.privates.a.hand).toHaveLength(0)
   })

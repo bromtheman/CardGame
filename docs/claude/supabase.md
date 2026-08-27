@@ -52,6 +52,18 @@ what the payload must contain. After deploy, bump nothing locally: DB is the
 source of truth for the deployed version number. Deploy `game-action` after any
 engine/effects change; `lobby-action` after game-init/deck/lobby changes.
 
+- **Before redeploying `game-action` for a wave that registers a previously
+  unregistered effect name**, check whether any active game holds a card
+  whose snapshotted `meta` already names it. A game's `meta` is frozen data,
+  but the name → implementation mapping is code, shared by every game at
+  once — so an in-flight game whose old snapshot happens to carry that exact
+  name starts running the new implementation the instant this deploys, with
+  no reseed involved (see `docs/superpowers/specs/2026-08-27-effect-coverage-design.md`
+  §9.2 for the concrete Kraken/Paddlegun case). Query `games` for the
+  newly-registered name(s) inside `state`/`game_players` before deploying,
+  and flag any hit to a human — this doc does not prescribe what to do about
+  one, only that it be found first.
+
 (Backlog: a script that assembles the full-directory payload automatically.)
 
 ## Migrations & data

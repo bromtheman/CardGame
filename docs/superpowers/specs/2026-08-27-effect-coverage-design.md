@@ -535,12 +535,33 @@ two private zones, so **both** sides' `state.counts` resync, and the log line
 cannot name the card — it is entering a hidden hand. Same rule for every
 `drawFromPool` into hand.
 
-### 9.2 Live games do not retrofit
+### 9.2 Data does not retrofit live games; code does, immediately
 
 Card `meta` is snapshotted into `games.state` and `game_players` at deal time.
-Reseeding fixes cards for games started **after** the reseed only; games in
-flight keep playing their old vanilla behaviour. Recorded rather than solved —
+**Data** changes do not reach games already in flight: reseeding fixes cards
+for games started **after** the reseed only, and a game dealt from the old
+data keeps whatever `meta` it was dealt. Recorded rather than solved —
 migration machinery for in-flight rows is not worth its risk.
+
+**Code** is a different authority, and it is not scoped per game. A card's
+snapshotted `meta` only ever freezes an effect *name* (a string) — the
+mapping from that name to an *implementation* lives in the effect registry,
+which is ordinary code, not per-game data. `game-action` is redeployed once,
+for every game at once, including ones already in progress. So if this wave
+(or any wave) registers an effect name that some in-flight game's snapshot
+already happens to carry — because that name was sitting there inert,
+unregistered, before this deploy — that game's behaviour changes mid-game,
+with no reseed and no data migration involved at all.
+
+This is not hypothetical: `DWG:Kraken`'s current seed source names
+`krakenOnPlay` (still an unimplemented `KNOWN_GAPS` entry as of this wave),
+but any in-flight game dealt before `krakenOnPlay` replaced Kraken's older
+meta would have a Kraken snapshot that still names `paddlegunEffect` — the
+name this wave registers for real (`dwgEffects.ts`). Redeploying `game-action`
+for this wave makes every such already-dealt Kraken start firing Paddlegun's
+draw-from-the-enemy-deck effect for the rest of that game, purely because the
+code backing an old, previously-dormant name went live underneath it. See the
+pre-deploy check added to `docs/claude/supabase.md`'s deploy runbook.
 
 ### 9.3 Determinism
 

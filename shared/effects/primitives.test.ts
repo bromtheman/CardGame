@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { drawFromPool, grant, sequence, takeFromEnemyDeck } from './primitives.ts'
+import { drawFromPool, grant, sequence, takeFromEnemyDeck, whenPlayed, zoneOccupants } from './primitives.ts'
 import { inst, makeCtx, makeGame, snap } from '../engine/testFixtures.ts'
 
 describe('grant', () => {
@@ -173,5 +173,51 @@ describe('drawFromPool — deck source', () => {
     expect(fn({ game, actor: 'a', card: inst(), ctx: makeCtx() })).toBe(true)
     expect(game.privates.a.hand).toHaveLength(0)
     expect(game.state.log).toHaveLength(1)
+  })
+
+  it('fizzles rather than failing when the deck holds no match and allowEmpty is not specified — deck sources default to allowEmpty', () => {
+    const game = makeGame()
+    const fn = drawFromPool({ source: 'deck', filter: { vehicleType: 'sub' }, count: 1 })
+    expect(fn({ game, actor: 'a', card: inst(), ctx: makeCtx() })).toBe(true)
+    expect(game.privates.a.hand).toHaveLength(0)
+    expect(game.state.log).toHaveLength(1)
+  })
+
+  it('moves the correct two matching cards even as an earlier removal shifts a later match to a new index', () => {
+    const game = makeGame()
+    game.privates.a.deck.push(
+      inst({ name: 'Sub A', vehicleType: 'sub', instanceId: 'sub-a' }),
+      inst({ name: 'Ship X', vehicleType: 'ship', instanceId: 'ship-x' }),
+      inst({ name: 'Sub B', vehicleType: 'sub', instanceId: 'sub-b' }),
+      inst({ name: 'Ship Y', vehicleType: 'ship', instanceId: 'ship-y' }),
+    )
+    // rng fixed at exactly 0.5 makes shuffled() a no-op for this 2-item pool
+    // (floor(0.5 * 2) === 1 swaps copy[1] with itself), so the picks are
+    // processed in original deck order: the earlier match (index 0) splices
+    // out before the later one (index 2) is looked up. A version that
+    // computed both indices up front — instead of re-finding by instanceId
+    // after each splice — would look up index 2 against the now-shifted
+    // array and remove 'Ship Y' instead of 'Sub B'.
+    const fn = drawFromPool({ source: 'deck', filter: { vehicleType: 'sub' }, count: 2 })
+    expect(fn({ game, actor: 'a', card: inst(), ctx: makeCtx({ rng: () => 0.5 }) })).toBe(true)
+    expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Sub A', 'Sub B'])
+    expect(game.privates.a.deck.map((c) => c.name)).toEqual(['Ship X', 'Ship Y'])
+  })
+})
+
+describe('zoneOccupants', () => {
+  it('returns null when there is no target zone, not an empty array', () => {
+    const game = makeGame()
+    const payload = { game, actor: 'a' as const, card: inst(), ctx: makeCtx() }
+    expect(zoneOccupants(payload, 'own')).toBeNull()
+    expect(zoneOccupants(payload, 'either')).toBeNull()
+  })
+
+  it('a whenPlayed predicate built on it does not run its body when the zone is missing', () => {
+    const game = makeGame()
+    let ran = false
+    const fn = whenPlayed((p) => zoneOccupants(p, 'own')?.length === 0, () => { ran = true; return true })
+    expect(fn({ game, actor: 'a', card: inst(), ctx: makeCtx() })).toBe(true)
+    expect(ran).toBe(false)
   })
 })

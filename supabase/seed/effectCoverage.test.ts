@@ -13,9 +13,10 @@ const EXEMPT: Record<string, string> = {
   'SS:Falcon Squadron': 'Robotic-shaped conduct text: players apply it when reporting results',
 }
 
-// 34 of the 65 gaps (Falcon Squadron is permanently EXEMPT above),
+// The gaps not yet closed (Falcon Squadron is permanently EXEMPT above),
 // baselined so the guard is green from day one. Delete entries as their wave
-// lands — the third test rejects stale ones, so this list only shrinks.
+// lands — the "KNOWN_GAPS contains no stale entries" test below rejects
+// stale ones, so this list only shrinks.
 const KNOWN_GAPS: Record<string, string> = {
   'GT:[GT] Hunchback': 'wave 2', 'GT:[GT] Monsoon': 'wave 2', 'LH:Spectrum': 'wave 2',
   'DWG:Kraken': 'wave 2', 'OW:Special Foundries': 'wave 2',
@@ -48,6 +49,45 @@ function classify(card: { faction: string; name: string; cardText?: string; meta
   }
 }
 
+// G1 above only checks that a trigger key's effect NAME resolves to a
+// registered implementation — it never checks whether the engine reads that
+// KEY at all for a card of the card's own TYPE. That gap is exactly the
+// shape of bug Garrison shipped with: its meta named a real, registered
+// implementation (garrisonEffect) under playOnVehicleEffect, so G1 was
+// satisfied even though no vehicle-targeting handler could ever be the
+// right path for a card whose text targets your own hand. This check would
+// have caught it had the mismatch been of *type* (e.g. a vehicle wrongly
+// given a hand/field-targeting key) — a vehicle can only ever be played
+// through PLAY_CARD_TO_ZONE (every other handler in placement.ts rejects
+// `card.type !== 'ability'`), so playOnVehicleEffect/playOnCardEffect meta
+// on a vehicle is dead, and an ability is always `spendCard`'d and never
+// pushed into `zone.cards`, so it can never become a battle participant and
+// onDeathEffect can never fire for one. It does NOT catch Garrison's actual
+// bug: playOnVehicleEffect and playOnCardEffect are both legitimately
+// dispatchable for an *ability* card (via two different handlers keyed on
+// the same type), so a same-type mix-up between the two needs a human
+// reading the card text against the key, which is how Garrison's fix
+// actually happened. Confirmed by reverting Garrison's key and rerunning
+// this suite — see the wave report for the (still-green) output. Verified
+// against the four registerHandler blocks in shared/engine/placement.ts
+// (resolvePlayEffects's `keys` argument at each call site) and the
+// onDeathEffect dispatch in shared/engine/battleResolve.ts's
+// destroyedEntries loop — not against the original review notes, which had
+// onDeathEffect on the ability side and missed that playOnZoneEffect is
+// read unconditionally by PLAY_CARD_TO_ZONE regardless of type
+// (resolvePlayEffects's key list there does not branch on card.type), so it
+// is technically reachable for a vehicle too.
+const REACHABLE_TRIGGERS: Record<string, readonly string[]> = {
+  vehicle: ['onPlayEffect', 'playOnZoneEffect', 'onDeathEffect', 'costModifier'],
+  ability: ['onPlayEffect', 'playOnZoneEffect', 'playOnVehicleEffect', 'playOnCardEffect', 'costModifier'],
+}
+
+function unreachableTriggers(card: { type: string; meta?: unknown }): string[] {
+  const meta = (card.meta ?? {}) as Record<string, unknown>
+  const allowed = REACHABLE_TRIGGERS[card.type] ?? []
+  return ALL_META_KEYS.filter((k) => effectName({ meta }, k) !== null && !allowed.includes(k))
+}
+
 describe('built-in card effect coverage', () => {
   it('G1: every effect name in meta resolves to a registered implementation', async () => {
     const { cards } = await loadSeedData()
@@ -69,6 +109,17 @@ describe('built-in card effect coverage', () => {
       if (silent && KNOWN_GAPS[key(card)] === undefined && EXEMPT[key(card)] === undefined) {
         offenders.push(key(card))
       }
+    }
+    expect(offenders).toEqual([])
+  })
+
+  it('G3: every trigger key a card carries is one the engine dispatches for its type', async () => {
+    const { cards } = await loadSeedData()
+    const offenders: string[] = []
+    for (const card of cards.filter((c) => c.isBuiltIn)) {
+      if (KNOWN_GAPS[key(card)] !== undefined) continue
+      const bad = unreachableTriggers(card)
+      if (bad.length > 0) offenders.push(`${key(card)} (${card.type}) → ${bad.join(', ')}`)
     }
     expect(offenders).toEqual([])
   })

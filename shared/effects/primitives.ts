@@ -68,8 +68,10 @@ export interface PoolSpec {
   filter: PoolFilter
   count: number
   strip?: string[]
-  // Catalog pools that come up empty are a data bug and fail. Deck pools are
-  // often legitimately empty ("if you have one"), so those opt into a note.
+  // Catalog pools that come up empty are a data bug and fail by default. Deck
+  // pools are often legitimately empty ("if you have one" is printed on the
+  // card), so a deck source defaults to allowEmpty — pass false to require a
+  // match instead.
   allowEmpty?: boolean
 }
 
@@ -100,10 +102,11 @@ function shuffled<T>(items: T[], ctx: EngineContext): T[] {
 export function drawFromPool(spec: PoolSpec): EffectFn {
   return ({ game, actor, ctx }) => {
     const hand = game.privates[actor].hand
+    const allowEmpty = spec.allowEmpty ?? spec.source === 'deck'
     if (spec.source === 'catalog') {
       const pool = ctx.catalog.filter((c) => c.isBuiltIn && matches(c, spec.filter))
       if (pool.length === 0) {
-        if (!spec.allowEmpty) return false
+        if (!allowEmpty) return false
         game.state.log.push(`Player ${actor.toUpperCase()} finds no matching card`)
         return true
       }
@@ -118,7 +121,7 @@ export function drawFromPool(spec: PoolSpec): EffectFn {
       const deck = game.privates[actor].deck
       const pool = deck.filter((c) => matches(c, spec.filter))
       if (pool.length === 0) {
-        if (!spec.allowEmpty) return false
+        if (!allowEmpty) return false
         game.state.log.push(`Player ${actor.toUpperCase()} finds no matching card in their deck`)
         return true
       }
@@ -138,9 +141,13 @@ export function drawFromPool(spec: PoolSpec): EffectFn {
 
 // Vehicles already in the target zone, excluding whatever this play just
 // placed. `side: 'own'` counts only the actor's; 'either' counts both.
-export function zoneOccupants(p: EffectPayload, side: 'own' | 'either'): CardInstance[] {
+// Returns null when there is no target zone at all — callers building a
+// whenPlayed predicate must not read that the same as an empty zone (an
+// empty array), or a reachable-but-targetless play would satisfy an
+// "is the zone empty?" check it never should.
+export function zoneOccupants(p: EffectPayload, side: 'own' | 'either'): CardInstance[] | null {
   const zone = p.game.state.zones.find((z) => z.id === p.targetZoneId)
-  if (!zone) return []
+  if (!zone) return null
   const placed = new Set(p.placedInstanceIds ?? [])
   const mine = zone.cards[p.actor].filter((c) => !placed.has(c.instanceId))
   if (side === 'own') return mine
@@ -149,7 +156,9 @@ export function zoneOccupants(p: EffectPayload, side: 'own' | 'either'): CardIns
 }
 
 // Run `body` only when `predicate` holds. A false predicate is not a
-// failure — the effect resolved, it simply did nothing.
+// failure — the effect resolved, it simply did nothing. A predicate built
+// around zoneOccupants must treat its null (no such zone) as "does not
+// hold" — see zoneOccupants and its two call sites.
 export function whenPlayed(predicate: (p: EffectPayload) => boolean, body: EffectFn): EffectFn {
   return (payload) => (predicate(payload) ? body(payload) : true)
 }

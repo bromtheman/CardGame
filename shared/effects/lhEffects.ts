@@ -30,7 +30,7 @@ registerEffect('conduitEffect', conduitOnDeath)
 // its cost." Recomputing the cost is exact here: Sapphire carries no
 // costModifier, so nothing about it depends on board state.
 registerEffect('sapphireEffect', whenPlayed(
-  (p) => zoneOccupants(p, 'either').length === 0,
+  (p) => zoneOccupants(p, 'either')?.length === 0,
   sequence(
     grant({ draw: 1 }),
     ({ game, actor, card }) => {
