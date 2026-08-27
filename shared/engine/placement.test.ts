@@ -237,6 +237,10 @@ describe('PLAY_CARD_TO_ZONE ability-to-zone branch', () => {
     if (!r.ok) throw new Error(r.error)
     expect(r.game.state.zones[2].cards.a).toHaveLength(0) // no entry pushed for abilities
     expect(r.game.privates.a.hand).toHaveLength(0)
+    // A zone-targeted ability is spent, not a vehicle — it must land in the discard.
+    expect(r.game.state.destroyed.a).toHaveLength(1)
+    expect(r.game.state.destroyed.a[0]).toMatchObject({ name: 'Ambush' })
+    expect(r.game.state.destroyed.a[0]).not.toHaveProperty('instanceId')
   })
 
   it('still enforces the vehicle-only illegal-zone message for vehicles', () => {
@@ -277,6 +281,10 @@ describe('PLAY_CARD_TARGETING_CARD_IN_HAND', () => {
     expect(r.game.state.counts.a.hand).toBe(1)
     expect(r.game.state.resources.a.materials).toBe(95000) // 100000 - 5000
     expect(r.game.state.resources.a.cp).toBe(2) // 3 - 1
+    // Double Up itself is the spent ability card (the target stays in hand, buffed).
+    expect(r.game.state.destroyed.a).toHaveLength(1)
+    expect(r.game.state.destroyed.a[0]).toMatchObject({ name: 'Double Up' })
+    expect(r.game.state.destroyed.a[0]).not.toHaveProperty('instanceId')
   })
 
   it('then playing the buffed vehicle spawns 2 entries', () => {
@@ -438,6 +446,10 @@ describe('PLAY_CARD_TARGETING_CARD_ON_FIELD', () => {
     expect(
       r.game.state.log.some((l) => l.includes('Sabotage') && l.includes('sabotageEffect') && l.includes('vanilla')),
     ).toBe(true)
+    // The spent targeting ability lands in the discard, same as any other ability play.
+    expect(r.game.state.destroyed.a).toHaveLength(1)
+    expect(r.game.state.destroyed.a[0]).toMatchObject({ name: 'Sabotage' })
+    expect(r.game.state.destroyed.a[0]).not.toHaveProperty('instanceId')
   })
 
   it('rejects a nonexistent target instanceId', () => {
