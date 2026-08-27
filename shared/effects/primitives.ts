@@ -1,6 +1,6 @@
 import type { CardInstance } from '../engine/gameInit.ts'
 import type { EngineContext, EngineGame, Side } from '../engine/engineTypes.ts'
-import { drawCard, otherSide } from '../engine/gameEngine.ts'
+import { drawCard, findVehicle, otherSide } from '../engine/gameEngine.ts'
 import type { EffectFn, EffectPayload } from './registry.ts'
 
 // Move one card from the enemy's deck into the actor's hand. The log line
@@ -164,6 +164,25 @@ export function costDelta(spec: { delta: number; filter: PoolFilter }): EffectFn
     if (!target || !matches(target, spec.filter)) return false
     const current = typeof target.meta.costDelta === 'number' ? target.meta.costDelta : 0
     target.meta = { ...target.meta, costDelta: current + spec.delta }
+    return true
+  }
+}
+
+// Add keywords to a card, either in the actor's hand or anywhere on the
+// field. Idempotent — a keyword the target already carries is not duplicated.
+export function grantKeywords(spec: {
+  keywords: string[]
+  target: 'hand' | 'field'
+  filter?: PoolFilter
+}): EffectFn {
+  return ({ game, actor, targetInstanceId }) => {
+    if (typeof targetInstanceId !== 'string') return false
+    const card = spec.target === 'hand'
+      ? game.privates[actor].hand.find((c) => c.instanceId === targetInstanceId)
+      : findVehicle(game.state, targetInstanceId)?.entry
+    if (!card) return false
+    if (spec.filter && !matches(card, spec.filter)) return false
+    card.keywords = [...card.keywords, ...spec.keywords.filter((k) => !card.keywords.includes(k))]
     return true
   }
 }

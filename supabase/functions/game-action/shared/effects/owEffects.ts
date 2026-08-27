@@ -1,5 +1,6 @@
-import { drawFromPool, grant, whenPlayed, zoneOccupants } from './primitives.ts'
+import { drawFromPool, grant, grantKeywords, whenPlayed, zoneOccupants } from './primitives.ts'
 import { registerEffect } from './registry.ts'
+import { KEYWORDS } from '../gameSettings.ts'
 import type { ZoneCardEntry } from '../engine/engineTypes.ts'
 
 // OW built-in card effects. Cards whose faction is GT but whose seed row
@@ -40,3 +41,12 @@ registerEffect('clydesdaleEffect', whenPlayed(
     return true
   },
 ))
+
+// "Target an AI vehicle in hand. Give it the HALFCOST and INOFFENSIVE
+// keywords." The seeded meta key said playOnVehicleEffect (a field target);
+// the card text says "in hand", and card text is authoritative (spec 2 §6).
+registerEffect('garrisonEffect', grantKeywords({
+  keywords: [KEYWORDS.HALF_COST, KEYWORDS.INOFFENSIVE],
+  target: 'hand',
+  filter: { isBuiltIn: true, type: 'vehicle' },
+}))

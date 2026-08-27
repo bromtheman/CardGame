@@ -479,7 +479,7 @@ export const owVehicles = [
         faction: FACTIONS.OW,
         blueprintId: null,
         meta: {
-            [TRIGGERS.PLAY_ON_VEHICLE]: 'garrisonEffect',
+            [TRIGGERS.PLAY_ON_CARD]: 'garrisonEffect',
         }
-    }, 
+    },
 ];

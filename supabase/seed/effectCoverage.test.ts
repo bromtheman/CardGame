@@ -17,7 +17,6 @@ const EXEMPT: Record<string, string> = {
 // baselined so the guard is green from day one. Delete entries as their wave
 // lands — the third test rejects stale ones, so this list only shrinks.
 const KNOWN_GAPS: Record<string, string> = {
-  'OW:Garrison': 'wave 1', 'SS:Repairmen Ready': 'wave 1',
   'GT:[GT] Osprey': 'wave 1',
 
   'GT:[GT] Hunchback': 'wave 2', 'GT:[GT] Monsoon': 'wave 2', 'LH:Spectrum': 'wave 2',
@@ -90,6 +89,6 @@ describe('built-in card effect coverage', () => {
   })
 
   it('the gap shrinks as waves land', () => {
-    expect(Object.keys(KNOWN_GAPS)).toHaveLength(34)
+    expect(Object.keys(KNOWN_GAPS)).toHaveLength(32)
   })
 })

@@ -194,3 +194,64 @@ describe('excaliburOnPlay', () => {
     })).toBe(false)
   })
 })
+
+describe('garrisonEffect', () => {
+  it('gives a built-in vehicle in hand Half-Cost and Inoffensive', () => {
+    const target = inst({ name: 'Bulwark', isBuiltIn: true, type: 'vehicle', keywords: ['blocker'] })
+    const game = makeGame({ privates: { a: { hand: [target], deck: [] }, b: { hand: [], deck: [] } } })
+    const ok = effectFor('garrisonEffect')!({
+      game, actor: 'a', card: inst(), ctx: makeCtx(), targetInstanceId: target.instanceId,
+    })
+    expect(ok).toBe(true)
+    expect(game.privates.a.hand[0].keywords).toEqual(['blocker', 'halfCost', 'inoffensive'])
+  })
+
+  it('does not duplicate a keyword the target already has', () => {
+    const target = inst({ isBuiltIn: true, type: 'vehicle', keywords: ['halfCost'] })
+    const game = makeGame({ privates: { a: { hand: [target], deck: [] }, b: { hand: [], deck: [] } } })
+    effectFor('garrisonEffect')!({
+      game, actor: 'a', card: inst(), ctx: makeCtx(), targetInstanceId: target.instanceId,
+    })
+    expect(game.privates.a.hand[0].keywords).toEqual(['halfCost', 'inoffensive'])
+  })
+
+  it('rejects a player-made target', () => {
+    const target = inst({ isBuiltIn: false, type: 'vehicle' })
+    const game = makeGame({ privates: { a: { hand: [target], deck: [] }, b: { hand: [], deck: [] } } })
+    expect(effectFor('garrisonEffect')!({
+      game, actor: 'a', card: inst(), ctx: makeCtx(), targetInstanceId: target.instanceId,
+    })).toBe(false)
+  })
+})
+
+describe('repairmenReadyEffect', () => {
+  const run = (over: Partial<Parameters<typeof inst>[0]>) => {
+    const target = zoneEntry({ name: 'Target', keywords: [], ...over })
+    const game = makeGame()
+    game.state.zones[0].cards.b.push(target)
+    game.privates.a.deck.push(inst({ name: 'Top' }))
+    const ok = effectFor('repairmenReadyEffect')!({
+      game, actor: 'a', card: inst(), ctx: makeCtx(), targetInstanceId: target.instanceId,
+    })
+    return { ok, game, target: game.state.zones[0].cards.b[0] }
+  }
+
+  it('grants Scrappy and draws for a cheap built-in target', () => {
+    const { ok, game, target } = run({ isBuiltIn: true, materialCost: 150_000 })
+    expect(ok).toBe(true)
+    expect(target.keywords).toContain('scrappy')
+    expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Top'])
+  })
+
+  it('grants Scrappy but draws nothing for an expensive built-in target', () => {
+    const { game, target } = run({ isBuiltIn: true, materialCost: 250_000 })
+    expect(target.keywords).toContain('scrappy')
+    expect(game.privates.a.hand).toHaveLength(0)
+  })
+
+  it('grants Scrappy but draws nothing for a player-made target', () => {
+    const { game, target } = run({ isBuiltIn: false, materialCost: 100_000 })
+    expect(target.keywords).toContain('scrappy')
+    expect(game.privates.a.hand).toHaveLength(0)
+  })
+})
