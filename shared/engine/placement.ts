@@ -74,6 +74,15 @@ function takeFromHand(game: EngineGame, side: Side, instanceId: string): CardIns
   return card
 }
 
+// An ability card is spent once it resolves: it leaves play into its owner's
+// discard (state.destroyed), which drawCard reshuffles when the deck runs
+// out. Call this AFTER effects resolve — a card that draws from an empty deck
+// must not be able to shuffle itself back in mid-resolution.
+export function spendCard(game: EngineGame, side: Side, card: CardInstance): void {
+  const { instanceId: _instanceId, ...snapshot } = card
+  game.state.destroyed[side].push(snapshot)
+}
+
 function pay(game: EngineGame, side: Side, card: CardInstance): void {
   game.state.resources[side].materials -= effectiveCostInGame(game.state, side, card)
   game.state.resources[side].cp -= card.cpCost
@@ -147,6 +156,7 @@ registerHandler('PLAY_CARD_TO_ZONE', (game, actor, action, ctx) => {
     game, actor, card, ctx, { targetZoneId: action.zoneId }, ['playOnZoneEffect', 'onPlayEffect'],
   )
   if (failure) return failure
+  if (card.type !== 'vehicle') spendCard(game, actor, card)
 
   game.state.log.push(
     card.type === 'vehicle' ? `${card.name} deployed to zone ${action.zoneId}` : `${card.name} resolved`,
@@ -177,6 +187,7 @@ registerHandler('PLAY_ABILITY_CARD', (game, actor, action, ctx) => {
   // rejects any card carrying that key, so only onPlayEffect can ever fire here.
   const failure = resolvePlayEffects(game, actor, card, ctx, {}, ['onPlayEffect'])
   if (failure) return failure
+  spendCard(game, actor, card)
 
   game.state.log.push(`${card.name} resolved`)
   return { ok: true, game }
@@ -204,6 +215,7 @@ registerHandler('PLAY_CARD_TARGETING_CARD_ON_FIELD', (game, actor, action, ctx) 
     game, actor, card, ctx, { targetInstanceId: action.targetInstanceId }, ['playOnVehicleEffect', 'onPlayEffect'],
   )
   if (failure) return failure
+  spendCard(game, actor, card)
 
   game.state.log.push(`${card.name} resolved`)
   return { ok: true, game }
@@ -254,6 +266,7 @@ registerHandler('PLAY_CARD_TARGETING_CARD_IN_HAND', (game, actor, action, ctx) =
     game, actor, card, ctx, { targetInstanceId: action.targetInstanceId }, ['playOnCardEffect', 'onPlayEffect'],
   )
   if (failure) return failure
+  spendCard(game, actor, card)
 
   game.state.log.push(`${card.name} resolved`)
   return { ok: true, game }

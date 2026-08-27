@@ -92,7 +92,7 @@ overrides come from lobby settings. Nothing is hardcoded at usage sites.
   is tracked explicitly (first player is rolled at game start) — turn-number
   parity is NOT authoritative and carries no rules meaning.
 - At the start of each turn (either player's): remove all **Temporary** vehicles
-  (both sides), then the active player draws 1 (empty deck → no draw, no penalty)
+  (both sides), then the active player draws 1 (empty deck → shuffle your discard into your deck and draw; if both are empty, no draw, no penalty)
   and sets materials to `floor(turnNumber) × 50,000` (materials do NOT carry over
   between turns — mana-style). CP persists and is only gained via effects.
 - On their turn the active player may, in any order: play cards (paying material/CP
@@ -173,7 +173,7 @@ MVP-implemented (from the design doc + old BE `gameSettings.js` comments):
 - **Robotic** — battle-conduct rule shown on the spawn sheet: unlimited
   in-battle repair resources, but the vehicle is considered destroyed if any of
   its sub-objects are destroyed (players apply this when reporting results)
-- **Fragile** (auto-assigned to airships) — cannot be repaired once below 90%
+- **Fragile** (auto-assigned to player-made airships; hand-assigned on built-ins as a balance lever) — cannot be repaired once below 90%
   HP: the 80–89.999% repair window (3.5) does not apply; the vehicle is simply
   destroyed. Overrides Scrappy.
 

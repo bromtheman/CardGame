@@ -62,8 +62,8 @@ describe('SUBMIT_BATTLE_REPORT', () => {
     })).toMatchObject({ ok: false, status: 400 })
     expect(applyAction(g, 'alice', {
       type: 'SUBMIT_BATTLE_REPORT',
-      results: { [atk.instanceId]: 95, [def.instanceId]: 40 }, repairs: [def.instanceId],
-    })).toMatchObject({ ok: false, status: 400 }) // 40 is below the repair window
+      results: { [atk.instanceId]: 40, [def.instanceId]: 95 }, repairs: [atk.instanceId],
+    })).toMatchObject({ ok: false, status: 400 }) // 40 is below the repair window; atk is alice's own vehicle
   })
 })
 
@@ -213,5 +213,143 @@ describe('repairCostOf', () => {
     expect(repairCostOf(zoneEntry({ materialCost: 41000 }))).toBe(20500)
     expect(repairCostOf(zoneEntry({ materialCost: 41001 }))).toBe(20501)
     expect(repairCostOf(zoneEntry({ materialCost: 90000, keywords: ['scrappy'] }))).toBe(0)
+  })
+})
+
+describe('repair ownership', () => {
+  it('rejects a submitter who tries to repair the other captain\'s vehicle', () => {
+    const { g, atk, def } = inBattle()
+    expect(applyAction(g, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT',
+      results: { [atk.instanceId]: 95, [def.instanceId]: 85 },
+      repairs: [def.instanceId],
+    })).toMatchObject({ ok: false, status: 400 })
+  })
+
+  it('accepts a submitter repairing their own vehicle', () => {
+    const { g, atk, def } = inBattle()
+    const r = applyAction(g, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT',
+      results: { [atk.instanceId]: 85, [def.instanceId]: 95 },
+      repairs: [atk.instanceId],
+    })
+    expect(r.ok).toBe(true)
+  })
+
+  it('lets the approver repair their own vehicle at decision time', () => {
+    const { g, atk, def } = inBattle()
+    const submitted = applyAction(g, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT',
+      results: { [atk.instanceId]: 95, [def.instanceId]: 85 }, repairs: [],
+    })
+    if (!submitted.ok) throw new Error(submitted.error)
+    const r = applyAction(submitted.game, 'bob', {
+      type: 'DECIDE_BATTLE_REPORT', approve: true, repairs: [def.instanceId],
+    })
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.zones[0].cards.b).toHaveLength(1)
+    expect(r.game.state.resources.b.materials).toBe(100000 - repairCostOf(def))
+  })
+
+  it('rejects an approver repairing the submitter\'s vehicle', () => {
+    const { g, atk, def } = inBattle()
+    const submitted = applyAction(g, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT',
+      results: { [atk.instanceId]: 85, [def.instanceId]: 95 }, repairs: [],
+    })
+    if (!submitted.ok) throw new Error(submitted.error)
+    expect(applyAction(submitted.game, 'bob', {
+      type: 'DECIDE_BATTLE_REPORT', approve: true, repairs: [atk.instanceId],
+    })).toMatchObject({ ok: false, status: 400 })
+  })
+
+  it('ignores a repairs array sent alongside a rejection', () => {
+    const { g, atk, def } = inBattle()
+    const submitted = applyAction(g, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT',
+      results: { [atk.instanceId]: 85, [def.instanceId]: 95 }, repairs: [],
+    })
+    if (!submitted.ok) throw new Error(submitted.error)
+    const r = applyAction(submitted.game, 'bob', {
+      type: 'DECIDE_BATTLE_REPORT', approve: false, repairs: [atk.instanceId],
+    })
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.pendingReport).toBeNull()
+  })
+})
+
+describe('Scrappy auto-repair', () => {
+  function scrappyBattle() {
+    const g = makeGame({ turnNumber: 3 })
+    const atk = zoneEntry({ playedOnTurn: 2, materialCost: 40000, name: 'Raider', keywords: ['scrappy'] })
+    const def = zoneEntry({ materialCost: 60000, name: 'Bastion' })
+    g.state.zones[0].cards.a.push(atk)
+    g.state.zones[0].cards.b.push(def)
+    g.state.activeBattle = {
+      zoneId: 1, aggressor: 'a', attackerIds: [atk.instanceId],
+      defenderIds: [def.instanceId], distanceM: 1200, distanceModifiedBy: [],
+    }
+    g.state.zones[0].lastActivatedTurn = 3
+    return { g, atk, def }
+  }
+
+  it('survives an in-band Scrappy vehicle nobody listed, for free', () => {
+    const { g, atk, def } = scrappyBattle()
+    const submitted = applyAction(g, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT',
+      results: { [atk.instanceId]: 85, [def.instanceId]: 95 }, repairs: [],
+    })
+    if (!submitted.ok) throw new Error(submitted.error)
+    const r = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true })
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.zones[0].cards.a).toHaveLength(1)
+    expect(r.game.state.resources.a.materials).toBe(100000)
+  })
+
+  it('charges nothing extra when the Scrappy vehicle was also listed explicitly', () => {
+    const { g, atk, def } = scrappyBattle()
+    const submitted = applyAction(g, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT',
+      results: { [atk.instanceId]: 85, [def.instanceId]: 95 }, repairs: [atk.instanceId],
+    })
+    if (!submitted.ok) throw new Error(submitted.error)
+    const r = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true })
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.resources.a.materials).toBe(100000)
+  })
+
+  it('never auto-repairs a Fragile vehicle', () => {
+    const g = makeGame({ turnNumber: 3 })
+    const atk = zoneEntry({
+      playedOnTurn: 2, materialCost: 40000, name: 'Blimp', keywords: ['scrappy', 'fragile'],
+    })
+    const def = zoneEntry({ materialCost: 60000, name: 'Bastion' })
+    g.state.zones[0].cards.a.push(atk)
+    g.state.zones[0].cards.b.push(def)
+    g.state.activeBattle = {
+      zoneId: 1, aggressor: 'a', attackerIds: [atk.instanceId],
+      defenderIds: [def.instanceId], distanceM: 1200, distanceModifiedBy: [],
+    }
+    g.state.zones[0].lastActivatedTurn = 3
+    const submitted = applyAction(g, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT',
+      results: { [atk.instanceId]: 85, [def.instanceId]: 95 }, repairs: [],
+    })
+    if (!submitted.ok) throw new Error(submitted.error)
+    const r = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true })
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.zones[0].cards.a).toEqual([])
+  })
+
+  it('does not auto-repair a Scrappy vehicle outside the band', () => {
+    const { g, atk, def } = scrappyBattle()
+    const submitted = applyAction(g, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT',
+      results: { [atk.instanceId]: 70, [def.instanceId]: 95 }, repairs: [],
+    })
+    if (!submitted.ok) throw new Error(submitted.error)
+    const r = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true })
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.zones[0].cards.a).toEqual([])
   })
 })

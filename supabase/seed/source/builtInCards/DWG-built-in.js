@@ -187,7 +187,7 @@ export const dwgVehicles = [
         type: 'vehicle',
         faction: FACTIONS.DWG,
         blueprintId: null,
-        keywords: [KEYWORDS.SCRAPPY, KEYWORDS.HALF_COST],
+        keywords: [KEYWORDS.HALF_COST],
         meta: {
             [TRIGGERS.ON_DEATH]: 'loggerheadOnDeath',
         }

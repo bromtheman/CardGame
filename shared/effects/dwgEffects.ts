@@ -6,8 +6,8 @@ import { registerCostModifier, registerEffect } from './registry.ts'
 import type { EffectPayload } from './registry.ts'
 
 // draw a card and gain 1 CP (Marauder / Crossbones)
-const drawPlusCp = ({ game, actor }: EffectPayload): boolean => {
-  drawCard(game, actor)
+const drawPlusCp = ({ game, actor, ctx }: EffectPayload): boolean => {
+  drawCard(game, actor, ctx)
   game.state.resources[actor].cp += 1
   return true
 }

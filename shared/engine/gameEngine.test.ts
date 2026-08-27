@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { LOG_MAX_ENTRIES } from '../gameSettings'
 import { applyAction, normalizeState } from './index'
-import { inst, makeGame, zoneEntry } from './testFixtures'
+import { inst, makeCtx, makeGame, snap, zoneEntry } from './testFixtures'
 
 describe('guards', () => {
   it('rejects non-participants and finished games', () => {
@@ -195,5 +195,105 @@ describe('persistent zone effects', () => {
       { effect: 'dwgWatersEffect', zoneId: 2, side: 'a' },
     ])
     expect(result.game.state.log.join('\n')).not.toContain('not implemented yet')
+  })
+})
+
+describe('deck-out reshuffle', () => {
+  it('shuffles the discard back into an empty deck and draws from it', () => {
+    const g = makeGame({ activePlayer: 'alice' })
+    g.privates.b.deck = []
+    g.state.destroyed.b = [snap({ name: 'Salvaged Hull' }), snap({ name: 'Spent Order' })]
+    const r = applyAction(g, 'alice', { type: 'END_TURN' }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.privates.b.hand).toHaveLength(1)
+    expect(r.game.privates.b.deck).toHaveLength(1)
+    expect(r.game.state.destroyed.b).toEqual([])
+    expect(r.game.state.counts.b).toEqual({ hand: 1, deck: 1 })
+    expect(r.game.state.log.some((l) => l.includes('reshuffles 2 card(s)'))).toBe(true)
+  })
+
+  it('gives every reshuffled card a fresh instance id', () => {
+    const g = makeGame({ activePlayer: 'alice' })
+    g.privates.b.deck = []
+    g.state.destroyed.b = [snap({ name: 'A' }), snap({ name: 'B' })]
+    const r = applyAction(g, 'alice', { type: 'END_TURN' }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    const ids = [...r.game.privates.b.hand, ...r.game.privates.b.deck].map((c) => c.instanceId)
+    expect(new Set(ids).size).toBe(2)
+    expect(ids.every((id) => typeof id === 'string' && id.length > 0)).toBe(true)
+  })
+
+  // state.destroyed is public, so an unshuffled recycle would hand both
+  // players the exact discard order. This pins the actual permutation the
+  // Fisher-Yates loop produces under makeCtx()'s fixed rng cycle
+  // [0.1, 0.5, 0.9], for a 3-card pile [A, B, C]:
+  //   ids are minted in original pile order, BEFORE the shuffle runs:
+  //     A -> e-0, B -> e-1, C -> e-2
+  //   loop (i from length-1 down to 1), j = floor(rng() * (i+1)):
+  //     i=2: rng()=0.1, j=floor(0.1*3)=0  -> swap(2,0): [C(e-2), B(e-1), A(e-0)]
+  //     i=1: rng()=0.5, j=floor(0.5*2)=1  -> swap(1,1): no-op
+  //   pushed to the deck as [C(e-2), B(e-1), A(e-0)]; drawCard shifts the
+  //   front card (C) into the hand, leaving [B(e-1), A(e-0)] in the deck —
+  //   neither the original A/B/C order nor its plain reverse (C/A/B would be
+  //   the reverse), so this is sensitive to the shuffle actually running.
+  it('pins the exact reshuffled order under the fixed rng, not the original discard order', () => {
+    const g = makeGame({ activePlayer: 'alice' })
+    g.privates.b.deck = []
+    g.state.destroyed.b = [snap({ name: 'A' }), snap({ name: 'B' }), snap({ name: 'C' })]
+    const r = applyAction(g, 'alice', { type: 'END_TURN' }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.privates.b.hand.map((c) => [c.name, c.instanceId])).toEqual([['C', 'e-2']])
+    expect(r.game.privates.b.deck.map((c) => [c.name, c.instanceId])).toEqual([
+      ['B', 'e-1'],
+      ['A', 'e-0'],
+    ])
+  })
+
+  it('logs and does not throw when both deck and discard are empty', () => {
+    const g = makeGame({ activePlayer: 'alice' })
+    g.privates.b.deck = []
+    g.state.destroyed.b = []
+    const r = applyAction(g, 'alice', { type: 'END_TURN' }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.privates.b.hand).toEqual([])
+    expect(r.game.state.log.some((l) => l.includes('no cards left to draw'))).toBe(true)
+  })
+
+  it('does not reshuffle while the deck still has cards', () => {
+    const g = makeGame({ activePlayer: 'alice' })
+    g.privates.b.deck = [inst({ name: 'Top Card' })]
+    g.state.destroyed.b = [snap({ name: 'Stays Discarded' })]
+    const r = applyAction(g, 'alice', { type: 'END_TURN' }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.privates.b.hand[0].name).toBe('Top Card')
+    expect(r.game.state.destroyed.b).toHaveLength(1)
+  })
+})
+
+describe('spent ability cards', () => {
+  it('sends a played ability card to its owner discard', () => {
+    const g = makeGame({ activePlayer: 'alice' })
+    const ability = inst({ type: 'ability', name: 'Some Order', materialCost: 0, cardText: '' })
+    g.privates.a.hand = [ability]
+    g.state.counts.a.hand = 1
+    const r = applyAction(g, 'alice', {
+      type: 'PLAY_ABILITY_CARD', instanceId: ability.instanceId,
+    }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.destroyed.a.map((c) => c.name)).toContain('Some Order')
+    expect(r.game.privates.a.hand).toEqual([])
+  })
+
+  it('does not discard a vehicle played to a zone — it is on the field', () => {
+    const g = makeGame({ activePlayer: 'alice' })
+    const vehicle = inst({ name: 'Hull', materialCost: 0, vehicleType: 'ship' })
+    g.privates.a.hand = [vehicle]
+    g.state.counts.a.hand = 1
+    const r = applyAction(g, 'alice', {
+      type: 'PLAY_CARD_TO_ZONE', instanceId: vehicle.instanceId, zoneId: 1,
+    }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.destroyed.a).toEqual([])
+    expect(r.game.state.zones[0].cards.a).toHaveLength(1)
   })
 })

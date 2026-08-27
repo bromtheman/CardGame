@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { PublicGameState } from '@shared/engine/gameInit'
 import type { GameAction, Side, ZoneCardEntry } from '@shared/engine/engineTypes'
-import { effectiveMaterialCostOf, otherSide, repairCostOf } from '@shared/engine/index'
+import { autoRepairIds, effectiveMaterialCostOf, otherSide, repairCostOf } from '@shared/engine/index'
 import {
   HERO_POWER_DISTANCE_MOD_M, IN_BATTLE_RESOURCE_RATE, KEYWORDS,
   REPAIR_WINDOW_MIN_PERCENT, SURVIVE_HP_PERCENT,
@@ -30,8 +30,13 @@ function participantsOf(state: PublicGameState, battle: Battle): Participant[] {
   return [...attackers, ...defenders]
 }
 
-function outcomeLabel(entry: ZoneCardEntry, hp: number, repaired: boolean): { label: string; survives: boolean } {
+function outcomeLabel(
+  entry: ZoneCardEntry, hp: number, repaired: boolean, auto: boolean,
+): { label: string; survives: boolean } {
   if (hp >= SURVIVE_HP_PERCENT) return { label: 'Survives', survives: true }
+  if (hp >= REPAIR_WINDOW_MIN_PERCENT && auto) {
+    return { label: 'Auto-repaired (free) — survives', survives: true }
+  }
   if (hp >= REPAIR_WINDOW_MIN_PERCENT && repaired) {
     return { label: `Repaired — survives (${shortHandNumber(repairCostOf(entry))})`, survives: true }
   }
@@ -71,12 +76,13 @@ function FleetColumn({ title, entries, mySide }: { title: string; entries: Parti
 }
 
 function ReportForm({
-  participants, results, repairs, state, busy, onHpChange, onToggleRepair, onSubmit,
+  participants, results, repairs, state, mySide, busy, onHpChange, onToggleRepair, onSubmit,
 }: {
   participants: Participant[]
   results: Record<string, number>
   repairs: string[]
   state: PublicGameState
+  mySide: Side
   busy: boolean
   onHpChange: (id: string, hp: number) => void
   onToggleRepair: (id: string) => void
@@ -87,6 +93,10 @@ function ReportForm({
     const p = participants.find((x) => x.entry.instanceId === id)
     if (p) owedBySide[p.side] += repairCostOf(p.entry)
   }
+  // Single source of truth for which vehicles the engine will auto-repair —
+  // mirrors DecisionPanel below, so the submitter's preview can never drift
+  // from what SUBMIT_BATTLE_REPORT actually resolves to.
+  const autoIds = autoRepairIds(participants, results)
   return (
     <div className="mt-4 border-t border-ocean-600/50 pt-3">
       <h3 className="font-display text-lg">Battle report</h3>
@@ -103,7 +113,13 @@ function ReportForm({
             const hp = results[entry.instanceId] ?? 100
             const fragile = entry.keywords.includes(KEYWORDS.FRAGILE)
             const inBand = hp >= REPAIR_WINDOW_MIN_PERCENT && hp < SURVIVE_HP_PERCENT
-            const repairable = inBand && !fragile
+            const mine = side === mySide
+            const isAuto = autoIds.includes(entry.instanceId)
+            const repairable = inBand && !fragile && mine && !isAuto
+            // "Their captain decides" implies a pending decision — only true
+            // where a repair decision could genuinely be made. Otherwise (out
+            // of band, Fragile, or already auto-repaired) show a neutral dash.
+            const theirsToDecide = inBand && !fragile && !mine && !isAuto
             const cost = repairCostOf(entry)
             const checked = repairs.includes(entry.instanceId)
             // Running per-side total of currently-checked repairs (plus this
@@ -130,17 +146,25 @@ function ReportForm({
                   />
                 </td>
                 <td className="py-1">
-                  <label className={`flex items-center gap-1 ${repairable ? '' : 'opacity-40'}`}>
-                    <input
-                      type="checkbox"
-                      disabled={!repairable}
-                      checked={repairs.includes(entry.instanceId)}
-                      onChange={() => onToggleRepair(entry.instanceId)}
-                    />
-                    <span className={`text-xs ${affordable ? 'text-ocean-300' : 'text-red-400'}`}>
-                      {shortHandNumber(cost)} ({side.toUpperCase()} pays{affordable ? '' : ' — cannot afford'})
+                  {isAuto ? (
+                    <span className="text-xs text-brass-400">Auto-repaired (free)</span>
+                  ) : !mine ? (
+                    <span className="text-xs text-ocean-300/60">
+                      {theirsToDecide ? 'Their captain decides' : '—'}
                     </span>
-                  </label>
+                  ) : (
+                    <label className={`flex items-center gap-1 ${repairable ? '' : 'opacity-40'}`}>
+                      <input
+                        type="checkbox"
+                        disabled={!repairable}
+                        checked={repairs.includes(entry.instanceId)}
+                        onChange={() => onToggleRepair(entry.instanceId)}
+                      />
+                      <span className={`text-xs ${affordable ? 'text-ocean-300' : 'text-red-400'}`}>
+                        {shortHandNumber(cost)} ({side.toUpperCase()} pays{affordable ? '' : ' — cannot afford'})
+                      </span>
+                    </label>
+                  )}
                 </td>
               </tr>
             )
@@ -159,16 +183,19 @@ function ReportForm({
 }
 
 function DecisionPanel({
-  participants, report, state, busy, onDecide,
+  participants, report, state, mySide, busy, onDecide,
 }: {
   participants: Participant[]
   report: Report
   state: PublicGameState
+  mySide: Side
   busy: boolean
-  onDecide: (approve: boolean) => void
+  onDecide: (approve: boolean, repairs: string[]) => void
 }) {
+  const [myRepairs, setMyRepairs] = useState<string[]>([])
+  const auto = autoRepairIds(participants, report.results)
   const owed: Record<Side, number> = { a: 0, b: 0 }
-  for (const id of report.repairs) {
+  for (const id of new Set([...report.repairs, ...myRepairs, ...auto])) {
     const p = participants.find((x) => x.entry.instanceId === id)
     if (p) owed[p.side] += repairCostOf(p.entry)
   }
@@ -176,14 +203,36 @@ function DecisionPanel({
     <div className="mt-4 border-t border-ocean-600/50 pt-3">
       <h3 className="font-display text-lg">Report from player {report.submittedBy.toUpperCase()} — review outcomes</h3>
       <ul className="mt-2 space-y-1 text-sm">
-        {participants.map(({ entry }) => {
+        {participants.map(({ entry, side }) => {
           const hp = report.results[entry.instanceId] ?? 0
-          const repaired = report.repairs.includes(entry.instanceId)
-          const { label, survives } = outcomeLabel(entry, hp, repaired)
+          const isAuto = auto.includes(entry.instanceId)
+          const repaired = report.repairs.includes(entry.instanceId) || myRepairs.includes(entry.instanceId)
+          const { label, survives } = outcomeLabel(entry, hp, repaired, isAuto)
+          const inBand = hp >= REPAIR_WINDOW_MIN_PERCENT && hp < SURVIVE_HP_PERCENT
+          const canChoose =
+            side === mySide && inBand && !isAuto && !entry.keywords.includes(KEYWORDS.FRAGILE)
           return (
             <li key={entry.instanceId} className="flex items-center justify-between rounded border border-ocean-600 bg-ocean-950/60 px-2 py-1">
               <span className="text-parchment-100">{entry.name} — {hp}%</span>
-              <span className={survives ? 'text-brass-400' : 'text-red-400'}>{label}</span>
+              <span className="flex items-center gap-3">
+                {canChoose && (
+                  <label className="flex items-center gap-1 text-xs text-ocean-300">
+                    <input
+                      type="checkbox"
+                      checked={myRepairs.includes(entry.instanceId)}
+                      onChange={() =>
+                        setMyRepairs((rs) =>
+                          rs.includes(entry.instanceId)
+                            ? rs.filter((x) => x !== entry.instanceId)
+                            : [...rs, entry.instanceId],
+                        )
+                      }
+                    />
+                    Repair ({shortHandNumber(repairCostOf(entry))})
+                  </label>
+                )}
+                <span className={survives ? 'text-brass-400' : 'text-red-400'}>{label}</span>
+              </span>
             </li>
           )
         })}
@@ -198,14 +247,14 @@ function DecisionPanel({
       <div className="mt-3 flex justify-end gap-2">
         <button
           disabled={busy}
-          onClick={() => onDecide(false)}
+          onClick={() => onDecide(false, [])}
           className="rounded border border-red-400 px-4 py-2 font-bold text-red-400 disabled:opacity-50"
         >
           Reject
         </button>
         <button
           disabled={busy}
-          onClick={() => onDecide(true)}
+          onClick={() => onDecide(true, myRepairs)}
           className="rounded bg-brass-400 px-4 py-2 font-bold text-ocean-950 disabled:opacity-50"
         >
           Approve
@@ -278,15 +327,15 @@ export function BattleOverlay({
   async function onSubmitReport() {
     const validRepairs = repairs.filter((id) => {
       const p = participants.find((x) => x.entry.instanceId === id)
-      if (!p) return false
+      if (!p || p.side !== mySide) return false
       const hp = results[id] ?? 0
       return hp >= REPAIR_WINDOW_MIN_PERCENT && hp < SURVIVE_HP_PERCENT && !p.entry.keywords.includes(KEYWORDS.FRAGILE)
     })
     await send({ type: 'SUBMIT_BATTLE_REPORT', results, repairs: validRepairs })
   }
 
-  async function onDecide(approve: boolean) {
-    await send({ type: 'DECIDE_BATTLE_REPORT', approve })
+  async function onDecide(approve: boolean, decidedRepairs: string[]) {
+    await send({ type: 'DECIDE_BATTLE_REPORT', approve, repairs: decidedRepairs })
   }
 
   const usedTactical = state.usedHeroPowers[mySide].includes('tacticalPositioning')
@@ -363,7 +412,7 @@ export function BattleOverlay({
           report.submittedBy === mySide ? (
             <WaitingNotice participants={participants} report={report} />
           ) : (
-            <DecisionPanel participants={participants} report={report} state={state} busy={busy} onDecide={onDecide} />
+            <DecisionPanel participants={participants} report={report} state={state} mySide={mySide} busy={busy} onDecide={onDecide} />
           )
         ) : (
           <ReportForm
@@ -371,6 +420,7 @@ export function BattleOverlay({
             results={results}
             repairs={repairs}
             state={state}
+            mySide={mySide}
             busy={busy}
             onHpChange={onHpChange}
             onToggleRepair={onToggleRepair}

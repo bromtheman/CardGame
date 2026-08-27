@@ -2,7 +2,7 @@ import {
   KEYWORDS, REPAIR_COST_RATE, REPAIR_WINDOW_MIN_PERCENT, SURVIVE_HP_PERCENT,
 } from '../gameSettings.ts'
 import type { SnapshotCard } from './gameInit.ts'
-import type { EngineGame, Side, ZoneCardEntry } from './engineTypes.ts'
+import type { ApplyResult, EngineGame, Side, ZoneCardEntry } from './engineTypes.ts'
 import { err, registerHandler, zoneById } from './gameEngine.ts'
 import { effectiveMaterialCostOf } from './placement.ts'
 import { effectFor, effectName } from '../effects/registry.ts'
@@ -10,6 +10,53 @@ import { effectFor, effectName } from '../effects/registry.ts'
 export function repairCostOf(card: { materialCost: number; keywords: string[] }): number {
   if (card.keywords.includes(KEYWORDS.SCRAPPY)) return 0
   return Math.ceil(effectiveMaterialCostOf(card) * REPAIR_COST_RATE)
+}
+
+// Scrappy vehicles repair for free, so the engine applies it unconditionally
+// rather than asking — there is no decision to make when the cost is zero.
+// Fragile can never repair, and the band still gates everything. Exported so
+// BattleOverlay previews exactly what the engine will do.
+export function autoRepairIds(
+  participants: { entry: { instanceId: string; keywords: string[] }; side: Side }[],
+  results: Record<string, number>,
+): string[] {
+  const ids: string[] = []
+  for (const { entry } of participants) {
+    const hp = results[entry.instanceId]
+    if (hp === undefined) continue
+    if (hp < REPAIR_WINDOW_MIN_PERCENT || hp >= SURVIVE_HP_PERCENT) continue
+    if (entry.keywords.includes(KEYWORDS.FRAGILE)) continue
+    if (!entry.keywords.includes(KEYWORDS.SCRAPPY)) continue
+    ids.push(entry.instanceId)
+  }
+  return ids
+}
+
+// Shared eligibility rule for a repair pick — used identically by the
+// submitter (SUBMIT_BATTLE_REPORT) and the approver (DECIDE_BATTLE_REPORT):
+// must be a real participant, must belong to the caller, must sit in the
+// repairable HP band, and must not be Fragile. Returns the first failure as
+// an ApplyResult, or null when every id is valid, so each caller keeps its
+// own early-return shape.
+function validateRepairChoices(
+  ids: string[],
+  participants: Map<string, { entry: ZoneCardEntry; side: Side }>,
+  results: Record<string, number>,
+  actor: Side,
+): ApplyResult | null {
+  for (const id of ids) {
+    const p = participants.get(id)
+    if (!p) return err(400, 'Repair selection includes a non-participant')
+    if (p.side !== actor) return err(400, `${p.entry.name} is not yours to repair — its captain decides`)
+    const hp = results[id]
+    if (hp === undefined || hp < REPAIR_WINDOW_MIN_PERCENT || hp >= SURVIVE_HP_PERCENT) {
+      return err(400, `${p.entry.name} is not in the repairable band`)
+    }
+    if (p.entry.keywords.includes(KEYWORDS.FRAGILE)) {
+      return err(400, `${p.entry.name} is Fragile and cannot be repaired`)
+    }
+  }
+  return null
 }
 
 function participantsOf(game: EngineGame): Map<string, { entry: ZoneCardEntry; side: Side }> {
@@ -50,17 +97,8 @@ registerHandler('SUBMIT_BATTLE_REPORT', (game, actor, action) => {
     }
     void id
   }
-  for (const id of action.repairs) {
-    const participant = participants.get(id)
-    const hp = action.results[id]
-    if (!participant) return err(400, 'Repair selection includes a non-participant')
-    if (hp === undefined || hp < REPAIR_WINDOW_MIN_PERCENT || hp >= SURVIVE_HP_PERCENT) {
-      return err(400, `${participant.entry.name} is not in the repairable band`)
-    }
-    if (participant.entry.keywords.includes(KEYWORDS.FRAGILE)) {
-      return err(400, `${participant.entry.name} is Fragile and cannot be repaired`)
-    }
-  }
+  const invalidRepair = validateRepairChoices(action.repairs, participants, action.results, actor)
+  if (invalidRepair) return invalidRepair
   game.state.pendingReport = { submittedBy: actor, results: action.results, repairs: action.repairs }
   game.state.log.push(`Battle report submitted by player ${actor.toUpperCase()} — awaiting approval`)
   return { ok: true, game }
@@ -77,9 +115,25 @@ registerHandler('DECIDE_BATTLE_REPORT', (game, actor, action, ctx) => {
     return { ok: true, game }
   }
   const participants = participantsOf(game)
-  // Repair affordability first (all-or-nothing).
+  const roster = [...participants.values()]
+
+  // Each side chooses only for its own vehicles: the submitter's picks came
+  // with the report, the approver's arrive with the decision.
+  const approverRepairs = Array.isArray(action.repairs) ? action.repairs : []
+  const invalidApproverRepair = validateRepairChoices(approverRepairs, participants, report.results, actor)
+  if (invalidApproverRepair) return invalidApproverRepair
+
+  // A Set both unions the two sides' picks and makes an explicitly-listed
+  // Scrappy vehicle redundant rather than double-charged.
+  const repairIds = new Set([
+    ...report.repairs,
+    ...approverRepairs,
+    ...autoRepairIds(roster, report.results),
+  ])
+
+  // Repair affordability first (all-or-nothing), per owner.
   const owed: Record<Side, number> = { a: 0, b: 0 }
-  for (const id of report.repairs) {
+  for (const id of repairIds) {
     const p = participants.get(id)
     if (p) owed[p.side] += repairCostOf(p.entry)
   }
@@ -95,7 +149,7 @@ registerHandler('DECIDE_BATTLE_REPORT', (game, actor, action, ctx) => {
   for (const [id, { entry, side }] of participants) {
     const hp = report.results[id]
     const survives = hp >= SURVIVE_HP_PERCENT ||
-      (hp >= REPAIR_WINDOW_MIN_PERCENT && report.repairs.includes(id))
+      (hp >= REPAIR_WINDOW_MIN_PERCENT && repairIds.has(id))
     if (!survives) {
       zone.cards[side] = zone.cards[side].filter((c) => c.instanceId !== id)
       const { instanceId: _i, playedOnTurn: _p, movedOnTurn: _m, ...snapshot } = entry
@@ -103,7 +157,7 @@ registerHandler('DECIDE_BATTLE_REPORT', (game, actor, action, ctx) => {
       destroyedCount++
       game.state.log.push(`${entry.name} was destroyed (${hp}%)`)
       destroyedEntries.push({ entry, side })
-    } else if (report.repairs.includes(id)) {
+    } else if (repairIds.has(id)) {
       game.state.log.push(`${entry.name} was repaired (${hp}%)`)
     }
   }

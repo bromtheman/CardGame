@@ -80,8 +80,28 @@ export function normalizeState(state: PublicGameState): void {
   }
 }
 
-export function drawCard(game: EngineGame, side: Side): void {
+// The discard (state.destroyed) recycles into the deck the moment a draw
+// would otherwise fail — lazily, never eagerly when the deck hits zero.
+// SnapshotCard carries no instanceId, so each returning card is minted a
+// fresh one, exactly as loggerheadOnDeath does.
+function reshuffleDiscard(game: EngineGame, side: Side, ctx: EngineContext): void {
+  const pile = game.state.destroyed[side]
+  if (pile.length === 0) return
+  const returning = pile.map((card) => ({ ...card, instanceId: ctx.newId() }))
+  game.state.destroyed[side] = []
+  for (let i = returning.length - 1; i > 0; i--) {
+    const j = Math.floor(ctx.rng() * (i + 1))
+    ;[returning[i], returning[j]] = [returning[j], returning[i]]
+  }
+  game.privates[side].deck.push(...returning)
+  game.state.log.push(
+    `Player ${side.toUpperCase()} reshuffles ${returning.length} card(s) from the discard into their deck`,
+  )
+}
+
+export function drawCard(game: EngineGame, side: Side, ctx: EngineContext): void {
   const priv = game.privates[side]
+  if (priv.deck.length === 0) reshuffleDiscard(game, side, ctx)
   const card = priv.deck.shift()
   if (!card) {
     game.state.log.push(`Player ${side.toUpperCase()} has no cards left to draw`)
@@ -126,7 +146,7 @@ function endTurn(game: EngineGame, ctx: EngineContext): ApplyResult {
     }
   }
   game.state.resources[side].materials = Math.floor(game.turnNumber) * MATERIALS_PER_TURN
-  drawCard(game, side)
+  drawCard(game, side, ctx)
 
   // Change Order redeliveries (Task 7): process every scheduled item due for
   // the incoming side now that their materials/draw have already landed.
