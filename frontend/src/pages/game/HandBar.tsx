@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { CardInstance, PublicGameState } from '@shared/engine/gameInit'
 import type { GameAction, Side } from '@shared/engine/engineTypes'
 import { effectiveCostInGame, effectName, legalZonesFor } from '@shared/engine/index'
@@ -8,6 +8,9 @@ import { cardInstanceToRow } from '../../lib/cards'
 import { PhysicalCard } from '../../components/PhysicalCard'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
 import type { MoveMode, SwapMode } from './HeroPowerBar'
+import {
+  CARD_H, CARD_W, LIFT_PX, RENDERED_CARD_H, REST_SCALE, fanLayout,
+} from './handFanLayout'
 
 // A card "has an effect" if any of its meta trigger keys (or costModifier)
 // resolve to a name — used only to decide whether the no-op confirm dialog
@@ -33,9 +36,7 @@ function hasAnyMetaEffect(card: CardInstance): boolean {
 // vehicle on the board); playOnCardEffect enters this component's own
 // handTargeting mode (click another hand card's Target button); with none
 // of those it sends PLAY_ABILITY_CARD directly, falling back to a plain
-// confirm only when the card has no meta effect at all. A small secondary
-// Reveal button sends SET_ALERT_CARD to show the card as an in-progress
-// effect.
+// confirm only when the card has no meta effect at all.
 export function HandBar({
   hand, state, mySide, send, busy,
   placingCard, onPlacingChange,
@@ -43,7 +44,7 @@ export function HandBar({
   moveMode,
   swapMode,
   cancelBoardModes,
-  canReveal,
+  onLiftedChange,
 }: {
   hand: CardInstance[]
   state: PublicGameState
@@ -57,12 +58,44 @@ export function HandBar({
   moveMode: MoveMode | null
   swapMode: SwapMode | null
   cancelBoardModes: () => void
-  // Reveal (SET_ALERT_CARD) is only meaningful on your own turn with no
-  // battle in progress — mirrors GameBoardPage's canActivateZones gate.
-  canReveal: boolean
+  // Fires whenever the hovered/focused card changes, so GameBoardPage can
+  // tint the materials readout when the lifted card is unaffordable.
+  onLiftedChange: (card: CardInstance | null) => void
 }) {
   const [handTargeting, setHandTargeting] = useState<CardInstance | null>(null)
   const [confirmingNoEffectPlay, setConfirmingNoEffectPlay] = useState<CardInstance | null>(null)
+
+  const [liftedId, setLiftedId] = useState<string | null>(null)
+  const fanRef = useRef<HTMLDivElement>(null)
+  const [fanWidth, setFanWidth] = useState(0)
+
+  // The fan sizes itself to whatever width it is given, so it must re-measure
+  // on resize rather than assume the page's max-width.
+  useLayoutEffect(() => {
+    const el = fanRef.current
+    if (!el) return
+    setFanWidth(el.clientWidth)
+    const observer = new ResizeObserver(([entry]) => setFanWidth(entry.contentRect.width))
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
+  // A lifted card that leaves the hand (played, or discarded by an effect)
+  // must not keep the board's affordability tint alive.
+  useEffect(() => {
+    if (liftedId !== null && !hand.some((c) => c.instanceId === liftedId)) setLiftedId(null)
+  }, [hand, liftedId])
+
+  useEffect(() => {
+    onLiftedChange(hand.find((c) => c.instanceId === liftedId) ?? null)
+  }, [liftedId, hand, onLiftedChange])
+
+  function lift(id: string) {
+    setLiftedId(id)
+  }
+  function drop(id: string) {
+    setLiftedId((current) => (current === id ? null : current))
+  }
 
   // Mode exclusivity: whenever one of GameBoardPage's own modes starts, drop
   // our internal handTargeting selection.
@@ -127,10 +160,6 @@ export function HandBar({
     void send({ type: 'PLAY_ABILITY_CARD', instanceId: card.instanceId })
   }
 
-  function handleReveal(card: CardInstance) {
-    void send({ type: 'SET_ALERT_CARD', instanceId: card.instanceId })
-  }
-
   function handleHandTargetClick(target: CardInstance) {
     if (!handTargeting) return
     void send({ type: 'PLAY_CARD_TARGETING_CARD_IN_HAND', instanceId: handTargeting.instanceId, targetInstanceId: target.instanceId })
@@ -140,8 +169,13 @@ export function HandBar({
   return (
     <div className="mt-4">
       <h2 className="font-display text-xl">Your hand</h2>
-      <div className="mt-2 flex gap-2 overflow-x-auto pb-4">
-        {hand.map((c) => {
+      <div
+        ref={fanRef}
+        className="relative mt-2"
+        style={{ height: RENDERED_CARD_H + 16 }}
+      >
+        {fanLayout(hand.length, fanWidth).map((slot, i) => {
+          const c = hand[i]
           const effectiveCost = effectiveCostInGame(state, mySide, c)
           const affordable = state.resources[mySide].materials >= effectiveCost && state.resources[mySide].cp >= c.cpCost
           const selected =
@@ -149,12 +183,27 @@ export function HandBar({
             fieldTargeting?.instanceId === c.instanceId ||
             handTargeting?.instanceId === c.instanceId
           const isHandTarget = handTargeting !== null && c.instanceId !== handTargeting.instanceId
+          const lifted = liftedId === c.instanceId
           return (
             <div
               key={c.instanceId}
-              className={`relative shrink-0 origin-top-left scale-75 ${affordable ? '' : 'opacity-50'} ${
-                selected ? 'rounded-xl ring-4 ring-brass-400' : ''
-              }`}
+              tabIndex={0}
+              onPointerEnter={() => lift(c.instanceId)}
+              onPointerLeave={() => drop(c.instanceId)}
+              onFocus={() => lift(c.instanceId)}
+              onBlur={() => drop(c.instanceId)}
+              style={{
+                left: slot.left,
+                bottom: lifted ? LIFT_PX : -slot.arcY,
+                width: CARD_W,
+                height: CARD_H,
+                zIndex: lifted ? 50 : i,
+                transform: `scale(${lifted ? 1 : REST_SCALE}) rotate(${lifted ? 0 : slot.angleDeg}deg)`,
+                transformOrigin: 'bottom center',
+              }}
+              className={`absolute transition-all duration-150 ease-out focus:outline-none ${
+                affordable ? '' : 'opacity-50'
+              } ${selected ? 'rounded-xl ring-4 ring-brass-400' : ''}`}
             >
               <PhysicalCard
                 card={cardInstanceToRow(c)}
@@ -167,7 +216,10 @@ export function HandBar({
                   <span>{shortHandNumber(effectiveCost)}</span>
                 </span>
               )}
-              {isHandTarget && (
+              {/* Actions render only on the lifted card: in a fan every other
+                  card's buttons are covered by its neighbour, and rendering
+                  them anyway would put unreachable controls in the tab order. */}
+              {lifted && isHandTarget && (
                 <button
                   type="button"
                   disabled={busy}
@@ -180,25 +232,14 @@ export function HandBar({
                   Target
                 </button>
               )}
-              {c.type === 'ability' && (
-                <>
-                  <button
-                    type="button"
-                    title="Show this card to your opponent as an in-progress effect"
-                    disabled={busy || !canReveal}
-                    onClick={() => handleReveal(c)}
-                    className="absolute inset-x-6 bottom-16 rounded border border-ocean-600 bg-ocean-900/80 px-2 py-1 text-xs font-bold text-parchment-100 disabled:opacity-50"
-                  >
-                    Reveal
-                  </button>
-                  <button
-                    disabled={busy || !affordable}
-                    onClick={() => handleAbilityPlay(c)}
-                    className="absolute inset-x-6 bottom-6 rounded bg-brass-400 px-2 py-2 font-bold text-ocean-950 shadow-plank disabled:opacity-50"
-                  >
-                    Play ({shortHandNumber(effectiveCost)})
-                  </button>
-                </>
+              {lifted && c.type === 'ability' && (
+                <button
+                  disabled={busy || !affordable}
+                  onClick={() => handleAbilityPlay(c)}
+                  className="absolute inset-x-6 bottom-6 rounded bg-brass-400 px-2 py-2 font-bold text-ocean-950 shadow-plank disabled:opacity-50"
+                >
+                  Play ({shortHandNumber(effectiveCost)})
+                </button>
               )}
             </div>
           )

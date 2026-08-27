@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import type { CardInstance, PublicGameState } from '@shared/engine/gameInit'
 import type { Side } from '@shared/engine/engineTypes'
 import type { LobbySettings } from '@shared/lobbySettings'
-import { battleFrozen, biomeAllows, findVehicle, legalZonesFor } from '@shared/engine/index'
+import { battleFrozen, biomeAllows, effectiveCostInGame, findVehicle, legalZonesFor } from '@shared/engine/index'
 import { shortHandNumber } from '@shared/format'
 import { useGameQuery, useMyGamePlayerQuery, useUsernames } from '../../lib/games'
 import { useRealtimeInvalidate } from '../../lib/realtime'
@@ -32,6 +32,7 @@ export function GameBoardPage() {
   const [moveMode, setMoveMode] = useState<MoveMode | null>(null)
   const [fieldTargeting, setFieldTargeting] = useState<CardInstance | null>(null)
   const [swapMode, setSwapMode] = useState<SwapMode | null>(null)
+  const [liftedCard, setLiftedCard] = useState<CardInstance | null>(null)
   const [confirmingConcede, setConfirmingConcede] = useState(false)
   const logRef = useRef<HTMLDivElement>(null)
 
@@ -79,6 +80,12 @@ export function GameBoardPage() {
   // Once an own ship is picked, only enemy ships in that same zone become
   // clickable — a display-only filter; the server re-validates zone and cost.
   const swapOwnVehicle = swapMode?.phase === 'pickEnemy' ? findVehicle(state, swapMode.ownInstanceId) : null
+
+  // Tint the materials figure when the card currently raised in the hand is
+  // out of reach — it answers "can I play this?" at the moment it is asked.
+  const liftedUnaffordable =
+    liftedCard !== null &&
+    state.resources[mySide].materials < effectiveCostInGame(state, mySide, liftedCard)
 
   // Placing/fieldTargeting/moveMode/swapMode are mutually exclusive: starting
   // one clears the others. HandBar's handTargeting is internal to that
@@ -197,7 +204,7 @@ export function GameBoardPage() {
           {isMyTurn ? 'Your turn' : 'Their turn'}
         </span>
         <div className="flex flex-wrap gap-4 text-sm text-ocean-300">
-          <span className="flex items-center gap-1">
+          <span className={`flex items-center gap-1 ${liftedUnaffordable ? 'text-red-400' : ''}`}>
             <img src={ironIcon} alt="materials" className="h-4 w-4" />
             {shortHandNumber(state.resources[mySide].materials)}
           </span>
@@ -294,7 +301,7 @@ export function GameBoardPage() {
         moveMode={moveMode}
         swapMode={swapMode}
         cancelBoardModes={cancelAllModes}
-        canReveal={canActivateZones}
+        onLiftedChange={setLiftedCard}
       />
 
       <h2 className="mt-4 font-display text-xl">Battle log</h2>
