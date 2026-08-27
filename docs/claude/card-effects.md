@@ -88,9 +88,19 @@ live in per-faction modules (`dwgEffects.ts`, `owEffects.ts`, `ssEffects.ts`,
 | `costDelta({delta, filter})` | stamp a persistent per-instance discount on a card in hand |
 | `sequence(...fns)` | run effects in order, stopping at the first failure |
 
-Coverage is enforced by `supabase/seed/effectCoverage.test.ts`. Its `KNOWN_GAPS`
-map is shrink-only — a third assertion rejects stale entries, so closing a card
-without deleting its entry fails the build.
+Coverage is enforced by `supabase/seed/effectCoverage.test.ts`: **G1** every effect
+name in `meta` resolves to a registered implementation, **G2** every card with card
+text has an implemented effect, a data key, or an exemption, and **G3** every
+trigger key a card carries is one the engine dispatches for its `type`. Its
+`KNOWN_GAPS` map is shrink-only — a further assertion rejects stale entries, so
+closing a card without deleting its entry fails the build.
+
+G3 catches a *type*-level mis-wiring (a vehicle carrying an ability-only trigger
+key). It cannot catch a same-type mix-up — an ability carrying
+`playOnVehicleEffect` where its text calls for `playOnCardEffect`, which is what
+Garrison had — because both keys are legitimately dispatchable for an ability.
+When a card's text names where its target lives ("in hand", "in a zone"), check
+the key by hand.
 
 ## Play-time cost modifiers
 
