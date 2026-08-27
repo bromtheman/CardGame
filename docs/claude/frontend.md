@@ -21,7 +21,12 @@ Stack: Vite + React 19 + TypeScript strict + Tailwind v4 (CSS-first tokens in
   banned (all removed in Phase 6).
 - Card faces: `PhysicalCard` (collection/hand) and `MiniVehicle` (in-zone) each
   own a Details affordance that opens `CardDetailsModal` — a full-screen blow-up
-  plus the keyword/vehicle-type glossary from `src/lib/keywords.ts`. The modal is
+  plus the keyword/vehicle-type glossary from `src/lib/keywords.ts`. On
+  `PhysicalCard` that affordance depends on whether the call site claimed the
+  click: without `onClick` the face itself opens the modal, with `onClick`
+  (playing a vehicle from hand) a corner "Details" button carries it instead.
+  The optional `footer` slot fills the bottom-right corner — the deck builder
+  puts its `CopyStepper` there — and takes the button's place. The modal is
   portalled to `document.body` because both are rendered inside `scale-*`
   wrappers, which would otherwise capture `position: fixed`. Keyword rule text
   lives in that one module (frontend-only, so it is outside functions:sync);
