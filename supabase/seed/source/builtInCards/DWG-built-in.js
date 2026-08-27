@@ -122,7 +122,7 @@ export const dwgVehicles = [
         blueprintId: null,
         keywords: [KEYWORDS.BLOCKER, KEYWORDS.SCRAPPY],
         meta: {
-            [TRIGGERS.ON_PLAY]: 'paddlegunEffect',
+            [TRIGGERS.ON_PLAY]: 'krakenOnPlay',
         }
     },
     {
