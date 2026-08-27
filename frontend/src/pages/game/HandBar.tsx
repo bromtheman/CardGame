@@ -244,6 +244,10 @@ export function HandBar({
                 card={cardInstanceToRow(c)}
                 effectiveCost={effectiveCost}
                 unaffordable={!affordable}
+                // The wrapper above owns the hover animation and draws the
+                // unaffordable ring. A second lift on the face itself would
+                // slide the card out of that ring.
+                hoverLift={false}
                 onClick={
                   c.type === 'vehicle'
                     ? () => handleVehicleClick(c)
