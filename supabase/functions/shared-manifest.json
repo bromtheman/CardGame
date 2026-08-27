@@ -22,6 +22,11 @@
     "engine/heroPowers.ts",
     "engine/index.ts",
     "effects/registry.ts",
-    "effects/dwgEffects.ts"
+    "effects/primitives.ts",
+    "effects/dwgEffects.ts",
+    "effects/owEffects.ts",
+    "effects/ssEffects.ts",
+    "effects/lhEffects.ts",
+    "effects/wfEffects.ts"
   ]
 }

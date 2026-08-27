@@ -195,7 +195,11 @@ describe('death triggers on report approval', () => {
 
   it('silently skips an unimplemented onDeathEffect — approval still succeeds, no extra log line', () => {
     const { g, atk, def } = inBattle()
-    def.meta = { onDeathEffect: 'conduitEffect' }
+    // Synthetic, never-registered name — a real seeded name is fragile here:
+    // once a later wave implements it for real, this test would silently
+    // stop covering the unimplemented path. Matches the sibling pattern
+    // ('testAlwaysFailOnDeath') just above.
+    def.meta = { onDeathEffect: 'neverImplementedOnDeath' }
     const s = applyAction(g, 'alice', {
       type: 'SUBMIT_BATTLE_REPORT',
       results: { [atk.instanceId]: 95, [def.instanceId]: 40 }, repairs: [],
@@ -204,7 +208,10 @@ describe('death triggers on report approval', () => {
     const r = applyAction(s.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, makeCtx())
     if (!r.ok) throw new Error(r.error)
     expect(r.game.state.destroyed.b).toHaveLength(1)
-    expect(r.game.state.log.some((l) => l.includes('conduitEffect'))).toBe(false)
+    expect(r.game.state.log.some((l) => l.includes('neverImplementedOnDeath'))).toBe(false)
+    // Guards against passing vacuously: an implemented-but-failing effect
+    // pushes this line (see the test above); an unimplemented one never does.
+    expect(r.game.state.log.some((l) => l.includes('could not resolve'))).toBe(false)
   })
 })
 

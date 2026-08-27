@@ -82,18 +82,29 @@ Deno.serve(async (req) => {
   // the new state fields — repair the shape before the engine sees it.
   normalizeState(engineGame.state)
 
-  // Load the built-in card catalog only when the played card's meta references
-  // an effect that needs it (reservesEffect / spawnBuccaneerEffect).
+  // Load the built-in card catalog when any card that this action could fire
+  // an effect on references a catalog effect. Scanning the played hand card
+  // alone misses death effects (which fire during DECIDE_BATTLE_REPORT with
+  // no instanceId) and on-field activated abilities.
   let catalog: SnapshotCard[] = []
   const mySide: Side = row.player_a === userId ? 'a' : 'b'
+  const wantsCatalog = (card: { meta?: Record<string, unknown> } | undefined): boolean =>
+    card !== undefined &&
+    Object.values(card.meta ?? {}).some(
+      (v) => typeof v === 'string' && CATALOG_EFFECTS.has(v.trim()),
+    )
+
+  const candidates: { meta?: Record<string, unknown> }[] = []
   const actionInstanceId = (action as { instanceId?: unknown }).instanceId
-  const played = typeof actionInstanceId === 'string'
-    ? engineGame.privates[mySide].hand.find((c) => c.instanceId === actionInstanceId)
-    : undefined
-  const needsCatalog = played !== undefined && Object.values(played.meta ?? {}).some(
-    (v) => typeof v === 'string' && CATALOG_EFFECTS.has(v.trim()),
-  )
-  if (needsCatalog) {
+  if (typeof actionInstanceId === 'string') {
+    const played = engineGame.privates[mySide].hand.find((c) => c.instanceId === actionInstanceId)
+    if (played) candidates.push(played)
+  }
+  for (const zone of engineGame.state.zones) {
+    candidates.push(...zone.cards.a, ...zone.cards.b)
+  }
+
+  if (candidates.some(wantsCatalog)) {
     const { data: cardRows, error: catalogError } = await admin.from('cards').select('*').eq('is_built_in', true)
     if (catalogError) return json(500, { errors: ['Failed to load the card catalog'] })
     catalog = (cardRows ?? []).map(snapshotCard)

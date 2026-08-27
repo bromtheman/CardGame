@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { applyAction, effectiveCostInGame, effectiveMaterialCostOf, legalZonesFor } from './index'
 import { registerCostModifier, registerEffect } from '../effects/registry.ts'
-import { ADDITIONAL_SPAWNS_CAP } from '../gameSettings.ts'
+import { ADDITIONAL_SPAWNS_CAP, KEYWORDS } from '../gameSettings.ts'
 import { inst, makeCtx, makeGame, zoneEntry } from './testFixtures'
 
 function withHand(cardOver: Record<string, unknown>) {
@@ -136,15 +136,16 @@ describe('additionalSpawns', () => {
 })
 
 describe('play-pipeline effect dispatch', () => {
-  it('vehicle with onPlayEffect marauderOnPlay draws a card and grants CP after deploy', () => {
+  it('vehicle with onPlayEffect marauderOnPlay takes an enemy vehicle and discounts it by 50k after deploy', () => {
     const { g, card } = withHand({ vehicleType: 'ship', materialCost: 10000, meta: { onPlayEffect: 'marauderOnPlay' } })
-    g.privates.a.deck.push(inst({ name: 'Deck Top' }))
-    g.state.counts.a.deck = 1
+    g.privates.b.deck.push(inst({ name: 'Enemy Ship', type: 'vehicle', materialCost: 200000 }))
+    g.state.counts.b.deck = 1
     const r = applyAction(g, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx())
     if (!r.ok) throw new Error(r.error)
     expect(r.game.state.zones[0].cards.a).toHaveLength(1)
-    expect(r.game.privates.a.hand.map((c) => c.name)).toContain('Deck Top')
-    expect(r.game.state.resources.a.cp).toBe(4) // 3 + 1
+    expect(r.game.privates.a.hand.map((c) => c.name)).toEqual(['Enemy Ship'])
+    expect(r.game.privates.a.hand[0].meta.costDelta).toBe(-50000)
+    expect(r.game.state.resources.a.cp).toBe(3) // unchanged — Marauder's card text grants no CP
   })
 
   it('ability with unimplemented playOnZoneEffect ambushEffect played to zone 1 succeeds vanilla, no entry added', () => {
@@ -485,5 +486,96 @@ describe('PLAY_CARD_TARGETING_CARD_ON_FIELD', () => {
       g, 'alice',
       { type: 'PLAY_CARD_TARGETING_CARD_ON_FIELD', instanceId: card.instanceId, targetInstanceId: 42 } as never,
     )).toMatchObject({ ok: false, status: 400 })
+  })
+})
+
+describe('effectiveCostInGame — costDelta', () => {
+  it('subtracts a stored costDelta from the printed cost', () => {
+    const game = makeGame()
+    const card = inst({ materialCost: 550_000, meta: { costDelta: -200_000 } })
+    expect(effectiveCostInGame(game.state, 'a', card)).toBe(350_000)
+  })
+
+  it('clamps at zero', () => {
+    const game = makeGame()
+    const card = inst({ materialCost: 40_000, meta: { costDelta: -100_000 } })
+    expect(effectiveCostInGame(game.state, 'a', card)).toBe(0)
+  })
+
+  it('applies before the Half-Cost halving', () => {
+    const game = makeGame()
+    const card = inst({ materialCost: 500_000, keywords: [KEYWORDS.HALF_COST], meta: { costDelta: -100_000 } })
+    expect(effectiveCostInGame(game.state, 'a', card)).toBe(200_000)
+  })
+
+  it('never reaches effectiveMaterialCostOf', () => {
+    const card = inst({ materialCost: 550_000, meta: { costDelta: -200_000 } })
+    expect(effectiveMaterialCostOf(card)).toBe(550_000)
+  })
+})
+
+const PREDATOR_META = { resourceSurge: { materialsOver: 120_000, extraSpawns: 1 } }
+const ORBIT_META = { resourceSurge: { materialsAtLeast: 140_000, extraSpawns: 1 } }
+
+describe('resourceSurge — conditional Half-Cost suppression', () => {
+  const priced = (materials: number, meta: Record<string, unknown>, cost: number) => {
+    const game = makeGame()
+    game.state.resources.a.materials = materials
+    const card = inst({ materialCost: cost, keywords: [KEYWORDS.HALF_COST], meta })
+    return effectiveCostInGame(game.state, 'a', card)
+  }
+
+  it('PredatorX halves below the threshold', () => {
+    expect(priced(120_000, PREDATOR_META, 120_000)).toBe(60_000)
+  })
+
+  it('PredatorX charges full price strictly above the threshold', () => {
+    expect(priced(120_001, PREDATOR_META, 120_000)).toBe(120_000)
+  })
+
+  it('Orbit charges full price at exactly the threshold', () => {
+    expect(priced(140_000, ORBIT_META, 140_000)).toBe(140_000)
+  })
+
+  it('Orbit halves below the threshold', () => {
+    expect(priced(139_999, ORBIT_META, 140_000)).toBe(70_000)
+  })
+
+  it('leaves effectiveMaterialCostOf alone', () => {
+    const card = inst({ materialCost: 120_000, keywords: [KEYWORDS.HALF_COST], meta: PREDATOR_META })
+    expect(effectiveMaterialCostOf(card)).toBe(60_000)
+  })
+})
+
+describe('resourceSurge — the extra hull', () => {
+  const deploy = (materials: number) => {
+    const card = inst({
+      name: 'PredatorX', vehicleType: 'plane', materialCost: 120_000,
+      keywords: [KEYWORDS.HALF_COST, KEYWORDS.TEMPORARY], meta: PREDATOR_META,
+    })
+    const game = makeGame({ privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } } })
+    game.state.resources.a.materials = materials
+    const r = applyAction(game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    return r.game
+  }
+
+  it('lands two hulls when surged, charging full price', () => {
+    const game = deploy(200_000)
+    expect(game.state.zones[0].cards.a).toHaveLength(2)
+    expect(game.state.resources.a.materials).toBe(80_000)
+  })
+
+  it('lands one hull at half price when not surged', () => {
+    const game = deploy(100_000)
+    expect(game.state.zones[0].cards.a).toHaveLength(1)
+    expect(game.state.resources.a.materials).toBe(40_000)
+  })
+
+  it('the landed hulls keep their printed Half-Cost keyword', () => {
+    const game = deploy(200_000)
+    for (const entry of game.state.zones[0].cards.a) {
+      expect(entry.keywords).toContain(KEYWORDS.HALF_COST)
+    }
   })
 })

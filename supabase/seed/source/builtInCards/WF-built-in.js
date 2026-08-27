@@ -50,6 +50,7 @@ export const wfVehicles = [
         blueprintId: null,
         keywords: [KEYWORDS.BLOCKER],
         meta: {
+            [TRIGGERS.ON_PLAY]: 'excruciatorOnPlay',
         }
     },
     
