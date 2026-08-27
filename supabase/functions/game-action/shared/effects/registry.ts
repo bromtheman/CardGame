@@ -42,13 +42,27 @@ export function effectName(card: { meta: Record<string, unknown> }, triggerKey: 
 
 const ALL_META_KEYS = [...Object.values(TRIGGERS), 'costModifier']
 
+// Meta keys that carry plain data rather than an effect name, and which
+// satisfy a card's text on their own (spec §5).
+export const DATA_EFFECT_KEYS = ['additionalSpawns', 'resourceSurge'] as const
+
 // Spec §3.9: cards referencing unimplemented effects play as vanilla, with a
-// note appended to the game log at play time.
+// note appended to the game log at play time. A card whose text names no
+// effect at all gets its own note — otherwise it would fail in total silence.
 export function noteUnimplemented(game: EngineGame, card: CardInstance): void {
+  let namedAny = false
   for (const key of ALL_META_KEYS) {
     const name = effectName(card, key)
-    if (name !== null && !isImplemented(name)) {
-      game.state.log.push(`${card.name}: effect "${name}" is not implemented yet — plays as vanilla`)
-    }
+    if (name === null) continue
+    namedAny = true
+    if (isImplemented(name)) continue
+    game.state.log.push(`${card.name}: effect "${name}" is not implemented yet — plays as vanilla`)
+  }
+  // A card that named any effect already had its say above — implemented
+  // ones work, unimplemented ones were just reported.
+  if (namedAny) return
+  const hasData = DATA_EFFECT_KEYS.some((k) => card.meta[k] !== undefined && card.meta[k] !== null)
+  if (!hasData && card.cardText.trim() !== '') {
+    game.state.log.push(`${card.name}: its card text has no implemented effect yet — plays as vanilla`)
   }
 }
