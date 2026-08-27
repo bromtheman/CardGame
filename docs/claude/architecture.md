@@ -97,5 +97,6 @@ neither may crash. SS/WF/GT powers are future work (spec §10).
   Implementing Trebuchet's effect requires adding that firing point first;
   ability-card `playOnVehicleEffect` names already fire.
 - Salvaged vehicles keep `meta.additionalSpawns` (ruled acceptable).
-- ~35 seeded effect names are unimplemented: cards play vanilla and the play
-  handler logs a note (`noteUnimplemented`). This is by design, not a bug.
+- Remaining unimplemented effect names are tracked in `KNOWN_GAPS` in
+  `supabase/seed/effectCoverage.test.ts`, with the wave that closes each one.
+  Cards still listed there play vanilla and log a note at play time.

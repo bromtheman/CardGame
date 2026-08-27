@@ -50,6 +50,7 @@ export const GT_AIRSHIP = [
         blueprintId: null,
         keywords: [KEYWORDS.TEMPORARY],
         meta: {
+            additionalSpawns: 1,
         }
     },
     {
@@ -141,6 +142,7 @@ export const owVehicles = [
         blueprintId: null,
         keywords: [KEYWORDS.BLOCKER],
         meta: {
+            [TRIGGERS.ON_PLAY]: 'bulwarkOnPlay',
         }
     },
     {
@@ -287,7 +289,10 @@ export const owVehicles = [
         type: 'vehicle',
         faction: FACTIONS.OW,
         blueprintId: null,
-        keywords: []
+        keywords: [],
+        meta: {
+            [TRIGGERS.ON_PLAY]: 'rookOnPlay',
+        }
     },{
         name: 'Partisan',
         isBuiltIn: true,
@@ -320,6 +325,7 @@ export const owVehicles = [
         blueprintId: null,
         keywords: [KEYWORDS.SUB_SCREEN],
         meta: {
+            [TRIGGERS.ON_DEATH]: 'halberdOnDeath',
         }
     },
     {
@@ -335,7 +341,10 @@ export const owVehicles = [
         type: 'vehicle',
         faction: FACTIONS.OW,
         blueprintId: null,
-        keywords: [KEYWORDS.MOBILE]
+        keywords: [KEYWORDS.MOBILE],
+        meta: {
+            [TRIGGERS.ON_PLAY]: 'mandrelOnPlay',
+        }
     },
     {
         name: 'Iron Cordon',
@@ -365,7 +374,10 @@ export const owVehicles = [
         type: 'vehicle',
         faction: FACTIONS.OW,
         blueprintId: null,
-        keywords: []
+        keywords: [],
+        meta: {
+            [TRIGGERS.ON_DEATH]: 'jormangundOnDeath',
+        }
     },
     {
         name: 'Javelin',
@@ -380,7 +392,10 @@ export const owVehicles = [
         type: 'vehicle',
         faction: FACTIONS.OW,
         blueprintId: null,
-        keywords: []
+        keywords: [],
+        meta: {
+            [TRIGGERS.ON_DEATH]: 'javelinOnDeath',
+        }
     },
     {
         name: 'Clydesdale',
@@ -414,7 +429,7 @@ export const owVehicles = [
         faction: FACTIONS.OW,
         blueprintId: null,
         meta: {
-            [TRIGGERS.ON_PLAY]: 'CauldronEffect' 
+            [TRIGGERS.ON_PLAY]: 'cauldronEffect'
         }
     },
     {
@@ -465,7 +480,7 @@ export const owVehicles = [
         faction: FACTIONS.OW,
         blueprintId: null,
         meta: {
-            [TRIGGERS.PLAY_ON_VEHICLE]: 'garrisonEffect',
+            [TRIGGERS.PLAY_ON_CARD]: 'garrisonEffect',
         }
-    }, 
+    },
 ];

@@ -5,9 +5,11 @@ import { FACTIONS } from '@shared/gameSettings'
 import type { DeckCardInfo } from '@shared/engine/deckValidation'
 import { validateDeck } from '@shared/engine/deckValidation'
 import { shortHandNumber } from '@shared/format'
+import { CopyStepper } from '../components/CopyStepper'
 import { PhysicalCard } from '../components/PhysicalCard'
 import { useCardsQuery } from '../lib/cards'
 import { useDecksQuery } from '../lib/decks'
+import { MAX_COPIES_PER_CARD, setDeckCopies } from '../lib/deckEditing'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../lib/auth'
 
@@ -68,17 +70,10 @@ export function DeckBuilderPage() {
     return validateDeck({ faction: deck.faction, cards }, infoMap, session.user.id)
   }, [deck, allCards, session, cards])
 
-  function add(cardId: string) {
-    setCards((prev) => ({ ...prev, [cardId]: (prev[cardId] ?? 0) + 1 }))
-    setSaveState('idle')
-  }
-  function remove(cardId: string) {
-    setCards((prev) => {
-      const next = { ...prev }
-      if ((next[cardId] ?? 0) <= 1) delete next[cardId]
-      else next[cardId] -= 1
-      return next
-    })
+  // Stepping off `prev` rather than off a rendered quantity keeps two clicks
+  // batched into one render from both resolving to the same target.
+  function stepCopies(cardId: string, delta: number) {
+    setCards((prev) => setDeckCopies(prev, cardId, (prev[cardId] ?? 0) + delta))
     setSaveState('idle')
   }
 
@@ -107,14 +102,30 @@ export function DeckBuilderPage() {
   }
 
   const cardById = new Map((allCards ?? []).map((c) => [c.id, c]))
+  const inDeck = Object.entries(cards)
   return (
     <main className="mx-auto flex max-w-[1600px] flex-wrap gap-6 p-6">
       <section className="min-w-[600px] flex-1">
         <h1 className="font-display text-2xl">{deck.faction} card pool</h1>
+        <p className="text-sm text-ocean-300">
+          Press a card to read it; use the stepper in its corner to put up to{' '}
+          {MAX_COPIES_PER_CARD} copies in the deck.
+        </p>
         <div className="mt-4 flex flex-wrap gap-4">
           {pool.map((c) => (
             <div key={c.id} className="scale-90 origin-top-left">
-              <PhysicalCard card={c} onClick={() => add(c.id)} />
+              <PhysicalCard
+                card={c}
+                footer={
+                  <CopyStepper
+                    copies={cards[c.id] ?? 0}
+                    max={MAX_COPIES_PER_CARD}
+                    onStep={(delta) => stepCopies(c.id, delta)}
+                    label={`Copies of ${c.name} in this deck`}
+                    className="border-ocean-600 bg-parchment-300 px-1.5 py-1 text-xl text-ocean-950"
+                  />
+                }
+              />
             </div>
           ))}
         </div>
@@ -122,6 +133,30 @@ export function DeckBuilderPage() {
       <aside className="w-96">
         <input className="w-full rounded bg-ocean-900 p-2 font-display text-xl" value={name}
           onChange={(e) => { setName(e.target.value); setSaveState('idle') }} />
+        <ul className="mt-3 flex flex-col gap-1">
+          {inDeck.map(([cardId, qty]) => {
+            const c = cardById.get(cardId)
+            return (
+              <li key={cardId} className="flex items-center gap-2 rounded bg-ocean-900/60 px-2 py-1">
+                <span className="flex-1 truncate">{c?.name ?? cardId}</span>
+                <span className="text-ocean-300">{c ? shortHandNumber(c.material_cost) : ''}</span>
+                <CopyStepper
+                  copies={qty}
+                  max={MAX_COPIES_PER_CARD}
+                  onStep={(delta) => stepCopies(cardId, delta)}
+                  label={`Copies of ${c?.name ?? cardId} in this deck`}
+                  className="px-1"
+                />
+              </li>
+            )
+          })}
+          {inDeck.length === 0 && (
+            <li className="rounded bg-ocean-900/60 px-2 py-1 text-ocean-300">No cards yet.</li>
+          )}
+        </ul>
+        {/* Deck status sits directly above Save rather than above the list:
+            errors appear and disappear on every quantity change, and from up
+            there each one shoved the whole card list down under the cursor. */}
         {validation && (
           <div className={`mt-3 rounded p-3 ${validation.valid ? 'bg-green-900/60' : 'bg-ocean-900/80'}`}>
             <p className="font-bold">{validation.cardCount} cards — {validation.valid ? 'battle ready' : 'draft'}</p>
@@ -130,20 +165,6 @@ export function DeckBuilderPage() {
             </ul>
           </div>
         )}
-        <ul className="mt-3 flex flex-col gap-1">
-          {Object.entries(cards).map(([cardId, qty]) => {
-            const c = cardById.get(cardId)
-            return (
-              <li key={cardId} className="flex items-center gap-2 rounded bg-ocean-900/60 px-2 py-1">
-                <span className="flex-1 truncate">{c?.name ?? cardId}</span>
-                <span className="text-ocean-300">{c ? shortHandNumber(c.material_cost) : ''}</span>
-                <button onClick={() => remove(cardId)} className="px-2">−</button>
-                <span>{qty}</span>
-                <button onClick={() => add(cardId)} className="px-2">+</button>
-              </li>
-            )
-          })}
-        </ul>
         <button onClick={onSave} disabled={saveState === 'saving'}
           className="mt-4 w-full rounded bg-brass-400 p-2 font-bold text-ocean-950 disabled:opacity-50">
           {saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved ✓' : 'Save deck'}

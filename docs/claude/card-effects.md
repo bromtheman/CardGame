@@ -14,10 +14,10 @@ triggers them. Prereq: skim [architecture.md](architecture.md) for engine basics
 - `noteUnimplemented(game, card)` scans every meta key on the card and logs a
   play-time note for effect names with no implementation. Unimplemented cards play
   vanilla — never reject a card for having an unknown effect name.
-- `CATALOG_EFFECTS` — the set of effect names that need `ctx.catalog` (currently
-  `reservesEffect`, `spawnBuccaneerEffect`). If your new effect mints cards from
-  the DB catalog, add its name here AND make sure `game-action`'s catalog probe
-  covers the cards it needs.
+- `CATALOG_EFFECTS` — derived from `registerEffect(name, fn, { needsCatalog: true })`,
+  so it can never drift from the implementations. If your effect mints cards from
+  the DB catalog, pass the flag; `game-action`'s probe scans the played hand card
+  plus every on-field card on both sides.
 - Implemented DWG effects live in `shared/effects/dwgEffects.ts`; its import in
   `shared/engine/index.ts` is what registers them.
 
@@ -44,8 +44,9 @@ the duplicate (open backlog item).
 ## Adding a new effect — checklist
 
 1. Rules first: confirm the card's intended behavior against the spec / seeded
-   `card_text`. (Known mismatch: Marauder's seeded text describes a different
-   effect than the ported one — a recorded ruling, not a template.)
+   `card_text`. **Card text is authoritative** over any ported implementation
+   that disagrees (2026-08-27 effect-coverage spec, decision 1). Marauder's
+   ported own-deck-draw behavior was corrected to match its text.
 2. Implement in `shared/effects/` (new faction file → add its side-effect import
    to `shared/engine/index.ts` and to `supabase/functions/shared-manifest.json`
    under `game-action`).
@@ -71,9 +72,44 @@ the duplicate (open backlog item).
     death trigger on a Scrappy card would be silently unreachable. (Loggerhead hit this
     and had `SCRAPPY` removed.)
 
+## Primitives (`shared/effects/primitives.ts`)
+
+Most cards are a parameterised factory, not a bespoke function. Registrations
+live in per-faction modules (`dwgEffects.ts`, `owEffects.ts`, `ssEffects.ts`,
+`lhEffects.ts`, `wfEffects.ts`), each of which needs a side-effect import in
+`shared/engine/index.ts` AND an entry in `shared-manifest.json`.
+
+| Factory | Use |
+|---|---|
+| `grant({draw, cp, materials, from})` | draw cards and/or add CP/materials; `from: 'enemy'` takes from the opponent's deck |
+| `drawFromPool({source, filter, count, strip, allowEmpty})` | mint from the catalog or pull from your own deck |
+| `whenPlayed(predicate, body)` | condition on the zone the card landed in; use `zoneOccupants(p, 'own' \| 'either')`, which excludes what this play just placed |
+| `grantKeywords({keywords, target, filter})` | idempotently add keywords to a card in hand or on the field |
+| `costDelta({delta, filter})` | stamp a persistent per-instance discount on a card in hand |
+| `sequence(...fns)` | run effects in order, stopping at the first failure |
+
+Coverage is enforced by `supabase/seed/effectCoverage.test.ts`: **G1** every effect
+name in `meta` resolves to a registered implementation, **G2** every card with card
+text has an implemented effect, a data key, or an exemption, and **G3** every
+trigger key a card carries is one the engine dispatches for its `type`. Its
+`KNOWN_GAPS` map is shrink-only — a further assertion rejects stale entries, so
+closing a card without deleting its entry fails the build.
+
+G3 catches a *type*-level mis-wiring (a vehicle carrying an ability-only trigger
+key). It cannot catch a same-type mix-up — an ability carrying
+`playOnVehicleEffect` where its text calls for `playOnCardEffect`, which is what
+Garrison had — because both keys are legitimately dispatchable for an ability.
+When a card's text names where its target lives ("in hand", "in a zone"), check
+the key by hand.
+
 ## Play-time cost modifiers
 
 `costModifier` effects (e.g. Plunderer −20k per own DWG vehicle) apply only in
 `effectiveCostInGame(state, side, card)`: (base + modifier) → halve if `halfCost`
 → clamp ≥ 0. `effectiveMaterialCostOf(card)` (base with Half-Cost floor) stays
 the authority for damage, repairs, and in-battle resources — never mix them.
+
+`meta.costDelta` is a stored per-instance discount stamped onto a card in hand
+(Marauder −50k, Excalibur −200k). It is summed into `effectiveCostInGame`
+alongside the registered `costModifier` and, like it, never reaches
+`effectiveMaterialCostOf`.
