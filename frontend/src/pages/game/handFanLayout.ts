@@ -51,11 +51,16 @@ export function fanSpan(count: number, containerWidth: number): number {
 export function fanLayout(count: number, containerWidth: number): FanSlot[] {
   const step = fanStep(count, containerWidth)
   const centre = (count - 1) / 2
+  // MAX_STEP_RATIO caps the spread, so a small hand does not fill the
+  // container — centre the fan rather than left-aligning it, or every pixel
+  // of slack piles up on the right and the hand reads as misaligned. Clamped
+  // at 0 so a container narrower than one card never pushes cards off-screen.
+  const originX = Math.max(0, (containerWidth - fanSpan(count, containerWidth)) / 2)
   const slots: FanSlot[] = []
   for (let i = 0; i < count; i++) {
     const offset = i - centre
     slots.push({
-      left: i * step - WRAPPER_INSET,
+      left: originX + i * step - WRAPPER_INSET,
       angleDeg: offset * DEG_PER_CARD,
       arcY: offset * offset * ARC_K,
     })

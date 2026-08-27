@@ -38,7 +38,11 @@ describe('fanLayout', () => {
     expect(fanLayout(0, WIDTH)).toEqual([])
   })
   it('centres a single card flat, with no rotation or arc drop', () => {
-    expect(fanLayout(1, WIDTH)).toEqual([{ left: -WRAPPER_INSET, angleDeg: 0, arcY: 0 }])
+    // Rendered left edge sits at half the leftover width; the wrapper is the
+    // inset further left because it is a full CARD_W box scaled about its
+    // bottom centre.
+    const expectedLeft = (WIDTH - RENDERED_CARD_W) / 2 - WRAPPER_INSET
+    expect(fanLayout(1, WIDTH)).toEqual([{ left: expectedLeft, angleDeg: 0, arcY: 0 }])
   })
   it('advances left monotonically', () => {
     const slots = fanLayout(7, WIDTH)
@@ -58,7 +62,16 @@ describe('fanLayout', () => {
     expect(slots[2].arcY).toBeCloseTo(0, 5)
     expect(slots[0].arcY).toBeCloseTo(slots[4].arcY, 5)
   })
-  it('offsets every wrapper by the inset so rendered cards start at the container edge', () => {
-    expect(fanLayout(4, WIDTH)[0].left).toBeCloseTo(-WRAPPER_INSET, 5)
+  it('centres the fan, leaving equal slack on both sides at any hand size', () => {
+    for (const n of [1, 2, 3, 5, 8, 12]) {
+      const slots = fanLayout(n, WIDTH)
+      // slot.left is the WRAPPER's left; the rendered card starts an inset further right.
+      const renderedLeft = slots[0].left + WRAPPER_INSET
+      const renderedRight = slots[n - 1].left + WRAPPER_INSET + RENDERED_CARD_W
+      expect(renderedLeft).toBeCloseTo(WIDTH - renderedRight, 5)
+    }
+  })
+  it('never pushes cards off the left edge in an impossibly narrow container', () => {
+    expect(fanLayout(5, 50)[0].left + WRAPPER_INSET).toBe(0)
   })
 })
