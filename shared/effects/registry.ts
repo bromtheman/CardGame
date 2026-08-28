@@ -1,6 +1,6 @@
 import { TRIGGERS } from '../gameSettings.ts'
 import type { EngineContext, EngineGame, Side } from '../engine/engineTypes.ts'
-import type { CardInstance, PublicGameState } from '../engine/gameInit.ts'
+import type { CardInstance, PendingEffect, PublicGameState } from '../engine/gameInit.ts'
 
 export interface EffectPayload {
   game: EngineGame
@@ -13,6 +13,11 @@ export interface EffectPayload {
   // additionalSpawns copies). Predicates that ask "was this zone empty?"
   // must exclude them — PLAY_CARD_TO_ZONE places before effects fire.
   placedInstanceIds?: string[]
+  // Set only on the second entry, by RESOLVE_PENDING_EFFECT. An effect that
+  // can suspend branches on `resolution === undefined` to tell the phases
+  // apart; `pending` is the slot it wrote on the first entry.
+  resolution?: { choiceId?: string; targetInstanceId?: string; zoneId?: number }
+  pending?: PendingEffect
 }
 export type EffectFn = (payload: EffectPayload) => boolean
 export type CostModifierFn = (state: PublicGameState, side: Side, card: CardInstance) => number

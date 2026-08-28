@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { drawFromPool, grant, sequence, takeFromEnemyDeck, whenPlayed, zoneOccupants } from './primitives.ts'
+import { choice, drawFromPool, grant, sequence, takeFromEnemyDeck, whenPlayed, zoneOccupants } from './primitives.ts'
 import { inst, makeCtx, makeGame, snap } from '../engine/testFixtures.ts'
 
 describe('grant', () => {
@@ -219,5 +219,64 @@ describe('zoneOccupants', () => {
     const fn = whenPlayed((p) => zoneOccupants(p, 'own')?.length === 0, () => { ran = true; return true })
     expect(fn({ game, actor: 'a', card: inst(), ctx: makeCtx() })).toBe(true)
     expect(ran).toBe(false)
+  })
+})
+
+describe('choice', () => {
+  const twoOptions = choice({
+    effect: 't_pick',
+    prompt: 'Pick one',
+    options: () => [{ id: 'a', label: 'Alpha' }, { id: 'b', label: 'Beta' }],
+    resolve: ({ game }, choiceId) => {
+      game.state.log.push(`resolved:${choiceId ?? 'none'}`)
+      return true
+    },
+  })
+
+  it('suspends on the first entry and writes a public slot', () => {
+    const game = makeGame()
+    const card = inst({ name: 'Chooser', instanceId: 'c1' })
+    expect(twoOptions({ game, actor: 'a', card, ctx: makeCtx() })).toBe(true)
+    expect(game.state.pendingEffect).toMatchObject({
+      effect: 't_pick', side: 'a', kind: 'choice', prompt: 'Pick one',
+      options: [{ id: 'a', label: 'Alpha' }, { id: 'b', label: 'Beta' }],
+    })
+    expect(game.state.pendingEffect?.card.instanceId).toBe('c1')
+    expect(game.state.log.join()).not.toContain('resolved:')
+  })
+
+  it('resolves immediately, without suspending, when there are no options', () => {
+    const game = makeGame()
+    const empty = choice({
+      effect: 't_empty', prompt: 'Pick one', options: () => [],
+      resolve: ({ game: g }, choiceId) => { g.state.log.push(`resolved:${choiceId ?? 'none'}`); return true },
+    })
+    expect(empty({ game, actor: 'a', card: inst(), ctx: makeCtx() })).toBe(true)
+    expect(game.state.pendingEffect).toBeNull()
+    expect(game.state.log.join()).toContain('resolved:none')
+  })
+
+  it('runs resolve on re-entry with a known choiceId', () => {
+    const game = makeGame()
+    const card = inst({ name: 'Chooser', instanceId: 'c1' })
+    twoOptions({ game, actor: 'a', card, ctx: makeCtx() })
+    const pending = game.state.pendingEffect!
+    game.state.pendingEffect = null
+    const ok = twoOptions({
+      game, actor: 'a', card, ctx: makeCtx(), pending, resolution: { choiceId: 'b' },
+    })
+    expect(ok).toBe(true)
+    expect(game.state.log.join()).toContain('resolved:b')
+  })
+
+  it('rejects an unknown choiceId', () => {
+    const game = makeGame()
+    const card = inst({ instanceId: 'c1' })
+    twoOptions({ game, actor: 'a', card, ctx: makeCtx() })
+    const pending = game.state.pendingEffect!
+    const ok = twoOptions({
+      game, actor: 'a', card, ctx: makeCtx(), pending, resolution: { choiceId: 'nope' },
+    })
+    expect(ok).toBe(false)
   })
 })
