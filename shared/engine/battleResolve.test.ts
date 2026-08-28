@@ -550,6 +550,28 @@ describe('battle summons (spec §4.4)', () => {
     expect(r.game.state.resources.a.materials).toBe(100000)
   })
 
+  it('never charges materials for a summon id in the owed loop, even if it slipped past validateRepairChoices', () => {
+    // validateRepairChoices rejects a summon id in repairs (400) whenever a
+    // report is submitted through the normal action API, so this path is not
+    // reachable that way. To test the owed loop's OWN guard in isolation —
+    // the defense-in-depth the brief's review asked for — construct a stored
+    // pendingReport directly, as if an earlier validation step already had a
+    // bug and let a summon id through into report.repairs. report.repairs is
+    // never re-validated at DECIDE time (only the approver's own list is),
+    // so this is the realistic shape a regression there would take.
+    const { g, atk, def, summon } = inBattleWithSummon({ materialCost: 80000 }) // non-Scrappy: real repair cost
+    g.state.pendingReport = {
+      submittedBy: 'a',
+      results: { [atk.instanceId]: 95, [def.instanceId]: 95, [summon.instanceId]: 85 },
+      repairs: [summon.instanceId],
+    }
+    const r = applyAction(g, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true })
+    if (!r.ok) throw new Error(r.error)
+    // The behavioural claim: alice is not charged repairCostOf(summon)
+    // (ceil(80000 * 0.5) = 40000) for a hull that evaporates regardless.
+    expect(r.game.state.resources.a.materials).toBe(100000)
+  })
+
   it('does not fire an onDeathEffect a summon carries', () => {
     // Synthetic t_-prefixed name — a real seeded onDeathEffect would stop
     // testing anything the day it gets implemented for real.
@@ -582,7 +604,7 @@ describe('battle summons (spec §4.4)', () => {
     expect(r.game.state.log).toContain('Battle resolved — 1 vehicle(s) lost')
   })
 
-  it('invokes the continuation after approval, after death triggers fire, with its data intact', () => {
+  it('invokes the continuation after approval — after death triggers, with data intact, battle fully cleared', () => {
     registerEffect('t_battleDeathMarker', ({ game }) => {
       game.state.log.push('t_battleDeathMarker fired')
       return true
@@ -591,7 +613,14 @@ describe('battle summons (spec §4.4)', () => {
       payload.game.state.log.push(`t_battleContinuation fired data=${JSON.stringify(payload.continuation?.data)}`)
       return true
     })
-    const { g, atk, def } = inBattle()
+    // A summon rides along in the same battle so the final activeBattle-null
+    // check below means something: this is the one test where a summon, a
+    // real death trigger, AND a continuation are all live at once, so a
+    // regression that left any of them half-handled has somewhere to show up
+    // (a stray zone.cards entry, a stray log line, or activeBattle staying
+    // non-null) rather than the field simply being null because nothing
+    // interesting happened.
+    const { g, atk, def, summon } = inBattleWithSummon()
     def.meta = { onDeathEffect: 't_battleDeathMarker' }
     const trebuchet = inst({ name: 'Trebuchet' })
     g.state.activeBattle!.continuation = {
@@ -599,7 +628,7 @@ describe('battle summons (spec §4.4)', () => {
     }
     const s = applyAction(g, 'alice', {
       type: 'SUBMIT_BATTLE_REPORT',
-      results: { [atk.instanceId]: 95, [def.instanceId]: 40 }, repairs: [],
+      results: { [atk.instanceId]: 95, [def.instanceId]: 40, [summon.instanceId]: 50 }, repairs: [],
     })
     if (!s.ok) throw new Error(s.error)
     const r = applyAction(s.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, makeCtx())
@@ -609,6 +638,8 @@ describe('battle summons (spec §4.4)', () => {
     const contIdx = r.game.state.log.findIndex((l) => l.includes('t_battleContinuation fired'))
     expect(deathIdx).toBeGreaterThanOrEqual(0)
     expect(contIdx).toBeGreaterThan(deathIdx)
+    expect(r.game.state.zones[0].cards.a.some((c) => c.instanceId === summon.instanceId)).toBe(false)
+    expect(r.game.state.activeBattle).toBeNull()
   })
 
   it('drops a continuation whose effect is no longer registered, logging rather than throwing', () => {
@@ -624,20 +655,5 @@ describe('battle summons (spec §4.4)', () => {
     const r = applyAction(s.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true })
     if (!r.ok) throw new Error(r.error)
     expect(r.game.state.log.some((l) => l.includes('Ghost Rider') && l.includes('dropped'))).toBe(true)
-  })
-
-  it('clears summons and continuation along with activeBattle on approval', () => {
-    const { g, atk, def, summon } = inBattleWithSummon()
-    g.state.activeBattle!.continuation = {
-      effect: 't_unusedBattleContinuationForClearTest', side: 'a', card: inst({ name: 'Whatever' }),
-    }
-    const s = applyAction(g, 'alice', {
-      type: 'SUBMIT_BATTLE_REPORT',
-      results: { [atk.instanceId]: 95, [def.instanceId]: 95, [summon.instanceId]: 50 }, repairs: [],
-    })
-    if (!s.ok) throw new Error(s.error)
-    const r = applyAction(s.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true })
-    if (!r.ok) throw new Error(r.error)
-    expect(r.game.state.activeBattle).toBeNull()
   })
 })

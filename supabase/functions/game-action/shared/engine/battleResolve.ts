@@ -170,11 +170,16 @@ registerHandler('DECIDE_BATTLE_REPORT', (game, actor, action, ctx) => {
     ...autoRepairIds(roster, report.results),
   ])
 
-  // Repair affordability first (all-or-nothing), per owner.
+  // Repair affordability first (all-or-nothing), per owner. repairIds should
+  // never legitimately contain a summon id — validateRepairChoices and the
+  // non-summon roster fed to autoRepairIds above both refuse it upstream —
+  // but this loop must not trust that unconditionally: a future regression
+  // in either upstream guard must not silently charge a real vehicle's
+  // repair cost for a hull that evaporates regardless of HP (spec §4.4).
   const owed: Record<Side, number> = { a: 0, b: 0 }
   for (const id of repairIds) {
     const p = participants.get(id)
-    if (p) owed[p.side] += repairCostOf(p.entry)
+    if (p && !isSummon(battle, id)) owed[p.side] += repairCostOf(p.entry)
   }
   for (const side of ['a', 'b'] as Side[]) {
     if (owed[side] > game.state.resources[side].materials) {
