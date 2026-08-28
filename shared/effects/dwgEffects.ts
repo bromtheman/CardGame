@@ -1,8 +1,8 @@
-import { DOUBLE_UP_MAX_COST, KEYWORDS, MARAUDER_DISCOUNT, RESERVES_CARD_COUNT } from '../gameSettings.ts'
+import { DOUBLE_UP_MAX_COST, HERO_POWER_LABELS, KEYWORDS, MARAUDER_DISCOUNT, RESERVES_CARD_COUNT } from '../gameSettings.ts'
 import type { ZoneCardEntry } from '../engine/engineTypes.ts'
 import { drawCard, zoneById } from '../engine/gameEngine.ts'
 import { effectiveMaterialCostOf } from '../engine/placement.ts'
-import { grant, takeFromEnemyDeck } from './primitives.ts'
+import { choice, grant, takeFromEnemyDeck } from './primitives.ts'
 import { registerCostModifier, registerEffect } from './registry.ts'
 import type { EffectPayload } from './registry.ts'
 
@@ -124,3 +124,24 @@ registerEffect('dwgWatersEffect', ({ game, actor, card, targetZoneId }) => {
   )
   return true
 })
+
+// "When played, refresh one of your hero powers then gain 1cp." With no used
+// power there is nothing to refresh, and `choice` resolves without suspending
+// so the CP still lands.
+const KRAKEN = 'krakenOnPlay'
+registerEffect(KRAKEN, choice({
+  effect: KRAKEN,
+  prompt: 'Refresh one of your used hero powers',
+  options: ({ game, actor }) =>
+    game.state.usedHeroPowers[actor].map((p) => ({ id: p, label: HERO_POWER_LABELS[p] ?? p })),
+  resolve: ({ game, actor }, choiceId) => {
+    if (choiceId === null) {
+      game.state.log.push('Kraken finds no used hero power to refresh')
+    } else {
+      game.state.usedHeroPowers[actor] = game.state.usedHeroPowers[actor].filter((p) => p !== choiceId)
+      game.state.log.push(`Kraken refreshes ${HERO_POWER_LABELS[choiceId] ?? choiceId}`)
+    }
+    game.state.resources[actor].cp += 1
+    return true
+  },
+}))

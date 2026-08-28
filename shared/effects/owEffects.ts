@@ -1,6 +1,6 @@
-import { drawFromPool, grant, grantKeywords, whenPlayed, zoneOccupants } from './primitives.ts'
+import { choice, drawFromPool, grant, grantKeywords, whenPlayed, zoneOccupants } from './primitives.ts'
 import { registerEffect } from './registry.ts'
-import { KEYWORDS } from '../gameSettings.ts'
+import { GT_HEAVY_AIRSHIP_MIN_COST, KEYWORDS } from '../gameSettings.ts'
 import type { ZoneCardEntry } from '../engine/engineTypes.ts'
 import { moveEntry } from '../engine/heroPowers.ts'
 
@@ -63,3 +63,27 @@ registerEffect('monsoonActivate', ({ game, actor, card, targetZoneId }) => {
   if (typeof targetZoneId !== 'number') return false
   return moveEntry(game, actor, card.instanceId, targetZoneId, true).ok
 })
+
+// "Draw one card from either the GT Airship or Heavy Airship deck (your
+// choice)." Spec §7.3 puts the cliff at GT_HEAVY_AIRSHIP_MIN_COST, which
+// splits the fourteen GT airships 6 / 8 — the guard pins those counts.
+const SPECIAL_FOUNDRIES = 'specialFoundriesEffect'
+const gtLightAirship = drawFromPool({
+  source: 'catalog',
+  filter: { faction: 'GT', vehicleType: 'airship', maxCost: GT_HEAVY_AIRSHIP_MIN_COST - 1 },
+  count: 1,
+})
+const gtHeavyAirship = drawFromPool({
+  source: 'catalog',
+  filter: { faction: 'GT', vehicleType: 'airship', minCost: GT_HEAVY_AIRSHIP_MIN_COST },
+  count: 1,
+})
+registerEffect(SPECIAL_FOUNDRIES, choice({
+  effect: SPECIAL_FOUNDRIES,
+  prompt: 'Draw from which GT airship pool?',
+  options: () => [
+    { id: 'light', label: 'GT Airship' },
+    { id: 'heavy', label: 'GT Heavy Airship' },
+  ],
+  resolve: (payload, choiceId) => (choiceId === 'heavy' ? gtHeavyAirship(payload) : gtLightAirship(payload)),
+}), { needsCatalog: true })

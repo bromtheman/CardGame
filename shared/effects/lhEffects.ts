@@ -1,5 +1,5 @@
 import { effectiveCostInGame } from '../engine/placement.ts'
-import { drawFromPool, grant, sequence, whenPlayed, zoneOccupants } from './primitives.ts'
+import { choice, drawFromPool, grant, sequence, whenPlayed, zoneOccupants } from './primitives.ts'
 import type { EffectFn } from './registry.ts'
 import { registerEffect } from './registry.ts'
 
@@ -44,3 +44,25 @@ registerEffect('sapphireEffect', whenPlayed(
 // Spec §7.2 authors this card's text: "Once per turn, you may pay 1cp to draw
 // a random card from the [TG] Robotics pool." Same pool as Ampere's.
 registerEffect('spectrumEffect', tgRobotics, { needsCatalog: true })
+
+// "Choose a [TG] Robotics card to add to your hand." All four TG built-ins
+// are public, so offering them by name leaks nothing.
+const ROBOTIC_ASSEMBLERS = 'roboticAssemblersEffect'
+registerEffect(ROBOTIC_ASSEMBLERS, choice({
+  effect: ROBOTIC_ASSEMBLERS,
+  prompt: 'Choose a [TG] Robotics card to add to your hand',
+  options: ({ ctx }) => ctx.catalog
+    .filter((c) => c.isBuiltIn && c.faction === 'TG' && c.meta.summonOnly !== true)
+    .sort((x, y) => x.name.localeCompare(y.name))
+    .map((c) => ({ id: c.cardId, label: c.name })),
+  resolve: ({ game, actor, ctx }, choiceId) => {
+    const pick = ctx.catalog.find((c) => c.cardId === choiceId)
+    // An empty catalog here is an infrastructure bug, not an empty pool.
+    if (!pick) return false
+    const hand = game.privates[actor].hand
+    hand.push({ ...pick, instanceId: ctx.newId() })
+    game.state.counts[actor].hand = hand.length
+    game.state.log.push(`Player ${actor.toUpperCase()} adds a card to their hand`)
+    return true
+  },
+}), { needsCatalog: true })

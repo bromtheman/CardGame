@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { effectFor } from './registry.ts'
 import { inst, makeCtx, makeGame, snap, zoneEntry } from '../engine/testFixtures.ts'
 import { applyAction } from '../engine/index.ts'
+import type { CardInstance } from '../engine/gameInit.ts'
+import type { EngineGame } from '../engine/engineTypes.ts'
 
 const DRAW_ONE = [
   'mandrelOnPlay', 'rookOnPlay', 'resoluteOnPlay', 'excruciatorOnPlay',
@@ -338,5 +340,95 @@ describe('wave 2 — activated abilities', () => {
     if (!res.ok) throw new Error(res.error)
     expect(res.game.privates.a.hand).toHaveLength(1)
     expect(res.game.privates.a.hand[0].faction).toBe('TG')
+  })
+})
+
+describe('wave 2 — choices', () => {
+  function playAbility(game: EngineGame, card: CardInstance, ctx = makeCtx()) {
+    game.privates.a.hand.push(card)
+    game.state.counts.a.hand = game.privates.a.hand.length
+    return applyAction(game, 'alice', { type: 'PLAY_ABILITY_CARD', instanceId: card.instanceId }, ctx)
+  }
+
+  it('Kraken offers only the powers already used, and refreshes the chosen one', () => {
+    const game = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+    game.state.usedHeroPowers.a = ['draw', 'salvage']
+    game.privates.a.hand.push(inst({
+      instanceId: 'k1', name: 'Kraken', faction: 'DWG', vehicleType: 'ship',
+      materialCost: 0, meta: { onPlayEffect: 'krakenOnPlay' },
+    }))
+    game.state.counts.a.hand = 1
+    const cpBefore = game.state.resources.a.cp
+    const suspended = applyAction(
+      game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: 'k1', zoneId: 1 }, makeCtx(),
+    )
+    if (!suspended.ok) throw new Error(suspended.error)
+    expect(suspended.game.state.pendingEffect?.options.map((o) => o.id)).toEqual(['draw', 'salvage'])
+    const resolved = applyAction(
+      suspended.game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'salvage' }, makeCtx(),
+    )
+    if (!resolved.ok) throw new Error(resolved.error)
+    expect(resolved.game.state.usedHeroPowers.a).toEqual(['draw'])
+    expect(resolved.game.state.resources.a.cp).toBe(cpBefore + 1)
+  })
+
+  it('Kraken still grants its CP when no hero power has been used', () => {
+    const game = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+    game.state.usedHeroPowers.a = []
+    game.privates.a.hand.push(inst({
+      instanceId: 'k2', name: 'Kraken', faction: 'DWG', vehicleType: 'ship',
+      materialCost: 0, meta: { onPlayEffect: 'krakenOnPlay' },
+    }))
+    game.state.counts.a.hand = 1
+    const cpBefore = game.state.resources.a.cp
+    const res = applyAction(
+      game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: 'k2', zoneId: 1 }, makeCtx(),
+    )
+    if (!res.ok) throw new Error(res.error)
+    expect(res.game.state.pendingEffect).toBeNull()
+    expect(res.game.state.resources.a.cp).toBe(cpBefore + 1)
+  })
+
+  it('Special Foundries draws from whichever GT airship pool is chosen', () => {
+    const game = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+    const ctx = makeCtx({
+      catalog: [
+        snap({ name: 'Wasp', faction: 'GT', vehicleType: 'airship', materialCost: 70000 }),
+        snap({ name: 'Kobold', faction: 'GT', vehicleType: 'airship', materialCost: 700000 }),
+      ],
+    })
+    const res = playAbility(game, inst({
+      instanceId: 'sf1', name: 'Special Foundries', type: 'ability',
+      meta: { onPlayEffect: 'specialFoundriesEffect' },
+    }), ctx)
+    if (!res.ok) throw new Error(res.error)
+    expect(res.game.state.pendingEffect?.options.map((o) => o.id)).toEqual(['light', 'heavy'])
+    const heavy = applyAction(res.game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'heavy' }, ctx)
+    if (!heavy.ok) throw new Error(heavy.error)
+    expect(heavy.game.privates.a.hand.map((c) => c.name)).toEqual(['Kobold'])
+  })
+
+  it('Robotic Assemblers adds the chosen TG card without naming it in the log', () => {
+    const game = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+    const ctx = makeCtx({
+      catalog: [
+        snap({ cardId: 'tg-1', name: '[TG] Alpha', faction: 'TG', vehicleType: 'tank' }),
+        snap({ cardId: 'tg-2', name: '[TG] Beta', faction: 'TG', vehicleType: 'tank' }),
+      ],
+    })
+    const res = playAbility(game, inst({
+      instanceId: 'ra1', name: 'Robotic Assemblers', type: 'ability',
+      meta: { onPlayEffect: 'roboticAssemblersEffect' },
+    }), ctx)
+    if (!res.ok) throw new Error(res.error)
+    expect(res.game.state.pendingEffect?.options).toEqual([
+      { id: 'tg-1', label: '[TG] Alpha' },
+      { id: 'tg-2', label: '[TG] Beta' },
+    ])
+    const done = applyAction(res.game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'tg-2' }, ctx)
+    if (!done.ok) throw new Error(done.error)
+    expect(done.game.privates.a.hand.map((c) => c.name)).toEqual(['[TG] Beta'])
+    expect(done.game.state.counts.a.hand).toBe(1)
+    expect(done.game.state.log.join()).not.toContain('[TG] Beta')
   })
 })
