@@ -891,6 +891,13 @@ describe('wave 3 — forced battles', () => {
 
     it('resolving the zone choice spawns one Orbit into zone.cards, Temporary exactly once, no zone activation', () => {
       const game = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+      // A decoy enemy vehicle whose instanceId doubles as the chosen zone's
+      // id string ('2'), sitting in a different zone. Inert for the correct
+      // implementation — mode (a)'s resolve never looks up a vehicle — but
+      // load-bearing for the teeth check: a mode-confusion bug that treats
+      // this hop-2 answer as mode (b) would find this vehicle and wrongly
+      // declare a battle instead of spawning, rather than failing closed.
+      game.state.zones[0].cards.b.push(zoneEntry({ instanceId: '2', name: 'Decoy Foe' }))
       const ctx = makeCtx({ catalog })
       const played = playOrbitFlank(game, ctx)
       if (!played.ok) throw new Error(played.error)
@@ -932,7 +939,12 @@ describe('wave 3 — forced battles', () => {
 
     it('resolving the vehicle choice declares a forced battle with one Orbit summon, never entering zone.cards', () => {
       const game = makeGame({ turnNumber: 2, activePlayer: 'alice' })
-      game.state.zones[2].cards.b.push(zoneEntry({ instanceId: 'foe-1', name: 'Foe' }))
+      // instanceId '2' deliberately doubles as a real zone id. Inert for the
+      // correct implementation — mode (b)'s resolve never parses choiceId as
+      // a number — but load-bearing for the teeth check: a mode-confusion
+      // bug that treats this hop-2 answer as mode (a) would successfully
+      // (and wrongly) spawn into zone 2 instead of failing closed.
+      game.state.zones[2].cards.b.push(zoneEntry({ instanceId: '2', name: 'Foe' }))
       const ctx = makeCtx({ catalog })
       const played = playOrbitFlank(game, ctx)
       if (!played.ok) throw new Error(played.error)
@@ -941,14 +953,14 @@ describe('wave 3 — forced battles', () => {
       }, ctx)
       if (!modeChosen.ok) throw new Error(modeChosen.error)
       const resolved = applyAction(modeChosen.game, 'alice', {
-        type: 'RESOLVE_PENDING_EFFECT', choiceId: 'foe-1',
+        type: 'RESOLVE_PENDING_EFFECT', choiceId: '2',
       }, ctx)
       if (!resolved.ok) throw new Error(resolved.error)
       expect(resolved.game.state.pendingEffect).toBeNull()
       const battle = resolved.game.state.activeBattle
       expect(battle?.zoneId).toBe(3)
       expect(battle?.aggressor).toBe('a')
-      expect(battle?.defenderIds).toEqual(['foe-1'])
+      expect(battle?.defenderIds).toEqual(['2'])
       expect(battle?.summons).toHaveLength(1)
       expect(battle?.summons[0].name).toBe('Orbit')
       expect(battle?.attackerIds).toEqual(battle?.summons.map((s) => s.instanceId))
