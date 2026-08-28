@@ -94,9 +94,17 @@ How it behaves:
   **ahead of** the battle check and admits only `PENDING_ACTIONS` —
   `RESOLVE_PENDING_EFFECT`, `CONCEDE`, `ABANDON`. It is deliberately not folded
   into `battleFrozen`, whose `BATTLE_ACTIONS` admits `USE_HERO_POWER` and the
-  three battle actions. A reviewer traced that `activeBattle` and
-  `pendingEffect` are mutually exclusive by construction, so `BattleOverlay` and
-  `PendingChoiceDialog` can never render together.
+  three battle actions — including `DECIDE_BATTLE_REPORT`, which dispatches
+  `onDeathEffect` today. So `activeBattle` and `pendingEffect` are **not**
+  mutually exclusive because `BATTLE_ACTIONS` is blind to effect code; a
+  reviewer traced the real reasons: (a) no hero power dispatches a registry
+  effect, and (b) `DECIDE_BATTLE_REPORT` clears `activeBattle`/`pendingReport`
+  **before** firing death triggers, so any death effect that suspends does so
+  only after the battle freeze has already lifted. That is why `BattleOverlay`
+  and `PendingChoiceDialog` still never render together today — but it rests on
+  (a) and (b), not on construction, and a death effect that suspends via
+  `choice` (yours to build) is exactly what will exercise it for the first
+  time.
 - **Resume is by name, into the same registration.** The card keeps one registry
   entry, so the guard still counts one implementation per card. Two optional
   fields on `EffectPayload` carry phase two: `resolution` and `pending`.
@@ -388,9 +396,14 @@ membership.
 its "vehicle with an unimplemented `onActivate` deploys fine with exactly one
 vanilla note" fixture. **That test silently stops testing anything the moment
 you register `eclipseEffect`** — it will still pass, having asserted nothing
-about the unimplemented path. Rename it to a synthetic `t_`-prefixed name (see
-`shared/engine/battleResolve.test.ts` for the pattern) as part of building
-Eclipse. `ambushEffect` and `sabotageEffect` are the same trap in the same file
+about the unimplemented path. Rename it to a synthetic `t_`-prefixed name as
+part of building Eclipse — see `shared/engine/activate.test.ts`,
+`shared/engine/pendingEffect.test.ts`, `shared/effects/primitives.test.ts`, or
+`shared/effects/registry.test.ts` for the pattern (`battleResolve.test.ts`
+does **not** use it — it names its stand-ins `testAlwaysFailOnDeath` /
+`neverImplementedOnDeath` — so it is not the exemplar to copy despite an
+earlier version of this doc pointing there). `ambushEffect` and
+`sabotageEffect` are the same trap in the same file
 (lines ~151–256 and ~435–480) and belong to wave 5.
 
 ### 4.9 `lockBattle` does two things a forced battle must not do
@@ -439,6 +452,28 @@ extend to merge the two sources) spreading `undefined` is a crash, not a fizzle.
   a test — expect a `+1` beyond your own.
 - **Relative imports inside `shared/` carry the `.ts` extension.**
 - Consumers import `shared/engine/index.ts`, never individual engine modules.
+
+### 4.12 A vehicle-targeted activation has no UI path today
+
+`GameBoardPage.tsx`'s `ZONE_TARGETED_ACTIVATIONS` set (~line 123) special-cases
+exactly one activated ability — `monsoonActivate` — by reusing `moveMode`'s
+`pickZone` phase to collect a `zoneId` before `onActivateClick` (~lines
+125–135) sends `ACTIVATE_VEHICLE`. The `ACTIVATE_VEHICLE` action
+(`shared/engine/engineTypes.ts`) also accepts an optional `targetInstanceId`,
+but **nothing in the frontend ever sends one** — there is no picking mode for
+"choose a vehicle" the way there already is for "choose a zone".
+
+Braveheart ("1v1 vs an enemy vehicle in the same zone") needs exactly that:
+after the corner "use" button fires, the player must pick an enemy vehicle in
+Braveheart's own zone before `ACTIVATE_VEHICLE` goes out with both
+`instanceId` and `targetInstanceId`. **The zone-pick mode is the pattern to
+copy** — give Braveheart's activation its own phase in the `moveMode`-style
+state machine (or a sibling piece of state), gated by a set/flag analogous to
+`ZONE_TARGETED_ACTIVATIONS`. `BoardZone` already has two flavors of
+"make specific on-field vehicles clickable" to extend rather than reinvent:
+`fieldTargetingActive` / `onFieldTargetClick` (any vehicle, either side), and
+`swapPickEnemyMode` / `onPickEnemyForSwap` (enemy vehicles, restricted to one
+already-chosen zone — the closer shape to Braveheart's own-zone-only rule).
 
 ---
 

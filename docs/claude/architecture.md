@@ -87,10 +87,15 @@ frontend (supabase-js) ──invoke──> edge function ──applyAction──
   (`RESOLVE_PENDING_EFFECT`, `CONCEDE`, `ABANDON`), and `applyAction` checks it
   **ahead of** the battle check. It is deliberately *not* folded into
   `battleFrozen`: `BATTLE_ACTIONS` admits `USE_HERO_POWER` and the three battle
-  actions, none of which should be legal while a player owes a choice. The two
-  freezes are mutually exclusive by construction — neither action set permits
-  playing a card, so nothing can open a battle while a choice is live, or the
-  reverse.
+  actions, none of which should be legal while a player owes a choice — and one
+  of those three, `DECIDE_BATTLE_REPORT`, dispatches `onDeathEffect` right now.
+  So the two freezes are mutually exclusive today **not because either action
+  set is blind to effect code**, but for two narrower reasons: (a) no hero
+  power dispatches a registry effect, and (b) `DECIDE_BATTLE_REPORT` clears
+  `activeBattle`/`pendingReport` **before** firing death triggers
+  (`battleResolve.ts`), so any death effect that suspends does so only after
+  the battle freeze has already lifted. A death effect that suspends via
+  `choice` (wave 3 is assigned one) is the first thing that will exercise this.
 
 ## The snapshot-destructure trap
 
@@ -122,8 +127,14 @@ stamps — those two are not part of the trap.
 `meta.summonOnly` cards are spawned, never drafted, so they must never reach
 `state.destroyed` — otherwise `reshuffleDiscard` would turn a destroyed Martyr
 into a draftable card. `deckValidation` rejects them from decks and
-`drawFromPool`'s catalog branch excludes them from pools; those four places are
-the whole enforcement today.
+`drawFromPool`'s catalog branch excludes them from pools — but that is not the
+whole story. Any effect that mints straight from `ctx.catalog` **instead of**
+going through `drawFromPool` does not get the guard for free and must repeat
+`c.meta.summonOnly !== true` in its own filter. `reservesEffect`
+(`shared/effects/dwgEffects.ts`) filtered `ctx.catalog` directly and missed
+it — Reserves could mint Flying Squirrel, a summon-only DWG vehicle, straight
+into a hand. Treat every catalog-filtering effect as a fifth enforcement site
+you must check by hand, not as covered by the four above.
 
 ## Turn & battle flow
 

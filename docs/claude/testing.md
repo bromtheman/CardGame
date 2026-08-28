@@ -40,9 +40,10 @@ npx vitest run shared/effects       # path filter — the ONLY sanctioned way to
 - ⚠ **Never use a real seeded effect name as an "unimplemented" stand-in.** A
   test asserting "unknown effect plays vanilla" silently stops testing anything
   the day someone registers that name. Use synthetic `t_`-prefixed names — see
-  `shared/engine/battleResolve.test.ts`. Existing offenders, all in
-  `shared/engine/placement.test.ts`: `eclipseEffect` (wave 3),
-  `ambushEffect` / `sabotageEffect` (wave 5).
+  `shared/engine/activate.test.ts`, `shared/engine/pendingEffect.test.ts`,
+  `shared/effects/primitives.test.ts`, or `shared/effects/registry.test.ts`.
+  Existing offenders, all in `shared/engine/placement.test.ts`:
+  `eclipseEffect` (wave 3), `ambushEffect` / `sabotageEffect` (wave 5).
 
 ## Live E2E (scripted, against the real project)
 

@@ -30,7 +30,7 @@ export function MiniVehicle({
   /** Show the small "move" corner button (Mobile keyword, eligible to move this turn). */
   moveAffordance?: boolean
   onMoveClick?: () => void
-  /** Show the small "use" corner button (has an activated ability, unused this turn, affordable). */
+  /** Show the small "use" corner button (has an activated ability, unused this turn). */
   activateAffordance?: boolean
   onActivateClick?: () => void
 }) {
