@@ -2239,8 +2239,10 @@ registerEffect('allForTheCauseEffect', ({ game, actor, ctx, targetZoneId }) => {
     `All for the Cause: ${affected.length} vehicle(s) go Temporary and ${spawned} Martyr(s) answer in zone ${zone.id}`,
   )
   return true
-})
+}, { needsCatalog: true })
 ```
+
+`{ needsCatalog: true }` is **required**, not optional polish: this effect reads `ctx.catalog` through `catalogCard`, and `game-action` only loads the catalog for effect names present in `CATALOG_EFFECTS`, which that flag alone populates. Without it every real play of All for the Cause 400s in production — and no unit test would catch it, because tests hand-construct `ctx.catalog`.
 
 - [ ] **Step 7: Close the last three gaps and flip the wave assertion**
 
