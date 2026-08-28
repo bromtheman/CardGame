@@ -530,3 +530,193 @@ describe('clydesdaleEffect on a captured hull', () => {
     expect(hulls.map((c) => c.meta.ownerSide)).toEqual(['b', undefined])
   })
 })
+
+describe('wave 3 — forced battles', () => {
+  const flyingSquirrel = snap({
+    name: 'Flying Squirrel', faction: 'DWG', vehicleType: 'plane', materialCost: 84_000, meta: { summonOnly: true },
+  })
+  const martyrHull = snap({
+    name: 'Martyr', faction: 'WF', vehicleType: 'plane', materialCost: 8_500, meta: { summonOnly: true },
+  })
+
+  describe('flyingSquirrelAttackEffect', () => {
+    it('the target fights alone against 3 summoned Flying Squirrels', () => {
+      const game = makeGame()
+      const target = zoneEntry({ name: 'Foe', instanceId: 'foe-1' })
+      game.state.zones[0].cards.b.push(target)
+      const ok = effectFor('flyingSquirrelAttackEffect')!({
+        game, actor: 'a', card: inst({ name: 'Flying Squirrel Attack' }),
+        ctx: makeCtx({ catalog: [flyingSquirrel] }), targetInstanceId: target.instanceId,
+      })
+      expect(ok).toBe(true)
+      const battle = game.state.activeBattle
+      expect(battle?.zoneId).toBe(1)
+      expect(battle?.aggressor).toBe('a')
+      expect(battle?.defenderIds).toEqual(['foe-1']) // fights alone — no ally joins
+      expect(battle?.attackerIds).toHaveLength(3)
+      expect(battle?.summons).toHaveLength(3)
+      expect(battle?.summons.every((s) => s.name === 'Flying Squirrel')).toBe(true)
+      expect(battle?.attackerIds).toEqual(battle?.summons.map((s) => s.instanceId))
+      expect(game.state.zones[0].lastActivatedTurn).toBeNull() // not a zone activation
+      expect(game.state.log.at(-1)).toContain('Flying Squirrel Attack')
+    })
+
+    it('rejects a friendly target', () => {
+      const game = makeGame()
+      const mine = zoneEntry({ name: 'Mine', instanceId: 'mine-1' })
+      game.state.zones[0].cards.a.push(mine)
+      const ok = effectFor('flyingSquirrelAttackEffect')!({
+        game, actor: 'a', card: inst(), ctx: makeCtx({ catalog: [flyingSquirrel] }), targetInstanceId: mine.instanceId,
+      })
+      expect(ok).toBe(false)
+      expect(game.state.activeBattle).toBeNull()
+    })
+  })
+
+  describe('martyrAttackEffect', () => {
+    const run = (targetOver: Partial<Parameters<typeof zoneEntry>[0]>) => {
+      const game = makeGame()
+      const target = zoneEntry({ name: 'Foe', instanceId: 'foe-1', ...targetOver })
+      game.state.zones[0].cards.b.push(target)
+      const ok = effectFor('martyrAttackEffect')!({
+        game, actor: 'a', card: inst({ name: 'Martyr Attack' }),
+        ctx: makeCtx({ catalog: [martyrHull] }), targetInstanceId: target.instanceId,
+      })
+      return { ok, game }
+    }
+
+    it('fights 4 Martyrs against an ordinary built-in target', () => {
+      const { ok, game } = run({ isBuiltIn: true, vehicleType: 'ship', materialCost: 90_000 })
+      expect(ok).toBe(true)
+      const battle = game.state.activeBattle
+      expect(battle?.defenderIds).toEqual(['foe-1'])
+      expect(battle?.attackerIds).toHaveLength(4)
+      expect(battle?.summons).toHaveLength(4)
+      expect(battle?.summons.every((s) => s.name === 'Martyr')).toBe(true)
+      expect(game.state.zones[0].lastActivatedTurn).toBeNull()
+      expect(game.state.log.at(-1)).toContain('Martyr Attack')
+    })
+
+    it('fights 6 Martyrs against a built-in airship, regardless of its cost', () => {
+      const { ok, game } = run({ isBuiltIn: true, vehicleType: 'airship', materialCost: 1_000 })
+      expect(ok).toBe(true)
+      expect(game.state.activeBattle?.attackerIds).toHaveLength(6)
+    })
+
+    it('fights 6 Martyrs against a player design costing 400k or more', () => {
+      const { ok, game } = run({ isBuiltIn: false, vehicleType: 'ship', materialCost: 400_000 })
+      expect(ok).toBe(true)
+      expect(game.state.activeBattle?.attackerIds).toHaveLength(6)
+    })
+
+    it('a player design under 400k stays at 4', () => {
+      const { ok, game } = run({ isBuiltIn: false, vehicleType: 'ship', materialCost: 399_999 })
+      expect(ok).toBe(true)
+      expect(game.state.activeBattle?.attackerIds).toHaveLength(4)
+    })
+
+    it('a built-in 400k+ ship (not an airship) stays at 4', () => {
+      const { ok, game } = run({ isBuiltIn: true, vehicleType: 'ship', materialCost: 500_000 })
+      expect(ok).toBe(true)
+      expect(game.state.activeBattle?.attackerIds).toHaveLength(4)
+    })
+
+    it('reads the printed materialCost, not the Half-Cost-halved effective cost', () => {
+      // Printed 420k clears the 400k threshold; halved to 210k it would not —
+      // the discriminating case between materialCost and effectiveMaterialCostOf.
+      const { ok, game } = run({
+        isBuiltIn: false, vehicleType: 'ship', materialCost: 420_000, keywords: ['halfCost'],
+      })
+      expect(ok).toBe(true)
+      expect(game.state.activeBattle?.attackerIds).toHaveLength(6)
+    })
+
+    it('rejects a friendly target', () => {
+      const game = makeGame()
+      const mine = zoneEntry({ name: 'Mine', instanceId: 'mine-1' })
+      game.state.zones[0].cards.a.push(mine)
+      const ok = effectFor('martyrAttackEffect')!({
+        game, actor: 'a', card: inst(), ctx: makeCtx({ catalog: [martyrHull] }), targetInstanceId: mine.instanceId,
+      })
+      expect(ok).toBe(false)
+      expect(game.state.activeBattle).toBeNull()
+    })
+  })
+
+  describe('gangUpEffect', () => {
+    it('battles the target against all of the actor\'s vehicles in that zone — no summons', () => {
+      const game = makeGame()
+      const target = zoneEntry({ name: 'Foe', instanceId: 'foe-1' })
+      const mineOne = zoneEntry({ name: 'Mine One', instanceId: 'mine-1' })
+      const mineTwo = zoneEntry({ name: 'Mine Two', instanceId: 'mine-2' })
+      game.state.zones[0].cards.b.push(target)
+      game.state.zones[0].cards.a.push(mineOne, mineTwo)
+      const ok = effectFor('gangUpEffect')!({
+        game, actor: 'a', card: inst({ name: 'Gang Up' }), ctx: makeCtx(), targetInstanceId: target.instanceId,
+      })
+      expect(ok).toBe(true)
+      const battle = game.state.activeBattle
+      expect(battle?.defenderIds).toEqual(['foe-1'])
+      expect(battle?.attackerIds).toEqual(['mine-1', 'mine-2'])
+      expect(battle?.summons).toEqual([])
+      expect(game.state.zones[0].lastActivatedTurn).toBeNull()
+      expect(game.state.log.at(-1)).toContain('Gang Up')
+    })
+
+    it('excludes an Inoffensive friendly from the attacker list', () => {
+      const game = makeGame()
+      const target = zoneEntry({ name: 'Foe', instanceId: 'foe-1' })
+      const attacker = zoneEntry({ name: 'Attacker', instanceId: 'atk-1' })
+      const passive = zoneEntry({ name: 'Passive', instanceId: 'psv-1', keywords: ['inoffensive'] })
+      game.state.zones[0].cards.b.push(target)
+      game.state.zones[0].cards.a.push(attacker, passive)
+      const ok = effectFor('gangUpEffect')!({
+        game, actor: 'a', card: inst(), ctx: makeCtx(), targetInstanceId: target.instanceId,
+      })
+      expect(ok).toBe(true)
+      expect(game.state.activeBattle?.attackerIds).toEqual(['atk-1'])
+    })
+
+    it('fails when the zone holds only Inoffensive friendlies', () => {
+      const game = makeGame()
+      const target = zoneEntry({ name: 'Foe', instanceId: 'foe-1' })
+      const passive = zoneEntry({ name: 'Passive', instanceId: 'psv-1', keywords: ['inoffensive'] })
+      game.state.zones[0].cards.b.push(target)
+      game.state.zones[0].cards.a.push(passive)
+      const ok = effectFor('gangUpEffect')!({
+        game, actor: 'a', card: inst(), ctx: makeCtx(), targetInstanceId: target.instanceId,
+      })
+      expect(ok).toBe(false)
+      expect(game.state.activeBattle).toBeNull()
+    })
+
+    it('rejects a friendly target', () => {
+      const game = makeGame()
+      const mine = zoneEntry({ name: 'Mine', instanceId: 'mine-1' })
+      game.state.zones[0].cards.a.push(mine)
+      const ok = effectFor('gangUpEffect')!({
+        game, actor: 'a', card: inst(), ctx: makeCtx(), targetInstanceId: mine.instanceId,
+      })
+      expect(ok).toBe(false)
+    })
+
+    it('does not spend the zone activation — a subsequent fleet attack there still succeeds', () => {
+      const game = makeGame()
+      const target = zoneEntry({ name: 'Foe', instanceId: 'foe-1' })
+      const attacker = zoneEntry({ name: 'Attacker', instanceId: 'atk-1' })
+      game.state.zones[0].cards.b.push(target)
+      game.state.zones[0].cards.a.push(attacker)
+      const ok = effectFor('gangUpEffect')!({
+        game, actor: 'a', card: inst(), ctx: makeCtx(), targetInstanceId: target.instanceId,
+      })
+      expect(ok).toBe(true)
+      // Simulate the forced battle having already been reported and resolved
+      // (DECIDE_BATTLE_REPORT nulls activeBattle) so a second battle may lock.
+      game.state.activeBattle = null
+      const r = applyAction(game, 'alice', {
+        type: 'ATTACK_ENEMY_FLEET', zoneId: 1, attackerIds: ['atk-1'], targetIds: ['foe-1'],
+      })
+      expect(r.ok).toBe(true)
+    })
+  })
+})

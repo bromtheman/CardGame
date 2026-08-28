@@ -240,7 +240,7 @@ export const wfVehicles = [
         faction: FACTIONS.WF,
         blueprintId: null,
         meta: {
-            [TRIGGERS.PLAY_ON_VEHICLE]: 'MartyrAttackEffect'
+            [TRIGGERS.PLAY_ON_VEHICLE]: 'martyrAttackEffect'
         }
     },
 

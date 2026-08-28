@@ -1,6 +1,11 @@
-import { ALL_FOR_THE_CAUSE_DOUBLE_COST, KEYWORDS } from '../gameSettings.ts'
+import {
+  ALL_FOR_THE_CAUSE_DOUBLE_COST, KEYWORDS, MARTYR_ATTACK_BOOST_MIN_COST,
+  MARTYR_ATTACK_BOOSTED_COUNT, MARTYR_ATTACK_COUNT, VEHICLE_TYPES,
+} from '../gameSettings.ts'
 import type { ZoneCardEntry } from '../engine/engineTypes.ts'
-import { catalogCard, grant, spawnInto } from './primitives.ts'
+import { findVehicle, otherSide } from '../engine/gameEngine.ts'
+import { declareForcedBattle } from '../engine/battleDeclare.ts'
+import { catalogCard, grant, spawnInto, summonHulls } from './primitives.ts'
 import { registerEffect } from './registry.ts'
 
 // WF built-in card effects.
@@ -40,4 +45,32 @@ registerEffect('allForTheCauseEffect', ({ game, actor, ctx, targetZoneId }) => {
     `All for the Cause: ${affected.length} vehicle(s) go Temporary and ${spawned} Martyr(s) answer in zone ${zone.id}`,
   )
   return true
+}, { needsCatalog: true })
+
+// "Choose an enemy vehicle. It enters a fight alone against 4 Martyrs. If it
+// is an airship, or a player design costing 400k+, it fights 6 Martyrs
+// instead." DP3 (spec §4.3): the target is the sole defender (§7.3) against
+// freshly minted Martyr summons (spec §4.4). "Player design" is
+// isBuiltIn === false (spec §7.3); the airship clause is independent of cost
+// — a built-in airship of any price still gets the boosted count. The cost
+// check reads the printed materialCost, never effectiveMaterialCostOf — a
+// Half-Cost target must not slip under the threshold.
+registerEffect('martyrAttackEffect', ({ game, actor, ctx, targetInstanceId, card }) => {
+  if (typeof targetInstanceId !== 'string') return false
+  const found = findVehicle(game.state, targetInstanceId)
+  if (!found || found.side !== otherSide(actor)) return false
+  const { entry } = found
+  const boosted = entry.vehicleType === VEHICLE_TYPES.AIRSHIP ||
+    (entry.isBuiltIn === false && entry.materialCost >= MARTYR_ATTACK_BOOST_MIN_COST)
+  const count = boosted ? MARTYR_ATTACK_BOOSTED_COUNT : MARTYR_ATTACK_COUNT
+  const summons = summonHulls(game, ctx, 'Martyr', count)
+  if (!summons) return false
+  return declareForcedBattle(game, {
+    zoneId: found.zone.id,
+    aggressor: actor,
+    attackerIds: summons.map((s) => s.instanceId),
+    defenderIds: [targetInstanceId],
+    summons,
+    cause: card.name,
+  })
 }, { needsCatalog: true })
