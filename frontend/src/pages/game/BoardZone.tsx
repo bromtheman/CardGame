@@ -17,10 +17,14 @@ const BIOME_TINT: Record<string, string> = {
   [ZONE_TYPES.LAND]: 'bg-brass-400/10',
 }
 
-function HpBar({ label, hp, max }: { label: string; hp: number; max: number }) {
+function HpBar({ label, hp, max, own = true }: { label: string; hp: number; max: number; own?: boolean }) {
   const clamped = Math.max(0, hp)
   const pct = max > 0 ? Math.max(0, Math.min(100, (clamped / max) * 100)) : 0
   const low = pct < 25
+  // Own bases fill in brass and the opponent's in muted ocean, the same
+  // own/enemy convention the zone badges below use. Either goes red once the
+  // base is nearly down — that matters to both players, whoever benefits.
+  const fill = low ? 'bg-red-500' : own ? 'bg-brass-400' : 'bg-ocean-300'
   return (
     <div className="w-full">
       <div className="flex justify-between text-xs text-ocean-300">
@@ -29,7 +33,7 @@ function HpBar({ label, hp, max }: { label: string; hp: number; max: number }) {
       </div>
       <div className="h-2 w-full overflow-hidden rounded bg-ocean-950">
         <div
-          className={`h-full transition-all duration-500 ${low ? 'bg-red-500' : 'bg-brass-400'}`}
+          className={`h-full transition-all duration-500 ${fill}`}
           style={{ width: `${pct}%` }}
         />
       </div>
@@ -141,6 +145,11 @@ export function BoardZone({
         </p>
         <ZoneEffectBadges badges={zoneEffectBadgeList ?? []} />
       </div>
+      {/* Both bases, mirroring the zone's own layout: the enemy above their
+          vehicles, yours below yours. Base HP is public state and losing two
+          zones loses the game, so a player cannot judge the board without
+          seeing how close the opponent's base is to falling. */}
+      <HpBar label="Enemy base" hp={zone.baseHp[theirSide]} max={maxBaseHp} own={false} />
       <div className="flex min-h-[76px] flex-wrap gap-1">
         {(zone.cards[theirSide] as ZoneCardEntry[]).map((c) => {
           const swapEnemyEligible = !!swapPickEnemyMode && c.vehicleType === VEHICLE_TYPES.SHIP
