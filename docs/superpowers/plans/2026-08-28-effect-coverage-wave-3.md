@@ -924,12 +924,46 @@ Handoff §6 names this "the one thing not to cut". Wave 4 will know only what yo
 write down.
 
 **Files:**
+- Modify: `supabase/seed/seed_data.sql` (**regenerated, not hand-edited**)
 - Modify: `docs/claude/architecture.md`, `card-effects.md`, `supabase.md`, `testing.md`
 - Create: `docs/superpowers/plans/<the date you write it>-effect-coverage-wave-4-handoff.md`
 - Create: `docs/superpowers/plans/<the date you write it>-effect-coverage-wave-4-kickoff.md`
 
 Both filenames follow the wave-3 pattern exactly — `YYYY-MM-DD-effect-coverage-wave-4-{handoff,kickoff}.md`
 — dated the day you write them, not the day this plan was written.
+
+- [ ] **Step 0 (do this FIRST — it gates the deploy): regenerate `seed_data.sql`**
+
+```bash
+npm run seed:build
+```
+
+`supabase/seed/seed_data.sql` is a **tracked, generated** file, and every seed
+correction in Tasks 5–10 edited only `source/*.js`. Until it is regenerated it
+still carries the old values — `MartyrAttackEffect`, Flying Squirrel Attack's
+`onPlayEffect` key, Orbit Flank's trailing space, and empty `meta` for
+Braveheart and Excalibur.
+
+**Nothing in the test suite catches this.** `loadSeedData()` reads
+`source/*.js`, so the whole coverage guard — G1, G2, G3, the stale-entry
+assertion — passes against source that the deployed database will not match.
+The runbook applies the seed *before* deploying `game-action`, so a stale SQL
+file means the corrected trigger keys never reach production: Martyr Attack
+would name an unregistered effect and play vanilla, and Flying Squirrel Attack
+would carry a key its handler never reads. Green suite, dead cards — the exact
+failure mode this wave has been guarding against everywhere else.
+
+Wave 2 hit the same requirement and regenerated it in commit `3003459`
+("fix(seed): wire wave 2's nine cards to the names their text implies").
+
+After regenerating, confirm the file actually moved:
+
+```bash
+git diff --stat supabase/seed/seed_data.sql
+```
+
+and grep it for each of the nine wave-3 effect names plus `activateCpCost`, to
+confirm every seed edit from Tasks 5–10 is present. Commit it with the docs.
 
 - [ ] **Step 1: Promote durable lessons into `docs/claude/`**
 
@@ -1002,6 +1036,7 @@ without suspending (Flying Squirrel Attack) and one that suspends and then mints
 
 ## Definition of done
 
+- [ ] `npm run seed:build` re-run and `supabase/seed/seed_data.sql` committed, carrying all nine wave-3 effect names and both new `activateCpCost` values — the suite CANNOT catch a stale one
 - [ ] `npx vitest run` green, and `KNOWN_GAPS` is **13** entries with no `wave 3`
       label remaining
 - [ ] `npx tsc -p tsconfig.json --noEmit` exit 0
