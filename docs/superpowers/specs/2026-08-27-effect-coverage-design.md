@@ -419,6 +419,21 @@ unmodified effective cost"). Deltas stack additively. Because it is a stored
 number rather than an effect name, it needs no entry in the registry's
 `ALL_META_KEYS` or HandBar's `ALL_TRIGGER_KEYS`.
 
+**"Per-instance" means the delta dies with the instance (clarified in wave 3).**
+`discardCard` strips `costDelta` from **every** card leaving play, not only from
+a captured card going home. Wave 3's final review found the gap: the strip
+originally ran only inside the `owner !== controller` branch, which was
+sufficient while Marauder — which stamps a *captured* card — was the only
+consumer. Excalibur is the first effect to stamp a player's **own** card, and
+without an unconditional strip a discounted hull that died carried its discount
+into `state.destroyed`, `reshuffleDiscard` fed it back into the owner's deck,
+and the discount became permanent and re-stackable by a second Excalibur. The
+hero power `salvage` was a shorter path to the same result. `reshuffleDiscard`
+mints a fresh `instanceId` for every returning card, so the instance the delta
+belonged to no longer exists — stripping is what "per-instance" already meant.
+`ownerSide` stripping stays scoped to the going-home path; it is about
+ownership, not pricing.
+
 Serves Marauder (−50k) and Excalibur (−200k).
 
 ### 4.6 Conditional Half-Cost suppression
