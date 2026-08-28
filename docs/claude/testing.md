@@ -6,7 +6,7 @@ browser verification.
 ## Unit tests (vitest, repo root)
 
 ```bash
-npx vitest run                      # everything (~200 tests)
+npx vitest run                      # everything (412 tests / 29 files after wave 2)
 npx vitest run shared/effects       # path filter — the ONLY sanctioned way to narrow
 ```
 
@@ -23,7 +23,26 @@ npx vitest run shared/effects       # path filter — the ONLY sanctioned way to
   too, or registries are empty.
 - The drift test `supabase/seed/functionSharedSync.test.ts` fails when synced
   function copies diverge from `shared/` — fix with `npm run functions:sync`,
-  never by editing the copies.
+  never by editing the copies. It generates one case per `shared-manifest.json`
+  entry, so adding a shared file adds a test; a `+n+1` test delta is expected.
+- ⚠ **A frontend test that transitively imports `supabaseClient` throws at
+  import time.** `frontend/src/lib/supabaseClient.ts` throws when
+  `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY` are absent, and the root
+  `vitest.config.ts` has **no `envDir`**, so it never reads `frontend/.env.local`
+  (which is gitignored anyway). The failure names the missing env vars, so it
+  reads as a config problem when the real cause is the import graph — e.g.
+  testing a pure helper in `games.ts`, which imports the client for its query
+  hooks. **Fix it with `vi.mock('./supabaseClient', () => ({ supabase: {} }))`
+  in the test file** (`frontend/src/lib/games.test.ts` is the worked example).
+  Do *not* add `envDir` to the root config — that would make the suite depend on
+  a gitignored file and still fail on a fresh clone and in CI. Corollary: a
+  suite that is green only because *your shell* exports those vars is not green.
+- ⚠ **Never use a real seeded effect name as an "unimplemented" stand-in.** A
+  test asserting "unknown effect plays vanilla" silently stops testing anything
+  the day someone registers that name. Use synthetic `t_`-prefixed names — see
+  `shared/engine/battleResolve.test.ts`. Existing offenders, all in
+  `shared/engine/placement.test.ts`: `eclipseEffect` (wave 3),
+  `ambushEffect` / `sabotageEffect` (wave 5).
 
 ## Live E2E (scripted, against the real project)
 
