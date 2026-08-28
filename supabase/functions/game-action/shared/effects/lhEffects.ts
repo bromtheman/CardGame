@@ -1,5 +1,6 @@
 import { effectiveCostInGame } from '../engine/placement.ts'
-import { choice, drawFromPool, grant, sequence, whenPlayed, zoneOccupants } from './primitives.ts'
+import { KEYWORDS } from '../gameSettings.ts'
+import { choice, drawFromPool, grant, sequence, spawnVehicles, whenPlayed, zoneOccupants } from './primitives.ts'
 import type { EffectFn } from './registry.ts'
 import { registerEffect } from './registry.ts'
 
@@ -65,4 +66,16 @@ registerEffect(ROBOTIC_ASSEMBLERS, choice({
     game.state.log.push(`Player ${actor.toUpperCase()} adds a card to their hand`)
     return true
   },
+}), { needsCatalog: true })
+
+// "Spawn a friendly Sapphire into each zone. They have MOBILE and STEALTHY
+// keywords." Sapphire already prints both, so the stamp is idempotent and
+// kept only because the card text asks for it. Sapphire's own onPlayEffect
+// does NOT fire — spawning is not playing (spec §7.4) — which is what keeps a
+// 90k ability from also drawing three cards and refunding 90k.
+registerEffect('sapphireScreenEffect', spawnVehicles({
+  cardName: 'Sapphire',
+  count: 1,
+  zones: 'all',
+  keywords: [KEYWORDS.MOBILE, KEYWORDS.STEALTHY],
 }), { needsCatalog: true })

@@ -432,3 +432,87 @@ describe('wave 2 — choices', () => {
     expect(done.game.state.log.join()).not.toContain('[TG] Beta')
   })
 })
+
+describe('wave 2 — board spawns', () => {
+  const parapet = snap({ name: 'Parapet', faction: 'OW', vehicleType: 'plane', materialCost: 259000, meta: { summonOnly: true } })
+  const martyr = snap({ name: 'Martyr', faction: 'WF', vehicleType: 'plane', materialCost: 8500, meta: { summonOnly: true } })
+
+  it('Defensive Parapet lands two stamped Parapets in the chosen zone', () => {
+    const game = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+    const ctx = makeCtx({ catalog: [parapet] })
+    const card = inst({
+      instanceId: 'dp1', name: 'Defensive Parapet', type: 'ability', materialCost: 200000,
+      meta: { playOnZoneEffect: 'defensiveParapetEffect' },
+    })
+    game.privates.a.hand.push(card)
+    game.state.counts.a.hand = 1
+    // makeGame starts each side on 100000 materials — not enough for this card.
+    game.state.resources.a.materials = 300000
+    const res = applyAction(game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: 'dp1', zoneId: 3 }, ctx)
+    if (!res.ok) throw new Error(res.error)
+    const spawned = res.game.state.zones[2].cards.a
+    expect(spawned).toHaveLength(2)
+    expect(spawned[0].keywords).toEqual(expect.arrayContaining(['inoffensive', 'scrappy', 'blocker']))
+    expect(res.game.state.destroyed.a.map((c) => c.name)).toEqual(['Defensive Parapet'])
+  })
+
+  it('Sapphire Screen puts one Sapphire in every zone and fires no Sapphire effect', () => {
+    const game = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+    const sapphire = snap({
+      name: 'Sapphire', faction: 'LH', vehicleType: 'plane', materialCost: 30000,
+      keywords: ['mobile', 'stealthy'], meta: { onPlayEffect: 'sapphireEffect' },
+    })
+    const ctx = makeCtx({ catalog: [sapphire] })
+    const card = inst({
+      instanceId: 'ss1', name: 'Sapphire Screen', type: 'ability', materialCost: 90000,
+      meta: { onPlayEffect: 'sapphireScreenEffect' },
+    })
+    game.privates.a.hand.push(card)
+    game.state.counts.a.hand = 1
+    const materialsBefore = game.state.resources.a.materials
+    const res = applyAction(game, 'alice', { type: 'PLAY_ABILITY_CARD', instanceId: 'ss1' }, ctx)
+    if (!res.ok) throw new Error(res.error)
+    expect(res.game.state.zones.map((z) => z.cards.a.length)).toEqual([1, 1, 1])
+    // Spawning is not playing (spec §7.4): no draw, no refund from sapphireEffect.
+    expect(res.game.privates.a.hand).toHaveLength(0)
+    expect(res.game.state.resources.a.materials).toBe(materialsBefore - 90000)
+  })
+
+  it('All for the Cause turns friendlies Temporary and spawns Martyrs by cost', () => {
+    const game = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+    game.state.zones[1].cards.a.push(
+      zoneEntry({ instanceId: 'cheap', name: 'Skiff', materialCost: 100000 }),
+      zoneEntry({ instanceId: 'dear', name: 'Dreadnought', materialCost: 300000 }),
+    )
+    game.state.zones[1].cards.b.push(zoneEntry({ instanceId: 'enemy', name: 'Foe' }))
+    const ctx = makeCtx({ catalog: [martyr] })
+    const card = inst({
+      instanceId: 'afc1', name: 'All for the Cause', type: 'ability', materialCost: 0,
+      meta: { playOnZoneEffect: 'allForTheCauseEffect' },
+    })
+    game.privates.a.hand.push(card)
+    game.state.counts.a.hand = 1
+    const res = applyAction(game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: 'afc1', zoneId: 2 }, ctx)
+    if (!res.ok) throw new Error(res.error)
+    const mine = res.game.state.zones[1].cards.a
+    const originals = mine.filter((c) => c.name !== 'Martyr')
+    const martyrs = mine.filter((c) => c.name === 'Martyr')
+    expect(originals.every((c) => c.keywords.includes('temporary'))).toBe(true)
+    expect(martyrs).toHaveLength(3)          // 1 for the 100k hull, 2 for the 300k
+    expect(martyrs.every((c) => !c.keywords.includes('temporary'))).toBe(true)
+    expect(res.game.state.zones[1].cards.b[0].keywords).not.toContain('temporary')
+  })
+
+  it('All for the Cause fizzles in an empty zone rather than rejecting the play', () => {
+    const game = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+    const ctx = makeCtx({ catalog: [martyr] })
+    const card = inst({
+      instanceId: 'afc2', name: 'All for the Cause', type: 'ability', materialCost: 0,
+      meta: { playOnZoneEffect: 'allForTheCauseEffect' },
+    })
+    game.privates.a.hand.push(card)
+    game.state.counts.a.hand = 1
+    const res = applyAction(game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: 'afc2', zoneId: 1 }, ctx)
+    expect(res.ok).toBe(true)
+  })
+})

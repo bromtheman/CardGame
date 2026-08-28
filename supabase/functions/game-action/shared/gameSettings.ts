@@ -66,6 +66,10 @@ export const LOG_MAX_ENTRIES = 200 // capped action log (spec §3) — oldest en
 
 export const ADDITIONAL_SPAWNS_CAP = 10
 export const DOUBLE_UP_MAX_COST = 400_000
+// All for the Cause: "If the vehicle costed more than 250k, summon two
+// instead." Printed materialCost, strictly greater — the same authority every
+// other pool and threshold filter reads.
+export const ALL_FOR_THE_CAUSE_DOUBLE_COST = 250_000
 export const RESERVES_CARD_COUNT = 3
 export const CHANGE_ORDER_DELAY_TURNS = 2
 

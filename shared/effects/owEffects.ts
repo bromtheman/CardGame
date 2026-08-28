@@ -1,4 +1,4 @@
-import { choice, drawFromPool, grant, grantKeywords, whenPlayed, zoneOccupants } from './primitives.ts'
+import { choice, drawFromPool, grant, grantKeywords, spawnVehicles, whenPlayed, zoneOccupants } from './primitives.ts'
 import { registerEffect } from './registry.ts'
 import { GT_HEAVY_AIRSHIP_MIN_COST, KEYWORDS } from '../gameSettings.ts'
 import type { ZoneCardEntry } from '../engine/engineTypes.ts'
@@ -86,4 +86,14 @@ registerEffect(SPECIAL_FOUNDRIES, choice({
     { id: 'heavy', label: 'GT Heavy Airship' },
   ],
   resolve: (payload, choiceId) => (choiceId === 'heavy' ? gtHeavyAirship(payload) : gtLightAirship(payload)),
+}), { needsCatalog: true })
+
+// "Spawn two parapets into a zone. They gain Inoffensive, Scrappy, and blocker
+// keywords." Keywords come from the summoning card, not the Parapet row —
+// the established pattern (spawnBuccaneerEffect stamps Scrappy the same way).
+registerEffect('defensiveParapetEffect', spawnVehicles({
+  cardName: 'Parapet',
+  count: 2,
+  zones: 'target',
+  keywords: [KEYWORDS.INOFFENSIVE, KEYWORDS.SCRAPPY, KEYWORDS.BLOCKER],
 }), { needsCatalog: true })
