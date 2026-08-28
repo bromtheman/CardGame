@@ -74,7 +74,7 @@ export function MiniVehicle({
             e.stopPropagation()
             onActivateClick()
           }}
-          className="absolute -right-1 -top-1 rounded-full bg-brass-400 px-1 text-[9px] font-bold text-ocean-950"
+          className="absolute -bottom-1 -left-1 rounded-full bg-brass-400 px-1 text-[9px] font-bold text-ocean-950"
         >
           use
         </button>
