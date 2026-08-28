@@ -10,23 +10,40 @@ import { shortHandNumber } from '@shared/format'
 
 type Battle = NonNullable<PublicGameState['activeBattle']>
 type Report = NonNullable<PublicGameState['pendingReport']>
-interface Participant { entry: ZoneCardEntry; side: Side }
+interface Participant { entry: ZoneCardEntry; side: Side; isSummon: boolean }
 
 // Mirrors battleResolve.ts's private participantsOf() — the engine doesn't
-// export it, so we rebuild the same {entry, side} pairs from the zone's
-// card lists and the battle's attacker/defender id lists.
+// export it, so we rebuild the same {entry, side} pairs from the zone's card
+// lists, falling back to the battle's summons (spec §4.4): a summon carries
+// no side field of its own, so an id in attackerIds that misses the zone
+// lookup belongs to the aggressor, one in defenderIds to the defender —
+// membership in each list decides it, exactly as the engine's version does.
+// A divergence here would silently show a different battle than the engine
+// resolves, so mirror battleResolve.ts's participantsOf exactly if it changes.
 function participantsOf(state: PublicGameState, battle: Battle): Participant[] {
   const zone = state.zones.find((z) => z.id === battle.zoneId)
   if (!zone) return []
   const defenderSide = otherSide(battle.aggressor)
-  const attackers = battle.attackerIds
-    .map((id) => (zone.cards[battle.aggressor] as ZoneCardEntry[]).find((c) => c.instanceId === id))
-    .filter((c): c is ZoneCardEntry => !!c)
-    .map((entry): Participant => ({ entry, side: battle.aggressor }))
-  const defenders = battle.defenderIds
-    .map((id) => (zone.cards[defenderSide] as ZoneCardEntry[]).find((c) => c.instanceId === id))
-    .filter((c): c is ZoneCardEntry => !!c)
-    .map((entry): Participant => ({ entry, side: defenderSide }))
+  const summonMap = new Map<string, ZoneCardEntry>(
+    (battle.summons as ZoneCardEntry[]).map((s) => [s.instanceId, s]),
+  )
+  // Same `side` feeds both the on-field hit and the summon fallback — a
+  // summon carries no side of its own, so list membership alone decides it.
+  function resolve(ids: string[], onFieldCards: ZoneCardEntry[], side: Side): Participant[] {
+    const out: Participant[] = []
+    for (const id of ids) {
+      const entry = onFieldCards.find((c) => c.instanceId === id)
+      if (entry) {
+        out.push({ entry, side, isSummon: false })
+        continue
+      }
+      const summon = summonMap.get(id)
+      if (summon) out.push({ entry: summon, side, isSummon: true })
+    }
+    return out
+  }
+  const attackers = resolve(battle.attackerIds, zone.cards[battle.aggressor] as ZoneCardEntry[], battle.aggressor)
+  const defenders = resolve(battle.defenderIds, zone.cards[defenderSide] as ZoneCardEntry[], defenderSide)
   return [...attackers, ...defenders]
 }
 
@@ -48,12 +65,13 @@ function FleetColumn({ title, entries, mySide }: { title: string; entries: Parti
     <div>
       <p className="font-display text-lg">{title}</p>
       <ul className="mt-1 space-y-1 text-sm">
-        {entries.map(({ entry, side }) => (
+        {entries.map(({ entry, side, isSummon }) => (
           <li key={entry.instanceId} className="rounded border border-ocean-600 bg-ocean-950/60 p-2">
             <div className="flex items-center justify-between gap-2">
               <span className="font-bold text-parchment-100">
                 {entry.name}
                 {side === mySide ? ' (yours)' : ''}
+                {isSummon ? ' (summoned)' : ''}
               </span>
               <span className="shrink-0 rounded-full bg-ocean-900 px-2 py-0.5 text-xs font-bold text-parchment-100">
                 {shortHandNumber(effectiveMaterialCostOf(entry))}
@@ -62,6 +80,12 @@ function FleetColumn({ title, entries, mySide }: { title: string; entries: Parti
             <p className="text-xs text-ocean-300">
               In-battle resources: {shortHandNumber(Math.floor(effectiveMaterialCostOf(entry) * IN_BATTLE_RESOURCE_RATE))}
             </p>
+            {isSummon && (
+              <p className="mt-1 text-xs text-ocean-300/70">
+                Summoned for this battle only — not on anyone's board, and vanishes when the report is approved
+                regardless of HP. Cannot be repaired.
+              </p>
+            )}
             {entry.keywords.includes(KEYWORDS.ROBOTIC) && (
               <p className="mt-1 text-xs text-brass-400">
                 Robotic — unlimited in-battle repair resources, but destroyed if any of its sub-objects are destroyed.
@@ -95,8 +119,10 @@ function ReportForm({
   }
   // Single source of truth for which vehicles the engine will auto-repair —
   // mirrors DecisionPanel below, so the submitter's preview can never drift
-  // from what SUBMIT_BATTLE_REPORT actually resolves to.
-  const autoIds = autoRepairIds(participants, results)
+  // from what SUBMIT_BATTLE_REPORT actually resolves to. Summons are
+  // excluded from the roster handed in, matching DECIDE_BATTLE_REPORT
+  // (spec §4.4) — autoRepairIds must never see one.
+  const autoIds = autoRepairIds(participants.filter((p) => !p.isSummon), results)
   return (
     <div className="mt-4 border-t border-ocean-600/50 pt-3">
       <h3 className="font-display text-lg">Battle report</h3>
@@ -109,17 +135,22 @@ function ReportForm({
           </tr>
         </thead>
         <tbody>
-          {participants.map(({ entry, side }) => {
+          {participants.map(({ entry, side, isSummon }) => {
             const hp = results[entry.instanceId] ?? 100
             const fragile = entry.keywords.includes(KEYWORDS.FRAGILE)
             const inBand = hp >= REPAIR_WINDOW_MIN_PERCENT && hp < SURVIVE_HP_PERCENT
             const mine = side === mySide
             const isAuto = autoIds.includes(entry.instanceId)
-            const repairable = inBand && !fragile && mine && !isAuto
+            // A summon's repair checkbox must stay disabled (spec §4.4): the
+            // engine rejects a summon repair with a 400, so an enabled
+            // control would be a trap producing an error the player can't
+            // act on.
+            const repairable = inBand && !fragile && mine && !isAuto && !isSummon
             // "Their captain decides" implies a pending decision — only true
             // where a repair decision could genuinely be made. Otherwise (out
-            // of band, Fragile, or already auto-repaired) show a neutral dash.
-            const theirsToDecide = inBand && !fragile && !mine && !isAuto
+            // of band, Fragile, summoned, or already auto-repaired) show a
+            // neutral dash.
+            const theirsToDecide = inBand && !fragile && !mine && !isAuto && !isSummon
             const cost = repairCostOf(entry)
             const checked = repairs.includes(entry.instanceId)
             // Running per-side total of currently-checked repairs (plus this
@@ -130,7 +161,10 @@ function ReportForm({
             const affordable = state.resources[side].materials >= projectedOwed
             return (
               <tr key={entry.instanceId} className="border-t border-ocean-600/30">
-                <td className="py-1 pr-2 text-parchment-100">{entry.name}</td>
+                <td className="py-1 pr-2 text-parchment-100">
+                  {entry.name}
+                  {isSummon && <span className="ml-1 text-xs text-ocean-300/60">(summoned)</span>}
+                </td>
                 <td className="py-1 pr-2">
                   <input
                     type="number"
@@ -193,7 +227,9 @@ function DecisionPanel({
   onDecide: (approve: boolean, repairs: string[]) => void
 }) {
   const [myRepairs, setMyRepairs] = useState<string[]>([])
-  const auto = autoRepairIds(participants, report.results)
+  // Summons are excluded from the roster handed in, matching
+  // DECIDE_BATTLE_REPORT (spec §4.4) — autoRepairIds must never see one.
+  const auto = autoRepairIds(participants.filter((p) => !p.isSummon), report.results)
   const owed: Record<Side, number> = { a: 0, b: 0 }
   for (const id of new Set([...report.repairs, ...myRepairs, ...auto])) {
     const p = participants.find((x) => x.entry.instanceId === id)
@@ -203,17 +239,28 @@ function DecisionPanel({
     <div className="mt-4 border-t border-ocean-600/50 pt-3">
       <h3 className="font-display text-lg">Report from player {report.submittedBy.toUpperCase()} — review outcomes</h3>
       <ul className="mt-2 space-y-1 text-sm">
-        {participants.map(({ entry, side }) => {
+        {participants.map(({ entry, side, isSummon }) => {
           const hp = report.results[entry.instanceId] ?? 0
           const isAuto = auto.includes(entry.instanceId)
           const repaired = report.repairs.includes(entry.instanceId) || myRepairs.includes(entry.instanceId)
-          const { label, survives } = outcomeLabel(entry, hp, repaired, isAuto)
+          // A summon evaporates regardless of HP (spec §4.4) — "Survives" or
+          // "Destroyed" would both misstate what actually happens to it, so
+          // this bypasses outcomeLabel entirely rather than teaching it a
+          // third HP-independent case.
+          const { label, survives } = isSummon
+            ? { label: 'Summoned — evaporates', survives: false }
+            : outcomeLabel(entry, hp, repaired, isAuto)
           const inBand = hp >= REPAIR_WINDOW_MIN_PERCENT && hp < SURVIVE_HP_PERCENT
+          // A summon's repair checkbox must stay disabled (spec §4.4): the
+          // engine rejects a summon repair with a 400, so an enabled control
+          // would be a trap producing an error the player can't act on.
           const canChoose =
-            side === mySide && inBand && !isAuto && !entry.keywords.includes(KEYWORDS.FRAGILE)
+            side === mySide && inBand && !isAuto && !entry.keywords.includes(KEYWORDS.FRAGILE) && !isSummon
           return (
             <li key={entry.instanceId} className="flex items-center justify-between rounded border border-ocean-600 bg-ocean-950/60 px-2 py-1">
-              <span className="text-parchment-100">{entry.name} — {hp}%</span>
+              <span className="text-parchment-100">
+                {entry.name}{isSummon ? ' (summoned)' : ''} — {hp}%
+              </span>
               <span className="flex items-center gap-3">
                 {canChoose && (
                   <label className="flex items-center gap-1 text-xs text-ocean-300">
@@ -231,7 +278,9 @@ function DecisionPanel({
                     Repair ({shortHandNumber(repairCostOf(entry))})
                   </label>
                 )}
-                <span className={survives ? 'text-brass-400' : 'text-red-400'}>{label}</span>
+                <span className={isSummon ? 'text-ocean-300' : survives ? 'text-brass-400' : 'text-red-400'}>
+                  {label}
+                </span>
               </span>
             </li>
           )
@@ -269,9 +318,9 @@ function WaitingNotice({ participants, report }: { participants: Participant[]; 
     <div className="mt-4 border-t border-ocean-600/50 pt-3">
       <p className="font-bold text-brass-400">Report submitted — waiting for the other captain to approve or reject.</p>
       <ul className="mt-2 space-y-1 text-sm text-ocean-300">
-        {participants.map(({ entry }) => (
+        {participants.map(({ entry, isSummon }) => (
           <li key={entry.instanceId}>
-            {entry.name} — {report.results[entry.instanceId] ?? 0}%
+            {entry.name}{isSummon ? ' (summoned)' : ''} — {report.results[entry.instanceId] ?? 0}%
             {report.repairs.includes(entry.instanceId) ? ' (repair requested)' : ''}
           </li>
         ))}
@@ -327,7 +376,7 @@ export function BattleOverlay({
   async function onSubmitReport() {
     const validRepairs = repairs.filter((id) => {
       const p = participants.find((x) => x.entry.instanceId === id)
-      if (!p || p.side !== mySide) return false
+      if (!p || p.side !== mySide || p.isSummon) return false
       const hp = results[id] ?? 0
       return hp >= REPAIR_WINDOW_MIN_PERCENT && hp < SURVIVE_HP_PERCENT && !p.entry.keywords.includes(KEYWORDS.FRAGILE)
     })

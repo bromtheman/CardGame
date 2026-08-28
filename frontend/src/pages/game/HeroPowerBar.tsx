@@ -6,12 +6,17 @@ import { HERO_POWER_DISTANCE_MOD_M, VEHICLE_TYPES } from '@shared/gameSettings'
 import { PromptDialog } from '../../components/ConfirmDialog'
 
 // Move-mode shared between Rapid Redeployment (pick any own vehicle, then a
-// legal zone) and the mobile-vehicle "move" affordance on MiniVehicle (skips
-// straight to picking a zone for that one vehicle). GameBoardPage owns the
-// actual state; this type just describes its shape for both consumers.
+// legal zone), the mobile-vehicle "move" affordance on MiniVehicle (skips
+// straight to picking a zone for that one vehicle), and Excalibur's hand
+// direction (DP6, spec §4.3 departure 4) — HandBar picks the hand target
+// first, then chains into this same pickZone phase for the destination,
+// carrying that target alongside the vehicle's own instanceId since
+// PLAY_CARD_TARGETING_CARD_IN_HAND needs both. GameBoardPage owns the actual
+// state; this type just describes its shape for both consumers.
 export type MoveMode =
   | { phase: 'pickVehicle' }
   | { phase: 'pickZone'; instanceId: string; kind: 'mobile' | 'heroPower' | 'activate' }
+  | { phase: 'pickZone'; instanceId: string; kind: 'handTarget'; targetInstanceId: string }
 
 // Swap-mode for the DWG faction power (Boarding Party): pick one of my DWG
 // ships on the board, then an enemy ship in the same zone. GameBoardPage

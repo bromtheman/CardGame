@@ -23,6 +23,22 @@ function hasAnyMetaEffect(card: CardInstance): boolean {
   return ALL_TRIGGER_KEYS.some((key) => effectName(card, key) !== null)
 }
 
+// Excalibur is DP6's hand direction's only customer (spec §4.3, departure
+// 4): a vehicle carrying playOnCardEffect whose target must be an AI ship —
+// mirrors excaliburEffect's own PoolFilter (shared/effects/ssEffects.ts).
+// Checked against the registry name, not the card name, so a rename doesn't
+// silently break it. Used only to decide whether to offer the two-step hand
+// pick at all; the server re-validates the real target when the action is
+// sent. With no legal target this returns false and the vehicle falls
+// through to a plain zone play — Excalibur must stay playable with an empty
+// hand of AI ships, or a 550k blocker becomes unplayable.
+function hasLegalExcaliburTarget(card: CardInstance, hand: CardInstance[]): boolean {
+  if (effectName(card, TRIGGERS.PLAY_ON_CARD) !== 'excaliburEffect') return false
+  return hand.some((c) => (
+    c.instanceId !== card.instanceId && c.type === 'vehicle' && c.vehicleType === 'ship' && c.isBuiltIn
+  ))
+}
+
 // Horizontal hand of full PhysicalCards.
 //
 // Vehicles: click plays immediately when exactly one zone is legal,
@@ -42,6 +58,7 @@ export function HandBar({
   placingCard, onPlacingChange,
   fieldTargeting, onFieldTargetingChange,
   moveMode,
+  onVehicleHandTargetPicked,
   swapMode,
   cancelBoardModes,
   onLiftedChange,
@@ -56,6 +73,11 @@ export function HandBar({
   fieldTargeting: CardInstance | null
   onFieldTargetingChange: (card: CardInstance | null) => void
   moveMode: MoveMode | null
+  // Excalibur only (spec §4.3, departure 4): fires once the hand target is
+  // chosen, so GameBoardPage can chain into its existing moveMode pickZone
+  // phase for the destination zone — a vehicle needs both instanceId and
+  // targetInstanceId, unlike an ability's playOnCardEffect.
+  onVehicleHandTargetPicked: (instanceId: string, targetInstanceId: string) => void
   swapMode: SwapMode | null
   cancelBoardModes: () => void
   // Fires whenever the hovered/focused card changes, so GameBoardPage can
@@ -108,7 +130,21 @@ export function HandBar({
       onPlacingChange(null)
       return
     }
+    if (handTargeting?.instanceId === card.instanceId) {
+      setHandTargeting(null)
+      return
+    }
     if (handTargeting) setHandTargeting(null)
+
+    // Excalibur's hand direction (DP6, spec §4.3 departure 4): offer the
+    // two-step pick — hand target first, then a zone — only when a legal
+    // target exists. Otherwise fall through to the plain zone play below.
+    if (hasLegalExcaliburTarget(card, hand)) {
+      cancelBoardModes()
+      setHandTargeting(card)
+      return
+    }
+
     const legalZones = legalZonesFor(state, mySide, card)
     if (legalZones.length === 1) {
       cancelBoardModes()
@@ -162,6 +198,14 @@ export function HandBar({
 
   function handleHandTargetClick(target: CardInstance) {
     if (!handTargeting) return
+    if (handTargeting.type === 'vehicle') {
+      // Excalibur (DP6's hand direction, spec §4.3 departure 4): the hand
+      // pick is only step one — a vehicle also needs a destination zone, so
+      // chain into GameBoardPage's moveMode instead of sending yet.
+      onVehicleHandTargetPicked(handTargeting.instanceId, target.instanceId)
+      setHandTargeting(null)
+      return
+    }
     void send({ type: 'PLAY_CARD_TARGETING_CARD_IN_HAND', instanceId: handTargeting.instanceId, targetInstanceId: target.instanceId })
     setHandTargeting(null)
   }
@@ -181,7 +225,11 @@ export function HandBar({
           const selected =
             placingCard?.instanceId === c.instanceId ||
             fieldTargeting?.instanceId === c.instanceId ||
-            handTargeting?.instanceId === c.instanceId
+            handTargeting?.instanceId === c.instanceId ||
+            // Excalibur mid-flow (spec §4.3 departure 4): the hand target is
+            // already picked and GameBoardPage is now waiting on a zone
+            // click, but Excalibur itself is still sitting in this hand.
+            (moveMode?.phase === 'pickZone' && moveMode.kind === 'handTarget' && moveMode.instanceId === c.instanceId)
           const isHandTarget = handTargeting !== null && c.instanceId !== handTargeting.instanceId
           const lifted = liftedId === c.instanceId
           return (
@@ -306,7 +354,7 @@ export function HandBar({
       )}
       {handTargeting && (
         <p className="mt-1 text-sm text-brass-400">
-          Choose another card in hand to target with {handTargeting.name}, or click its Play button again to cancel.
+          Choose another card in hand to target with {handTargeting.name}, or click it again to cancel.
         </p>
       )}
       <ConfirmDialog
