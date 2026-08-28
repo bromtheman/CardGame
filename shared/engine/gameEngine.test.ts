@@ -297,3 +297,26 @@ describe('spent ability cards', () => {
     expect(r.game.state.zones[0].cards.a).toHaveLength(1)
   })
 })
+
+describe('activatedOnTurn', () => {
+  it('normalizeState defaults it to null on a legacy entry', () => {
+    const game = makeGame()
+    const legacy = zoneEntry({ name: 'Legacy' }) as unknown as Record<string, unknown>
+    delete legacy.activatedOnTurn
+    game.state.zones[0].cards.a.push(legacy as never)
+    normalizeState(game.state)
+    expect(game.state.zones[0].cards.a[0]).toHaveProperty('activatedOnTurn', null)
+  })
+
+  it('does not leak the stamp into the discard when a Temporary vehicle is culled', () => {
+    const game = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+    game.state.zones[0].cards.a.push(
+      zoneEntry({ name: 'Ghost', keywords: ['temporary'], activatedOnTurn: 2 }),
+    )
+    const res = applyAction(game, 'alice', { type: 'END_TURN' }, makeCtx())
+    if (!res.ok) throw new Error(res.error)
+    expect(res.game.state.destroyed.a).toHaveLength(1)
+    expect(res.game.state.destroyed.a[0]).not.toHaveProperty('activatedOnTurn')
+    expect(res.game.state.destroyed.a[0]).not.toHaveProperty('playedOnTurn')
+  })
+})

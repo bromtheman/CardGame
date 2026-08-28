@@ -172,7 +172,9 @@ registerHandler('PLAY_CARD_TO_ZONE', (game, actor, action, ctx) => {
   const placedInstanceIds: string[] = []
   if (card.type === 'vehicle') {
     const zone = game.state.zones.find((z) => z.id === action.zoneId)!
-    const entry: ZoneCardEntry = { ...card, playedOnTurn: game.turnNumber, movedOnTurn: null }
+    const entry: ZoneCardEntry = {
+      ...card, playedOnTurn: game.turnNumber, movedOnTurn: null, activatedOnTurn: null,
+    }
     zone.cards[actor].push(entry)
     placedInstanceIds.push(entry.instanceId)
     // additionalSpawns: one payment lands N+1 hulls (spec §3.9). resourceSurge
@@ -181,7 +183,7 @@ registerHandler('PLAY_CARD_TO_ZONE', (game, actor, action, ctx) => {
     const extra = Math.min(printed + (surged ? surgeSpawnsFor(card) : 0), ADDITIONAL_SPAWNS_CAP)
     for (let i = 0; i < extra; i++) {
       const copy: ZoneCardEntry = {
-        ...card, instanceId: ctx.newId(), playedOnTurn: game.turnNumber, movedOnTurn: null,
+        ...card, instanceId: ctx.newId(), playedOnTurn: game.turnNumber, movedOnTurn: null, activatedOnTurn: null,
       }
       zone.cards[actor].push(copy)
       placedInstanceIds.push(copy.instanceId)

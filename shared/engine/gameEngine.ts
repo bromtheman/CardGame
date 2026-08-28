@@ -75,6 +75,7 @@ export function normalizeState(state: PublicGameState): void {
       for (const entry of zone.cards[side] as Partial<ZoneCardEntry>[]) {
         if (entry.playedOnTurn === undefined) entry.playedOnTurn = 0
         if (entry.movedOnTurn === undefined) entry.movedOnTurn = null
+        if (entry.activatedOnTurn === undefined) entry.activatedOnTurn = null
       }
     }
   }
@@ -135,7 +136,9 @@ function endTurn(game: EngineGame, ctx: EngineContext): ApplyResult {
       const keep: ZoneCardEntry[] = []
       for (const entry of zone.cards[s] as ZoneCardEntry[]) {
         if (entry.keywords.includes(KEYWORDS.TEMPORARY)) {
-          const { instanceId: _instanceId, playedOnTurn: _p, movedOnTurn: _m, ...snapshot } = entry
+          const {
+            instanceId: _instanceId, playedOnTurn: _p, movedOnTurn: _m, activatedOnTurn: _a, ...snapshot
+          } = entry
           game.state.destroyed[s].push(snapshot)
           game.state.log.push(`${entry.name} despawned (temporary)`)
         } else {

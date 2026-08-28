@@ -80,7 +80,7 @@ registerEffect('spawnBuccaneerEffect', ({ game, actor, ctx, targetZoneId }) => {
   if (!zone || !buccaneer) return false
   const entry: ZoneCardEntry = {
     ...buccaneer, instanceId: ctx.newId(), keywords: [KEYWORDS.SCRAPPY],
-    playedOnTurn: game.turnNumber, movedOnTurn: null,
+    playedOnTurn: game.turnNumber, movedOnTurn: null, activatedOnTurn: null,
   }
   zone.cards[actor].push(entry)
   game.state.log.push(`A Buccaneer joins zone ${zone.id} (Scrappy)`)

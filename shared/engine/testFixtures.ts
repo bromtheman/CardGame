@@ -31,7 +31,12 @@ export function inst(over: Partial<CardInstance> = {}): CardInstance {
 }
 
 export function zoneEntry(over: Partial<ZoneCardEntry> = {}): ZoneCardEntry {
-  return { ...inst(over), playedOnTurn: over.playedOnTurn ?? 0, movedOnTurn: over.movedOnTurn ?? null }
+  return {
+    ...inst(over),
+    playedOnTurn: over.playedOnTurn ?? 0,
+    movedOnTurn: over.movedOnTurn ?? null,
+    activatedOnTurn: over.activatedOnTurn ?? null,
+  }
 }
 
 export function makeGame(over: Partial<EngineGame> = {}): EngineGame {

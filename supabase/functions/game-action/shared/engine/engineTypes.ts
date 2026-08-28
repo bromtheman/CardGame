@@ -11,6 +11,9 @@ export interface EngineContext {
 export interface ZoneCardEntry extends CardInstance {
   playedOnTurn: number
   movedOnTurn: number | null
+  // Half-turn number of the last ACTIVATE_VEHICLE on this hull, null if never.
+  // Enforces once-per-turn for onActivate (spec §4.3, DP1).
+  activatedOnTurn: number | null
 }
 
 export interface AwaitingResponse {

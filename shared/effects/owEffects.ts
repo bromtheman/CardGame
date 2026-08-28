@@ -34,7 +34,7 @@ registerEffect('clydesdaleEffect', whenPlayed(
     const zone = game.state.zones.find((z) => z.id === targetZoneId)
     if (!zone) return false
     const copy: ZoneCardEntry = {
-      ...card, instanceId: ctx.newId(), playedOnTurn: game.turnNumber, movedOnTurn: null,
+      ...card, instanceId: ctx.newId(), playedOnTurn: game.turnNumber, movedOnTurn: null, activatedOnTurn: null,
     }
     zone.cards[actor].push(copy)
     game.state.log.push(`A second ${card.name} rolls off the line in zone ${zone.id}`)

@@ -39,8 +39,12 @@ function boardingParty(
   const enemySide = otherSide(actor)
   zone.cards[actor] = zone.cards[actor].filter((c) => c.instanceId !== instanceId)
   zone.cards[enemySide] = zone.cards[enemySide].filter((c) => c.instanceId !== targetInstanceId)
-  const flippedMine: ZoneCardEntry = { ...mine.entry, playedOnTurn: game.turnNumber, movedOnTurn: null }
-  const flippedTheirs: ZoneCardEntry = { ...theirs.entry, playedOnTurn: game.turnNumber, movedOnTurn: null }
+  const flippedMine: ZoneCardEntry = {
+    ...mine.entry, playedOnTurn: game.turnNumber, movedOnTurn: null, activatedOnTurn: null,
+  }
+  const flippedTheirs: ZoneCardEntry = {
+    ...theirs.entry, playedOnTurn: game.turnNumber, movedOnTurn: null, activatedOnTurn: null,
+  }
   zone.cards[enemySide].push(flippedMine)
   zone.cards[actor].push(flippedTheirs)
   game.state.log.push(`Boarding Party: ${mine.entry.name} traded for ${theirs.entry.name}`)

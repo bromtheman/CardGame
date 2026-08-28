@@ -152,7 +152,7 @@ registerHandler('DECIDE_BATTLE_REPORT', (game, actor, action, ctx) => {
       (hp >= REPAIR_WINDOW_MIN_PERCENT && repairIds.has(id))
     if (!survives) {
       zone.cards[side] = zone.cards[side].filter((c) => c.instanceId !== id)
-      const { instanceId: _i, playedOnTurn: _p, movedOnTurn: _m, ...snapshot } = entry
+      const { instanceId: _i, playedOnTurn: _p, movedOnTurn: _m, activatedOnTurn: _a, ...snapshot } = entry
       game.state.destroyed[side].push(snapshot as SnapshotCard)
       destroyedCount++
       game.state.log.push(`${entry.name} was destroyed (${hp}%)`)
