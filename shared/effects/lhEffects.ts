@@ -40,3 +40,7 @@ registerEffect('sapphireEffect', whenPlayed(
     },
   ),
 ))
+
+// Spec §7.2 authors this card's text: "Once per turn, you may pay 1cp to draw
+// a random card from the [TG] Robotics pool." Same pool as Ampere's.
+registerEffect('spectrumEffect', tgRobotics, { needsCatalog: true })

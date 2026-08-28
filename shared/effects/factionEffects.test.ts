@@ -287,3 +287,56 @@ describe('repairmenReadyEffect', () => {
     expect(game.privates.a.hand).toHaveLength(0)
   })
 })
+
+describe('wave 2 — activated abilities', () => {
+  const onBoard = (over: Record<string, unknown>) => {
+    const game = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'v1', ...over }))
+    game.state.resources.a.cp = 2
+    return game
+  }
+
+  it('[GT] Hunchback draws a card for 1 CP', () => {
+    const game = onBoard({
+      name: '[GT] Hunchback', meta: { onActivate: 'hunchbackActivate', activateCpCost: 1 },
+    })
+    game.privates.a.deck = [inst({ name: 'Spare' })]
+    game.state.counts.a = { hand: 0, deck: 1 }
+    const res = applyAction(game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: 'v1' }, makeCtx())
+    if (!res.ok) throw new Error(res.error)
+    expect(res.game.privates.a.hand).toHaveLength(1)
+    expect(res.game.state.resources.a.cp).toBe(1)
+  })
+
+  it('[GT] Monsoon relocates itself, keeping its activation stamp', () => {
+    const game = onBoard({
+      name: '[GT] Monsoon', vehicleType: 'airship',
+      meta: { onActivate: 'monsoonActivate', activateCpCost: 1 },
+    })
+    const res = applyAction(game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: 'v1', zoneId: 3 }, makeCtx())
+    if (!res.ok) throw new Error(res.error)
+    expect(res.game.state.zones[0].cards.a).toHaveLength(0)
+    expect(res.game.state.zones[2].cards.a[0]).toMatchObject({ instanceId: 'v1', activatedOnTurn: 2 })
+  })
+
+  it('[GT] Monsoon rejects an activation with no destination', () => {
+    const game = onBoard({
+      name: '[GT] Monsoon', vehicleType: 'airship',
+      meta: { onActivate: 'monsoonActivate', activateCpCost: 1 },
+    })
+    const res = applyAction(game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: 'v1' }, makeCtx())
+    expect(res).toMatchObject({ ok: false, status: 400 })
+  })
+
+  it('Spectrum draws from the TG Robotics pool', () => {
+    const game = onBoard({
+      name: 'Spectrum', vehicleType: 'plane',
+      meta: { onActivate: 'spectrumEffect', activateCpCost: 1 },
+    })
+    const ctx = makeCtx({ catalog: [snap({ name: '[TG] Widget', faction: 'TG', vehicleType: 'tank' })] })
+    const res = applyAction(game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: 'v1' }, ctx)
+    if (!res.ok) throw new Error(res.error)
+    expect(res.game.privates.a.hand).toHaveLength(1)
+    expect(res.game.privates.a.hand[0].faction).toBe('TG')
+  })
+})

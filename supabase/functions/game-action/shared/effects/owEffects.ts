@@ -2,6 +2,7 @@ import { drawFromPool, grant, grantKeywords, whenPlayed, zoneOccupants } from '.
 import { registerEffect } from './registry.ts'
 import { KEYWORDS } from '../gameSettings.ts'
 import type { ZoneCardEntry } from '../engine/engineTypes.ts'
+import { moveEntry } from '../engine/heroPowers.ts'
 
 // OW built-in card effects. Cards whose faction is GT but whose seed row
 // lives in OW-Built-in.js are registered here too.
@@ -50,3 +51,15 @@ registerEffect('garrisonEffect', grantKeywords({
   target: 'hand',
   filter: { isBuiltIn: true, type: 'vehicle' },
 }))
+
+// "Once per turn, you may spend 1cp to draw a card" — the CP is charged by
+// ACTIVATE_VEHICLE from meta.activateCpCost, so the effect is only the draw.
+registerEffect('hunchbackActivate', grant({ draw: 1 }))
+
+// "Once per turn, you may pay 1cp to move this vehicle to another zone."
+// Reuses the hero-power relocation, so biome legality and the movedOnTurn
+// stamp behave exactly as they do for a Mobile vehicle's MOVE_VEHICLE.
+registerEffect('monsoonActivate', ({ game, actor, card, targetZoneId }) => {
+  if (typeof targetZoneId !== 'number') return false
+  return moveEntry(game, actor, card.instanceId, targetZoneId, true).ok
+})

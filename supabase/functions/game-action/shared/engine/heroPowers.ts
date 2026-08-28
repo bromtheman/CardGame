@@ -87,7 +87,9 @@ function flyby(game: EngineGame, actor: Side, instanceId: string | undefined): A
   return { ok: true, game }
 }
 
-function moveEntry(game: EngineGame, actor: Side, instanceId: string, zoneId: number, stampMove: boolean) {
+// Exported for [GT] Monsoon's activated ability, which is a relocation with a
+// different price and gate but identical mechanics.
+export function moveEntry(game: EngineGame, actor: Side, instanceId: string, zoneId: number, stampMove: boolean) {
   const found = findVehicle(game.state, instanceId)
   if (!found || found.side !== actor) return err(400, 'That is not your vehicle')
   const target = zoneById(game.state, zoneId)
