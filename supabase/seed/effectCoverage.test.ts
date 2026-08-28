@@ -18,7 +18,6 @@ const EXEMPT: Record<string, string> = {
 // lands — the "KNOWN_GAPS contains no stale entries" test below rejects
 // stale ones, so this list only shrinks.
 const KNOWN_GAPS: Record<string, string> = {
-  'OW:Trebuchet': 'wave 3',
   'SS:Excalibur': 'wave 3 — a vehicle with a hand target has no play path',
 
   'SS:Catshark': 'wave 4', 'SS:Dryad': 'wave 4', 'OW:The Onyx Throne': 'wave 4',
@@ -158,7 +157,7 @@ describe('built-in card effect coverage', () => {
   it('waves 1 and 2 are complete — no wave-1 or wave-2 entries remain', () => {
     expect(Object.values(KNOWN_GAPS).filter((w) => w.startsWith('wave 1'))).toEqual([])
     expect(Object.values(KNOWN_GAPS).filter((w) => w.startsWith('wave 2'))).toEqual([])
-    expect(Object.keys(KNOWN_GAPS)).toHaveLength(15)
+    expect(Object.keys(KNOWN_GAPS)).toHaveLength(14)
   })
 
   it('PARTIAL names real cards that currently pass G1 and G2, and never overlaps KNOWN_GAPS', async () => {

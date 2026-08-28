@@ -3,7 +3,7 @@ import { effectFor } from './registry.ts'
 import { inst, makeCtx, makeGame, snap, zoneEntry } from '../engine/testFixtures.ts'
 import { applyAction } from '../engine/index.ts'
 import type { CardInstance } from '../engine/gameInit.ts'
-import type { EngineGame } from '../engine/engineTypes.ts'
+import type { EngineContext, EngineGame } from '../engine/engineTypes.ts'
 
 const DRAW_ONE = [
   'mandrelOnPlay', 'rookOnPlay', 'resoluteOnPlay', 'excruciatorOnPlay',
@@ -1231,6 +1231,190 @@ describe('wave 3 — forced battles', () => {
       expect(resolved.game.state.zones[0].lastActivatedTurn).toBe(2) // still stamped — the real zone, not the decoy's
       expect(resolved.game.state.zones[2].cards.b.map((c) => c.instanceId)).toEqual(['decoy-1'])
       expect(resolved.game.state.zones[2].lastActivatedTurn).toBeNull() // decoy's zone untouched
+    })
+  })
+
+  // The only three-phase effect in the wave, and the only consumer of
+  // ActiveBattle.continuation (spec §4.3, departure 3; task 9 brief). Three
+  // entry modes share one registry name, and — unlike every other card in
+  // this describe block — the third (post-battle) entry cannot be reached by
+  // calling effectFor directly with a hand-built continuation: the
+  // `defenderIds`/`zoneId` stash under test is written by trebuchetEffect's
+  // OWN declare step, so these tests drive the real pipeline end to end
+  // (play -> choice -> declare -> report -> approve) exactly so that
+  // reverting the stash (task brief Step 5) is visible here, not papered
+  // over by a hand-built fixture.
+  describe('trebuchetEffect', () => {
+    const trebuchetCard = () => inst({
+      instanceId: 'treb-1', name: 'Trebuchet', type: 'vehicle', vehicleType: 'ship',
+      materialCost: 500_000, keywords: ['scrappy'], meta: { onPlayEffect: 'trebuchetEffect' },
+    })
+
+    function baseGame() {
+      const game = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+      // Trebuchet is 500k — comfortably above makeGame's default 100k, and
+      // repairs (Scrappy, so free anyway) must never be the reason a report
+      // fails to approve.
+      game.state.resources.a.materials = 1_000_000
+      game.state.resources.b.materials = 1_000_000
+      return game
+    }
+
+    function playTrebuchet(game: EngineGame, ctx: EngineContext) {
+      game.privates.a.hand.push(trebuchetCard())
+      game.state.counts.a.hand = 1
+      return applyAction(game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: 'treb-1', zoneId: 1 }, ctx)
+    }
+
+    // Plays Trebuchet into zone 1 (alongside the named foes, all on side b)
+    // and answers the very first choice against 'foe-1', so the caller lands
+    // on a freshly declared 1v1 battle with a real continuation attached.
+    function declareFirstBattle(foeIds: string[]) {
+      const game = baseGame()
+      const labels = ['One', 'Two', 'Three', 'Four']
+      foeIds.forEach((id, i) => {
+        game.state.zones[0].cards.b.push(zoneEntry({ instanceId: id, name: `Foe ${labels[i]}` }))
+      })
+      const ctx = makeCtx()
+      const suspended = playTrebuchet(game, ctx)
+      if (!suspended.ok) throw new Error(suspended.error)
+      const resolved = applyAction(suspended.game, 'alice', {
+        type: 'RESOLVE_PENDING_EFFECT', choiceId: 'foe-1',
+      }, ctx)
+      if (!resolved.ok) throw new Error(resolved.error)
+      return { game: resolved.game, ctx }
+    }
+
+    // Submits and approves a report covering exactly the active battle's
+    // participants. alice submits, bob approves — SUBMIT/DECIDE reject a
+    // report approved by its own submitter.
+    function approveReport(game: EngineGame, ctx: EngineContext, results: Record<string, number>): EngineGame {
+      const submitted = applyAction(game, 'alice', {
+        type: 'SUBMIT_BATTLE_REPORT', results, repairs: [],
+      }, ctx)
+      if (!submitted.ok) throw new Error(submitted.error)
+      const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, ctx)
+      if (!decided.ok) throw new Error(decided.error)
+      return decided.game
+    }
+
+    it('1. played into a zone with an enemy vehicle deploys and suspends with that vehicle as an option', () => {
+      const game = baseGame()
+      game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe-1', name: 'Foe One' }))
+      const res = playTrebuchet(game, makeCtx())
+      if (!res.ok) throw new Error(res.error)
+      expect(res.game.state.zones[0].cards.a.map((c) => c.instanceId)).toEqual(['treb-1'])
+      expect(res.game.state.activeBattle).toBeNull()
+      expect(res.game.state.pendingEffect?.effect).toBe('trebuchetEffect')
+      expect(res.game.state.pendingEffect?.options).toEqual([{ id: 'foe-1', label: 'Foe One' }])
+    })
+
+    it('2. played into a zone with no enemy vehicle deploys, no suspension, no failure', () => {
+      const game = baseGame()
+      const res = playTrebuchet(game, makeCtx())
+      if (!res.ok) throw new Error(res.error)
+      expect(res.game.state.zones[0].cards.a.map((c) => c.instanceId)).toEqual(['treb-1'])
+      expect(res.game.state.pendingEffect).toBeNull()
+      expect(res.game.state.activeBattle).toBeNull()
+    })
+
+    it('3. cancelling the choice leaves Trebuchet deployed and declares no battle', () => {
+      const game = baseGame()
+      game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe-1', name: 'Foe One' }))
+      const ctx = makeCtx()
+      const suspended = playTrebuchet(game, ctx)
+      if (!suspended.ok) throw new Error(suspended.error)
+      const cancelled = applyAction(suspended.game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', cancel: true }, ctx)
+      if (!cancelled.ok) throw new Error(cancelled.error)
+      expect(cancelled.game.state.pendingEffect).toBeNull()
+      expect(cancelled.game.state.activeBattle).toBeNull()
+      expect(cancelled.game.state.zones[0].cards.a.map((c) => c.instanceId)).toEqual(['treb-1'])
+    })
+
+    it('4. answering declares a 1v1 whose continuation names trebuchetEffect and carries the zone and defender ids', () => {
+      const { game } = declareFirstBattle(['foe-1'])
+      const battle = game.state.activeBattle
+      expect(battle?.zoneId).toBe(1)
+      expect(battle?.aggressor).toBe('a')
+      expect(battle?.attackerIds).toEqual(['treb-1'])
+      expect(battle?.defenderIds).toEqual(['foe-1'])
+      expect(battle?.summons).toEqual([])
+      expect(battle?.continuation?.effect).toBe('trebuchetEffect')
+      expect(battle?.continuation?.side).toBe('a')
+      expect(battle?.continuation?.card.instanceId).toBe('treb-1')
+      expect(battle?.continuation?.data).toEqual({ zoneId: 1, defenderIds: ['foe-1'] })
+    })
+
+    it('5. a clean win with Trebuchet surviving >=90% re-suspends offering the remaining enemy vehicles', () => {
+      const { game, ctx } = declareFirstBattle(['foe-1', 'foe-2'])
+      const after = approveReport(game, ctx, { 'treb-1': 95, 'foe-1': 30 })
+      expect(after.state.activeBattle).toBeNull()
+      expect(after.state.zones[0].cards.b.map((c) => c.instanceId)).toEqual(['foe-2']) // foe-1 died
+      expect(after.state.pendingEffect?.effect).toBe('trebuchetEffect')
+      expect(after.state.pendingEffect?.options).toEqual([{ id: 'foe-2', label: 'Foe Two' }])
+    })
+
+    it('6. a win where Trebuchet is destroyed offers no repeat', () => {
+      // A second foe (foe-2) must remain in the zone after foe-1 dies — with
+      // only one foe present, "destroyed" and "no enemy left to re-offer"
+      // both produce a null pendingEffect, so a broken survived-check could
+      // hide behind the self-limiting empty-options rule instead of being
+      // caught here.
+      const { game, ctx } = declareFirstBattle(['foe-1', 'foe-2'])
+      const after = approveReport(game, ctx, { 'treb-1': 50, 'foe-1': 30 })
+      expect(after.state.zones[0].cards.a.some((c) => c.instanceId === 'treb-1')).toBe(false)
+      expect(after.state.zones[0].cards.b.some((c) => c.instanceId === 'foe-1')).toBe(false)
+      expect(after.state.zones[0].cards.b.some((c) => c.instanceId === 'foe-2')).toBe(true)
+      expect(after.state.pendingEffect).toBeNull()
+    })
+
+    it('7. a battle where the defender survives offers no repeat, even though Trebuchet survived', () => {
+      const { game, ctx } = declareFirstBattle(['foe-1'])
+      const after = approveReport(game, ctx, { 'treb-1': 95, 'foe-1': 95 })
+      expect(after.state.zones[0].cards.a.some((c) => c.instanceId === 'treb-1')).toBe(true)
+      expect(after.state.zones[0].cards.b.some((c) => c.instanceId === 'foe-1')).toBe(true)
+      expect(after.state.pendingEffect).toBeNull()
+    })
+
+    it('8. Trebuchet at 85% (its Scrappy band) with the defender dead still offers the repeat', () => {
+      const { game, ctx } = declareFirstBattle(['foe-1', 'foe-2'])
+      const after = approveReport(game, ctx, { 'treb-1': 85, 'foe-1': 30 })
+      expect(after.state.zones[0].cards.a.some((c) => c.instanceId === 'treb-1')).toBe(true)
+      expect(after.state.log.some((l) => l.includes('Trebuchet was repaired'))).toBe(true)
+      expect(after.state.pendingEffect?.effect).toBe('trebuchetEffect')
+      expect(after.state.pendingEffect?.options).toEqual([{ id: 'foe-2', label: 'Foe Two' }])
+    })
+
+    it('9. a second win chains a third battle', () => {
+      const { game, ctx } = declareFirstBattle(['foe-1', 'foe-2', 'foe-3'])
+      const afterFirstWin = approveReport(game, ctx, { 'treb-1': 95, 'foe-1': 30 })
+      expect(afterFirstWin.state.pendingEffect?.options).toEqual([
+        { id: 'foe-2', label: 'Foe Two' }, { id: 'foe-3', label: 'Foe Three' },
+      ])
+      const secondBattle = applyAction(afterFirstWin, 'alice', {
+        type: 'RESOLVE_PENDING_EFFECT', choiceId: 'foe-2',
+      }, ctx)
+      if (!secondBattle.ok) throw new Error(secondBattle.error)
+      expect(secondBattle.game.state.activeBattle?.defenderIds).toEqual(['foe-2'])
+      expect(secondBattle.game.state.activeBattle?.continuation?.data).toEqual({
+        zoneId: 1, defenderIds: ['foe-2'],
+      })
+
+      const afterSecondWin = approveReport(secondBattle.game, ctx, { 'treb-1': 95, 'foe-2': 30 })
+      expect(afterSecondWin.state.pendingEffect?.effect).toBe('trebuchetEffect')
+      expect(afterSecondWin.state.pendingEffect?.options).toEqual([{ id: 'foe-3', label: 'Foe Three' }])
+
+      // The second win must genuinely chain — a third battle actually
+      // declares, not just an option that looks offerable.
+      const thirdBattle = applyAction(afterSecondWin, 'alice', {
+        type: 'RESOLVE_PENDING_EFFECT', choiceId: 'foe-3',
+      }, ctx)
+      if (!thirdBattle.ok) throw new Error(thirdBattle.error)
+      expect(thirdBattle.game.state.activeBattle?.attackerIds).toEqual(['treb-1'])
+      expect(thirdBattle.game.state.activeBattle?.defenderIds).toEqual(['foe-3'])
+      expect(thirdBattle.game.state.activeBattle?.continuation?.data).toEqual({
+        zoneId: 1, defenderIds: ['foe-3'],
+      })
     })
   })
 })

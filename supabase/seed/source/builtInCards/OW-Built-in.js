@@ -164,7 +164,7 @@ export const owVehicles = [
         blueprintId: null,
         keywords: [KEYWORDS.SCRAPPY],
         meta: {
-            [TRIGGERS.PLAY_ON_VEHICLE]: 'trebuchetEffect',
+            [TRIGGERS.ON_PLAY]: 'trebuchetEffect',
         }
     },
     {
