@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { LOG_MAX_ENTRIES } from '../gameSettings'
 import { applyAction, normalizeState } from './index'
+import { takeFromEnemyDeck } from '../effects/primitives.ts'
 import { inst, makeCtx, makeGame, snap, zoneEntry } from './testFixtures'
 
 describe('guards', () => {
@@ -371,5 +372,25 @@ describe('summon-only cards', () => {
     expect(res.game.state.zones[0].cards.a).toHaveLength(0)
     expect(res.game.state.destroyed.a).toHaveLength(0)
     expect(res.game.state.log.join()).toContain('Martyr despawned')
+  })
+})
+
+describe('captured cards', () => {
+  // Temporary despawn is the third exit a captured card can take (battle
+  // death and ability spend are the other two) — all three go home.
+  it("despawns a captured Temporary vehicle into its OWNER's discard", () => {
+    const g = makeGame()
+    g.privates.b.deck.push(
+      inst({ name: 'Loaned Skiff', keywords: ['temporary'] }),
+      inst({ name: 'Bob Draws This' }),
+    )
+    g.state.counts.b.deck = 2
+    takeFromEnemyDeck(g, 'a', makeCtx())
+    g.state.zones[0].cards.a.push(zoneEntry({ ...g.privates.a.hand[0], playedOnTurn: 2 }))
+    g.privates.a.hand = []
+    const r = applyAction(g, 'alice', { type: 'END_TURN' }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.destroyed.b.map((c) => c.name)).toEqual(['Loaned Skiff'])
+    expect(r.game.state.destroyed.a).toHaveLength(0)
   })
 })

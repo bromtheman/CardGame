@@ -73,6 +73,12 @@ frontend (supabase-js) ──invoke──> edge function ──applyAction──
 - `counts` — public hand/deck counts; actual hands/decks live in per-player
   `game_players` rows (`EngineGame.privates` in the engine). Hidden information:
   see the log rule in CLAUDE.md.
+- `destroyed` — the per-side discard, and the deck's reservoir: `drawCard`
+  reshuffles a side's pile back into that side's deck the moment a draw would
+  otherwise fail. Every card leaving play goes through `discardCard(game,
+  controller, card)`, which files it under its **owner** rather than whoever
+  was holding it — a card captured out of the enemy deck goes home. See
+  "Captured cards" in docs/claude/card-effects.md.
 - `factions: {a, b}` — stamped from deck factions at game start; drives hero
   powers. Legacy rows normalize to `'NEUTRAL'`.
 - `alertCard` — single shared slot `{side, instanceId, name, setOnTurn} | null`.
@@ -99,42 +105,44 @@ frontend (supabase-js) ──invoke──> edge function ──applyAction──
 
 ## The snapshot-destructure trap
 
-Two places turn a `ZoneCardEntry` back into a bare card snapshot by
+`discardCard(game, controller, card)` in `shared/engine/gameEngine.ts` is **the
+single exit** every card takes on its way out of play — the Temporary cull, the
+death path in `DECIDE_BATTLE_REPORT`, `spendCard`, and Change Order all route
+through it. It turns a `ZoneCardEntry` back into a bare snapshot by
 destructuring the per-entry stamps **out by name**:
 
 ```ts
-const { instanceId: _i, playedOnTurn: _p, movedOnTurn: _m, activatedOnTurn: _a, ...snapshot } = entry
+const {
+  instanceId: _i, playedOnTurn: _p, movedOnTurn: _m, activatedOnTurn: _a, ...snapshot
+} = card as ZoneCardEntry
 ```
 
-- `endTurn`'s Temporary cull — `shared/engine/gameEngine.ts` (~line 155)
-- the death path in `DECIDE_BATTLE_REPORT` — `shared/engine/battleResolve.ts` (~line 155)
-
-**Add a field to `ZoneCardEntry` and TypeScript will not tell you about either
-one.** The rest spread happily swallows the new key, so the stamp leaks into
+**Add a field to `ZoneCardEntry` and TypeScript will not tell you to name it
+here.** A rest spread happily swallows the new key, so the stamp leaks into
 `state.destroyed` — and `reshuffleDiscard` feeds `destroyed` back into the
-owner's deck, so it comes back as a hand card carrying a board-only field.
-Nothing fails; it is only visible by inspecting the discard. **A new
-`ZoneCardEntry` field must be added to both destructures in the same change**,
-and a regression test at each site is the only real net. (`loggerheadOnDeath` in
-`shared/effects/dwgEffects.ts` has the same shape and is already one stamp
-behind — inert, because it pushes to the deck rather than to `destroyed`.)
+owner's deck, so it returns as a hand card carrying a board-only field. Nothing
+fails; it is visible only by inspecting the discard. **A new `ZoneCardEntry`
+field must be added to this destructure in the same change**, and a regression
+test driving a card through a real exit is the only net.
 
-`state.destroyed` is also pushed from `heroPowers.ts` (Change Order) and
-`placement.ts` (`spendCard`), but both take hand cards, which never carry the
-stamps — those two are not part of the trap.
+This used to be two separate destructures (the cull and the death path) that
+had to be kept in step; `discardCard` collapsed them, so there is now one place
+to get right instead of two. `loggerheadOnDeath` in `shared/effects/dwgEffects.ts`
+still has the same shape and is one stamp behind — inert, because it pushes to
+the deck rather than to `destroyed`.
 
-**`isSummonOnly(card)`** (`gameEngine.ts`) guards both destructure sites:
-`meta.summonOnly` cards are spawned, never drafted, so they must never reach
-`state.destroyed` — otherwise `reshuffleDiscard` would turn a destroyed Martyr
-into a draftable card. `deckValidation` rejects them from decks and
-`drawFromPool`'s catalog branch excludes them from pools — but that is not the
-whole story. Any effect that mints straight from `ctx.catalog` **instead of**
-going through `drawFromPool` does not get the guard for free and must repeat
-`c.meta.summonOnly !== true` in its own filter. `reservesEffect`
+**`isSummonOnly(card)`** guards `discardCard` itself, which is why one check
+covers every exit: `meta.summonOnly` cards are spawned, never drafted, so they
+must never reach `state.destroyed` — otherwise `reshuffleDiscard` would turn a
+destroyed Martyr into a draftable card. `deckValidation` rejects them from
+decks and `drawFromPool`'s catalog branch excludes them from pools — but that
+is not the whole story. Any effect that mints straight from `ctx.catalog`
+**instead of** going through `drawFromPool` does not get the guard for free and
+must repeat `c.meta.summonOnly !== true` in its own filter. `reservesEffect`
 (`shared/effects/dwgEffects.ts`) filtered `ctx.catalog` directly and missed
 it — Reserves could mint Flying Squirrel, a summon-only DWG vehicle, straight
-into a hand. Treat every catalog-filtering effect as a fifth enforcement site
-you must check by hand, not as covered by the four above.
+into a hand. Treat every catalog-filtering effect as an enforcement site you
+must check by hand, not as covered by the guards above.
 
 ## Turn & battle flow
 

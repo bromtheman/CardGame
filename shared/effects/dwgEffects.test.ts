@@ -369,3 +369,19 @@ describe('dwgWatersEffect', () => {
     expect(game.state.zoneEffects).toEqual([])
   })
 })
+
+describe('captured cards mint copies for their captor', () => {
+  // A copy is a new hull, not the captured card: exactly one card left the
+  // enemy deck and exactly one goes back. A copy that inherited the capture
+  // stamp would hand the free Loggerhead to the raided player's discard the
+  // moment it died.
+  it('shuffles the free Loggerhead copy in unstamped', () => {
+    const game = makeGame()
+    const dying = zoneEntry({
+      name: 'Loggerhead', materialCost: 80_000, meta: { ownerSide: 'b' },
+    })
+    effectFor('loggerheadOnDeath')!({ game, actor: 'a', card: dying, ctx: makeCtx() })
+    expect(game.privates.a.deck).toHaveLength(1)
+    expect(game.privates.a.deck[0].meta.ownerSide).toBeUndefined()
+  })
+})

@@ -187,13 +187,16 @@ but cannot be drafted. **Four enforcement sites exist today:**
 |---|---|---|
 | deck validation | `shared/engine/deckValidation.ts` (~line 64) | rejects the card from a deck; mirrored into **both** `game-action` and `lobby-action` shared copies, plus `DeckBuilderPage`'s visible pool filter |
 | catalog pools | `shared/effects/primitives.ts` (~line 107) | `drawFromPool`'s catalog branch skips them, so nothing mints a Martyr into a hand |
-| Temporary cull | `shared/engine/gameEngine.ts` (~line 157) | `if (!isSummonOnly(entry))` before pushing to `state.destroyed` |
-| battle death path | `shared/engine/battleResolve.ts` (~line 156) | same guard |
+| every exit out of play | `shared/engine/gameEngine.ts`'s `discardCard` | `if (isSummonOnly(card)) return` before the push. This is the single exit — the Temporary cull, the battle death path, `spendCard` and Change Order all route through it — so one guard covers them all |
+| catalog-minting effects | any effect filtering `ctx.catalog` directly | must repeat `c.meta.summonOnly !== true` itself. `reservesEffect` missed it and could mint Flying Squirrel into a hand |
 
-The last two matter because `reshuffleDiscard` feeds `state.destroyed` back into
-the owner's deck — without the guard a destroyed Martyr becomes draftable.
+The `discardCard` guard matters because `reshuffleDiscard` feeds `state.destroyed`
+back into the owner's deck — without it a destroyed Martyr becomes draftable.
+Note `discardCard` arrived on `main` *after* wave 2 branched (the captured-card
+fix, PR #12) and collapsed what had been two separate guarded destructures; the
+merge moved wave 2's guard into it.
 
-**Your fifth site is the battle-summon sweep.** Spec §4.4 says summoned
+**Your next site is the battle-summon sweep.** Spec §4.4 says summoned
 combatants live only inside `ActiveBattle.summons`, never enter `zone.cards`,
 and evaporate on approval **regardless of HP** — no repair eligibility, no death
 record, nothing pushed to `state.destroyed`. That rule is stronger than
@@ -279,22 +282,24 @@ failure mode, not a principle.
 
 ### 4.1 The snapshot-destructure trap — TypeScript cannot catch it
 
-Two places turn a `ZoneCardEntry` back into a bare snapshot by destructuring the
-per-entry stamps **out by name**:
+`discardCard` in `shared/engine/gameEngine.ts` turns a `ZoneCardEntry` back into
+a bare snapshot by destructuring the per-entry stamps **out by name**:
 
 ```ts
-const { instanceId: _i, playedOnTurn: _p, movedOnTurn: _m, activatedOnTurn: _a, ...snapshot } = entry
+const {
+  instanceId: _i, playedOnTurn: _p, movedOnTurn: _m, activatedOnTurn: _a, ...snapshot
+} = card as ZoneCardEntry
 ```
 
-- `endTurn`'s Temporary cull — `shared/engine/gameEngine.ts` (~line 155)
-- the death path in `DECIDE_BATTLE_REPORT` — `shared/engine/battleResolve.ts` (~line 155)
+It is the single exit every card takes out of play, so this is now one place
+rather than two — the Temporary cull and the battle death path both call it.
 
 Add a field to `ZoneCardEntry` and the compiler will make you fill in every
-*literal* — and say nothing about these two. The rest spread swallows the new
-key, it lands in `state.destroyed`, and `reshuffleDiscard` puts it back in the
-deck as a hand card carrying a board-only field. Nothing fails; you find it by
-reading the discard. **Edit both destructures in the same change, and put a
-regression test at each site** — that is the only real net. Wave 2 added
+*literal* — and say nothing about this destructure. The rest spread swallows the
+new key, it lands in `state.destroyed`, and `reshuffleDiscard` puts it back in
+the deck as a hand card carrying a board-only field. Nothing fails; you find it
+by reading the discard. **Add the field here in the same change, and put a
+regression test on a real exit** — that is the only real net. Wave 2 added
 `activatedOnTurn` to both correctly, but shipped with no regression test at
 either; the review flagged it and a fix round added them, after the implementer
 proved their teeth by reverting each production line and watching the new test

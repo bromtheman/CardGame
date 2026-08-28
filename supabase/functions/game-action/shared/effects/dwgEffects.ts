@@ -1,6 +1,6 @@
 import { DOUBLE_UP_MAX_COST, HERO_POWER_LABELS, KEYWORDS, MARAUDER_DISCOUNT, RESERVES_CARD_COUNT } from '../gameSettings.ts'
 import type { ZoneCardEntry } from '../engine/engineTypes.ts'
-import { drawCard, zoneById } from '../engine/gameEngine.ts'
+import { copyMeta, drawCard, zoneById } from '../engine/gameEngine.ts'
 import { effectiveMaterialCostOf } from '../engine/placement.ts'
 import { choice, grant, takeFromEnemyDeck } from './primitives.ts'
 import { registerCostModifier, registerEffect } from './registry.ts'
@@ -46,7 +46,7 @@ registerEffect('loggerheadOnDeath', ({ game, actor, card, ctx }) => {
   // card arrives as a ZoneCardEntry at death — strip the zone stamps so the
   // deck copy is a clean CardInstance
   const { playedOnTurn: _p, movedOnTurn: _m, ...snapshot } = card as ZoneCardEntry
-  deck.push({ ...snapshot, instanceId: ctx.newId(), materialCost: 0 })
+  deck.push({ ...snapshot, instanceId: ctx.newId(), materialCost: 0, meta: copyMeta(snapshot.meta) })
   for (let i = deck.length - 1; i > 0; i--) {
     const j = Math.floor(ctx.rng() * (i + 1))
     ;[deck[i], deck[j]] = [deck[j], deck[i]]

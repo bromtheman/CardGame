@@ -516,3 +516,17 @@ describe('wave 2 — board spawns', () => {
     expect(res.ok).toBe(true)
   })
 })
+
+describe('clydesdaleEffect on a captured hull', () => {
+  it('spawns its second hull for the captor, not the deck it came from', () => {
+    const card = inst({
+      name: 'Clydesdale', vehicleType: 'ship', materialCost: 0,
+      meta: { onPlayEffect: 'clydesdaleEffect', ownerSide: 'b' },
+    })
+    const game = makeGame({ privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } } })
+    const r = applyAction(game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    const hulls = r.game.state.zones[0].cards.a
+    expect(hulls.map((c) => c.meta.ownerSide)).toEqual(['b', undefined])
+  })
+})

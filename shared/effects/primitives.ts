@@ -18,7 +18,12 @@ export function takeFromEnemyDeck(
     return true
   }
   const [card] = deck.splice(index, 1)
-  game.privates[actor].hand.push({ ...card, instanceId: ctx.newId() })
+  // Stamped with where it came from: a captured card is on loan, and every
+  // exit out of play (discardCard) sends it home to the deck it was built
+  // into instead of confiscating it into the captor's.
+  game.privates[actor].hand.push({
+    ...card, instanceId: ctx.newId(), meta: { ...card.meta, ownerSide: enemy },
+  })
   game.state.counts[actor].hand = game.privates[actor].hand.length
   game.state.counts[enemy].deck = deck.length
   game.state.log.push(`Player ${actor.toUpperCase()} takes a card from the enemy deck`)

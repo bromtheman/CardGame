@@ -15,7 +15,7 @@ import { CardDetailsModal } from './CardDetailsModal'
 //     corner "Details" button carries the modal instead.
 // The modal state lives here so no call site has to wire it up.
 export function PhysicalCard({
-  card, onClick, effectiveCost, unaffordable = false, footer,
+  card, onClick, effectiveCost, unaffordable = false, footer, hoverLift = true,
 }: {
   card: CardRow
   /** Claims the face's press (play / target). Omit to let it open details. */
@@ -33,6 +33,13 @@ export function PhysicalCard({
    * Takes the place of the "Details" button when both would apply.
    */
   footer?: ReactNode
+  /**
+   * Whether the face nudges itself up on hover. Turn it OFF wherever the call
+   * site already animates the card, or the two lifts fight: the hand fans its
+   * cards inside a wrapper that carries the hover scale and the unaffordable
+   * ring, and a face translating on its own slides out of that ring.
+   */
+  hoverLift?: boolean
 }) {
   const [detailsOpen, setDetailsOpen] = useState(false)
   const activate = onClick ?? (() => setDetailsOpen(true))
@@ -52,7 +59,9 @@ export function PhysicalCard({
         e.preventDefault()
         activate()
       }}
-      className="flex h-[430px] w-[280px] cursor-pointer flex-col rounded-xl border-2 border-ocean-950 bg-parchment-100 p-3 text-ocean-950 shadow-plank transition-transform hover:-translate-y-1 focus:outline-none focus-visible:ring-4 focus-visible:ring-brass-400"
+      className={`flex h-[430px] w-[280px] cursor-pointer flex-col rounded-xl border-2 border-ocean-950 bg-parchment-100 p-3 text-ocean-950 shadow-plank transition-transform focus:outline-none focus-visible:ring-4 focus-visible:ring-brass-400 ${
+        hoverLift ? 'hover:-translate-y-1' : ''
+      }`}
     >
       <div className="flex items-baseline justify-between gap-2">
         <span className="truncate font-display text-lg" title={card.name}>{card.name}</span>
