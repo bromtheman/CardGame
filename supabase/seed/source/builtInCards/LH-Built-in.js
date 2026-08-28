@@ -370,7 +370,7 @@ export const lhVehicles = [
         faction: FACTIONS.LH,
         blueprintId: null,
         meta: {
-            [TRIGGERS.ON_PLAY]: 'orbitFlankEffect '
+            [TRIGGERS.ON_PLAY]: 'orbitFlankEffect'
         }
     },
     {

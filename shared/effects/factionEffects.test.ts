@@ -851,4 +851,125 @@ describe('wave 3 — forced battles', () => {
       expect(resolved.game.state.zones[2].cards.b.map((c) => c.instanceId)).toEqual(['decoy-1'])
     })
   })
+
+  describe('orbitFlankEffect', () => {
+    const orbitHull = snap({
+      name: 'Orbit', faction: 'LH', vehicleType: 'plane', materialCost: 140_000,
+      keywords: ['halfCost', 'temporary'],
+    })
+    const catalog = [orbitHull]
+    const orbitFlankCard = () => inst({
+      instanceId: 'of1', name: 'Orbit Flank', type: 'ability', vehicleType: null, materialCost: 90_000,
+      meta: { onPlayEffect: 'orbitFlankEffect' },
+    })
+    const playOrbitFlank = (game: EngineGame, ctx = makeCtx({ catalog })) => {
+      game.privates.a.hand.push(orbitFlankCard())
+      game.state.counts.a.hand = 1
+      return applyAction(game, 'alice', { type: 'PLAY_ABILITY_CARD', instanceId: 'of1' }, ctx)
+    }
+
+    it('first entry offers exactly the two modes from the card text', () => {
+      const game = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+      const res = playOrbitFlank(game)
+      if (!res.ok) throw new Error(res.error)
+      expect(res.game.state.pendingEffect?.effect).toBe('orbitFlankEffect')
+      expect(res.game.state.pendingEffect?.options.map((o) => o.id)).toEqual(['spawn', 'battle'])
+    })
+
+    it('choosing mode (a) suspends again, offering the three zones', () => {
+      const game = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+      const played = playOrbitFlank(game)
+      if (!played.ok) throw new Error(played.error)
+      const modeChosen = applyAction(played.game, 'alice', {
+        type: 'RESOLVE_PENDING_EFFECT', choiceId: 'spawn',
+      }, makeCtx({ catalog }))
+      if (!modeChosen.ok) throw new Error(modeChosen.error)
+      expect(modeChosen.game.state.activeBattle).toBeNull()
+      expect(modeChosen.game.state.pendingEffect?.effect).toBe('orbitFlankEffect')
+      expect(modeChosen.game.state.pendingEffect?.options.map((o) => o.id)).toEqual(['1', '2', '3'])
+    })
+
+    it('resolving the zone choice spawns one Orbit into zone.cards, Temporary exactly once, no zone activation', () => {
+      const game = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+      const ctx = makeCtx({ catalog })
+      const played = playOrbitFlank(game, ctx)
+      if (!played.ok) throw new Error(played.error)
+      const modeChosen = applyAction(played.game, 'alice', {
+        type: 'RESOLVE_PENDING_EFFECT', choiceId: 'spawn',
+      }, ctx)
+      if (!modeChosen.ok) throw new Error(modeChosen.error)
+      const resolved = applyAction(modeChosen.game, 'alice', {
+        type: 'RESOLVE_PENDING_EFFECT', choiceId: '2',
+      }, ctx)
+      if (!resolved.ok) throw new Error(resolved.error)
+      expect(resolved.game.state.pendingEffect).toBeNull()
+      expect(resolved.game.state.activeBattle).toBeNull()
+      // Board spawn (spec §4.4): the Orbit enters zone.cards for the chosen
+      // zone (id 2 -> zones[1]) and stays there. The other two zones are untouched.
+      const spawned = resolved.game.state.zones[1].cards.a
+      expect(spawned).toHaveLength(1)
+      expect(spawned[0].name).toBe('Orbit')
+      expect(spawned[0].keywords.filter((k) => k === 'temporary')).toHaveLength(1)
+      expect(resolved.game.state.zones[0].cards.a).toHaveLength(0)
+      expect(resolved.game.state.zones[2].cards.a).toHaveLength(0)
+      expect(resolved.game.state.zones.every((z) => z.lastActivatedTurn === null)).toBe(true)
+    })
+
+    it('choosing mode (b) suspends again, offering the enemy vehicles from every zone', () => {
+      const game = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+      game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe-1', name: 'Foe One' }))
+      game.state.zones[2].cards.b.push(zoneEntry({ instanceId: 'foe-2', name: 'Foe Two' }))
+      const played = playOrbitFlank(game)
+      if (!played.ok) throw new Error(played.error)
+      const modeChosen = applyAction(played.game, 'alice', {
+        type: 'RESOLVE_PENDING_EFFECT', choiceId: 'battle',
+      }, makeCtx({ catalog }))
+      if (!modeChosen.ok) throw new Error(modeChosen.error)
+      expect(modeChosen.game.state.activeBattle).toBeNull()
+      expect(modeChosen.game.state.pendingEffect?.effect).toBe('orbitFlankEffect')
+      expect(modeChosen.game.state.pendingEffect?.options.map((o) => o.id)).toEqual(['foe-1', 'foe-2'])
+    })
+
+    it('resolving the vehicle choice declares a forced battle with one Orbit summon, never entering zone.cards', () => {
+      const game = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+      game.state.zones[2].cards.b.push(zoneEntry({ instanceId: 'foe-1', name: 'Foe' }))
+      const ctx = makeCtx({ catalog })
+      const played = playOrbitFlank(game, ctx)
+      if (!played.ok) throw new Error(played.error)
+      const modeChosen = applyAction(played.game, 'alice', {
+        type: 'RESOLVE_PENDING_EFFECT', choiceId: 'battle',
+      }, ctx)
+      if (!modeChosen.ok) throw new Error(modeChosen.error)
+      const resolved = applyAction(modeChosen.game, 'alice', {
+        type: 'RESOLVE_PENDING_EFFECT', choiceId: 'foe-1',
+      }, ctx)
+      if (!resolved.ok) throw new Error(resolved.error)
+      expect(resolved.game.state.pendingEffect).toBeNull()
+      const battle = resolved.game.state.activeBattle
+      expect(battle?.zoneId).toBe(3)
+      expect(battle?.aggressor).toBe('a')
+      expect(battle?.defenderIds).toEqual(['foe-1'])
+      expect(battle?.summons).toHaveLength(1)
+      expect(battle?.summons[0].name).toBe('Orbit')
+      expect(battle?.attackerIds).toEqual(battle?.summons.map((s) => s.instanceId))
+      // Battle summon (spec §4.4): the Orbit lives only in activeBattle.summons —
+      // it must never land in zone.cards, on either side, in any zone.
+      expect(resolved.game.state.zones.every(
+        (z) => z.cards.a.every((c) => c.name !== 'Orbit') && z.cards.b.every((c) => c.name !== 'Orbit'),
+      )).toBe(true)
+      expect(resolved.game.state.zones[2].lastActivatedTurn).toBeNull() // not a zone activation
+    })
+
+    it('mode (b) fizzles without suspending when the enemy has no vehicle anywhere', () => {
+      const game = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+      const played = playOrbitFlank(game)
+      if (!played.ok) throw new Error(played.error)
+      const modeChosen = applyAction(played.game, 'alice', {
+        type: 'RESOLVE_PENDING_EFFECT', choiceId: 'battle',
+      }, makeCtx({ catalog }))
+      if (!modeChosen.ok) throw new Error(modeChosen.error)
+      expect(modeChosen.game.state.pendingEffect).toBeNull()
+      expect(modeChosen.game.state.activeBattle).toBeNull()
+    })
+  })
 })
