@@ -22,7 +22,7 @@ Run this yourself before you touch anything; do not trust the numbers below if
 they disagree with your own run.
 
 ```bash
-npx vitest run                      # 412 passed / 29 files, 0 failed  ← NEVER pass --root
+npx vitest run                      # 423 passed / 29 files, 0 failed  ← NEVER pass --root
 npx tsc -p tsconfig.json --noEmit   # exit 0
 npm --prefix frontend run build     # exit 0
 npm --prefix frontend run lint      # exit 0, with 7 pre-existing warnings across 5 files
@@ -515,7 +515,81 @@ catch its own regression:
 
 ---
 
-## 6. Before you start
+## 6. How to run this wave — what earned its keep in wave 2, and what did not
+
+Wave 2 shipped **758 lines of hand-written production code** inside a ~6,000-line
+diff. Docs were 62% of it and the implementation plan alone was ~2,650 lines —
+45% of everything, for a scaffold that is inert once executed. It cost a very
+large amount of context. Some of that was the assignment; a lot of it was
+avoidable. This section is the measured version, so you can spend where it pays.
+
+### Where wave 2's five real findings actually came from
+
+| Finding | Found by |
+|---|---|
+| `allForTheCauseEffect` missing `{ needsCatalog: true }` — would have 400'd on every play in production while CI stayed green | the **implementer**, who read `game-action` and challenged the brief |
+| `reservesEffect` minting a summon-only card into a hand — a live bug | the **final whole-branch review** |
+| Off-turn `pendingEffect` deadlock with no legal action for either player | the **final whole-branch review** |
+| Three tests that could not fail (§4 has two of them) | per-task reviewers, all answering **one specific question** |
+| The suite going red from a transitive `supabaseClient` import (§4.5) | the **implementer**, disclosing honestly |
+
+Two came from the final review. Two came from implementers empowered to push
+back on their own brief. The whole weak-test class came from a single question.
+**Twelve of seventeen per-task reviews returned nothing actionable.**
+
+### Spend here
+
+1. **The final whole-branch review, on the most capable model available.** It
+   found the two worst bugs, and it found them *because* it saw across tasks —
+   `reservesEffect` was only reachable once one task seeded a card and a
+   different task put the guard somewhere else. No per-task review could have
+   seen it. Give it the whole diff, the spec, and the running ledger.
+
+2. **Tell every implementer, in the dispatch, that the brief may be wrong.**
+   Literally: *"If the brief conflicts with what the code shows, stop and report
+   it rather than complying."* This is free and it caught two production bugs.
+   Both times the implementer traced the real behaviour and pushed back instead
+   of transcribing. An implementer that only transcribes will ship your mistakes.
+
+3. **One question, asked of every test written:** *"Would this test fail if the
+   production line it covers were reverted?"* Have the implementer answer it by
+   actually reverting the line, watching the test fail, and restoring — and put
+   that transcript in the report. Wave 2's implementers did this well when asked
+   and it is what surfaced every weak test. It costs a minute and replaces most
+   of what a per-task reviewer was doing.
+
+### Save here
+
+4. **Do not inline full code in the plan.** Wave 2's plan wrote every test and
+   every implementation body, so the code got written twice — once by the
+   planner, once by an implementer transcribing it. Several tasks were literally
+   "transcription plus testing." Name the files, the interfaces and signatures
+   other tasks depend on, the exact values (costs, thresholds, effect names), and
+   the non-obvious constraints. Let the implementer write the code.
+
+5. **Batch mechanical tasks three-to-one.** Wave 2 batched exactly once. A
+   one-line edit, a test-file addition and a data-only seed change are one
+   dispatch and one review, not three of each. Reserve a dedicated dispatch for
+   work that needs its own judgment or its own review surface.
+
+6. **Skip the formal review dispatch when the diff is mechanical** — a single
+   line, a constant, a data row. The implementer's own teeth check plus the suite
+   is the gate there, and the final whole-branch review is the net. Keep the
+   dedicated review for anything touching engine control flow, state shape, or a
+   freeze.
+
+7. **Demand terse reports.** Wave 2's review reports ran 100-160k tokens each
+   and much of that was re-verification narrated at length. Ask for the verdict,
+   the findings with file:line and a failure scenario, and one line on what was
+   checked. Detail belongs in the report file, not the returned message.
+
+### The one thing not to cut
+
+Write wave 4's handoff. This document is why you know that §4.9 exists at all —
+that the spec contradicts itself about `lockBattle` — and that single paragraph
+will save you more time than this whole section describes.
+
+## 7. Before you start
 
 1. Read spec §4.2 (all five departures), §4.3, §4.4, §7.1 and §7.4.
 2. Read `docs/claude/architecture.md` (the destructure trap and the two freezes),
@@ -524,6 +598,10 @@ catch its own regression:
    `docs/claude/supabase.md` (the probe and the deploy runbook). All four were
    updated at the close of wave 2 with everything above.
 3. Run the four commands in §1 and record your own baseline. If it is not
-   412 / 29 green, find out why before writing a line.
+   423 / 29 green, find out why before writing a line.
 4. Get `REACHABLE_TRIGGERS`' `playOnVehicleEffect` row in before any card work
    (§4.2 above).
+5. Read §6 and decide your process **before** you write the plan, not after. The
+   two most expensive mistakes wave 2 made — a plan that inlined all the code,
+   and a dedicated review dispatch for every task including the mechanical
+   ones — were both locked in by the time the first task was dispatched.
