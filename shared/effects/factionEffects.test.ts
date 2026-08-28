@@ -719,4 +719,136 @@ describe('wave 3 — forced battles', () => {
       expect(r.ok).toBe(true)
     })
   })
+
+  describe('airStrafeEffect', () => {
+    const predatorX = snap({ name: 'PredatorX', faction: 'SS', vehicleType: 'plane', materialCost: 120_000 })
+    const hydra = snap({ name: 'Hydra', faction: 'SS', vehicleType: 'airship', materialCost: 230_000 })
+    const cyclone = snap({ name: 'Cyclone', faction: 'SS', vehicleType: 'sub', materialCost: 280_000 })
+    const catalog = [predatorX, hydra, cyclone]
+    const airStrafeCard = () => inst({
+      instanceId: 'as1', name: 'Air Strafe', type: 'ability', materialCost: 180_000,
+      meta: { playOnVehicleEffect: 'airStrafeEffect' },
+    })
+
+    it('a built-in target fights immediately against 2 PredatorX — no suspension', () => {
+      const game = makeGame()
+      const target = zoneEntry({ instanceId: 'foe-1', name: 'Foe', vehicleType: 'ship', isBuiltIn: true })
+      game.state.zones[0].cards.b.push(target)
+      const ok = effectFor('airStrafeEffect')!({
+        game, actor: 'a', card: inst({ name: 'Air Strafe' }),
+        ctx: makeCtx({ catalog }), targetInstanceId: target.instanceId,
+      })
+      expect(ok).toBe(true)
+      expect(game.state.pendingEffect).toBeNull()
+      const battle = game.state.activeBattle
+      expect(battle?.zoneId).toBe(1)
+      expect(battle?.aggressor).toBe('a')
+      expect(battle?.defenderIds).toEqual(['foe-1'])
+      expect(battle?.summons).toHaveLength(2)
+      expect(battle?.summons.every((s) => s.name === 'PredatorX')).toBe(true)
+      expect(battle?.attackerIds).toEqual(battle?.summons.map((s) => s.instanceId))
+      expect(game.state.zones[0].lastActivatedTurn).toBeNull() // not a zone activation
+    })
+
+    it('rejects a non-ship target', () => {
+      const game = makeGame()
+      const target = zoneEntry({ instanceId: 'foe-1', name: 'Foe Plane', vehicleType: 'plane', isBuiltIn: true })
+      game.state.zones[0].cards.b.push(target)
+      const ok = effectFor('airStrafeEffect')!({
+        game, actor: 'a', card: inst({ name: 'Air Strafe' }),
+        ctx: makeCtx({ catalog }), targetInstanceId: target.instanceId,
+      })
+      expect(ok).toBe(false)
+      expect(game.state.activeBattle).toBeNull()
+      expect(game.state.pendingEffect).toBeNull()
+    })
+
+    it('rejects a friendly target', () => {
+      const game = makeGame()
+      const mine = zoneEntry({ instanceId: 'mine-1', name: 'Mine', vehicleType: 'ship', isBuiltIn: true })
+      game.state.zones[0].cards.a.push(mine)
+      const ok = effectFor('airStrafeEffect')!({
+        game, actor: 'a', card: inst({ name: 'Air Strafe' }),
+        ctx: makeCtx({ catalog }), targetInstanceId: mine.instanceId,
+      })
+      expect(ok).toBe(false)
+      expect(game.state.activeBattle).toBeNull()
+    })
+
+    it('a player-design target suspends offering exactly Hydra and Cyclone, and declares no battle yet', () => {
+      const game = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+      game.state.resources.a.materials = 300_000
+      const target = zoneEntry({ instanceId: 'foe-1', name: 'Custom Ship', vehicleType: 'ship', isBuiltIn: false })
+      game.state.zones[0].cards.b.push(target)
+      game.privates.a.hand.push(airStrafeCard())
+      game.state.counts.a.hand = 1
+      const ctx = makeCtx({ catalog })
+      const res = applyAction(game, 'alice', {
+        type: 'PLAY_CARD_TARGETING_CARD_ON_FIELD', instanceId: 'as1', targetInstanceId: 'foe-1',
+      }, ctx)
+      if (!res.ok) throw new Error(res.error)
+      expect(res.game.state.activeBattle).toBeNull()
+      expect(res.game.state.pendingEffect?.effect).toBe('airStrafeEffect')
+      expect(res.game.state.pendingEffect?.options).toEqual([
+        { id: 'Hydra', label: 'Hydra' },
+        { id: 'Cyclone', label: 'Cyclone' },
+      ])
+    })
+
+    it('resolving the choice declares the battle with 3 summons, the third the chosen hull', () => {
+      const game = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+      game.state.resources.a.materials = 300_000
+      const target = zoneEntry({ instanceId: 'foe-1', name: 'Custom Ship', vehicleType: 'ship', isBuiltIn: false })
+      game.state.zones[0].cards.b.push(target)
+      game.privates.a.hand.push(airStrafeCard())
+      game.state.counts.a.hand = 1
+      const ctx = makeCtx({ catalog })
+      const suspended = applyAction(game, 'alice', {
+        type: 'PLAY_CARD_TARGETING_CARD_ON_FIELD', instanceId: 'as1', targetInstanceId: 'foe-1',
+      }, ctx)
+      if (!suspended.ok) throw new Error(suspended.error)
+      const resolved = applyAction(suspended.game, 'alice', {
+        type: 'RESOLVE_PENDING_EFFECT', choiceId: 'Cyclone',
+      }, ctx)
+      if (!resolved.ok) throw new Error(resolved.error)
+      expect(resolved.game.state.pendingEffect).toBeNull()
+      const battle = resolved.game.state.activeBattle
+      expect(battle?.zoneId).toBe(1)
+      expect(battle?.defenderIds).toEqual(['foe-1'])
+      expect(battle?.summons).toHaveLength(3)
+      expect(battle?.summons.filter((s) => s.name === 'PredatorX')).toHaveLength(2)
+      expect(battle?.summons.filter((s) => s.name === 'Cyclone')).toHaveLength(1)
+      expect(battle?.attackerIds).toEqual(battle?.summons.map((s) => s.instanceId))
+    })
+
+    // The discriminating test (task brief Step 5): a naive re-entry that
+    // reads the target's zone/id back off `payload.resolution` instead of
+    // the `data` stash must be caught. The decoy sits in a different,
+    // legal, non-empty zone so a wrong read does not just hit an empty
+    // zone (400 either way) but a *plausible* wrong one — a stale or
+    // malicious RESOLVE_PENDING_EFFECT could point at either field.
+    it('the target zone and instanceId survive the suspension — a stale/wrong client zoneId and targetInstanceId on resolve are ignored', () => {
+      const game = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+      game.state.resources.a.materials = 300_000
+      const target = zoneEntry({ instanceId: 'foe-1', name: 'Custom Ship', vehicleType: 'ship', isBuiltIn: false })
+      game.state.zones[0].cards.b.push(target) // zone 1 (water) — the real target
+      const decoy = zoneEntry({ instanceId: 'decoy-1', name: 'Decoy Ship', vehicleType: 'ship', isBuiltIn: false })
+      game.state.zones[2].cards.b.push(decoy) // zone 3 (land) — a different, legal zone with its own enemy ship
+      game.privates.a.hand.push(airStrafeCard())
+      game.state.counts.a.hand = 1
+      const ctx = makeCtx({ catalog })
+      const suspended = applyAction(game, 'alice', {
+        type: 'PLAY_CARD_TARGETING_CARD_ON_FIELD', instanceId: 'as1', targetInstanceId: 'foe-1',
+      }, ctx)
+      if (!suspended.ok) throw new Error(suspended.error)
+      const resolved = applyAction(suspended.game, 'alice', {
+        type: 'RESOLVE_PENDING_EFFECT', choiceId: 'Hydra', zoneId: 3, targetInstanceId: 'decoy-1',
+      }, ctx)
+      if (!resolved.ok) throw new Error(resolved.error)
+      const battle = resolved.game.state.activeBattle
+      expect(battle?.zoneId).toBe(1)
+      expect(battle?.defenderIds).toEqual(['foe-1'])
+      expect(resolved.game.state.zones[2].cards.b.map((c) => c.instanceId)).toEqual(['decoy-1'])
+    })
+  })
 })

@@ -68,7 +68,7 @@ export const ssVehicles = [
         faction: FACTIONS.SS,
         blueprintId: null,
         meta: {
-            [TRIGGERS.PLAY_ON_ZONE]: 'airStrafeEffect'
+            [TRIGGERS.PLAY_ON_VEHICLE]: 'airStrafeEffect'
         }
     },{
         name: 'Repairmen Ready',

@@ -84,6 +84,7 @@ export const FLYING_SQUIRREL_ATTACK_COUNT = 3 // Flying Squirrel Attack: target 
 export const MARTYR_ATTACK_COUNT = 4          // Martyr Attack: base summon count
 export const MARTYR_ATTACK_BOOSTED_COUNT = 6  // Martyr Attack: target is an airship, or a 400k+ player design
 export const MARTYR_ATTACK_BOOST_MIN_COST = 400_000
+export const AIR_STRAFE_PREDATOR_COUNT = 2    // Air Strafe: PredatorX summons (always); +1 chosen hull vs a player design
 
 // Human-readable names for the seven hero powers, used wherever a power id
 // is shown to a player (Kraken's refresh choice).
