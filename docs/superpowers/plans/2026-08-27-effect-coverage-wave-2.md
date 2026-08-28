@@ -2299,7 +2299,7 @@ Mirrors the existing Mobile "move" affordance exactly: a corner button on `MiniV
 
 - [ ] **Step 1: Add the affordance to `MiniVehicle`**
 
-Two new optional props beside `moveAffordance` / `onMoveClick`, and a second corner button. Put it at `-right-1 -top-1` so it cannot overlap the move button at `-left-1 -top-1`:
+Two new optional props beside `moveAffordance` / `onMoveClick`, and a second corner button. Put it at `-bottom-1 -left-1` — the only free corner. Top-left is the "move" affordance, top-right is the `fresh` "new" badge, and bottom-right is the details "?" button. Top-right in particular would collide in a common case: activation has no freshly-deployed restriction, so a vehicle played this turn shows "new" **and** is immediately activatable.
 
 ```tsx
   /** Show the small "use" corner button (has an activated ability, unused this turn, affordable). */
@@ -2316,7 +2316,7 @@ Two new optional props beside `moveAffordance` / `onMoveClick`, and a second cor
             e.stopPropagation()
             onActivateClick()
           }}
-          className="absolute -right-1 -top-1 rounded-full bg-brass-400 px-1 text-[9px] font-bold text-ocean-950"
+          className="absolute -bottom-1 -left-1 rounded-full bg-brass-400 px-1 text-[9px] font-bold text-ocean-950"
         >
           use
         </button>
