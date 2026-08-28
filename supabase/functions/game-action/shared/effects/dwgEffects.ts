@@ -59,7 +59,11 @@ registerEffect('loggerheadOnDeath', ({ game, actor, card, ctx }) => {
 // add RESERVES_CARD_COUNT distinct random built-in DWG vehicles to hand
 // (Reserves — old BE shuffles the pool and shifts, so picks never repeat)
 registerEffect('reservesEffect', ({ game, actor, ctx }) => {
-  const pool = ctx.catalog.filter((c) => c.isBuiltIn && c.faction === 'DWG' && c.type === 'vehicle')
+  // Mints straight from the catalog rather than through drawFromPool, so the
+  // summonOnly exclusion (spec §7.4) does not come for free — it must be
+  // repeated here by hand. Without it this pool matches Flying Squirrel.
+  const pool = ctx.catalog.filter((c) =>
+    c.isBuiltIn && c.faction === 'DWG' && c.type === 'vehicle' && c.meta.summonOnly !== true)
   if (pool.length === 0) return false
   for (let i = pool.length - 1; i > 0; i--) {
     const j = Math.floor(ctx.rng() * (i + 1))

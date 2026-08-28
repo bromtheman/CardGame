@@ -145,6 +145,25 @@ describe('reservesEffect', () => {
     expect(ok).toBe(false)
     expect(game.privates.a.hand).toHaveLength(0)
   })
+
+  // Regression: reservesEffect filters ctx.catalog directly instead of going
+  // through drawFromPool, so it must repeat the summonOnly exclusion (spec
+  // §7.4) by hand. A summon-only DWG vehicle (Flying Squirrel, seeded this
+  // way) must never be reachable in a hand.
+  it('never mints a summon-only DWG vehicle into hand (spec §7.4)', () => {
+    const game = makeGame()
+    const catalog = [
+      snap({ name: 'DWG Vehicle 1' }),
+      snap({ name: 'DWG Vehicle 2' }),
+      snap({ name: 'Flying Squirrel', meta: { summonOnly: true } }),
+    ]
+    const ctx = makeCtx({ catalog })
+    const ok = effectFor('reservesEffect')!({ game, actor: 'a', card: inst(), ctx })
+    expect(ok).toBe(true)
+    const names = game.privates.a.hand.map((c) => c.name)
+    expect(names).not.toContain('Flying Squirrel')
+    expect(names.sort()).toEqual(['DWG Vehicle 1', 'DWG Vehicle 2'])
+  })
 })
 
 describe('spawnBuccaneerEffect', () => {
