@@ -24,6 +24,20 @@ export interface AwaitingResponse {
   stealthyIds: string[]    // subset the defender may opt out
 }
 
+// The suspension for an effect waiting on a battle report, analogous to
+// PendingEffect (gameInit.ts) but living on ActiveBattle instead: the choice
+// freeze (state.pendingEffect) admits neither SUBMIT_BATTLE_REPORT nor
+// DECIDE_BATTLE_REPORT, so a battle continuation cannot use that slot
+// (spec §4.3, departure 3). DECIDE_BATTLE_REPORT re-enters `effect` by name
+// after death triggers fire; activeBattle (and so this) is nulled right
+// after.
+export interface BattleContinuation {
+  effect: string                    // registry name re-entered when the battle resolves
+  side: Side
+  card: CardInstance
+  data?: Record<string, unknown>    // effect-owned continuation state
+}
+
 export interface ActiveBattle {
   zoneId: number
   aggressor: Side
@@ -31,6 +45,13 @@ export interface ActiveBattle {
   defenderIds: string[]
   distanceM: number
   distanceModifiedBy: Side[] // per-player: each side may apply Tactical Positioning once
+  // Combatants that exist only for this battle: never pushed to zone.cards,
+  // and evaporate on report approval regardless of HP — no repair, no death
+  // record, nothing sent to state.destroyed (spec §4.4).
+  summons: ZoneCardEntry[]
+  // Set when the effect that forced this battle wants to run again once it
+  // resolves (e.g. Trebuchet's repeat). Null for an ordinary declared battle.
+  continuation: BattleContinuation | null
 }
 
 export interface BattleReport {

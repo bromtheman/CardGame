@@ -9,6 +9,9 @@ function lockBattle(
   game.state.activeBattle = {
     zoneId, aggressor, attackerIds, defenderIds,
     distanceM: SPAWN_DISTANCE_DEFAULT_M, distanceModifiedBy: [],
+    // A regular declared battle has neither: only a forced battle
+    // (declareForcedBattle, DP3, spec §4.3) ever populates these.
+    summons: [], continuation: null,
   }
   zoneById(game.state, zoneId)!.lastActivatedTurn = game.turnNumber
   game.state.log.push(

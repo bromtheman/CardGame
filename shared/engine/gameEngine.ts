@@ -103,6 +103,15 @@ export function normalizeState(state: PublicGameState): void {
       }
     }
   }
+  // Nested defaulting for a live mid-battle row (spec §4.4): summons and
+  // continuation did not exist before this wave, so a battle declared by
+  // older code has neither. Guarded on a truthy activeBattle — a null one
+  // (already normalized above) is left alone, never dereferenced.
+  if (state.activeBattle) {
+    const battle = state.activeBattle as Partial<NonNullable<PublicGameState['activeBattle']>>
+    if (battle.summons === undefined) battle.summons = []
+    if (battle.continuation === undefined) battle.continuation = null
+  }
 }
 
 // The discard (state.destroyed) recycles into the deck the moment a draw

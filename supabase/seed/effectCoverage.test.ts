@@ -64,15 +64,21 @@ function classify(card: { faction: string; name: string; cardText?: string; meta
 // satisfied even though no vehicle-targeting handler could ever be the
 // right path for a card whose text targets your own hand. This check would
 // have caught it had the mismatch been of *type* (e.g. a vehicle wrongly
-// given a hand/field-targeting key) — a vehicle can only ever be played
-// through PLAY_CARD_TO_ZONE (every other handler in placement.ts rejects
-// `card.type !== 'ability'`), so playOnVehicleEffect/playOnCardEffect meta
-// on a vehicle is dead, and an ability is always `spendCard`'d and never
-// pushed into `zone.cards`, so it can never become a battle participant and
-// onDeathEffect can never fire for one. It does NOT catch Garrison's actual
-// bug: playOnVehicleEffect and playOnCardEffect are both legitimately
-// dispatchable for an *ability* card (via two different handlers keyed on
-// the same type), so a same-type mix-up between the two needs a human
+// given a hand/field-targeting key) — playOnVehicleEffect meta on a vehicle
+// is dead (every handler but PLAY_CARD_TO_ZONE rejects `card.type !==
+// 'ability'`, and nothing in wave 3 changes that for the field-targeting
+// handler). playOnCardEffect is different: spec §4.3 DP6 has
+// PLAY_CARD_TARGETING_CARD_IN_HAND gain an optional `zoneId` and accept a
+// vehicle carrying that key too — deploy it to the zone, then fire the
+// effect, no `spendCard` — so this table admits the row now, ahead of that
+// handler change landing later in the wave (Excalibur is the only vehicle
+// that will use it). An ability, meanwhile, is always `spendCard`'d and
+// never pushed into `zone.cards`, so it can never become a battle
+// participant and onDeathEffect can never fire for one. It does NOT catch
+// Garrison's actual bug: playOnVehicleEffect and playOnCardEffect are both
+// legitimately dispatchable for an *ability* card (via two different
+// handlers keyed on the same type), so a same-type mix-up between the two
+// needs a human
 // reading the card text against the key, which is how Garrison's fix
 // actually happened. Confirmed by reverting Garrison's key and rerunning
 // this suite — see the wave report for the (still-green) output. Verified
@@ -89,7 +95,10 @@ function classify(card: { faction: string; name: string; cardText?: string; meta
 // which only a vehicle can be. It is deliberately absent from the ability
 // row — an ability is spendCard'd on resolution and never enters zone.cards.
 const REACHABLE_TRIGGERS: Record<string, readonly string[]> = {
-  vehicle: ['onPlayEffect', 'playOnZoneEffect', 'onDeathEffect', 'costModifier', 'onActivate'],
+  vehicle: [
+    'onPlayEffect', 'playOnZoneEffect', 'onDeathEffect', 'costModifier', 'onActivate',
+    'playOnCardEffect',
+  ],
   ability: ['onPlayEffect', 'playOnZoneEffect', 'playOnVehicleEffect', 'playOnCardEffect', 'costModifier'],
 }
 

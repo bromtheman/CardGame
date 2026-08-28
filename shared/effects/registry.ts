@@ -1,5 +1,5 @@
 import { TRIGGERS } from '../gameSettings.ts'
-import type { EngineContext, EngineGame, Side } from '../engine/engineTypes.ts'
+import type { BattleContinuation, EngineContext, EngineGame, Side } from '../engine/engineTypes.ts'
 import type { CardInstance, PendingEffect, PublicGameState } from '../engine/gameInit.ts'
 
 export interface EffectPayload {
@@ -18,6 +18,11 @@ export interface EffectPayload {
   // apart; `pending` is the slot it wrote on the first entry.
   resolution?: { choiceId?: string; targetInstanceId?: string; zoneId?: number }
   pending?: PendingEffect
+  // Set ONLY by the battle-resolve dispatch (DECIDE_BATTLE_REPORT), from the
+  // ActiveBattle.continuation it is re-entering. A first entry and a
+  // post-battle re-entry otherwise carry an identical payload shape — this
+  // field is the only thing that lets an effect tell them apart.
+  continuation?: BattleContinuation
 }
 export type EffectFn = (payload: EffectPayload) => boolean
 export type CostModifierFn = (state: PublicGameState, side: Side, card: CardInstance) => number

@@ -81,10 +81,16 @@ export interface PublicGameState {
     zoneId: number; aggressor: 'a' | 'b'
     attackerIds: string[]; targetIds: string[]; stealthyIds: string[]
   } | null
+  // Structurally duplicates ActiveBattle in engineTypes.ts (not imported or
+  // aliased) — any field added to one must be added to the other by hand.
   activeBattle: {
     zoneId: number; aggressor: 'a' | 'b'
     attackerIds: string[]; defenderIds: string[]
     distanceM: number; distanceModifiedBy: ('a' | 'b')[]
+    summons: CardInstance[]
+    continuation: {
+      effect: string; side: 'a' | 'b'; card: CardInstance; data?: Record<string, unknown>
+    } | null
   } | null
   pendingReport: {
     submittedBy: 'a' | 'b'; results: Record<string, number>; repairs: string[]

@@ -153,6 +153,36 @@ describe('normalizeState', () => {
   })
 })
 
+describe('ActiveBattle summons/continuation defaulting (wave 3)', () => {
+  // The shape a battle declared by pre-wave-3 code has: no summons, no
+  // continuation. This is the row that exists in production the moment
+  // this wave deploys — a live game mid-battle (spec §4.4).
+  const legacyBattle = (): Record<string, unknown> => ({
+    zoneId: 1, aggressor: 'a', attackerIds: ['x'], defenderIds: ['y'],
+    distanceM: 1200, distanceModifiedBy: [],
+  })
+
+  it('defaults summons to [] on a non-null activeBattle missing it', () => {
+    const g = makeGame()
+    g.state.activeBattle = { ...legacyBattle(), continuation: null } as never // no summons
+    normalizeState(g.state)
+    expect(g.state.activeBattle).toMatchObject({ summons: [] })
+  })
+
+  it('defaults continuation to null on a non-null activeBattle missing it', () => {
+    const g = makeGame()
+    g.state.activeBattle = { ...legacyBattle(), summons: [] } as never // no continuation
+    normalizeState(g.state)
+    expect(g.state.activeBattle).toMatchObject({ continuation: null })
+  })
+
+  it('leaves a null activeBattle null and does not throw', () => {
+    const g = makeGame() // activeBattle already null
+    expect(() => normalizeState(g.state)).not.toThrow()
+    expect(g.state.activeBattle).toBeNull()
+  })
+})
+
 describe('phase 5 state shape', () => {
   it('normalizeState defaults factions, alertCard, and scheduled', () => {
     const game = makeGame()
