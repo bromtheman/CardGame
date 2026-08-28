@@ -282,9 +282,9 @@ describe('choice', () => {
 })
 
 describe('spawnVehicles', () => {
-  const parapet = snap({ name: 'Parapet', faction: 'OW', vehicleType: 'plane', materialCost: 259000 })
+  const parapet = snap({ name: 'Parapet', faction: 'OW', vehicleType: 'plane', materialCost: 259000, keywords: ['blocker'] })
 
-  it('spawns into the target zone with the summoning card\'s keywords', () => {
+  it('spawns into the target zone with merged keywords, de-duplicating overlaps', () => {
     const game = makeGame()
     const ctx = makeCtx({ catalog: [parapet] })
     const fn = spawnVehicles({ cardName: 'Parapet', count: 2, zones: 'target', keywords: ['inoffensive', 'blocker'] })
@@ -292,15 +292,16 @@ describe('spawnVehicles', () => {
     const spawned = game.state.zones[2].cards.a
     expect(spawned).toHaveLength(2)
     expect(spawned[0].keywords).toEqual(expect.arrayContaining(['inoffensive', 'blocker']))
+    expect(spawned[0].keywords).toHaveLength(2)
     expect(spawned[0].instanceId).not.toBe(spawned[1].instanceId)
     expect(spawned[0]).toHaveProperty('activatedOnTurn', null)
   })
 
-  it('ignores biome legality — a plane reaches every zone', () => {
+  it('ignores biome legality — a ship reaches land despite biome restriction', () => {
     const game = makeGame()
-    const ctx = makeCtx({ catalog: [snap({ name: 'Sapphire', vehicleType: 'plane', faction: 'LH' })] })
-    const fn = spawnVehicles({ cardName: 'Sapphire', count: 1, zones: 'all', keywords: ['mobile', 'stealthy'] })
-    expect(fn({ game, actor: 'a', card: inst({ name: 'Sapphire Screen' }), ctx })).toBe(true)
+    const ctx = makeCtx({ catalog: [snap({ name: 'Gunboat', vehicleType: 'ship', faction: 'LH', keywords: ['mobile'] })] })
+    const fn = spawnVehicles({ cardName: 'Gunboat', count: 1, zones: 'all', keywords: ['mobile', 'stealthy'] })
+    expect(fn({ game, actor: 'a', card: inst({ name: 'Gunboat Screen' }), ctx })).toBe(true)
     expect(game.state.zones.map((z) => z.cards.a.length)).toEqual([1, 1, 1])
   })
 
