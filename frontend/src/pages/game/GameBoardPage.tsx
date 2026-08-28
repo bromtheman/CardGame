@@ -15,6 +15,7 @@ import { HandBar } from './HandBar'
 import { ZoneActions } from './ZoneActions'
 import { StealthyResponseBar } from './StealthyResponseBar'
 import { BattleOverlay } from './BattleOverlay'
+import { PendingChoiceDialog } from './PendingChoiceDialog'
 import { HeroPowerBar, type MoveMode, type SwapMode } from './HeroPowerBar'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
 import ironIcon from '../../assets/icons/ironSVG.svg'
@@ -203,6 +204,14 @@ export function GameBoardPage() {
               : 'none'
           }
           state={state}
+          mySide={mySide}
+          send={send}
+          busy={busy}
+        />
+      )}
+      {isActive && state.pendingEffect && (
+        <PendingChoiceDialog
+          pending={state.pendingEffect}
           mySide={mySide}
           send={send}
           busy={busy}
