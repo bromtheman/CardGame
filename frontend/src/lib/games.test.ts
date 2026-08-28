@@ -1,5 +1,12 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { isMyMove } from './games'
+
+// games.ts imports supabaseClient for its query hooks, and that module throws
+// at import time when the Vite env vars are absent — which they are under the
+// root vitest config, since it has no envDir and .env.local is gitignored.
+// isMyMove is pure, so stubbing the client keeps this file honest and keeps
+// `npx vitest run` green on a clean checkout.
+vi.mock('./supabaseClient', () => ({ supabase: {} }))
 
 const row = (state: Partial<Parameters<typeof isMyMove>[0]['state']>) => ({
   active_player: 'alice',
