@@ -51,6 +51,27 @@ export interface ZoneEffect {
   setOnTurn: number
 }
 
+// One suspension slot (spec §4.2). An effect needing a decision writes this
+// and returns true; the game freezes to PENDING_ACTIONS until
+// RESOLVE_PENDING_EFFECT re-enters the same registry name.
+//
+// It carries the whole card, not just a name: by resolve time an ability has
+// been spendCard'd into state.destroyed, so it is in neither hand nor field,
+// and both the continuation's payload and game-action's catalog probe need
+// something with meta on it.
+//
+// `options` is PUBLIC. Never offer a choice over cards the opponent cannot
+// already see.
+export interface PendingEffect {
+  effect: string
+  side: 'a' | 'b'
+  card: CardInstance
+  kind: 'choice'
+  prompt: string
+  options: { id: string; label: string }[]
+  data?: Record<string, unknown>
+}
+
 export interface PublicGameState {
   zones: ZoneState[]
   resources: { a: { materials: number; cp: number }; b: { materials: number; cp: number } }
@@ -74,6 +95,7 @@ export interface PublicGameState {
   alertCard: { side: 'a' | 'b'; instanceId: string; name: string; setOnTurn: number } | null
   scheduled: { type: 'changeOrderDraw'; side: 'a' | 'b'; dueTurn: number }[]
   zoneEffects: ZoneEffect[]
+  pendingEffect: PendingEffect | null
 }
 
 export function snapshotCard(row: {
@@ -189,6 +211,7 @@ export function buildInitialGame(input: {
     alertCard: null,
     scheduled: [],
     zoneEffects: [],
+    pendingEffect: null,
   }
   return {
     game: {

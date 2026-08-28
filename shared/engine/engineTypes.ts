@@ -11,6 +11,9 @@ export interface EngineContext {
 export interface ZoneCardEntry extends CardInstance {
   playedOnTurn: number
   movedOnTurn: number | null
+  // Half-turn number of the last ACTIVATE_VEHICLE on this hull, null if never.
+  // Enforces once-per-turn for onActivate (spec §4.3, DP1).
+  activatedOnTurn: number | null
 }
 
 export interface AwaitingResponse {
@@ -63,6 +66,7 @@ export type GameAction =
   | { type: 'PLAY_CARD_TARGETING_CARD_ON_FIELD'; instanceId: string; targetInstanceId: string }
   | { type: 'PLAY_CARD_TARGETING_CARD_IN_HAND'; instanceId: string; targetInstanceId: string }
   | { type: 'MOVE_VEHICLE'; instanceId: string; zoneId: number }
+  | { type: 'ACTIVATE_VEHICLE'; instanceId: string; targetInstanceId?: string; zoneId?: number }
   | { type: 'ATTACK_ENEMY_BASE'; zoneId: number }
   | { type: 'ATTACK_ENEMY_FLEET'; zoneId: number; attackerIds: string[]; targetIds: string[] }
   | { type: 'RESPOND_TO_ATTACK'; optOutIds: string[] }
@@ -79,6 +83,13 @@ export type GameAction =
       targetInstanceId?: string // boardingParty: the enemy ship being traded for
       zoneId?: number       // rapidRedeployment: destination
       distanceDeltaM?: number // tacticalPositioning: ±meters
+    }
+  | {
+      type: 'RESOLVE_PENDING_EFFECT'
+      choiceId?: string
+      targetInstanceId?: string
+      zoneId?: number
+      cancel?: boolean
     }
 
 export type ApplyResult = { ok: true; game: EngineGame } | { ok: false; status: number; error: string }

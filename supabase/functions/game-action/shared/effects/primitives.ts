@@ -1,5 +1,5 @@
-import type { CardInstance } from '../engine/gameInit.ts'
-import type { EngineContext, EngineGame, Side } from '../engine/engineTypes.ts'
+import type { CardInstance, SnapshotCard } from '../engine/gameInit.ts'
+import type { EngineContext, EngineGame, Side, ZoneCardEntry } from '../engine/engineTypes.ts'
 import { drawCard, findVehicle, otherSide } from '../engine/gameEngine.ts'
 import type { EffectFn, EffectPayload } from './registry.ts'
 
@@ -109,7 +109,7 @@ export function drawFromPool(spec: PoolSpec): EffectFn {
     const hand = game.privates[actor].hand
     const allowEmpty = spec.allowEmpty ?? spec.source === 'deck'
     if (spec.source === 'catalog') {
-      const pool = ctx.catalog.filter((c) => c.isBuiltIn && matches(c, spec.filter))
+      const pool = ctx.catalog.filter((c) => c.isBuiltIn && c.meta.summonOnly !== true && matches(c, spec.filter))
       if (pool.length === 0) {
         if (!allowEmpty) return false
         game.state.log.push(`Player ${actor.toUpperCase()} finds no matching card`)
@@ -168,6 +168,64 @@ export function whenPlayed(predicate: (p: EffectPayload) => boolean, body: Effec
   return (payload) => (predicate(payload) ? body(payload) : true)
 }
 
+// Find a built-in card by its printed name. Summoning cards name their hull
+// in card text ("spawn two parapets"), so the name is the only stable key —
+// card ids are generated at seed time.
+export function catalogCard(ctx: EngineContext, cardName: string): SnapshotCard | null {
+  return ctx.catalog.find((c) => c.isBuiltIn && c.name === cardName) ?? null
+}
+
+// Place one hull on the board. SPAWNING IS NOT PLAYING (spec §7.4): no
+// payment, no placement legality, no onPlayEffect. Keywords come from the
+// summoning card, on top of whatever the row prints; the add is idempotent.
+export function spawnInto(
+  game: EngineGame, ctx: EngineContext, actor: Side, zoneId: number,
+  snapshot: SnapshotCard, keywords: string[] = [],
+): ZoneCardEntry | null {
+  const zone = game.state.zones.find((z) => z.id === zoneId)
+  if (!zone) return null
+  const entry: ZoneCardEntry = {
+    ...snapshot,
+    instanceId: ctx.newId(),
+    keywords: [...snapshot.keywords, ...keywords.filter((k) => !snapshot.keywords.includes(k))],
+    playedOnTurn: game.turnNumber,
+    movedOnTurn: null,
+    activatedOnTurn: null,
+  }
+  zone.cards[actor].push(entry)
+  return entry
+}
+
+// Spawn `count` copies of a named catalog card into the played zone, or into
+// every zone. A card missing from the catalog is a data bug, not an empty
+// pool, so it fails the play rather than fizzling.
+export function spawnVehicles(spec: {
+  cardName: string
+  count: number
+  zones: 'target' | 'all'
+  keywords?: string[]
+}): EffectFn {
+  return ({ game, actor, ctx, targetZoneId }) => {
+    const snapshot = catalogCard(ctx, spec.cardName)
+    if (!snapshot) return false
+    const zoneIds = spec.zones === 'all'
+      ? game.state.zones.map((z) => z.id)
+      : typeof targetZoneId === 'number' ? [targetZoneId] : []
+    if (zoneIds.length === 0) return false
+    let spawned = 0
+    for (const zoneId of zoneIds) {
+      for (let i = 0; i < spec.count; i++) {
+        if (spawnInto(game, ctx, actor, zoneId, snapshot, spec.keywords)) spawned++
+      }
+    }
+    if (spawned === 0) return false
+    game.state.log.push(
+      `${spawned} ${spec.cardName}${spawned === 1 ? '' : 's'} spawned for player ${actor.toUpperCase()}`,
+    )
+    return true
+  }
+}
+
 // Stamp a persistent per-instance cost change onto a card in the actor's
 // hand, the way doubleUpEffect stamps additionalSpawns. Read only by
 // effectiveCostInGame — never by effectiveMaterialCostOf.
@@ -198,5 +256,45 @@ export function grantKeywords(spec: {
     if (spec.filter && !matches(card, spec.filter)) return false
     card.keywords = [...card.keywords, ...spec.keywords.filter((k) => !card.keywords.includes(k))]
     return true
+  }
+}
+
+export interface ChoiceOption { id: string; label: string }
+
+// Suspend for a player decision (spec §4.2, DP4). First entry writes
+// state.pendingEffect and returns true; RESOLVE_PENDING_EFFECT re-enters the
+// same registry name with `resolution` set and runs `resolve`.
+//
+// Empty options do NOT suspend — they call resolve(payload, null) straight
+// away, so a card whose choice is optional still runs its tail. Kraken needs
+// exactly this: "refresh one of your hero powers then gain 1cp" must still
+// grant the CP for a player with no used powers.
+export function choice(spec: {
+  effect: string
+  prompt: string
+  options: (p: EffectPayload) => ChoiceOption[]
+  data?: (p: EffectPayload) => Record<string, unknown>
+  resolve: (p: EffectPayload, choiceId: string | null) => boolean
+}): EffectFn {
+  return (payload) => {
+    if (payload.resolution === undefined) {
+      const options = spec.options(payload)
+      if (options.length === 0) return spec.resolve(payload, null)
+      payload.game.state.pendingEffect = {
+        effect: spec.effect,
+        side: payload.actor,
+        card: payload.card,
+        kind: 'choice',
+        prompt: spec.prompt,
+        options,
+        data: spec.data ? spec.data(payload) : undefined,
+      }
+      payload.game.state.log.push(`${payload.card.name} is waiting on a choice`)
+      return true
+    }
+    const chosen = payload.resolution.choiceId
+    const known = payload.pending?.options ?? []
+    if (typeof chosen !== 'string' || !known.some((o) => o.id === chosen)) return false
+    return spec.resolve(payload, chosen)
   }
 }

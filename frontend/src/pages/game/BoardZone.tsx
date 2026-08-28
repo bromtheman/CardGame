@@ -96,10 +96,12 @@ export function BoardZone({
   onZoneClick,
   children,
   canMoveVehicles,
+  canActivateVehicles,
   moveVehiclePickMode,
   selectedForMoveId,
   onPickVehicleForMove,
   onMobileMoveClick,
+  onActivateClick,
   fieldTargetingActive,
   onFieldTargetClick,
   swapPickOwnMode,
@@ -118,10 +120,12 @@ export function BoardZone({
   onZoneClick?: () => void
   children?: ReactNode
   canMoveVehicles?: boolean
+  canActivateVehicles?: boolean
   moveVehiclePickMode?: boolean
   selectedForMoveId?: string | null
   onPickVehicleForMove?: (instanceId: string) => void
   onMobileMoveClick?: (instanceId: string) => void
+  onActivateClick?: (instanceId: string) => void
   fieldTargetingActive?: boolean
   onFieldTargetClick?: (instanceId: string) => void
   swapPickOwnMode?: boolean
@@ -172,6 +176,11 @@ export function BoardZone({
       <div className="flex min-h-[76px] flex-wrap gap-1 border-t border-ocean-600/50 pt-2">
         {(zone.cards[mySide] as ZoneCardEntry[]).map((c) => {
           const mobileEligible = !!canMoveVehicles && c.keywords.includes(KEYWORDS.MOBILE) && c.movedOnTurn !== turnNumber
+          const activateEligible =
+            !!canActivateVehicles &&
+            typeof (c.meta as { activateCpCost?: unknown }).activateCpCost === 'number' &&
+            typeof (c.meta as { onActivate?: unknown }).onActivate === 'string' &&
+            c.activatedOnTurn !== turnNumber
           const swapOwnEligible = !!swapPickOwnMode && c.faction === 'DWG' && c.vehicleType === VEHICLE_TYPES.SHIP
           return (
             <MiniVehicle
@@ -190,6 +199,8 @@ export function BoardZone({
               }
               moveAffordance={mobileEligible}
               onMoveClick={mobileEligible ? () => onMobileMoveClick?.(c.instanceId) : undefined}
+              activateAffordance={activateEligible}
+              onActivateClick={activateEligible ? () => onActivateClick?.(c.instanceId) : undefined}
             />
           )
         })}

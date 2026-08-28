@@ -21,10 +21,35 @@ Three functions, all deployed with `verify_jwt: false` — each does its own
 - Version-check contract: client sends `expectedVersion`; RPC returns `null` on
   mismatch → function returns **409** → client refetches. Errors come back as
   `{ errors: string[] }` with 4xx status.
-- Catalog probe (`game-action`): when the card being played (looked up by
-  `action.instanceId` in the **caller's own hand**) names a `CATALOG_EFFECTS`
-  effect (`played.meta ?? {}` guards null meta), the full built-in catalog is
-  fetched; a catalog DB error is a 500, never a silent empty catalog.
+- Catalog probe (`game-action`): the full built-in catalog is fetched when any
+  candidate card's `meta` names a `CATALOG_EFFECTS` effect. A catalog DB error
+  is a 500, never a silent empty catalog. **Three sources feed the candidate
+  list**, and a card outside all three resolves against an empty catalog:
+
+  | Source | Covers |
+  |---|---|
+  | the card at `action.instanceId` in the **caller's own hand** | the card being played |
+  | every on-field entry in every zone, **both sides** | `onDeathEffect`s fired inside `DECIDE_BATTLE_REPORT` (which carries no `instanceId`) and on-field activated abilities |
+  | `state.pendingEffect.card` | a **suspended** effect being resolved |
+
+  The third exists because **the probe is blind to a card that has already been
+  spent.** An ability is `spendCard`'d into `state.destroyed` when it is played,
+  so by the time `RESOLVE_PENDING_EFFECT` arrives it is in neither hand nor
+  field — which is why `pendingEffect` stores the card verbatim rather than its
+  name. Any future dispatch point that fires an effect for a card in neither
+  hand nor field must add a fourth source.
+
+  ⚠ **This branch has no unit test.** `game-action/index.ts` is Deno edge code
+  with no test harness in this repo, so a probe regression reaches production
+  and surfaces as a 400 on Special Foundries or Robotic Assemblers. It is
+  covered only by the live smoke test in the deploy runbook below — run it.
+
+- ⚠ **`npx tsc -p tsconfig.json --noEmit` does not typecheck edge functions.**
+  The root tsconfig's `include` is `["shared", "supabase/seed"]`, so
+  `supabase/functions/**` is outside it entirely (and `**/*.test.ts` is
+  excluded too). Careful reading is the only gate on edge-function code —
+  do not treat a green tsc as evidence that a change to `game-action` or
+  `lobby-action` compiles.
 - Debugging: `query_logs` for function logs; reproduce with a direct
   `supabase.functions.invoke` from a script (see testing.md E2E pattern).
 
@@ -78,6 +103,14 @@ engine/effects change; `lobby-action` after game-init/deck/lobby changes.
   introduce and for ones it should have removed, and check `function_logs` for
   clean boots. A genuinely partial payload shows up as a missing *runtime*
   module — which fails at boot, loudly — not as a missing type-only one.
+
+- **Smoke-test the catalog probe after any deploy that touches it or adds a
+  `needsCatalog` effect.** In a real game, play one card whose effect mints from
+  the catalog *without* suspending (e.g. Defensive Parapet) and one that
+  suspends and then mints on resolution (Special Foundries or Robotic
+  Assemblers) — the second is the only exercise the `state.pendingEffect.card`
+  source ever gets, since it has no unit test and tsc does not read the file.
+  A probe regression shows up as a 400 on the resolving action, not on the play.
 
 (Backlog: a script that assembles the full-directory payload automatically.)
 

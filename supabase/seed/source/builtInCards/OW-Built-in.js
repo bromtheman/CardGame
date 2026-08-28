@@ -105,6 +105,8 @@ export const GT_HEAVY_AIRSHIP = [
         blueprintId: null,
         keywords: [KEYWORDS.BLOCKER, KEYWORDS.SCRAPPY],
         meta: {
+            [TRIGGERS.ON_ACTIVATE]: 'monsoonActivate',
+            activateCpCost: 1
         }
     },
     {
@@ -122,6 +124,8 @@ export const GT_HEAVY_AIRSHIP = [
         blueprintId: null,
         keywords: [KEYWORDS.BLOCKER],
         meta: {
+            [TRIGGERS.ON_ACTIVATE]: 'hunchbackActivate',
+            activateCpCost: 1
         }
     },
 ];
@@ -481,6 +485,24 @@ export const owVehicles = [
         blueprintId: null,
         meta: {
             [TRIGGERS.PLAY_ON_CARD]: 'garrisonEffect',
+        }
+    },
+    {
+        name: 'Parapet',
+        isBuiltIn: true,
+        cardText: '',
+        materialCost: 259000,
+        blueprintCost: 259000,
+        cpCost: 0,
+        imageUrl: '',
+        playerId: null,
+        vehicleType: 'plane',
+        type: 'vehicle',
+        faction: FACTIONS.OW,
+        blueprintId: null,
+        keywords: [],
+        meta: {
+            summonOnly: true
         }
     },
 ];

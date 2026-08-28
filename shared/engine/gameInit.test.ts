@@ -102,6 +102,11 @@ describe('buildInitialGame', () => {
     const two = build([0.11, 0.42, 0.73, 0.05, 0.88])
     expect(one.aPrivate.deck.map((c) => c.cardId)).toEqual(two.aPrivate.deck.map((c) => c.cardId))
   })
+
+  it('starts with no pending effect', () => {
+    const { game } = build([0.9])
+    expect(game.state.pendingEffect).toBeNull()
+  })
 })
 
 describe('snapshotCard', () => {

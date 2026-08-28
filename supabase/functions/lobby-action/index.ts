@@ -139,6 +139,7 @@ Deno.serve(async (req) => {
         (cardRows ?? []).map((c) => [c.id, {
           id: c.id, isBuiltIn: c.is_built_in, faction: c.faction,
           vehicleType: c.vehicle_type, ownerId: c.owner_id,
+          summonOnly: (c.meta as { summonOnly?: boolean } | null)?.summonOnly === true,
         }]),
       )
       const snapshots = new Map<string, SnapshotCard>(

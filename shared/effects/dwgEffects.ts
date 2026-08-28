@@ -1,8 +1,8 @@
-import { DOUBLE_UP_MAX_COST, KEYWORDS, MARAUDER_DISCOUNT, RESERVES_CARD_COUNT } from '../gameSettings.ts'
+import { DOUBLE_UP_MAX_COST, HERO_POWER_LABELS, KEYWORDS, MARAUDER_DISCOUNT, RESERVES_CARD_COUNT } from '../gameSettings.ts'
 import type { ZoneCardEntry } from '../engine/engineTypes.ts'
 import { copyMeta, drawCard, zoneById } from '../engine/gameEngine.ts'
 import { effectiveMaterialCostOf } from '../engine/placement.ts'
-import { grant, takeFromEnemyDeck } from './primitives.ts'
+import { choice, grant, takeFromEnemyDeck } from './primitives.ts'
 import { registerCostModifier, registerEffect } from './registry.ts'
 import type { EffectPayload } from './registry.ts'
 
@@ -59,7 +59,11 @@ registerEffect('loggerheadOnDeath', ({ game, actor, card, ctx }) => {
 // add RESERVES_CARD_COUNT distinct random built-in DWG vehicles to hand
 // (Reserves — old BE shuffles the pool and shifts, so picks never repeat)
 registerEffect('reservesEffect', ({ game, actor, ctx }) => {
-  const pool = ctx.catalog.filter((c) => c.isBuiltIn && c.faction === 'DWG' && c.type === 'vehicle')
+  // Mints straight from the catalog rather than through drawFromPool, so the
+  // summonOnly exclusion (spec §7.4) does not come for free — it must be
+  // repeated here by hand. Without it this pool matches Flying Squirrel.
+  const pool = ctx.catalog.filter((c) =>
+    c.isBuiltIn && c.faction === 'DWG' && c.type === 'vehicle' && c.meta.summonOnly !== true)
   if (pool.length === 0) return false
   for (let i = pool.length - 1; i > 0; i--) {
     const j = Math.floor(ctx.rng() * (i + 1))
@@ -80,7 +84,7 @@ registerEffect('spawnBuccaneerEffect', ({ game, actor, ctx, targetZoneId }) => {
   if (!zone || !buccaneer) return false
   const entry: ZoneCardEntry = {
     ...buccaneer, instanceId: ctx.newId(), keywords: [KEYWORDS.SCRAPPY],
-    playedOnTurn: game.turnNumber, movedOnTurn: null,
+    playedOnTurn: game.turnNumber, movedOnTurn: null, activatedOnTurn: null,
   }
   zone.cards[actor].push(entry)
   game.state.log.push(`A Buccaneer joins zone ${zone.id} (Scrappy)`)
@@ -124,3 +128,24 @@ registerEffect('dwgWatersEffect', ({ game, actor, card, targetZoneId }) => {
   )
   return true
 })
+
+// "When played, refresh one of your hero powers then gain 1cp." With no used
+// power there is nothing to refresh, and `choice` resolves without suspending
+// so the CP still lands.
+const KRAKEN = 'krakenOnPlay'
+registerEffect(KRAKEN, choice({
+  effect: KRAKEN,
+  prompt: 'Refresh one of your used hero powers',
+  options: ({ game, actor }) =>
+    game.state.usedHeroPowers[actor].map((p) => ({ id: p, label: HERO_POWER_LABELS[p] ?? p })),
+  resolve: ({ game, actor }, choiceId) => {
+    if (choiceId === null) {
+      game.state.log.push('Kraken finds no used hero power to refresh')
+    } else {
+      game.state.usedHeroPowers[actor] = game.state.usedHeroPowers[actor].filter((p) => p !== choiceId)
+      game.state.log.push(`Kraken refreshes ${HERO_POWER_LABELS[choiceId] ?? choiceId}`)
+    }
+    game.state.resources[actor].cp += 1
+    return true
+  },
+}))

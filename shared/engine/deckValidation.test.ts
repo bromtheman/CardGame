@@ -93,4 +93,13 @@ describe('validateDeck', () => {
     const r = validateDeck({ faction: 'DWG', cards: { 'dwg-0': 2 } }, legalInfo(), ME, rules)
     expect(r.valid).toBe(true)
   })
+
+  it('rejects a summon-only card', () => {
+    const info = new Map<string, DeckCardInfo>([
+      ['sum-1', { id: 'sum-1', isBuiltIn: true, faction: 'WF', vehicleType: 'plane', ownerId: null, summonOnly: true }],
+    ])
+    const result = validateDeck({ faction: 'WF', cards: { 'sum-1': 1 } }, info, 'owner-1')
+    expect(result.valid).toBe(false)
+    expect(result.errors.join(' ')).toMatch(/cannot be added to a deck/i)
+  })
 })

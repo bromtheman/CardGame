@@ -33,6 +33,12 @@ export function findVehicle(state: PublicGameState, instanceId: string) {
   return null
 }
 
+// Summon-only cards are spawned, never drafted (spec §7.1). They must never
+// reach state.destroyed: reshuffleDiscard feeds the discard back into the
+// owner's deck, which would make a destroyed Martyr draftable.
+export const isSummonOnly = (card: { meta: Record<string, unknown> }): boolean =>
+  card.meta.summonOnly === true
+
 export const battleFrozen = (state: PublicGameState): boolean =>
   state.awaitingResponse !== null || state.activeBattle !== null || state.pendingReport !== null
 
@@ -46,6 +52,23 @@ const BATTLE_ACTIONS = new Set<GameAction['type']>([
 
 const OFF_TURN_ACTIONS = new Set<GameAction['type']>([
   'CONCEDE', 'ABANDON', 'RESPOND_TO_ATTACK', 'SUBMIT_BATTLE_REPORT', 'DECIDE_BATTLE_REPORT', 'USE_HERO_POWER',
+  // pendingEffect.side is whichever side the suspending effect ran for (e.g.
+  // battleResolve.ts fires a death effect with `actor: side` per destroyed
+  // vehicle's owner) and need not match game.activePlayer. Without this, the
+  // turn check below rejects the owing off-turn player with 409 "Not your
+  // turn" before the handler's own `pending.side !== actor` (403) / "nothing
+  // pending" (409) checks ever run — leaving CANCEL, which exists precisely
+  // to unstick a stranded game, unreachable. Those two handler checks already
+  // enforce everything this turn check would add, so admitting it here is safe.
+  'RESOLVE_PENDING_EFFECT',
+])
+
+// A suspended effect freezes harder than a battle does. BATTLE_ACTIONS admits
+// USE_HERO_POWER and the three battle actions, none of which should be legal
+// while a player owes a choice — so this is its own list, checked first
+// (spec §4.2, departure 2).
+const PENDING_ACTIONS = new Set<GameAction['type']>([
+  'RESOLVE_PENDING_EFFECT', 'CONCEDE', 'ABANDON',
 ])
 
 export const err = (status: number, error: string): ApplyResult => ({ ok: false, status, error })
@@ -70,11 +93,13 @@ export function normalizeState(state: PublicGameState): void {
   if (s.alertCard === undefined) s.alertCard = null
   if (s.scheduled === undefined) s.scheduled = []
   if (s.zoneEffects === undefined) s.zoneEffects = []
+  if (s.pendingEffect === undefined) s.pendingEffect = null
   for (const zone of state.zones) {
     for (const side of ['a', 'b'] as Side[]) {
       for (const entry of zone.cards[side] as Partial<ZoneCardEntry>[]) {
         if (entry.playedOnTurn === undefined) entry.playedOnTurn = 0
         if (entry.movedOnTurn === undefined) entry.movedOnTurn = null
+        if (entry.activatedOnTurn === undefined) entry.activatedOnTurn = null
       }
     }
   }
@@ -139,8 +164,16 @@ export function copyMeta(meta: Record<string, unknown>): Record<string, unknown>
 // on the next capture, re-stacking — discount on their own card. Printed meta
 // (`additionalSpawns` and friends) is card data and stays.
 export function discardCard(game: EngineGame, controller: Side, card: CardInstance): void {
-  const { instanceId: _instanceId, playedOnTurn: _p, movedOnTurn: _m, ...snapshot } =
-    card as ZoneCardEntry
+  // Every per-entry stamp must be named here. TypeScript does NOT catch one you
+  // forget — extra properties in a rest spread are legal — so it would ride
+  // into state.destroyed and, via reshuffleDiscard, into a deck.
+  const {
+    instanceId: _instanceId, playedOnTurn: _p, movedOnTurn: _m, activatedOnTurn: _a, ...snapshot
+  } = card as ZoneCardEntry
+  // Summon-only cards are spawned, never drafted (spec §7.1). They must never
+  // reach a discard, because that is a deck's back door. This is the single
+  // exit out of play, so guarding it here covers every path at once.
+  if (isSummonOnly(card)) return
   const owner = ownerSideOf(card, controller)
   if (owner !== controller) {
     const { ownerSide: _ownerSide, costDelta: _costDelta, ...meta } = snapshot.meta
@@ -257,6 +290,9 @@ export function applyAction(
   const actor = sideOf(game, actorId)
   if (!actor) return err(403, 'You are not in this game')
   if (game.status !== 'active') return err(409, 'Game is over')
+  if (game.state.pendingEffect !== null && !PENDING_ACTIONS.has(action.type)) {
+    return err(409, 'A card effect is waiting on a choice — resolve it first')
+  }
   if (battleFrozen(game.state) && !BATTLE_ACTIONS.has(action.type)) {
     return err(409, 'A battle is in progress — resolve it first')
   }

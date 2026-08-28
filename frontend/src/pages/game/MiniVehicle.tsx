@@ -19,6 +19,8 @@ export function MiniVehicle({
   dimmed,
   moveAffordance,
   onMoveClick,
+  activateAffordance,
+  onActivateClick,
 }: {
   entry: ZoneCardEntry
   turnNumber: number
@@ -28,6 +30,9 @@ export function MiniVehicle({
   /** Show the small "move" corner button (Mobile keyword, eligible to move this turn). */
   moveAffordance?: boolean
   onMoveClick?: () => void
+  /** Show the small "use" corner button (has an activated ability, unused this turn). */
+  activateAffordance?: boolean
+  onActivateClick?: () => void
 }) {
   const [detailsOpen, setDetailsOpen] = useState(false)
   const icon = vehicleTypeIcon(entry.vehicleType)
@@ -59,6 +64,19 @@ export function MiniVehicle({
           className="absolute -left-1 -top-1 rounded-full bg-brass-400 px-1 text-[9px] font-bold text-ocean-950"
         >
           move
+        </button>
+      )}
+      {activateAffordance && onActivateClick && (
+        <button
+          type="button"
+          title="Use this vehicle's activated ability"
+          onClick={(e) => {
+            e.stopPropagation()
+            onActivateClick()
+          }}
+          className="absolute -bottom-1 -left-1 rounded-full bg-brass-400 px-1 text-[9px] font-bold text-ocean-950"
+        >
+          use
         </button>
       )}
       <img src={icon} alt={entry.vehicleType ?? entry.type} className="h-8 w-8 opacity-80" />

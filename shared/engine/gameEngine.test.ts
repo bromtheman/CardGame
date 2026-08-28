@@ -299,6 +299,82 @@ describe('spent ability cards', () => {
   })
 })
 
+describe('activatedOnTurn', () => {
+  it('normalizeState defaults it to null on a legacy entry', () => {
+    const game = makeGame()
+    const legacy = zoneEntry({ name: 'Legacy' }) as unknown as Record<string, unknown>
+    delete legacy.activatedOnTurn
+    game.state.zones[0].cards.a.push(legacy as never)
+    normalizeState(game.state)
+    expect(game.state.zones[0].cards.a[0]).toHaveProperty('activatedOnTurn', null)
+  })
+
+  it('does not leak the stamp into the discard when a Temporary vehicle is culled', () => {
+    const game = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+    game.state.zones[0].cards.a.push(
+      zoneEntry({ name: 'Ghost', keywords: ['temporary'], activatedOnTurn: 2 }),
+    )
+    const res = applyAction(game, 'alice', { type: 'END_TURN' }, makeCtx())
+    if (!res.ok) throw new Error(res.error)
+    expect(res.game.state.destroyed.a).toHaveLength(1)
+    expect(res.game.state.destroyed.a[0]).not.toHaveProperty('activatedOnTurn')
+    expect(res.game.state.destroyed.a[0]).not.toHaveProperty('playedOnTurn')
+  })
+})
+
+describe('pendingEffect freeze', () => {
+  const pending = (side: 'a' | 'b' = 'a') => ({
+    effect: 't_choice',
+    side,
+    card: inst({ name: 'Kraken', instanceId: 'k1' }),
+    kind: 'choice' as const,
+    prompt: 'Pick one',
+    options: [{ id: 'x', label: 'X' }],
+  })
+
+  it('blocks an ordinary action while a choice is owed', () => {
+    const game = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+    game.state.pendingEffect = pending()
+    const res = applyAction(game, 'alice', { type: 'END_TURN' }, makeCtx())
+    expect(res).toMatchObject({ ok: false, status: 409 })
+  })
+
+  it('blocks a hero power, which the battle freeze would have allowed', () => {
+    const game = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+    game.state.pendingEffect = pending()
+    const res = applyAction(game, 'alice', { type: 'USE_HERO_POWER', power: 'draw' }, makeCtx())
+    expect(res).toMatchObject({ ok: false, status: 409 })
+  })
+
+  it('still allows conceding', () => {
+    const game = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+    game.state.pendingEffect = pending()
+    const res = applyAction(game, 'alice', { type: 'CONCEDE' }, makeCtx())
+    expect(res.ok).toBe(true)
+  })
+
+  it('normalizeState defaults the slot on a legacy row', () => {
+    const game = makeGame()
+    delete (game.state as unknown as Record<string, unknown>).pendingEffect
+    normalizeState(game.state)
+    expect(game.state.pendingEffect).toBeNull()
+  })
+})
+
+describe('summon-only cards', () => {
+  it('a summon-only Temporary vehicle despawns without entering the discard', () => {
+    const game = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+    game.state.zones[0].cards.a.push(zoneEntry({
+      name: 'Martyr', keywords: ['temporary'], meta: { summonOnly: true },
+    }))
+    const res = applyAction(game, 'alice', { type: 'END_TURN' }, makeCtx())
+    if (!res.ok) throw new Error(res.error)
+    expect(res.game.state.zones[0].cards.a).toHaveLength(0)
+    expect(res.game.state.destroyed.a).toHaveLength(0)
+    expect(res.game.state.log.join()).toContain('Martyr despawned')
+  })
+})
+
 describe('captured cards', () => {
   // Temporary despawn is the third exit a captured card can take (battle
   // death and ability spend are the other two) — all three go home.

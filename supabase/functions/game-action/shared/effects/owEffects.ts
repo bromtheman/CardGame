@@ -1,8 +1,9 @@
-import { drawFromPool, grant, grantKeywords, whenPlayed, zoneOccupants } from './primitives.ts'
+import { choice, drawFromPool, grant, grantKeywords, spawnVehicles, whenPlayed, zoneOccupants } from './primitives.ts'
 import { registerEffect } from './registry.ts'
-import { KEYWORDS } from '../gameSettings.ts'
+import { GT_HEAVY_AIRSHIP_MIN_COST, KEYWORDS } from '../gameSettings.ts'
 import type { ZoneCardEntry } from '../engine/engineTypes.ts'
 import { copyMeta } from '../engine/gameEngine.ts'
+import { moveEntry } from '../engine/heroPowers.ts'
 
 // OW built-in card effects. Cards whose faction is GT but whose seed row
 // lives in OW-Built-in.js are registered here too.
@@ -36,7 +37,7 @@ registerEffect('clydesdaleEffect', whenPlayed(
     if (!zone) return false
     const copy: ZoneCardEntry = {
       ...card, instanceId: ctx.newId(), meta: copyMeta(card.meta),
-      playedOnTurn: game.turnNumber, movedOnTurn: null,
+      playedOnTurn: game.turnNumber, movedOnTurn: null, activatedOnTurn: null,
     }
     zone.cards[actor].push(copy)
     game.state.log.push(`A second ${card.name} rolls off the line in zone ${zone.id}`)
@@ -52,3 +53,49 @@ registerEffect('garrisonEffect', grantKeywords({
   target: 'hand',
   filter: { isBuiltIn: true, type: 'vehicle' },
 }))
+
+// "Once per turn, you may spend 1cp to draw a card" — the CP is charged by
+// ACTIVATE_VEHICLE from meta.activateCpCost, so the effect is only the draw.
+registerEffect('hunchbackActivate', grant({ draw: 1 }))
+
+// "Once per turn, you may pay 1cp to move this vehicle to another zone."
+// Reuses the hero-power relocation, so biome legality and the movedOnTurn
+// stamp behave exactly as they do for a Mobile vehicle's MOVE_VEHICLE.
+registerEffect('monsoonActivate', ({ game, actor, card, targetZoneId }) => {
+  if (typeof targetZoneId !== 'number') return false
+  return moveEntry(game, actor, card.instanceId, targetZoneId, true).ok
+})
+
+// "Draw one card from either the GT Airship or Heavy Airship deck (your
+// choice)." Spec §7.3 puts the cliff at GT_HEAVY_AIRSHIP_MIN_COST, which
+// splits the fourteen GT airships 6 / 8 — the guard pins those counts.
+const SPECIAL_FOUNDRIES = 'specialFoundriesEffect'
+const gtLightAirship = drawFromPool({
+  source: 'catalog',
+  filter: { faction: 'GT', vehicleType: 'airship', maxCost: GT_HEAVY_AIRSHIP_MIN_COST - 1 },
+  count: 1,
+})
+const gtHeavyAirship = drawFromPool({
+  source: 'catalog',
+  filter: { faction: 'GT', vehicleType: 'airship', minCost: GT_HEAVY_AIRSHIP_MIN_COST },
+  count: 1,
+})
+registerEffect(SPECIAL_FOUNDRIES, choice({
+  effect: SPECIAL_FOUNDRIES,
+  prompt: 'Draw from which GT airship pool?',
+  options: () => [
+    { id: 'light', label: 'GT Airship' },
+    { id: 'heavy', label: 'GT Heavy Airship' },
+  ],
+  resolve: (payload, choiceId) => (choiceId === 'heavy' ? gtHeavyAirship(payload) : gtLightAirship(payload)),
+}), { needsCatalog: true })
+
+// "Spawn two parapets into a zone. They gain Inoffensive, Scrappy, and blocker
+// keywords." Keywords come from the summoning card, not the Parapet row —
+// the established pattern (spawnBuccaneerEffect stamps Scrappy the same way).
+registerEffect('defensiveParapetEffect', spawnVehicles({
+  cardName: 'Parapet',
+  count: 2,
+  zones: 'target',
+  keywords: [KEYWORDS.INOFFENSIVE, KEYWORDS.SCRAPPY, KEYWORDS.BLOCKER],
+}), { needsCatalog: true })

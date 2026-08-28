@@ -52,9 +52,11 @@ export function DeckBuilderPage() {
   const pool = useMemo(
     () =>
       (allCards ?? []).filter((c) =>
-        c.is_built_in
-          ? c.faction === deck?.faction || c.faction === FACTIONS.NEUTRAL
-          : c.owner_id === session?.user.id,
+        (c.meta as { summonOnly?: boolean } | null)?.summonOnly === true
+          ? false
+          : c.is_built_in
+            ? c.faction === deck?.faction || c.faction === FACTIONS.NEUTRAL
+            : c.owner_id === session?.user.id,
       ),
     [allCards, deck, session],
   )
@@ -65,6 +67,7 @@ export function DeckBuilderPage() {
       allCards.map((c) => [c.id, {
         id: c.id, isBuiltIn: c.is_built_in, faction: c.faction,
         vehicleType: c.vehicle_type, ownerId: c.owner_id,
+        summonOnly: (c.meta as { summonOnly?: boolean } | null)?.summonOnly === true,
       }]),
     )
     return validateDeck({ faction: deck.faction, cards }, infoMap, session.user.id)

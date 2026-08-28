@@ -162,8 +162,16 @@ describe('USE_HERO_POWER faction gate', () => {
 describe('USE_HERO_POWER boardingParty (DWG)', () => {
   it('swaps my DWG ship for a same-zone enemy ship of equal-or-lesser effective cost', () => {
     const g = makeGame() // turnNumber 2, alice active, a=DWG
-    const mine = zoneEntry({ faction: 'DWG', vehicleType: 'ship', materialCost: 100000, name: 'Buccaneer', playedOnTurn: 1 })
-    const theirs = zoneEntry({ faction: 'OW', vehicleType: 'ship', materialCost: 80000, name: 'Ironclad', playedOnTurn: 1 })
+    // Both hulls carry a spent activation stamp going in — Boarding Party must
+    // reset it on both sides of the trade, not just re-stamp playedOnTurn.
+    const mine = zoneEntry({
+      faction: 'DWG', vehicleType: 'ship', materialCost: 100000, name: 'Buccaneer',
+      playedOnTurn: 1, activatedOnTurn: 1,
+    })
+    const theirs = zoneEntry({
+      faction: 'OW', vehicleType: 'ship', materialCost: 80000, name: 'Ironclad',
+      playedOnTurn: 1, activatedOnTurn: 2,
+    })
     g.state.zones[0].cards.a.push(mine)
     g.state.zones[0].cards.b.push(theirs)
     const r = applyAction(g, 'alice', {
@@ -172,11 +180,11 @@ describe('USE_HERO_POWER boardingParty (DWG)', () => {
     if (!r.ok) throw new Error(r.error)
     expect(r.game.state.zones[0].cards.a).toHaveLength(1)
     expect(r.game.state.zones[0].cards.a[0]).toMatchObject({
-      instanceId: theirs.instanceId, playedOnTurn: 2, movedOnTurn: null,
+      instanceId: theirs.instanceId, playedOnTurn: 2, movedOnTurn: null, activatedOnTurn: null,
     })
     expect(r.game.state.zones[0].cards.b).toHaveLength(1)
     expect(r.game.state.zones[0].cards.b[0]).toMatchObject({
-      instanceId: mine.instanceId, playedOnTurn: 2, movedOnTurn: null,
+      instanceId: mine.instanceId, playedOnTurn: 2, movedOnTurn: null, activatedOnTurn: null,
     })
     expect(r.game.state.resources.a.cp).toBe(2)
     expect(r.game.state.usedHeroPowers.a).toEqual(['boardingParty'])

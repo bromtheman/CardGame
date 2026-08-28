@@ -16,6 +16,8 @@
     "engine/engineTypes.ts",
     "engine/gameEngine.ts",
     "engine/placement.ts",
+    "engine/activate.ts",
+    "engine/pendingEffect.ts",
     "engine/baseAttack.ts",
     "engine/battleDeclare.ts",
     "engine/battleResolve.ts",

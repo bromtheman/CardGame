@@ -44,13 +44,19 @@ export function useMyGamePlayerQuery(gameId: string | undefined) {
 }
 
 // True when this game is waiting on ME: my normal turn, a stealthy-withdrawal
-// response I owe as defender, or a battle report awaiting MY approval.
+// response I owe as defender, a battle report awaiting MY approval, or a
+// suspended card effect whose choice I owe.
 export function isMyMove(g: {
   active_player: string
   player_a: string
-  state: { awaitingResponse: { aggressor: 'a' | 'b' } | null; pendingReport: { submittedBy: 'a' | 'b' } | null }
+  state: {
+    awaitingResponse: { aggressor: 'a' | 'b' } | null
+    pendingReport: { submittedBy: 'a' | 'b' } | null
+    pendingEffect: { side: 'a' | 'b' } | null
+  }
 }, me: string): boolean {
   const mySide: 'a' | 'b' = g.player_a === me ? 'a' : 'b'
+  if (g.state?.pendingEffect) return g.state.pendingEffect.side === mySide
   if (g.state?.pendingReport) return g.state.pendingReport.submittedBy !== mySide
   if (g.state?.awaitingResponse) return g.state.awaitingResponse.aggressor !== mySide
   return g.active_player === me
