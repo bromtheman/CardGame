@@ -106,11 +106,16 @@ engine/effects change; `lobby-action` after game-init/deck/lobby changes.
 
 - **Smoke-test the catalog probe after any deploy that touches it or adds a
   `needsCatalog` effect.** In a real game, play one card whose effect mints from
-  the catalog *without* suspending (e.g. Defensive Parapet) and one that
-  suspends and then mints on resolution (Special Foundries or Robotic
-  Assemblers) — the second is the only exercise the `state.pendingEffect.card`
-  source ever gets, since it has no unit test and tsc does not read the file.
-  A probe regression shows up as a 400 on the resolving action, not on the play.
+  the catalog *without* suspending (e.g. Defensive Parapet, or wave 3's Flying
+  Squirrel Attack) and one that suspends and then mints on resolution (Special
+  Foundries, Robotic Assemblers, or wave 3's Air Strafe played against a
+  player-design target) — the second kind is the only exercise the
+  `state.pendingEffect.card` source ever gets, since it has no unit test and
+  tsc does not read the file. Air Strafe against a player design is only the
+  *second* real exercise of that path anywhere in the codebase, and the first
+  since wave 2 built it — worth confirming deliberately rather than assuming
+  it still works by analogy. A probe regression shows up as a 400 on the
+  resolving action, not on the play.
 
 (Backlog: a script that assembles the full-directory payload automatically.)
 

@@ -33,9 +33,13 @@ Card rows carry `meta` (jsonb). The full meta-key vocabulary is `TRIGGERS` in
 `shared/engine/activate.ts`, see [architecture.md](architecture.md)), and the
 `playOn*Effect` targeting variants (`playOnZoneEffect` via PLAY_CARD_TO_ZONE;
 field/hand targets flow in as `PLAY_CARD_TARGETING_CARD_ON_FIELD` /
-`..._IN_HAND` actions with `targetInstanceId`). The battle triggers
-(`onBattleEffect` / `onBattleVictory` / `onBattleDefeat`) exist in seed data but
-have no dispatch point yet. `additionalSpawns: n` on a
+`..._IN_HAND` actions with `targetInstanceId` — a vehicle may carry
+`playOnCardEffect` too, via the hand-target action's optional `zoneId`;
+Excalibur is the only one today). The battle triggers (`onBattleEffect` /
+`onBattleVictory` / `onBattleDefeat`) are dispatched nowhere **and** named on
+no seeded card — wave 4 must add both together, since a key nothing reads and
+nothing names is invisible to the coverage guard below (see
+[architecture.md](architecture.md)'s "Known gaps"). `additionalSpawns: n` on a
 vehicle deploys n extra copies (capped at `ADDITIONAL_SPAWNS_CAP` = 10, ids from
 `ctx.newId()`); effects that grant it (Double Up) stack on **printed** values.
 
@@ -106,6 +110,9 @@ live in per-faction modules (`dwgEffects.ts`, `owEffects.ts`, `ssEffects.ts`,
 | `sequence(...fns)` | run effects in order, stopping at the first failure |
 | `choice({effect, prompt, options, resolve, data})` | suspend for a player decision — writes `state.pendingEffect`, re-entered by name (see below) |
 | `spawnVehicles({cardName, count, zones, keywords})` | put catalog-minted hulls straight onto the board; needs `{ needsCatalog: true }` |
+| `mintHull(game, ctx, snapshot, keywords?)` | stamp one fresh `ZoneCardEntry` from a catalog snapshot — new `instanceId`, merged keywords, turn stamps reset. The building block under both `spawnInto` and `summonHulls`; does not place the entry anywhere |
+| `summonHulls(game, ctx, cardName, count, keywords?)` | mint `count` hulls of a named catalog card, returned as an array for `ActiveBattle.summons` — never touches `zone.cards`, so the summons vanish with the battle (spec §4.4). Needs `{ needsCatalog: true }` |
+| `enemyVehicleOptions(game, actor, zoneId, filter?)` | build public `ChoiceOption[]` from the acting side's enemy vehicles: `zoneId: number` scopes to one zone, `zoneId: null` scans every zone (Orbit Flank's mode-b pick, which has no home zone to scope to) |
 
 ## Suspending for a choice (`choice`)
 
@@ -117,7 +124,7 @@ name** with `payload.resolution` set, and `resolve` runs. See
 `docs/superpowers/specs/2026-08-27-effect-coverage-design.md` §4.2 for the
 shipped shape.
 
-Three rules, each of which has already cost someone a bug:
+Four rules, each of which has already cost someone a bug:
 
 - **`effect: NAME` is mandatory, and a factory cannot infer it.** `choice`
   returns a plain closure; it never sees the name `registerEffect` files it
@@ -136,8 +143,33 @@ Three rules, each of which has already cost someone a bug:
   opponent already has — used hero powers, named catalog pools, cards on the
   field. **A choice over your own hand or deck would leak it**, and there is no
   private-options mechanism.
+- **Stash everything the continuation needs in `data`; never trust
+  `resolution.targetInstanceId` / `.zoneId`.** `RESOLVE_PENDING_EFFECT` carries
+  a `resolution` object that *does* include `targetInstanceId` and `zoneId`,
+  but both are client-supplied and unvalidated — trusting them would let a
+  stale or malicious client redirect the effect to a different target/zone
+  between the first entry and the resolve. Write the target down yourself in
+  `data` on the first entry (`data: (payload) => ({ ... })`, run before the
+  suspension), then on resolve read `payload.pending?.data`, not
+  `payload.resolution`. `choice()` already checks `choiceId` against
+  `pending.options` for you; re-check anything read out of `data` against the
+  board too (e.g. `enemyVehicleOptions(...).some(o => o.id === choiceId)`)
+  before acting on it, in case the target left the board while the choice sat
+  open. Air Strafe (`shared/effects/ssEffects.ts`, `AIR_STRAFE`) is the worked
+  example — it stashes `{ targetInstanceId, zoneId }` at first entry and reads
+  only that back on resolve. Trebuchet (`shared/effects/owEffects.ts`,
+  `TREBUCHET`) needs the same stash for a different reason: its continuation
+  fires from `ActiveBattle.continuation` *after* the battle has resolved and
+  `activeBattle` is already null, so `{ zoneId, defenderIds }` stashed at
+  declare time is the **only** route back to either value — nothing else on
+  the payload carries them. You don't always need the stash: Braveheart
+  (`shared/effects/ssEffects.ts`, `BRAVEHEART`) re-derives its own zone from
+  `payload.card` on both entries via `findVehicle(card.instanceId)`, because
+  the activating hull itself — not a target picked off the board — is what
+  `pendingEffect` already carries verbatim across the suspension. Stash what
+  the board can't hand back to you for free; don't stash what it can.
 
-Worked example (`shared/effects/dwgEffects.ts`), showing all three at once:
+Worked example (`shared/effects/dwgEffects.ts`), showing the first three at once:
 
 ```ts
 const KRAKEN = 'krakenOnPlay'
