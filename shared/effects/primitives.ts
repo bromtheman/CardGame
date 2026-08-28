@@ -1,5 +1,5 @@
-import type { CardInstance } from '../engine/gameInit.ts'
-import type { EngineContext, EngineGame, Side } from '../engine/engineTypes.ts'
+import type { CardInstance, SnapshotCard } from '../engine/gameInit.ts'
+import type { EngineContext, EngineGame, Side, ZoneCardEntry } from '../engine/engineTypes.ts'
 import { drawCard, findVehicle, otherSide } from '../engine/gameEngine.ts'
 import type { EffectFn, EffectPayload } from './registry.ts'
 
@@ -104,7 +104,7 @@ export function drawFromPool(spec: PoolSpec): EffectFn {
     const hand = game.privates[actor].hand
     const allowEmpty = spec.allowEmpty ?? spec.source === 'deck'
     if (spec.source === 'catalog') {
-      const pool = ctx.catalog.filter((c) => c.isBuiltIn && matches(c, spec.filter))
+      const pool = ctx.catalog.filter((c) => c.isBuiltIn && c.meta.summonOnly !== true && matches(c, spec.filter))
       if (pool.length === 0) {
         if (!allowEmpty) return false
         game.state.log.push(`Player ${actor.toUpperCase()} finds no matching card`)
@@ -161,6 +161,64 @@ export function zoneOccupants(p: EffectPayload, side: 'own' | 'either'): CardIns
 // hold" — see zoneOccupants and its two call sites.
 export function whenPlayed(predicate: (p: EffectPayload) => boolean, body: EffectFn): EffectFn {
   return (payload) => (predicate(payload) ? body(payload) : true)
+}
+
+// Find a built-in card by its printed name. Summoning cards name their hull
+// in card text ("spawn two parapets"), so the name is the only stable key —
+// card ids are generated at seed time.
+export function catalogCard(ctx: EngineContext, cardName: string): SnapshotCard | null {
+  return ctx.catalog.find((c) => c.isBuiltIn && c.name === cardName) ?? null
+}
+
+// Place one hull on the board. SPAWNING IS NOT PLAYING (spec §7.4): no
+// payment, no placement legality, no onPlayEffect. Keywords come from the
+// summoning card, on top of whatever the row prints; the add is idempotent.
+export function spawnInto(
+  game: EngineGame, ctx: EngineContext, actor: Side, zoneId: number,
+  snapshot: SnapshotCard, keywords: string[] = [],
+): ZoneCardEntry | null {
+  const zone = game.state.zones.find((z) => z.id === zoneId)
+  if (!zone) return null
+  const entry: ZoneCardEntry = {
+    ...snapshot,
+    instanceId: ctx.newId(),
+    keywords: [...snapshot.keywords, ...keywords.filter((k) => !snapshot.keywords.includes(k))],
+    playedOnTurn: game.turnNumber,
+    movedOnTurn: null,
+    activatedOnTurn: null,
+  }
+  zone.cards[actor].push(entry)
+  return entry
+}
+
+// Spawn `count` copies of a named catalog card into the played zone, or into
+// every zone. A card missing from the catalog is a data bug, not an empty
+// pool, so it fails the play rather than fizzling.
+export function spawnVehicles(spec: {
+  cardName: string
+  count: number
+  zones: 'target' | 'all'
+  keywords?: string[]
+}): EffectFn {
+  return ({ game, actor, ctx, targetZoneId }) => {
+    const snapshot = catalogCard(ctx, spec.cardName)
+    if (!snapshot) return false
+    const zoneIds = spec.zones === 'all'
+      ? game.state.zones.map((z) => z.id)
+      : typeof targetZoneId === 'number' ? [targetZoneId] : []
+    if (zoneIds.length === 0) return false
+    let spawned = 0
+    for (const zoneId of zoneIds) {
+      for (let i = 0; i < spec.count; i++) {
+        if (spawnInto(game, ctx, actor, zoneId, snapshot, spec.keywords)) spawned++
+      }
+    }
+    if (spawned === 0) return false
+    game.state.log.push(
+      `${spawned} ${spec.cardName}${spawned === 1 ? '' : 's'} spawned for player ${actor.toUpperCase()}`,
+    )
+    return true
+  }
 }
 
 // Stamp a persistent per-instance cost change onto a card in the actor's

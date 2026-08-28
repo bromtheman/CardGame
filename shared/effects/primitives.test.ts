@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { choice, drawFromPool, grant, sequence, takeFromEnemyDeck, whenPlayed, zoneOccupants } from './primitives.ts'
+import { catalogCard, choice, drawFromPool, grant, sequence, spawnVehicles, takeFromEnemyDeck, whenPlayed, zoneOccupants } from './primitives.ts'
 import { inst, makeCtx, makeGame, snap } from '../engine/testFixtures.ts'
 
 describe('grant', () => {
@@ -278,5 +278,63 @@ describe('choice', () => {
       game, actor: 'a', card, ctx: makeCtx(), pending, resolution: { choiceId: 'nope' },
     })
     expect(ok).toBe(false)
+  })
+})
+
+describe('spawnVehicles', () => {
+  const parapet = snap({ name: 'Parapet', faction: 'OW', vehicleType: 'plane', materialCost: 259000 })
+
+  it('spawns into the target zone with the summoning card\'s keywords', () => {
+    const game = makeGame()
+    const ctx = makeCtx({ catalog: [parapet] })
+    const fn = spawnVehicles({ cardName: 'Parapet', count: 2, zones: 'target', keywords: ['inoffensive', 'blocker'] })
+    expect(fn({ game, actor: 'a', card: inst({ name: 'Defensive Parapet' }), ctx, targetZoneId: 3 })).toBe(true)
+    const spawned = game.state.zones[2].cards.a
+    expect(spawned).toHaveLength(2)
+    expect(spawned[0].keywords).toEqual(expect.arrayContaining(['inoffensive', 'blocker']))
+    expect(spawned[0].instanceId).not.toBe(spawned[1].instanceId)
+    expect(spawned[0]).toHaveProperty('activatedOnTurn', null)
+  })
+
+  it('ignores biome legality — a plane reaches every zone', () => {
+    const game = makeGame()
+    const ctx = makeCtx({ catalog: [snap({ name: 'Sapphire', vehicleType: 'plane', faction: 'LH' })] })
+    const fn = spawnVehicles({ cardName: 'Sapphire', count: 1, zones: 'all', keywords: ['mobile', 'stealthy'] })
+    expect(fn({ game, actor: 'a', card: inst({ name: 'Sapphire Screen' }), ctx })).toBe(true)
+    expect(game.state.zones.map((z) => z.cards.a.length)).toEqual([1, 1, 1])
+  })
+
+  it('does not fire the spawned card\'s own onPlayEffect', () => {
+    const game = makeGame()
+    const ctx = makeCtx({ catalog: [snap({ name: 'Sapphire', vehicleType: 'plane', meta: { onPlayEffect: 'sapphireEffect' } })] })
+    const before = game.state.resources.a.materials
+    const fn = spawnVehicles({ cardName: 'Sapphire', count: 1, zones: 'all' })
+    expect(fn({ game, actor: 'a', card: inst(), ctx })).toBe(true)
+    expect(game.state.resources.a.materials).toBe(before)
+    expect(game.privates.a.hand).toHaveLength(0)
+  })
+
+  it('fails when the catalog has no such card', () => {
+    const game = makeGame()
+    const fn = spawnVehicles({ cardName: 'Parapet', count: 1, zones: 'target' })
+    expect(fn({ game, actor: 'a', card: inst(), ctx: makeCtx({ catalog: [] }), targetZoneId: 1 })).toBe(false)
+  })
+
+  it('fails when a target-zone spawn has no zone', () => {
+    const game = makeGame()
+    const fn = spawnVehicles({ cardName: 'Parapet', count: 1, zones: 'target' })
+    expect(fn({ game, actor: 'a', card: inst(), ctx: makeCtx({ catalog: [parapet] }) })).toBe(false)
+  })
+})
+
+describe('drawFromPool excludes summon-only cards', () => {
+  it('never mints a summon-only card into a hand', () => {
+    const game = makeGame()
+    const ctx = makeCtx({
+      catalog: [snap({ name: 'Martyr', faction: 'WF', vehicleType: 'plane', meta: { summonOnly: true } })],
+    })
+    const fn = drawFromPool({ source: 'catalog', filter: { faction: 'WF' }, count: 1, allowEmpty: true })
+    expect(fn({ game, actor: 'a', card: inst(), ctx })).toBe(true)
+    expect(game.privates.a.hand).toHaveLength(0)
   })
 })
