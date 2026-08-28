@@ -7,6 +7,7 @@ import type { EffectFn } from './registry.ts'
 import { registerEffect } from './registry.ts'
 import { findVehicle, otherSide } from '../engine/gameEngine.ts'
 import { declareForcedBattle } from '../engine/battleDeclare.ts'
+import type { EngineGame, Side, ZoneCardEntry } from '../engine/engineTypes.ts'
 
 // LH built-in card effects.
 const tgRobotics = drawFromPool({ source: 'catalog', filter: { faction: 'TG' }, count: 1 })
@@ -180,3 +181,65 @@ registerEffect(ORBIT_FLANK, choice({
     return false // unreachable — choice() already validated choiceId against pending.options
   },
 }), { needsCatalog: true })
+
+const ECLIPSE = 'eclipseEffect'
+
+const eclipseTargetable = (e: ZoneCardEntry) => !e.keywords.includes(KEYWORDS.STEALTHY)
+
+// "Once per turn this vehicle may target one non-stealthy enemy vehicle in
+// its zone to have a 1v1 battle. If you do so, you may not declare a fleet
+// battle in this zone this turn." Ships with onActivate already seeded but
+// no activateCpCost — ACTIVATE_VEHICLE and BoardZone's button both require
+// BOTH keys, so the ability is unreachable without it (spec §6). Eclipse's
+// text never mentions CP, unlike Braveheart's "pay 1cp", hence 0 rather than
+// 1 — and 0 must be authored explicitly and read via a typeof check, not a
+// truthiness one, or the ability is unreachable all over again
+// (shared/engine/activate.ts's activateCpCostOf already does this right;
+// this file only has to not break it).
+//
+// DP1 + DP4 (choice, over enemyVehicleOptions scoped to the hull's own zone,
+// excluding Stealthy) + DP3 (declareForcedBattle, activatesZone: true).
+// Eclipse is the SOLE card that stamps lastActivatedTurn from a forced
+// battle (spec §4.3 ruling: "a forced battle is not a zone activation"
+// everywhere else — see Braveheart, shared/effects/ssEffects.ts, for the
+// ordinary case). The stamp only PREVENTS a later fleet battle in this zone
+// this turn; Eclipse's own text says nothing about being blocked by an
+// EARLIER one, so no lastActivatedTurn precondition is added here — only
+// ACTIVATE_VEHICLE's own activatedOnTurn (this hull, once per turn) gates
+// activation at all.
+//
+// Same no-data-stash reasoning as Braveheart: payload.card is the
+// activating hull on both entries, so its zone is re-derived via
+// findVehicle(card.instanceId) rather than trusted from the RESOLVE_PENDING_EFFECT
+// action. resolve() re-runs the identical enemyVehicleOptions() call (same
+// zone, same Stealthy filter) to re-confirm choiceId before declaring the
+// battle.
+function eclipseZone(game: EngineGame, actor: Side, card: { instanceId: string }) {
+  const found = findVehicle(game.state, card.instanceId)
+  return found && found.side === actor ? found : null
+}
+
+registerEffect(ECLIPSE, choice({
+  effect: ECLIPSE,
+  prompt: 'Choose a non-Stealthy enemy vehicle for Eclipse to fight',
+  options: ({ game, actor, card }) => {
+    const self = eclipseZone(game, actor, card)
+    return self ? enemyVehicleOptions(game, actor, self.zone.id, eclipseTargetable) : []
+  },
+  resolve: (payload, choiceId) => {
+    const { game, actor, card } = payload
+    if (choiceId === null) return false // no non-Stealthy enemy vehicle in the zone
+    const self = eclipseZone(game, actor, card)
+    if (!self) return false
+    const stillLegal = enemyVehicleOptions(game, actor, self.zone.id, eclipseTargetable).some((o) => o.id === choiceId)
+    if (!stillLegal) return false
+    return declareForcedBattle(game, {
+      zoneId: self.zone.id,
+      aggressor: actor,
+      attackerIds: [card.instanceId],
+      defenderIds: [choiceId],
+      cause: card.name,
+      activatesZone: true,
+    })
+  },
+}))

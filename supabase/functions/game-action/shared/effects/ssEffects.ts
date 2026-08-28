@@ -2,7 +2,9 @@ import {
   AIR_STRAFE_PREDATOR_COUNT, EXCALIBUR_DISCOUNT, KEYWORDS, REPAIRMEN_READY_DRAW_MAX_COST,
   RHEA_MAX_PLANE_COST, VEHICLE_TYPES,
 } from '../gameSettings.ts'
-import { costDelta, choice, drawFromPool, grant, grantKeywords, sequence, summonHulls } from './primitives.ts'
+import {
+  costDelta, choice, drawFromPool, enemyVehicleOptions, grant, grantKeywords, sequence, summonHulls,
+} from './primitives.ts'
 import { registerEffect } from './registry.ts'
 import type { EngineGame, Side } from '../engine/engineTypes.ts'
 import { findVehicle, otherSide } from '../engine/gameEngine.ts'
@@ -143,3 +145,57 @@ registerEffect(AIR_STRAFE, choice({
     })
   },
 }), { needsCatalog: true })
+
+const BRAVEHEART = 'braveheartActivate'
+
+// "Once per turn, you may pay 1cp to have this ship 1v1 an enemy vehicle in
+// the same zone." Ships with meta: {} — the effect name and
+// activateCpCost: 1 are both content this wave authors, not merely
+// implements (spec §6, "Cards shipped with no authored effect name").
+// DP1 (ACTIVATE_VEHICLE pays the CP and stamps activatedOnTurn BEFORE this
+// ever runs — shared/engine/activate.ts — so once-per-turn is free here) +
+// DP4 (this choice, over enemyVehicleOptions scoped to the hull's OWN zone —
+// unlike Orbit Flank's zoneId: null) + DP3 (declareForcedBattle,
+// attackerIds: [self], no summons).
+//
+// Unlike Air Strafe/Orbit Flank, no `data` stash is needed: payload.card on
+// BOTH entries IS the activating hull — ACTIVATE_VEHICLE hands the effect
+// the zone entry itself, and pendingEffect carries the card verbatim across
+// the suspension (spec §4.2) — so its zone is re-derived identically in
+// options() and resolve() via findVehicle(card.instanceId), never trusted
+// from the client-supplied, unvalidated RESOLVE_PENDING_EFFECT fields
+// (docs/claude/card-effects.md, "Suspending for a choice"). choiceId is the
+// chosen enemy's instanceId; `choice()` already checks it against
+// pending.options, and resolve() re-runs the identical enemyVehicleOptions()
+// call to re-confirm the target before declaring the battle.
+function braveheartZone(game: EngineGame, actor: Side, card: { instanceId: string }) {
+  const found = findVehicle(game.state, card.instanceId)
+  return found && found.side === actor ? found : null
+}
+
+registerEffect(BRAVEHEART, choice({
+  effect: BRAVEHEART,
+  prompt: 'Choose an enemy vehicle for Braveheart to fight',
+  options: ({ game, actor, card }) => {
+    const self = braveheartZone(game, actor, card)
+    return self ? enemyVehicleOptions(game, actor, self.zone.id) : []
+  },
+  resolve: (payload, choiceId) => {
+    const { game, actor, card } = payload
+    if (choiceId === null) return false // no enemy vehicle in the zone — nothing to fight
+    const self = braveheartZone(game, actor, card)
+    if (!self) return false
+    const stillLegal = enemyVehicleOptions(game, actor, self.zone.id).some((o) => o.id === choiceId)
+    if (!stillLegal) return false
+    // No activatesZone: a forced battle is not a zone activation (spec §4.3
+    // ruling) — Eclipse alone is the exception, and says so in its own text.
+    // A fleet attack in this zone later this turn is unaffected.
+    return declareForcedBattle(game, {
+      zoneId: self.zone.id,
+      aggressor: actor,
+      attackerIds: [card.instanceId],
+      defenderIds: [choiceId],
+      cause: card.name,
+    })
+  },
+}))

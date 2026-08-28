@@ -984,4 +984,226 @@ describe('wave 3 — forced battles', () => {
       expect(modeChosen.game.state.activeBattle).toBeNull()
     })
   })
+
+  // Braveheart and Eclipse are near-identical DP1 (ACTIVATE_VEHICLE) + DP4
+  // (choice) + DP3 (declareForcedBattle) cards: activate, choose an enemy
+  // vehicle in the hull's own zone, fight it 1v1. Their differences are the
+  // whole task (task 8 brief): Braveheart costs 1cp and never touches
+  // lastActivatedTurn; Eclipse costs 0cp, excludes Stealthy targets, and
+  // stamps lastActivatedTurn itself (spec §4.3's sole exception to "a forced
+  // battle is not a zone activation").
+  describe('braveheartActivate', () => {
+    const onBoard = (over: Record<string, unknown> = {}) => {
+      const game = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+      game.state.zones[0].cards.a.push(zoneEntry({
+        instanceId: 'bh1', name: 'Braveheart',
+        meta: { onActivate: 'braveheartActivate', activateCpCost: 1 },
+        ...over,
+      }))
+      return game
+    }
+
+    it('activating with CP suffices — suspends offering only the enemy vehicles in its own zone', () => {
+      const game = onBoard()
+      game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe-1', name: 'Foe' }))
+      // A second enemy sitting in a DIFFERENT zone must not appear — Braveheart
+      // passes a real zoneId to enemyVehicleOptions, unlike Orbit Flank's null.
+      game.state.zones[1].cards.b.push(zoneEntry({ instanceId: 'foe-2', name: 'Elsewhere' }))
+      const res = applyAction(game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: 'bh1' }, makeCtx())
+      if (!res.ok) throw new Error(res.error)
+      expect(res.game.state.activeBattle).toBeNull()
+      expect(res.game.state.pendingEffect?.effect).toBe('braveheartActivate')
+      expect(res.game.state.pendingEffect?.options).toEqual([{ id: 'foe-1', label: 'Foe' }])
+      expect(res.game.state.resources.a.cp).toBe(2) // 3 - 1, paid up front regardless of suspension
+    })
+
+    it('resolving declares a 1v1 with Braveheart itself as the sole attacker, no zone-activation stamp', () => {
+      const game = onBoard()
+      game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe-1', name: 'Foe' }))
+      const ctx = makeCtx()
+      const suspended = applyAction(game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: 'bh1' }, ctx)
+      if (!suspended.ok) throw new Error(suspended.error)
+      const resolved = applyAction(suspended.game, 'alice', {
+        type: 'RESOLVE_PENDING_EFFECT', choiceId: 'foe-1',
+      }, ctx)
+      if (!resolved.ok) throw new Error(resolved.error)
+      expect(resolved.game.state.pendingEffect).toBeNull()
+      const battle = resolved.game.state.activeBattle
+      expect(battle?.zoneId).toBe(1)
+      expect(battle?.aggressor).toBe('a')
+      expect(battle?.attackerIds).toEqual(['bh1'])
+      expect(battle?.defenderIds).toEqual(['foe-1'])
+      expect(battle?.summons).toEqual([]) // Braveheart fights itself — no summons
+      expect(resolved.game.state.zones[0].lastActivatedTurn).toBeNull() // not a zone activation
+    })
+
+    it('a second activation the same turn 409s', () => {
+      const game = onBoard({ activatedOnTurn: 2 })
+      const res = applyAction(game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: 'bh1' }, makeCtx())
+      expect(res).toMatchObject({ ok: false, status: 409 })
+    })
+
+    it('with 0 CP available is rejected', () => {
+      const game = onBoard()
+      game.state.resources.a.cp = 0
+      game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe-1', name: 'Foe' }))
+      const res = applyAction(game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: 'bh1' }, makeCtx())
+      expect(res).toMatchObject({ ok: false, status: 400 })
+    })
+
+    it('rejects activation when its zone holds no enemy vehicle — CP is not spent, nothing sticks', () => {
+      const game = onBoard()
+      const res = applyAction(game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: 'bh1' }, makeCtx())
+      expect(res).toMatchObject({ ok: false, status: 400 })
+      expect(game.state.resources.a.cp).toBe(3)
+      expect(game.state.zones[0].cards.a[0].activatedOnTurn).toBeNull()
+    })
+
+    it('does not spend the zone activation — a fleet attack there still succeeds afterward', () => {
+      const game = onBoard()
+      game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe-1', name: 'Foe' }))
+      const ctx = makeCtx()
+      const suspended = applyAction(game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: 'bh1' }, ctx)
+      if (!suspended.ok) throw new Error(suspended.error)
+      const resolved = applyAction(suspended.game, 'alice', {
+        type: 'RESOLVE_PENDING_EFFECT', choiceId: 'foe-1',
+      }, ctx)
+      if (!resolved.ok) throw new Error(resolved.error)
+      // Simulate the forced battle having already been reported and resolved
+      // (DECIDE_BATTLE_REPORT nulls activeBattle) so a second battle may lock.
+      resolved.game.state.activeBattle = null
+      const attack = applyAction(resolved.game, 'alice', {
+        type: 'ATTACK_ENEMY_FLEET', zoneId: 1, attackerIds: ['bh1'], targetIds: ['foe-1'],
+      }, ctx)
+      expect(attack.ok).toBe(true)
+    })
+
+    // The discriminating test (task brief step 5): RESOLVE_PENDING_EFFECT's
+    // zoneId/targetInstanceId are client-supplied and unvalidated. A naive
+    // re-entry that trusted either instead of re-deriving Braveheart's own
+    // zone from payload.card must be caught — the decoy sits in a different,
+    // legal, non-empty zone so a wrong read produces a plausible wrong
+    // battle rather than an empty-zone 400 either way.
+    it('a stale/malicious zoneId and targetInstanceId on resolve are ignored', () => {
+      const game = onBoard()
+      game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe-1', name: 'Foe' })) // zone 1 — the real target
+      game.state.zones[2].cards.b.push(zoneEntry({ instanceId: 'decoy-1', name: 'Decoy' })) // zone 3 — a different, legal zone
+      const ctx = makeCtx()
+      const suspended = applyAction(game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: 'bh1' }, ctx)
+      if (!suspended.ok) throw new Error(suspended.error)
+      const resolved = applyAction(suspended.game, 'alice', {
+        type: 'RESOLVE_PENDING_EFFECT', choiceId: 'foe-1', zoneId: 3, targetInstanceId: 'decoy-1',
+      }, ctx)
+      if (!resolved.ok) throw new Error(resolved.error)
+      const battle = resolved.game.state.activeBattle
+      expect(battle?.zoneId).toBe(1)
+      expect(battle?.defenderIds).toEqual(['foe-1'])
+      expect(resolved.game.state.zones[2].cards.b.map((c) => c.instanceId)).toEqual(['decoy-1'])
+    })
+  })
+
+  describe('eclipseEffect', () => {
+    const onBoard = (over: Record<string, unknown> = {}) => {
+      const game = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+      game.state.zones[0].cards.a.push(zoneEntry({
+        instanceId: 'ec1', name: 'Eclipse',
+        meta: { onActivate: 'eclipseEffect', activateCpCost: 0 },
+        ...over,
+      }))
+      return game
+    }
+
+    it('activating suffices at 0 CP — suspends offering only non-Stealthy enemies in its own zone', () => {
+      const game = onBoard()
+      game.state.zones[0].cards.b.push(
+        zoneEntry({ instanceId: 'foe-1', name: 'Foe' }),
+        zoneEntry({ instanceId: 'stealthy-1', name: 'Sneaky', keywords: ['stealthy'] }),
+      )
+      game.state.zones[1].cards.b.push(zoneEntry({ instanceId: 'foe-2', name: 'Elsewhere' }))
+      const res = applyAction(game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: 'ec1' }, makeCtx())
+      if (!res.ok) throw new Error(res.error)
+      expect(res.game.state.pendingEffect?.effect).toBe('eclipseEffect')
+      expect(res.game.state.pendingEffect?.options).toEqual([{ id: 'foe-1', label: 'Foe' }])
+    })
+
+    // Guards the truthiness trap the brief calls out by name: activateCpCost
+    // is card DATA read via a `typeof raw !== 'number'` check
+    // (shared/engine/activate.ts's activateCpCostOf); `if (!cost)` or
+    // `cost || null` would both wrongly treat Eclipse's printed 0 as "no
+    // activated ability" and make it permanently unreachable.
+    it('activateCpCost: 0 still permits activation, even with zero CP available', () => {
+      const game = onBoard()
+      game.state.resources.a.cp = 0
+      game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe-1', name: 'Foe' }))
+      const res = applyAction(game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: 'ec1' }, makeCtx())
+      if (!res.ok) throw new Error(res.error)
+      expect(res.game.state.resources.a.cp).toBe(0)
+      expect(res.game.state.pendingEffect?.effect).toBe('eclipseEffect')
+    })
+
+    it('resolving declares a 1v1 with Eclipse itself as the sole attacker, and stamps its own zone activation', () => {
+      const game = onBoard()
+      game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe-1', name: 'Foe' }))
+      const ctx = makeCtx()
+      const suspended = applyAction(game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: 'ec1' }, ctx)
+      if (!suspended.ok) throw new Error(suspended.error)
+      const resolved = applyAction(suspended.game, 'alice', {
+        type: 'RESOLVE_PENDING_EFFECT', choiceId: 'foe-1',
+      }, ctx)
+      if (!resolved.ok) throw new Error(resolved.error)
+      expect(resolved.game.state.pendingEffect).toBeNull()
+      const battle = resolved.game.state.activeBattle
+      expect(battle?.zoneId).toBe(1)
+      expect(battle?.aggressor).toBe('a')
+      expect(battle?.attackerIds).toEqual(['ec1'])
+      expect(battle?.defenderIds).toEqual(['foe-1'])
+      expect(battle?.summons).toEqual([])
+      // Eclipse is the sole card that stamps lastActivatedTurn from a forced
+      // battle (spec §4.3 ruling) — Braveheart's equivalent test asserts null.
+      expect(resolved.game.state.zones[0].lastActivatedTurn).toBe(2)
+    })
+
+    it('a second activation the same turn 409s', () => {
+      const game = onBoard({ activatedOnTurn: 2 })
+      const res = applyAction(game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: 'ec1' }, makeCtx())
+      expect(res).toMatchObject({ ok: false, status: 409 })
+    })
+
+    it('after use, a fleet attack in that zone 409s — Eclipse consumes the zone activation', () => {
+      const game = onBoard()
+      game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe-1', name: 'Foe' }))
+      const ctx = makeCtx()
+      const suspended = applyAction(game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: 'ec1' }, ctx)
+      if (!suspended.ok) throw new Error(suspended.error)
+      const resolved = applyAction(suspended.game, 'alice', {
+        type: 'RESOLVE_PENDING_EFFECT', choiceId: 'foe-1',
+      }, ctx)
+      if (!resolved.ok) throw new Error(resolved.error)
+      resolved.game.state.activeBattle = null // as if DECIDE_BATTLE_REPORT already ran
+      const attack = applyAction(resolved.game, 'alice', {
+        type: 'ATTACK_ENEMY_FLEET', zoneId: 1, attackerIds: ['ec1'], targetIds: ['foe-1'],
+      }, ctx)
+      expect(attack).toMatchObject({ ok: false, status: 409 })
+    })
+
+    // Eclipse's text only says using it PREVENTS a later fleet battle in the
+    // zone — it says nothing about being blocked by an earlier one. A wrong
+    // implementation that reused lockBattle's gate, or added a
+    // lastActivatedTurn precondition, would refuse this activation.
+    it('is not blocked by a zone already activated earlier this turn — only consumes, is never gated by it', () => {
+      const game = onBoard()
+      game.state.zones[0].lastActivatedTurn = 2 // as if a fleet battle already happened here this turn
+      game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe-1', name: 'Foe' }))
+      const res = applyAction(game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: 'ec1' }, makeCtx())
+      if (!res.ok) throw new Error(res.error)
+      expect(res.game.state.pendingEffect?.effect).toBe('eclipseEffect')
+    })
+
+    it('rejects activation when its zone holds only a Stealthy enemy', () => {
+      const game = onBoard()
+      game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'stealthy-1', name: 'Sneaky', keywords: ['stealthy'] }))
+      const res = applyAction(game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: 'ec1' }, makeCtx())
+      expect(res).toMatchObject({ ok: false, status: 400 })
+    })
+  })
 })

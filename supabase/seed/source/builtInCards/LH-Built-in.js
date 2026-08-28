@@ -299,7 +299,8 @@ export const lhVehicles = [
         blueprintId: null,
         keywords: [],
         meta: {
-            [TRIGGERS.ON_ACTIVATE]: 'eclipseEffect'
+            [TRIGGERS.ON_ACTIVATE]: 'eclipseEffect',
+            activateCpCost: 0
         }
     },
     {

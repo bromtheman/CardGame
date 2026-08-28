@@ -164,15 +164,20 @@ describe('play-pipeline effect dispatch', () => {
       .toBe(true)
   })
 
-  it('vehicle with unimplemented onActivate eclipseEffect deploys fine with exactly one vanilla note', () => {
+  it('vehicle with unimplemented onActivate deploys fine with exactly one vanilla note', () => {
+    // A synthetic t_-prefixed stand-in, not a real seeded effect name
+    // (docs/claude/testing.md): wave 3 registers eclipseEffect for real, and
+    // a test still using that literal here would silently stop testing the
+    // unimplemented path the moment it did — passing forever after while
+    // asserting nothing.
     const { g, card } = withHand({
-      vehicleType: 'ship', materialCost: 10000, name: 'Eclipse',
-      meta: { onActivate: 'eclipseEffect' },
+      vehicleType: 'ship', materialCost: 10000, name: 'Some Ship',
+      meta: { onActivate: 't_unimplementedOnActivate' },
     })
     const r = applyAction(g, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx())
     if (!r.ok) throw new Error(r.error)
     expect(r.game.state.zones[0].cards.a).toHaveLength(1)
-    const notes = r.game.state.log.filter((l) => l.includes('eclipseEffect'))
+    const notes = r.game.state.log.filter((l) => l.includes('t_unimplementedOnActivate'))
     expect(notes).toHaveLength(1)
   })
 

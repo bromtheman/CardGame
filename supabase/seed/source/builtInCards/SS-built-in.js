@@ -133,6 +133,8 @@ export const ssVehicles = [
         blueprintId: null,
         keywords: [],
         meta: {
+            [TRIGGERS.ON_ACTIVATE]: 'braveheartActivate',
+            activateCpCost: 1
         }
     }
     ,{
