@@ -104,6 +104,11 @@ Deno.serve(async (req) => {
     candidates.push(...zone.cards.a, ...zone.cards.b)
   }
 
+  // A resolving choice's card is in neither hand nor field — it was spent when
+  // it was played — so the probe would miss a catalog effect that has only
+  // just been asked for its second phase (spec §4.7).
+  if (engineGame.state.pendingEffect) candidates.push(engineGame.state.pendingEffect.card)
+
   if (candidates.some(wantsCatalog)) {
     const { data: cardRows, error: catalogError } = await admin.from('cards').select('*').eq('is_built_in', true)
     if (catalogError) return json(500, { errors: ['Failed to load the card catalog'] })
