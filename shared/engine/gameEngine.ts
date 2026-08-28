@@ -52,6 +52,15 @@ const BATTLE_ACTIONS = new Set<GameAction['type']>([
 
 const OFF_TURN_ACTIONS = new Set<GameAction['type']>([
   'CONCEDE', 'ABANDON', 'RESPOND_TO_ATTACK', 'SUBMIT_BATTLE_REPORT', 'DECIDE_BATTLE_REPORT', 'USE_HERO_POWER',
+  // pendingEffect.side is whichever side the suspending effect ran for (e.g.
+  // battleResolve.ts fires a death effect with `actor: side` per destroyed
+  // vehicle's owner) and need not match game.activePlayer. Without this, the
+  // turn check below rejects the owing off-turn player with 409 "Not your
+  // turn" before the handler's own `pending.side !== actor` (403) / "nothing
+  // pending" (409) checks ever run — leaving CANCEL, which exists precisely
+  // to unstick a stranded game, unreachable. Those two handler checks already
+  // enforce everything this turn check would add, so admitting it here is safe.
+  'RESOLVE_PENDING_EFFECT',
 ])
 
 // A suspended effect freezes harder than a battle does. BATTLE_ACTIONS admits

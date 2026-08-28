@@ -37,6 +37,30 @@ describe('RESOLVE_PENDING_EFFECT', () => {
     expect(res).toMatchObject({ ok: false, status: 403 })
   })
 
+  // Regression: RESOLVE_PENDING_EFFECT must be legal for whichever side owes
+  // the choice, even when that side is not the active player (e.g. a death
+  // effect suspended for the non-active player). Before OFF_TURN_ACTIONS
+  // included this action type, applyAction's turn check rejected the owing
+  // off-turn player with 409 "Not your turn" before the handler's own
+  // ownership check ever ran — leaving no one able to resolve, or even
+  // cancel, the choice.
+  it('lets the off-turn player resolve a choice owed to them while the other side is active', () => {
+    const game = frozen('b') // pendingEffect.side: 'b', activePlayer: alice
+    const res = applyAction(game, 'bob', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'a' }, makeCtx())
+    if (!res.ok) throw new Error(res.error)
+    expect(res.game.state.pendingEffect).toBeNull()
+    expect(res.game.state.log.join()).toContain('picked:a')
+  })
+
+  it('lets the off-turn player cancel a choice owed to them while the other side is active', () => {
+    const game = frozen('b') // pendingEffect.side: 'b', activePlayer: alice
+    const res = applyAction(game, 'bob', { type: 'RESOLVE_PENDING_EFFECT', cancel: true }, makeCtx())
+    if (!res.ok) throw new Error(res.error)
+    expect(res.game.state.pendingEffect).toBeNull()
+    expect(res.game.state.log.join()).not.toContain('picked:')
+    expect(res.game.state.log.join()).toContain('declined')
+  })
+
   it('rejects when nothing is pending', () => {
     const game = makeGame({ turnNumber: 2, activePlayer: 'alice' })
     const res = applyAction(game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'a' }, makeCtx())
