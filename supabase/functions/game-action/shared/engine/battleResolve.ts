@@ -3,7 +3,7 @@ import {
 } from '../gameSettings.ts'
 import type { SnapshotCard } from './gameInit.ts'
 import type { ApplyResult, EngineGame, Side, ZoneCardEntry } from './engineTypes.ts'
-import { err, registerHandler, zoneById } from './gameEngine.ts'
+import { err, isSummonOnly, registerHandler, zoneById } from './gameEngine.ts'
 import { effectiveMaterialCostOf } from './placement.ts'
 import { effectFor, effectName } from '../effects/registry.ts'
 
@@ -153,7 +153,7 @@ registerHandler('DECIDE_BATTLE_REPORT', (game, actor, action, ctx) => {
     if (!survives) {
       zone.cards[side] = zone.cards[side].filter((c) => c.instanceId !== id)
       const { instanceId: _i, playedOnTurn: _p, movedOnTurn: _m, activatedOnTurn: _a, ...snapshot } = entry
-      game.state.destroyed[side].push(snapshot as SnapshotCard)
+      if (!isSummonOnly(entry)) game.state.destroyed[side].push(snapshot as SnapshotCard)
       destroyedCount++
       game.state.log.push(`${entry.name} was destroyed (${hp}%)`)
       destroyedEntries.push({ entry, side })

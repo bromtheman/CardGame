@@ -236,6 +236,24 @@ describe('death triggers on report approval', () => {
     // pushes this line (see the test above); an unimplemented one never does.
     expect(r.game.state.log.some((l) => l.includes('could not resolve'))).toBe(false)
   })
+
+  it('a destroyed summon-only vehicle is not pushed to the discard', () => {
+    const { g, atk, def } = inBattle()
+    const martyr = zoneEntry({ name: 'Martyr', meta: { summonOnly: true }, playedOnTurn: 2 })
+    g.state.zones[0].cards.a.push(martyr)
+    g.state.activeBattle!.attackerIds.push(martyr.instanceId)
+    const s = applyAction(g, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT',
+      results: { [atk.instanceId]: 95, [def.instanceId]: 95, [martyr.instanceId]: 0 },
+      repairs: [],
+    })
+    if (!s.ok) throw new Error(s.error)
+    const r = applyAction(s.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true })
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.zones[0].cards.a.some((c) => c.instanceId === martyr.instanceId)).toBe(false)
+    expect(r.game.state.destroyed.a.some((c) => c.name === 'Martyr')).toBe(false)
+    expect(r.game.state.log.join()).toContain('Martyr was destroyed')
+  })
 })
 
 describe('repairCostOf', () => {

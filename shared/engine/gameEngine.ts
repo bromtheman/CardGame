@@ -33,6 +33,12 @@ export function findVehicle(state: PublicGameState, instanceId: string) {
   return null
 }
 
+// Summon-only cards are spawned, never drafted (spec §7.1). They must never
+// reach state.destroyed: reshuffleDiscard feeds the discard back into the
+// owner's deck, which would make a destroyed Martyr draftable.
+export const isSummonOnly = (card: { meta: Record<string, unknown> }): boolean =>
+  card.meta.summonOnly === true
+
 export const battleFrozen = (state: PublicGameState): boolean =>
   state.awaitingResponse !== null || state.activeBattle !== null || state.pendingReport !== null
 
@@ -148,7 +154,7 @@ function endTurn(game: EngineGame, ctx: EngineContext): ApplyResult {
           const {
             instanceId: _instanceId, playedOnTurn: _p, movedOnTurn: _m, activatedOnTurn: _a, ...snapshot
           } = entry
-          game.state.destroyed[s].push(snapshot)
+          if (!isSummonOnly(entry)) game.state.destroyed[s].push(snapshot)
           game.state.log.push(`${entry.name} despawned (temporary)`)
         } else {
           keep.push(entry)

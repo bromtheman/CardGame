@@ -359,3 +359,17 @@ describe('pendingEffect freeze', () => {
     expect(game.state.pendingEffect).toBeNull()
   })
 })
+
+describe('summon-only cards', () => {
+  it('a summon-only Temporary vehicle despawns without entering the discard', () => {
+    const game = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+    game.state.zones[0].cards.a.push(zoneEntry({
+      name: 'Martyr', keywords: ['temporary'], meta: { summonOnly: true },
+    }))
+    const res = applyAction(game, 'alice', { type: 'END_TURN' }, makeCtx())
+    if (!res.ok) throw new Error(res.error)
+    expect(res.game.state.zones[0].cards.a).toHaveLength(0)
+    expect(res.game.state.destroyed.a).toHaveLength(0)
+    expect(res.game.state.log.join()).toContain('Martyr despawned')
+  })
+})
