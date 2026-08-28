@@ -1,6 +1,6 @@
 import { KEYWORDS, LOG_MAX_ENTRIES, MATERIALS_PER_TURN, VEHICLE_TYPES } from '../gameSettings.ts'
 import { secureRng } from './gameInit.ts'
-import type { PublicGameState } from './gameInit.ts'
+import type { CardInstance, PublicGameState, SnapshotCard } from './gameInit.ts'
 import type {
   ApplyResult, EngineContext, EngineGame, GameAction, Side, ZoneCardEntry,
 } from './engineTypes.ts'
@@ -111,6 +111,44 @@ export function drawCard(game: EngineGame, side: Side, ctx: EngineContext): void
   game.state.counts[side] = { hand: priv.hand.length, deck: priv.deck.length }
 }
 
+// Which side's discard — and so which side's deck — a card belongs to. A card
+// taken out of the enemy deck (Marauder, Paddlegun, Plunderer) carries
+// `meta.ownerSide`: it is on loan to whoever captured it, and it goes home
+// when it leaves play. Everything else belongs to the side holding it.
+export function ownerSideOf(card: { meta: Record<string, unknown> }, controller: Side): Side {
+  const owner = card.meta.ownerSide
+  return owner === 'a' || owner === 'b' ? owner : controller
+}
+
+// A copy minted off a captured card is a new hull, not the captured card:
+// exactly one card left the enemy deck, so exactly one goes back. Every
+// mint-a-copy effect runs the source card's meta through this, or the copy
+// would go home to a deck it never came out of.
+export function copyMeta(meta: Record<string, unknown>): Record<string, unknown> {
+  if (!('ownerSide' in meta)) return meta
+  const { ownerSide: _ownerSide, ...rest } = meta
+  return rest
+}
+
+// The one exit every card leaving play takes: into its OWNER's discard, which
+// reshuffleDiscard later feeds back into that owner's deck. Routing a captured
+// card into its captor's pile instead would delete it from its owner's deck
+// for the rest of the game — a steal every turn would grind that deck away.
+// A card going home also drops the stamps its captor put on it: `costDelta`
+// above all, which would otherwise leave the owner holding a permanent — and,
+// on the next capture, re-stacking — discount on their own card. Printed meta
+// (`additionalSpawns` and friends) is card data and stays.
+export function discardCard(game: EngineGame, controller: Side, card: CardInstance): void {
+  const { instanceId: _instanceId, playedOnTurn: _p, movedOnTurn: _m, ...snapshot } =
+    card as ZoneCardEntry
+  const owner = ownerSideOf(card, controller)
+  if (owner !== controller) {
+    const { ownerSide: _ownerSide, costDelta: _costDelta, ...meta } = snapshot.meta
+    snapshot.meta = meta
+  }
+  game.state.destroyed[owner].push(snapshot as SnapshotCard)
+}
+
 export function checkVictory(game: EngineGame): void {
   for (const side of ['a', 'b'] as Side[]) {
     if (zonesLostBy(game, side) >= 2 && game.status === 'active') {
@@ -135,8 +173,7 @@ function endTurn(game: EngineGame, ctx: EngineContext): ApplyResult {
       const keep: ZoneCardEntry[] = []
       for (const entry of zone.cards[s] as ZoneCardEntry[]) {
         if (entry.keywords.includes(KEYWORDS.TEMPORARY)) {
-          const { instanceId: _instanceId, playedOnTurn: _p, movedOnTurn: _m, ...snapshot } = entry
-          game.state.destroyed[s].push(snapshot)
+          discardCard(game, s, entry)
           game.state.log.push(`${entry.name} despawned (temporary)`)
         } else {
           keep.push(entry)

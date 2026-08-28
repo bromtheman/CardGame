@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { applyAction, effectiveCostInGame, effectiveMaterialCostOf, legalZonesFor } from './index'
+import {
+  applyAction, effectFor, effectiveCostInGame, effectiveMaterialCostOf, legalZonesFor,
+} from './index'
 import { registerCostModifier, registerEffect } from '../effects/registry.ts'
+import { takeFromEnemyDeck } from '../effects/primitives.ts'
 import { ADDITIONAL_SPAWNS_CAP, KEYWORDS } from '../gameSettings.ts'
 import { inst, makeCtx, makeGame, zoneEntry } from './testFixtures'
 
@@ -577,5 +580,39 @@ describe('resourceSurge — the extra hull', () => {
     for (const entry of game.state.zones[0].cards.a) {
       expect(entry.keywords).toContain(KEYWORDS.HALF_COST)
     }
+  })
+})
+
+describe('captured cards', () => {
+  // Paddlegun takes whatever sits on top of the enemy deck, abilities
+  // included, and an ability leaves play down a different exit than a
+  // vehicle (spendCard, not a battle death). It is on loan just the same.
+  it("spends a captured ability card into its OWNER's discard", () => {
+    const g = makeGame()
+    g.privates.b.deck.push(inst({ name: 'Enemy Order', type: 'ability', vehicleType: null, materialCost: 0 }))
+    g.state.counts.b.deck = 1
+    effectFor('paddlegunEffect')!({ game: g, actor: 'a', card: inst({ name: 'Paddlegun' }), ctx: makeCtx() })
+    const card = g.privates.a.hand[0]
+    const r = applyAction(g, 'alice', { type: 'PLAY_ABILITY_CARD', instanceId: card.instanceId }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.destroyed.b.map((c) => c.name)).toEqual(['Enemy Order'])
+    expect(r.game.state.destroyed.a).toHaveLength(0)
+  })
+})
+
+describe('captured cards spawn hulls for their captor', () => {
+  it("keeps a captured card's own hull on loan but not the extras it spawns", () => {
+    const g = makeGame()
+    g.privates.b.deck.push(inst({
+      name: 'Swarm', vehicleType: 'ship', materialCost: 0, meta: { additionalSpawns: 1 },
+    }))
+    g.state.counts.b.deck = 1
+    takeFromEnemyDeck(g, 'a', makeCtx())
+    const card = g.privates.a.hand[0]
+    const r = applyAction(g, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    const hulls = r.game.state.zones[0].cards.a
+    expect(hulls).toHaveLength(2)
+    expect(hulls.map((c) => c.meta.ownerSide)).toEqual(['b', undefined])
   })
 })

@@ -1,7 +1,9 @@
 import { ADDITIONAL_SPAWNS_CAP, KEYWORDS, VEHICLE_TYPES, ZONE_TYPES } from '../gameSettings.ts'
 import type { CardInstance, PublicGameState } from './gameInit.ts'
 import type { ApplyResult, EngineContext, EngineGame, Side, ZoneCardEntry } from './engineTypes.ts'
-import { err, findVehicle, otherSide, registerHandler, zoneById } from './gameEngine.ts'
+import {
+  copyMeta, discardCard, err, findVehicle, otherSide, registerHandler, zoneById,
+} from './gameEngine.ts'
 import { costModifierFor, effectFor, effectName, noteUnimplemented } from '../effects/registry.ts'
 
 const BIOMES_BY_TYPE: Record<string, string[]> = {
@@ -106,8 +108,7 @@ function takeFromHand(game: EngineGame, side: Side, instanceId: string): CardIns
 // out. Call this AFTER effects resolve — a card that draws from an empty deck
 // must not be able to shuffle itself back in mid-resolution.
 export function spendCard(game: EngineGame, side: Side, card: CardInstance): void {
-  const { instanceId: _instanceId, ...snapshot } = card
-  game.state.destroyed[side].push(snapshot)
+  discardCard(game, side, card)
 }
 
 function pay(game: EngineGame, side: Side, card: CardInstance): void {
@@ -181,7 +182,8 @@ registerHandler('PLAY_CARD_TO_ZONE', (game, actor, action, ctx) => {
     const extra = Math.min(printed + (surged ? surgeSpawnsFor(card) : 0), ADDITIONAL_SPAWNS_CAP)
     for (let i = 0; i < extra; i++) {
       const copy: ZoneCardEntry = {
-        ...card, instanceId: ctx.newId(), playedOnTurn: game.turnNumber, movedOnTurn: null,
+        ...card, instanceId: ctx.newId(), meta: copyMeta(card.meta),
+        playedOnTurn: game.turnNumber, movedOnTurn: null,
       }
       zone.cards[actor].push(copy)
       placedInstanceIds.push(copy.instanceId)

@@ -51,6 +51,12 @@ frontend (supabase-js) ──invoke──> edge function ──applyAction──
 - `counts` — public hand/deck counts; actual hands/decks live in per-player
   `game_players` rows (`EngineGame.privates` in the engine). Hidden information:
   see the log rule in CLAUDE.md.
+- `destroyed` — the per-side discard, and the deck's reservoir: `drawCard`
+  reshuffles a side's pile back into that side's deck the moment a draw would
+  otherwise fail. Every card leaving play goes through `discardCard(game,
+  controller, card)`, which files it under its **owner** rather than whoever
+  was holding it — a card captured out of the enemy deck goes home. See
+  "Captured cards" in docs/claude/card-effects.md.
 - `factions: {a, b}` — stamped from deck factions at game start; drives hero
   powers. Legacy rows normalize to `'NEUTRAL'`.
 - `alertCard` — single shared slot `{side, instanceId, name, setOnTurn} | null`.
