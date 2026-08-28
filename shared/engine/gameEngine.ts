@@ -314,7 +314,24 @@ export function applyAction(
   if (game.state.pendingEffect !== null && !PENDING_ACTIONS.has(action.type)) {
     return err(409, 'A card effect is waiting on a choice — resolve it first')
   }
-  if (battleFrozen(game.state) && !BATTLE_ACTIONS.has(action.type)) {
+  // Defence for a state that should be unreachable today: pendingEffect and
+  // battleFrozen both set at once. If that ever happened, an action the
+  // pending check above already admitted (RESOLVE_PENDING_EFFECT, including
+  // { cancel: true } — the escape hatch that exists precisely to unstick a
+  // stranded game) must not be rejected here too, or CONCEDE/ABANDON would be
+  // the only actions left for either player. This does not widen
+  // BATTLE_ACTIONS itself, and changes nothing when only one freeze is set:
+  // pendingAdmitted is false whenever pendingEffect is null, so the lone-
+  // battleFrozen case is exactly what it was before.
+  //
+  // Why the both-set state cannot happen today: the only action that can
+  // dispatch an effect while battleFrozen is DECIDE_BATTLE_REPORT, and it
+  // nulls activeBattle and pendingReport BEFORE firing the continuation
+  // (battleResolve.ts) — so by the time any effect could populate
+  // pendingEffect, battleFrozen is already false. That ordering is the one
+  // invariant this whole guard depends on.
+  const pendingAdmitted = game.state.pendingEffect !== null && PENDING_ACTIONS.has(action.type)
+  if (battleFrozen(game.state) && !BATTLE_ACTIONS.has(action.type) && !pendingAdmitted) {
     return err(409, 'A battle is in progress — resolve it first')
   }
   if (!OFF_TURN_ACTIONS.has(action.type) && game.activePlayer !== actorId) {

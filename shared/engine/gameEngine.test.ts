@@ -520,3 +520,46 @@ describe('discardCard strips costDelta unconditionally (wave 3 fix)', () => {
     expect(drawn.meta).not.toHaveProperty('costDelta')
   })
 })
+
+describe('battle-freeze admits what the pending check already allowed (wave 3 fix)', () => {
+  const pending = (side: 'a' | 'b' = 'a') => ({
+    effect: 't_choice',
+    side,
+    card: inst({ name: 'Kraken', instanceId: 'k1' }),
+    kind: 'choice' as const,
+    prompt: 'Pick one',
+    options: [{ id: 'x', label: 'X' }],
+  })
+  const battle = () => ({
+    zoneId: 1, aggressor: 'a' as const, attackerIds: ['x'], defenderIds: ['y'],
+    distanceM: 1200, distanceModifiedBy: [],
+    summons: [], continuation: null,
+  })
+
+  it('both freezes set at once: RESOLVE_PENDING_EFFECT { cancel: true } still succeeds and clears the slot', () => {
+    const game = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+    game.state.pendingEffect = pending('a')
+    game.state.activeBattle = battle()
+    const res = applyAction(game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', cancel: true }, makeCtx())
+    expect(res.ok).toBe(true)
+    if (!res.ok) return
+    expect(res.game.state.pendingEffect).toBeNull()
+    // cancel only ever clears the choice slot — the battle freeze is a
+    // separate concern and is untouched by it.
+    expect(res.game.state.activeBattle).not.toBeNull()
+  })
+
+  it('lone pendingEffect: an ordinary action is still refused, unchanged', () => {
+    const game = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+    game.state.pendingEffect = pending('a')
+    const res = applyAction(game, 'alice', { type: 'END_TURN' }, makeCtx())
+    expect(res).toMatchObject({ ok: false, status: 409 })
+  })
+
+  it('lone activeBattle: a non-battle action is still refused, unchanged', () => {
+    const game = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+    game.state.activeBattle = battle()
+    const res = applyAction(game, 'alice', { type: 'END_TURN' }, makeCtx())
+    expect(res).toMatchObject({ ok: false, status: 409 })
+  })
+})
