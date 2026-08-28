@@ -105,6 +105,8 @@ export const GT_HEAVY_AIRSHIP = [
         blueprintId: null,
         keywords: [KEYWORDS.BLOCKER, KEYWORDS.SCRAPPY],
         meta: {
+            [TRIGGERS.ON_ACTIVATE]: 'monsoonActivate',
+            activateCpCost: 1
         }
     },
     {
@@ -122,6 +124,8 @@ export const GT_HEAVY_AIRSHIP = [
         blueprintId: null,
         keywords: [KEYWORDS.BLOCKER],
         meta: {
+            [TRIGGERS.ON_ACTIVATE]: 'hunchbackActivate',
+            activateCpCost: 1
         }
     },
 ];

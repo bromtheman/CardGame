@@ -258,7 +258,7 @@ export const wfVehicles = [
         faction: FACTIONS.WF,
         blueprintId: null,
         meta: {
-            [TRIGGERS.PLAY_ON_VEHICLE]: 'allForTheCauseEffect'
+            [TRIGGERS.PLAY_ON_ZONE]: 'allForTheCauseEffect'
         }
     },
     {

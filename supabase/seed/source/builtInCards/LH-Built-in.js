@@ -305,7 +305,7 @@ export const lhVehicles = [
     {
         name: 'Spectrum',
         isBuiltIn: true,
-        cardText: '',
+        cardText: 'Once per turn, you may pay 1cp to draw a random card from the [TG] Robotics pool',
         materialCost: 370000,
         blueprintCost: 372000,
         cpCost: 0,
@@ -317,7 +317,8 @@ export const lhVehicles = [
         blueprintId: null,
         keywords: [KEYWORDS.HALF_COST, KEYWORDS.TEMPORARY],
         meta: {
-            [TRIGGERS.ON_ACTIVATE]: 'spectrumEffect'
+            [TRIGGERS.ON_ACTIVATE]: 'spectrumEffect',
+            activateCpCost: 1
         }
     },
     {
@@ -386,7 +387,7 @@ export const lhVehicles = [
         faction: FACTIONS.LH,
         blueprintId: null,
         meta: {
-            [TRIGGERS.ON_PLAY]: 'roboticAssemblersEffect '
+            [TRIGGERS.ON_PLAY]: 'roboticAssemblersEffect'
         }
     },
 
