@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { effectFor } from './registry.ts'
 import { inst, makeCtx, makeGame, snap, zoneEntry } from '../engine/testFixtures.ts'
-import { applyAction } from '../engine/index.ts'
+import { applyAction, effectiveCostInGame, effectiveMaterialCostOf } from '../engine/index.ts'
 import type { CardInstance } from '../engine/gameInit.ts'
 import type { EngineContext, EngineGame } from '../engine/engineTypes.ts'
 
@@ -193,33 +193,124 @@ describe('sapphireEffect', () => {
   })
 })
 
-describe('excaliburOnPlay', () => {
-  it('stamps a -200k costDelta on a built-in ship in hand', () => {
-    const target = inst({ name: 'Victoria', isBuiltIn: true, vehicleType: 'ship', materialCost: 270_000 })
-    const game = makeGame({ privates: { a: { hand: [target], deck: [] }, b: { hand: [], deck: [] } } })
-    const ok = effectFor('excaliburOnPlay')!({
-      game, actor: 'a', card: inst({ name: 'Excalibur' }), ctx: makeCtx(),
-      targetInstanceId: target.instanceId,
-    })
-    expect(ok).toBe(true)
-    expect(game.privates.a.hand[0].meta.costDelta).toBe(-200_000)
+// Excalibur is DP6's only customer (spec §4.3, departure 4): a vehicle whose
+// effect targets a card in the actor's own hand. Dispatched only through
+// PLAY_CARD_TARGETING_CARD_IN_HAND, so these tests go through applyAction end
+// to end rather than calling effectFor directly — a direct call would pass
+// even if the seed meta key or the handler wiring were wrong, and Task 4's
+// generic 't_handTargetVehicle' stand-in in placement.test.ts already proves
+// the dispatch mechanism; these prove the real card and the real filter.
+describe('excaliburEffect', () => {
+  const excalibur = () => inst({
+    name: 'Excalibur', type: 'vehicle', vehicleType: 'ship', materialCost: 550_000,
+    meta: { playOnCardEffect: 'excaliburEffect' },
   })
 
-  it('stacks with an existing delta', () => {
-    const target = inst({ isBuiltIn: true, vehicleType: 'ship', meta: { costDelta: -50_000 } })
-    const game = makeGame({ privates: { a: { hand: [target], deck: [] }, b: { hand: [], deck: [] } } })
-    effectFor('excaliburOnPlay')!({
-      game, actor: 'a', card: inst(), ctx: makeCtx(), targetInstanceId: target.instanceId,
-    })
-    expect(game.privates.a.hand[0].meta.costDelta).toBe(-250_000)
+  it('deploys to a legal zone and stamps -200k costDelta on an AI ship targeted in hand', () => {
+    const card = excalibur()
+    const target = inst({ name: 'Victoria', isBuiltIn: true, type: 'vehicle', vehicleType: 'ship', materialCost: 270_000 })
+    const game = makeGame({ privates: { a: { hand: [card, target], deck: [] }, b: { hand: [], deck: [] } } })
+    game.state.resources.a.materials = 600_000
+    const before = effectiveCostInGame(game.state, 'a', target)
+    const r = applyAction(game, 'alice', {
+      type: 'PLAY_CARD_TARGETING_CARD_IN_HAND',
+      instanceId: card.instanceId, targetInstanceId: target.instanceId, zoneId: 1,
+    }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.zones[0].cards.a.map((e) => e.instanceId)).toContain(card.instanceId)
+    const stamped = r.game.privates.a.hand.find((c) => c.instanceId === target.instanceId)!
+    expect(stamped.meta.costDelta).toBe(-200_000)
+    expect(effectiveCostInGame(r.game.state, 'a', stamped)).toBe(before - 200_000)
   })
 
-  it('rejects a player-made target', () => {
-    const target = inst({ isBuiltIn: false, vehicleType: 'ship' })
-    const game = makeGame({ privates: { a: { hand: [target], deck: [] }, b: { hand: [], deck: [] } } })
-    expect(effectFor('excaliburOnPlay')!({
-      game, actor: 'a', card: inst(), ctx: makeCtx(), targetInstanceId: target.instanceId,
-    })).toBe(false)
+  it('rejects a player-made ship as the target', () => {
+    const card = excalibur()
+    const target = inst({ name: 'Home-Brew Cruiser', isBuiltIn: false, type: 'vehicle', vehicleType: 'ship', materialCost: 100_000 })
+    const game = makeGame({ privates: { a: { hand: [card, target], deck: [] }, b: { hand: [], deck: [] } } })
+    game.state.resources.a.materials = 600_000
+    const r = applyAction(game, 'alice', {
+      type: 'PLAY_CARD_TARGETING_CARD_IN_HAND',
+      instanceId: card.instanceId, targetInstanceId: target.instanceId, zoneId: 1,
+    }, makeCtx())
+    expect(r).toMatchObject({ ok: false, status: 400 })
+    // The whole action failed atomically — nothing was taken or paid.
+    expect(game.privates.a.hand).toHaveLength(2)
+    expect(game.state.resources.a.materials).toBe(600_000)
+  })
+
+  it('rejects a non-ship AI vehicle as the target', () => {
+    const card = excalibur()
+    const target = inst({ name: 'AI Tank', isBuiltIn: true, type: 'vehicle', vehicleType: 'tank', materialCost: 100_000 })
+    const game = makeGame({ privates: { a: { hand: [card, target], deck: [] }, b: { hand: [], deck: [] } } })
+    game.state.resources.a.materials = 600_000
+    const r = applyAction(game, 'alice', {
+      type: 'PLAY_CARD_TARGETING_CARD_IN_HAND',
+      instanceId: card.instanceId, targetInstanceId: target.instanceId, zoneId: 1,
+    }, makeCtx())
+    expect(r).toMatchObject({ ok: false, status: 400 })
+    expect(game.privates.a.hand).toHaveLength(2)
+  })
+
+  it('stacks two Excaliburs to -400k on the same target', () => {
+    const first = excalibur()
+    const second = excalibur()
+    const target = inst({ name: 'Victoria', isBuiltIn: true, type: 'vehicle', vehicleType: 'ship', materialCost: 270_000 })
+    const game = makeGame({ privates: { a: { hand: [first, second, target], deck: [] }, b: { hand: [], deck: [] } } })
+    game.state.resources.a.materials = 1_200_000
+    const r1 = applyAction(game, 'alice', {
+      type: 'PLAY_CARD_TARGETING_CARD_IN_HAND',
+      instanceId: first.instanceId, targetInstanceId: target.instanceId, zoneId: 1,
+    }, makeCtx())
+    if (!r1.ok) throw new Error(r1.error)
+    expect(r1.game.privates.a.hand.find((c) => c.instanceId === target.instanceId)!.meta.costDelta).toBe(-200_000)
+    const r2 = applyAction(r1.game, 'alice', {
+      type: 'PLAY_CARD_TARGETING_CARD_IN_HAND',
+      instanceId: second.instanceId, targetInstanceId: target.instanceId, zoneId: 1,
+    }, makeCtx())
+    if (!r2.ok) throw new Error(r2.error)
+    expect(r2.game.privates.a.hand.find((c) => c.instanceId === target.instanceId)!.meta.costDelta).toBe(-400_000)
+    expect(r2.game.state.zones[0].cards.a.map((e) => e.instanceId)).toEqual(
+      expect.arrayContaining([first.instanceId, second.instanceId]),
+    )
+  })
+
+  it('leaves effectiveMaterialCostOf on the target unchanged — the discount is play-time only', () => {
+    const card = excalibur()
+    const target = inst({ name: 'Victoria', isBuiltIn: true, type: 'vehicle', vehicleType: 'ship', materialCost: 270_000 })
+    const game = makeGame({ privates: { a: { hand: [card, target], deck: [] }, b: { hand: [], deck: [] } } })
+    game.state.resources.a.materials = 600_000
+    const before = effectiveMaterialCostOf(target)
+    const r = applyAction(game, 'alice', {
+      type: 'PLAY_CARD_TARGETING_CARD_IN_HAND',
+      instanceId: card.instanceId, targetInstanceId: target.instanceId, zoneId: 1,
+    }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    const stamped = r.game.privates.a.hand.find((c) => c.instanceId === target.instanceId)!
+    // Confirm the discount really landed, so the unchanged assertion below
+    // isn't vacuous...
+    expect(stamped.meta.costDelta).toBe(-200_000)
+    // ...then confirm repairs/base-damage/in-battle-resources' authority
+    // never sees it (spec §4.5; card-effects.md "Play-time cost modifiers").
+    expect(effectiveMaterialCostOf(stamped)).toBe(before)
+    expect(effectiveMaterialCostOf(stamped)).toBe(270_000)
+  })
+
+  it('deploys through plain PLAY_CARD_TO_ZONE with no effect and no error when the actor holds no AI ship', () => {
+    const card = excalibur()
+    const game = makeGame({ privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } } })
+    game.state.resources.a.materials = 600_000
+    // PLAY_CARD_TO_ZONE's targets object carries no targetInstanceId at all
+    // (only targetZoneId/placedInstanceIds) — if playOnCardEffect were
+    // mistakenly dispatched here, costDelta's `typeof targetInstanceId !==
+    // 'string'` guard would reject it and the whole play would 400. Success
+    // itself is therefore proof excaliburEffect was never reached, not just
+    // that it did nothing (spec §4.3 departure 4 — no AI ship in hand must
+    // not block a 550k blocker from deploying).
+    const r = applyAction(game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.zones[0].cards.a.map((e) => e.instanceId)).toContain(card.instanceId)
+    expect(r.game.privates.a.hand).toHaveLength(0)
+    expect(r.game.state.log.some((l) => l.includes('deployed to zone 1'))).toBe(true)
   })
 })
 

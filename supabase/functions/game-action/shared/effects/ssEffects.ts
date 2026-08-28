@@ -1,5 +1,5 @@
 import {
-  AIR_STRAFE_PREDATOR_COUNT, EXCALIBUR_DISCOUNT, KEYWORDS, REPAIRMEN_READY_DRAW_MAX_COST,
+  AIR_STRAFE_PREDATOR_COUNT, EXCALIBUR_COST_DELTA, KEYWORDS, REPAIRMEN_READY_DRAW_MAX_COST,
   RHEA_MAX_PLANE_COST, VEHICLE_TYPES,
 } from '../gameSettings.ts'
 import {
@@ -25,10 +25,13 @@ registerEffect('rheaOnPlay', drawFromPool({
 }), { needsCatalog: true })
 
 // "Pick one AI ship in hand and reduce its cost by 200k." AI means built-in
-// (design spec §3.10, "AI/built-in card costs").
-registerEffect('excaliburOnPlay', costDelta({
-  delta: -EXCALIBUR_DISCOUNT,
-  filter: { isBuiltIn: true, vehicleType: 'ship', type: 'vehicle' },
+// (design spec §7.3, "AI" === isBuiltIn true). Dispatched by DP6's hand
+// direction (PLAY_CARD_TARGETING_CARD_IN_HAND, spec §4.3): Excalibur deploys
+// to its zone first, then this fires against the hand target, and Excalibur
+// itself is not spendCard'd — it is a hull, not a spent ability.
+registerEffect('excaliburEffect', costDelta({
+  delta: EXCALIBUR_COST_DELTA,
+  filter: { type: 'vehicle', vehicleType: 'ship', isBuiltIn: true },
 }))
 
 // "Grant target vehicle scrappy. If the target is an AI vehicle that costs

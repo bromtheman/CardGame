@@ -101,6 +101,7 @@ export const ssVehicles = [
         blueprintId: null,
         keywords: [KEYWORDS.BLOCKER],
         meta: {
+            [TRIGGERS.PLAY_ON_CARD]: 'excaliburEffect'
         }
     } ,{
         name: 'Asphodel',

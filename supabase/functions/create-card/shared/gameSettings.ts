@@ -77,7 +77,7 @@ export const RHEA_MAX_PLANE_COST = 300_000 // Rhea: "base cost under 300k" (excl
 export const GT_HEAVY_AIRSHIP_MIN_COST = 400_000 // spec §7.3: the GT airship cost cliff
 
 export const MARAUDER_DISCOUNT = 50_000  // Marauder: enemy vehicle costs 50k less
-export const EXCALIBUR_DISCOUNT = 200_000 // Excalibur: AI ship in hand costs 200k less
+export const EXCALIBUR_COST_DELTA = -200_000 // Excalibur: AI ship in hand costs 200k less
 export const REPAIRMEN_READY_DRAW_MAX_COST = 200_000 // Repairmen Ready draws below this
 
 export const FLYING_SQUIRREL_ATTACK_COUNT = 3 // Flying Squirrel Attack: target fights this many summons
