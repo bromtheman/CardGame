@@ -540,6 +540,37 @@ describe('deployVehicle extraction and PLAY_CARD_TARGETING_CARD_IN_HAND hand dir
     expect(r.game.state.log.some((l) => l.includes('t_handTargetVehicle'))).toBe(false)
     expect(r.game.state.log.some((l) => l.includes('deployed to zone 1'))).toBe(true)
   })
+
+  // Review fix: test 1 only pins surge-before-pay ordering for
+  // PLAY_CARD_TO_ZONE. This mirrors it for the hand-target path itself —
+  // same numbers as test 1, so the same "read after pay would under-spawn"
+  // failure mode is independently caught at this call site too.
+  it('PLAY_CARD_TARGETING_CARD_IN_HAND also lands additionalSpawns + resourceSurge hulls, surge read before payment', () => {
+    const { g, card } = withHand({
+      vehicleType: 'ship', materialCost: 60_000, name: 'Surge Stand-in',
+      meta: {
+        additionalSpawns: 1, resourceSurge: { materialsAtLeast: 100_000, extraSpawns: 1 },
+        playOnCardEffect: 't_handTargetVehicle',
+      },
+    })
+    g.state.resources.a.materials = 100_000 // exactly at the surge threshold
+    const target = inst({ type: 'vehicle', faction: 'AI', materialCost: 300_000 })
+    g.privates.a.hand.push(target)
+    g.state.counts.a.hand = 2
+    const r = applyAction(g, 'alice', {
+      type: 'PLAY_CARD_TARGETING_CARD_IN_HAND',
+      instanceId: card.instanceId, targetInstanceId: target.instanceId, zoneId: 1,
+    }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    // card itself + printed additionalSpawns(1) + surge extraSpawns(1) = 3.
+    // If this handler's surge read moved to after pay(), materials would
+    // already be 100000-60000=40000 (under the 100000 threshold) by the time
+    // it's checked, suppressing the surge extra and landing only 2.
+    expect(r.game.state.zones[0].cards.a).toHaveLength(3)
+    const ids = r.game.state.zones[0].cards.a.map((e) => e.instanceId)
+    expect(new Set(ids).size).toBe(3)
+    expect(r.game.state.resources.a.materials).toBe(40_000)
+  })
 })
 
 describe('SET_ALERT_CARD', () => {
