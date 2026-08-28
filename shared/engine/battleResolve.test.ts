@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { applyAction, repairCostOf } from './index'
+import { applyAction, effectFor, repairCostOf } from './index'
 import { registerEffect } from '../effects/registry.ts'
-import { makeCtx, makeGame, zoneEntry } from './testFixtures'
+import { inst, makeCtx, makeGame, zoneEntry } from './testFixtures'
 
 function inBattle() {
   const g = makeGame({ turnNumber: 3 })
@@ -358,5 +358,50 @@ describe('Scrappy auto-repair', () => {
     const r = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true })
     if (!r.ok) throw new Error(r.error)
     expect(r.game.state.zones[0].cards.a).toEqual([])
+  })
+})
+
+// A card taken out of the enemy deck (Marauder, Paddlegun, Plunderer) is only
+// ever on loan: the raider gets to play it, but the hull belongs to the player
+// who built the deck. Routing its death into the raider's discard instead
+// would strip the card out of its owner's deck permanently — a steal every
+// turn would grind the opponent's deck down to nothing.
+function capturedInBattle() {
+  const { g, atk, def } = inBattle()
+  g.privates.b.deck.push(inst({ name: 'Ironclad', type: 'vehicle', materialCost: 60000 }))
+  g.state.counts.b.deck = 1
+  effectFor('marauderOnPlay')!({ game: g, actor: 'a', card: inst({ name: 'Marauder' }), ctx: makeCtx() })
+  const stolen = zoneEntry({ ...g.privates.a.hand[0], playedOnTurn: 2 })
+  g.privates.a.hand = []
+  g.state.counts.a.hand = 0
+  g.state.zones[0].cards.a.push(stolen)
+  g.state.activeBattle!.attackerIds.push(stolen.instanceId)
+  const s = applyAction(g, 'alice', {
+    type: 'SUBMIT_BATTLE_REPORT',
+    results: { [atk.instanceId]: 95, [def.instanceId]: 95, [stolen.instanceId]: 40 }, repairs: [],
+  })
+  if (!s.ok) throw new Error(s.error)
+  const r = applyAction(s.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, makeCtx())
+  if (!r.ok) throw new Error(r.error)
+  return r.game
+}
+
+describe('captured cards', () => {
+  it("sends a vehicle taken from the enemy deck to its OWNER's discard when it dies", () => {
+    const game = capturedInBattle()
+    expect(game.state.destroyed.b.map((c) => c.name)).toEqual(['Ironclad'])
+    expect(game.state.destroyed.a).toHaveLength(0)
+  })
+
+  it("does not send the raider's cost discount home with it", () => {
+    const game = capturedInBattle()
+    expect(game.state.destroyed.b[0].meta.costDelta).toBeUndefined()
+  })
+  it('puts it back where its owner can draw it again', () => {
+    const game = capturedInBattle()
+    const r = applyAction(game, 'alice', { type: 'END_TURN' }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    // bob's deck was empty — the recycled Ironclad is the card he draws
+    expect(r.game.privates.b.hand.map((c) => c.name)).toEqual(['Ironclad'])
   })
 })

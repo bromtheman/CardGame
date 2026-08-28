@@ -2,6 +2,7 @@ import { drawFromPool, grant, grantKeywords, whenPlayed, zoneOccupants } from '.
 import { registerEffect } from './registry.ts'
 import { KEYWORDS } from '../gameSettings.ts'
 import type { ZoneCardEntry } from '../engine/engineTypes.ts'
+import { copyMeta } from '../engine/gameEngine.ts'
 
 // OW built-in card effects. Cards whose faction is GT but whose seed row
 // lives in OW-Built-in.js are registered here too.
@@ -34,7 +35,8 @@ registerEffect('clydesdaleEffect', whenPlayed(
     const zone = game.state.zones.find((z) => z.id === targetZoneId)
     if (!zone) return false
     const copy: ZoneCardEntry = {
-      ...card, instanceId: ctx.newId(), playedOnTurn: game.turnNumber, movedOnTurn: null,
+      ...card, instanceId: ctx.newId(), meta: copyMeta(card.meta),
+      playedOnTurn: game.turnNumber, movedOnTurn: null,
     }
     zone.cards[actor].push(copy)
     game.state.log.push(`A second ${card.name} rolls off the line in zone ${zone.id}`)

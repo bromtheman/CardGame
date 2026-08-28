@@ -4,7 +4,7 @@ import {
 } from '../gameSettings.ts'
 import type { ApplyResult, EngineGame, Side, ZoneCardEntry } from './engineTypes.ts'
 import {
-  battleFrozen, drawCard, err, findVehicle, otherSide, registerHandler, zoneById,
+  battleFrozen, discardCard, drawCard, err, findVehicle, otherSide, registerHandler, zoneById,
 } from './gameEngine.ts'
 import { biomeAllows, effectiveMaterialCostOf } from './placement.ts'
 
@@ -60,8 +60,7 @@ function changeOrder(game: EngineGame, actor: Side, instanceId: string | undefin
   }
   hand.splice(index, 1)
   game.state.counts[actor].hand = hand.length
-  const { instanceId: _instanceId, ...snapshot } = card
-  game.state.destroyed[actor].push(snapshot)
+  discardCard(game, actor, card)
   game.state.scheduled.push({
     type: 'changeOrderDraw', side: actor, dueTurn: game.turnNumber + CHANGE_ORDER_DELAY_TURNS,
   })

@@ -113,3 +113,27 @@ the authority for damage, repairs, and in-battle resources — never mix them.
 (Marauder −50k, Excalibur −200k). It is summed into `effectiveCostInGame`
 alongside the registered `costModifier` and, like it, never reaches
 `effectiveMaterialCostOf`.
+
+## Captured cards
+
+`takeFromEnemyDeck` (Marauder, Paddlegun, Plunderer clause 2) moves one card out
+of the opponent's deck and stamps `meta.ownerSide` with the side it came from.
+That stamp is what makes a capture a loan rather than a confiscation:
+`discardCard` — the single exit for every card leaving play (battle death,
+Temporary despawn, ability spend, Change Order) — files the card under
+`ownerSideOf(card, controller)`, so it lands in its owner's discard and
+reshuffles back into the deck it was built for. Route any new exit through
+`discardCard`; pushing to `state.destroyed` directly re-opens the hole, and a
+steal every turn grinds the opponent's deck away for good.
+
+Two rules keep the stamp honest:
+
+- **A card going home drops the captor's stamps** (`ownerSide`, `costDelta`).
+  Marauder's −50k belongs to the raid, not to the card; riding home it would
+  leave the owner permanently discounted on their own card, and re-stack on the
+  next capture. Printed meta (`additionalSpawns`, …) is card data and stays.
+- **A minted copy is not the captured card.** Exactly one card left the enemy
+  deck, so exactly one goes back; the extra hulls belong to whoever conjured
+  them. Every effect that clones an instance (`additionalSpawns` extras,
+  `clydesdaleEffect`, `loggerheadOnDeath`) passes the source meta through
+  `copyMeta`. New copy-minting effects must do the same.
