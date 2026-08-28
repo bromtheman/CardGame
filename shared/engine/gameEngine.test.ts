@@ -320,3 +320,42 @@ describe('activatedOnTurn', () => {
     expect(res.game.state.destroyed.a[0]).not.toHaveProperty('playedOnTurn')
   })
 })
+
+describe('pendingEffect freeze', () => {
+  const pending = (side: 'a' | 'b' = 'a') => ({
+    effect: 't_choice',
+    side,
+    card: inst({ name: 'Kraken', instanceId: 'k1' }),
+    kind: 'choice' as const,
+    prompt: 'Pick one',
+    options: [{ id: 'x', label: 'X' }],
+  })
+
+  it('blocks an ordinary action while a choice is owed', () => {
+    const game = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+    game.state.pendingEffect = pending()
+    const res = applyAction(game, 'alice', { type: 'END_TURN' }, makeCtx())
+    expect(res).toMatchObject({ ok: false, status: 409 })
+  })
+
+  it('blocks a hero power, which the battle freeze would have allowed', () => {
+    const game = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+    game.state.pendingEffect = pending()
+    const res = applyAction(game, 'alice', { type: 'USE_HERO_POWER', power: 'draw' }, makeCtx())
+    expect(res).toMatchObject({ ok: false, status: 409 })
+  })
+
+  it('still allows conceding', () => {
+    const game = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+    game.state.pendingEffect = pending()
+    const res = applyAction(game, 'alice', { type: 'CONCEDE' }, makeCtx())
+    expect(res.ok).toBe(true)
+  })
+
+  it('normalizeState defaults the slot on a legacy row', () => {
+    const game = makeGame()
+    delete (game.state as unknown as Record<string, unknown>).pendingEffect
+    normalizeState(game.state)
+    expect(game.state.pendingEffect).toBeNull()
+  })
+})

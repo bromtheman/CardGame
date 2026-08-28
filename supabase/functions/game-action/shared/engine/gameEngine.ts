@@ -48,6 +48,14 @@ const OFF_TURN_ACTIONS = new Set<GameAction['type']>([
   'CONCEDE', 'ABANDON', 'RESPOND_TO_ATTACK', 'SUBMIT_BATTLE_REPORT', 'DECIDE_BATTLE_REPORT', 'USE_HERO_POWER',
 ])
 
+// A suspended effect freezes harder than a battle does. BATTLE_ACTIONS admits
+// USE_HERO_POWER and the three battle actions, none of which should be legal
+// while a player owes a choice — so this is its own list, checked first
+// (spec §4.2, departure 2).
+const PENDING_ACTIONS = new Set<GameAction['type']>([
+  'RESOLVE_PENDING_EFFECT', 'CONCEDE', 'ABANDON',
+])
+
 export const err = (status: number, error: string): ApplyResult => ({ ok: false, status, error })
 
 // Handler registry — later modules add entries via registerHandler.
@@ -70,6 +78,7 @@ export function normalizeState(state: PublicGameState): void {
   if (s.alertCard === undefined) s.alertCard = null
   if (s.scheduled === undefined) s.scheduled = []
   if (s.zoneEffects === undefined) s.zoneEffects = []
+  if (s.pendingEffect === undefined) s.pendingEffect = null
   for (const zone of state.zones) {
     for (const side of ['a', 'b'] as Side[]) {
       for (const entry of zone.cards[side] as Partial<ZoneCardEntry>[]) {
@@ -223,6 +232,9 @@ export function applyAction(
   const actor = sideOf(game, actorId)
   if (!actor) return err(403, 'You are not in this game')
   if (game.status !== 'active') return err(409, 'Game is over')
+  if (game.state.pendingEffect !== null && !PENDING_ACTIONS.has(action.type)) {
+    return err(409, 'A card effect is waiting on a choice — resolve it first')
+  }
   if (battleFrozen(game.state) && !BATTLE_ACTIONS.has(action.type)) {
     return err(409, 'A battle is in progress — resolve it first')
   }

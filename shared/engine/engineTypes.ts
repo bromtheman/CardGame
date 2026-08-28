@@ -84,5 +84,12 @@ export type GameAction =
       zoneId?: number       // rapidRedeployment: destination
       distanceDeltaM?: number // tacticalPositioning: ±meters
     }
+  | {
+      type: 'RESOLVE_PENDING_EFFECT'
+      choiceId?: string
+      targetInstanceId?: string
+      zoneId?: number
+      cancel?: boolean
+    }
 
 export type ApplyResult = { ok: true; game: EngineGame } | { ok: false; status: number; error: string }
