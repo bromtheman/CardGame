@@ -166,10 +166,19 @@ describe('play-pipeline effect dispatch', () => {
 
   it('vehicle with unimplemented onActivate deploys fine with exactly one vanilla note', () => {
     // A synthetic t_-prefixed stand-in, not a real seeded effect name
-    // (docs/claude/testing.md): wave 3 registers eclipseEffect for real, and
-    // a test still using that literal here would silently stop testing the
-    // unimplemented path the moment it did — passing forever after while
-    // asserting nothing.
+    // (docs/claude/testing.md). Registering the real name here would NOT
+    // have made this test pass silently: noteUnimplemented
+    // (shared/effects/registry.ts, ~lines 66-82) pushes its "plays as
+    // vanilla" note only via `if (isImplemented(name)) continue` — i.e.
+    // only when the name is NOT implemented — so once wave 3 registered
+    // eclipseEffect for real, a fixture still naming it here would have
+    // lost its log line and failed loudly instead (toHaveLength(1) -> 0).
+    // The rename is still worth doing: it decouples this fixture from
+    // Eclipse's registration state, so the test keeps exercising the
+    // unimplemented path indefinitely, rather than going red — for a
+    // reason unrelated to what it's meant to check — the moment a real
+    // card is built. ambushEffect/sabotageEffect below are the same shape
+    // and are wave 5's to rename when their cards are built.
     const { g, card } = withHand({
       vehicleType: 'ship', materialCost: 10000, name: 'Some Ship',
       meta: { onActivate: 't_unimplementedOnActivate' },

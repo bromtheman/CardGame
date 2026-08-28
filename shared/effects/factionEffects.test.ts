@@ -1199,11 +1199,38 @@ describe('wave 3 — forced battles', () => {
       expect(res.game.state.pendingEffect?.effect).toBe('eclipseEffect')
     })
 
-    it('rejects activation when its zone holds only a Stealthy enemy', () => {
+    it('rejects activation when its zone holds only a Stealthy enemy — CP is not spent, nothing sticks', () => {
       const game = onBoard()
       game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'stealthy-1', name: 'Sneaky', keywords: ['stealthy'] }))
       const res = applyAction(game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: 'ec1' }, makeCtx())
       expect(res).toMatchObject({ ok: false, status: 400 })
+      expect(game.state.resources.a.cp).toBe(3)
+      expect(game.state.zones[0].cards.a[0].activatedOnTurn).toBeNull()
+    })
+
+    // Mirrors Braveheart's equivalent test above. choice() protects both
+    // cards identically (RESOLVE_PENDING_EFFECT's zoneId/targetInstanceId
+    // are client-supplied and unvalidated; only choiceId, checked against
+    // pending.options, and the server-derived zone matter) — this pins
+    // that the shared protection actually covers Eclipse too, including
+    // its extra Stealthy filter and activatesZone stamp.
+    it('a stale/malicious zoneId and targetInstanceId on resolve are ignored', () => {
+      const game = onBoard()
+      game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe-1', name: 'Foe' })) // zone 1 — the real target
+      game.state.zones[2].cards.b.push(zoneEntry({ instanceId: 'decoy-1', name: 'Decoy' })) // zone 3 — a different, legal zone
+      const ctx = makeCtx()
+      const suspended = applyAction(game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: 'ec1' }, ctx)
+      if (!suspended.ok) throw new Error(suspended.error)
+      const resolved = applyAction(suspended.game, 'alice', {
+        type: 'RESOLVE_PENDING_EFFECT', choiceId: 'foe-1', zoneId: 3, targetInstanceId: 'decoy-1',
+      }, ctx)
+      if (!resolved.ok) throw new Error(resolved.error)
+      const battle = resolved.game.state.activeBattle
+      expect(battle?.zoneId).toBe(1)
+      expect(battle?.defenderIds).toEqual(['foe-1'])
+      expect(resolved.game.state.zones[0].lastActivatedTurn).toBe(2) // still stamped — the real zone, not the decoy's
+      expect(resolved.game.state.zones[2].cards.b.map((c) => c.instanceId)).toEqual(['decoy-1'])
+      expect(resolved.game.state.zones[2].lastActivatedTurn).toBeNull() // decoy's zone untouched
     })
   })
 })
