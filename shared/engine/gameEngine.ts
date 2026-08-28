@@ -168,10 +168,20 @@ export function copyMeta(meta: Record<string, unknown>): Record<string, unknown>
 // reshuffleDiscard later feeds back into that owner's deck. Routing a captured
 // card into its captor's pile instead would delete it from its owner's deck
 // for the rest of the game — a steal every turn would grind that deck away.
-// A card going home also drops the stamps its captor put on it: `costDelta`
-// above all, which would otherwise leave the owner holding a permanent — and,
-// on the next capture, re-stacking — discount on their own card. Printed meta
-// (`additionalSpawns` and friends) is card data and stays.
+//
+// Two stamps are dropped here, for two different reasons. `costDelta` (spec
+// §4.5: a per-instance delta) comes off UNCONDITIONALLY, for every card
+// leaving play, captured or not — reshuffleDiscard mints a fresh instanceId
+// for every returning card, so the instance the delta belonged to no longer
+// exists. Excalibur is the case that makes this matter even without a
+// capture: it discounts a vehicle in the OWNER's own hand, so a conditional
+// strip (only when owner !== controller) would leave that owner permanently
+// discounted on their own card once it dies and reshuffles back — and
+// stacking again on reuse. `ownerSide` is a different concern — whose deck a
+// card goes home to — so it is stripped only when the card is actually going
+// home to an owner other than its controller; a card that was never captured
+// carries no `ownerSide` to strip. Printed meta (`additionalSpawns` and
+// friends) is card data and stays.
 export function discardCard(game: EngineGame, controller: Side, card: CardInstance): void {
   // Every per-entry stamp must be named here. TypeScript does NOT catch one you
   // forget — extra properties in a rest spread are legal — so it would ride
@@ -184,8 +194,10 @@ export function discardCard(game: EngineGame, controller: Side, card: CardInstan
   // exit out of play, so guarding it here covers every path at once.
   if (isSummonOnly(card)) return
   const owner = ownerSideOf(card, controller)
+  const { costDelta: _costDelta, ...withoutCostDelta } = snapshot.meta
+  snapshot.meta = withoutCostDelta
   if (owner !== controller) {
-    const { ownerSide: _ownerSide, costDelta: _costDelta, ...meta } = snapshot.meta
+    const { ownerSide: _ownerSide, ...meta } = snapshot.meta
     snapshot.meta = meta
   }
   game.state.destroyed[owner].push(snapshot as SnapshotCard)

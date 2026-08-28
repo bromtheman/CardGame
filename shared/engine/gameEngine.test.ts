@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { LOG_MAX_ENTRIES } from '../gameSettings'
-import { applyAction, normalizeState } from './index'
+import { applyAction, effectiveCostInGame, normalizeState } from './index'
 import { takeFromEnemyDeck } from '../effects/primitives.ts'
 import { inst, makeCtx, makeGame, snap, zoneEntry } from './testFixtures'
 
@@ -422,5 +422,101 @@ describe('captured cards', () => {
     if (!r.ok) throw new Error(r.error)
     expect(r.game.state.destroyed.b.map((c) => c.name)).toEqual(['Loaned Skiff'])
     expect(r.game.state.destroyed.a).toHaveLength(0)
+  })
+
+  // Marauder's own stamp (dwgEffects.ts marauderOnPlay), layered on top of
+  // takeFromEnemyDeck's ownerSide — this is the ORIGINAL costDelta consumer
+  // and the path discardCard already handled correctly before wave 3's
+  // Excalibur fix. Pinned here so the unconditional costDelta strip below
+  // cannot regress it back to a captor-side no-op.
+  it("strips BOTH costDelta and ownerSide from a captured card going home (Marauder)", () => {
+    const g = makeGame()
+    // A second, un-captured filler card keeps b's deck non-empty after the
+    // capture below — otherwise END_TURN's own draw-for-incoming-side step
+    // (b draws next, since alice/side a is ending her turn) would reshuffle
+    // and immediately re-draw the very card this test is inspecting,
+    // draining state.destroyed.b before the assertions ever see it.
+    g.privates.b.deck.push(
+      inst({ name: 'Loaned Hull', keywords: ['temporary'], materialCost: 200_000 }),
+      inst({ name: 'Bob Draws This Instead' }),
+    )
+    g.state.counts.b.deck = 2
+    takeFromEnemyDeck(g, 'a', makeCtx())
+    const taken = g.privates.a.hand[0]
+    taken.meta = { ...taken.meta, costDelta: -50_000 } // Marauder's 50k discount
+    g.state.zones[0].cards.a.push(zoneEntry({ ...taken, playedOnTurn: 2 }))
+    g.privates.a.hand = []
+    const r = applyAction(g, 'alice', { type: 'END_TURN' }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.destroyed.b).toHaveLength(1)
+    expect(r.game.state.destroyed.b[0].name).toBe('Loaned Hull')
+    expect(r.game.state.destroyed.b[0].meta).not.toHaveProperty('costDelta')
+    expect(r.game.state.destroyed.b[0].meta).not.toHaveProperty('ownerSide')
+  })
+})
+
+describe('discardCard strips costDelta unconditionally (wave 3 fix)', () => {
+  // A minimal battle fixture — the same shape battleResolve.test.ts's local
+  // inBattle() builds, duplicated here (not imported) so this file's tests
+  // stay self-contained next to the gameEngine.ts code they exercise.
+  // activePlayer starts as 'bob' deliberately: battle actions never touch
+  // activePlayer, so bob is still active once the battle resolves, and
+  // ending HIS turn is what makes alice (side a) — Ironclad's owner —
+  // incoming and drawing next.
+  function inBattle() {
+    const g = makeGame({ turnNumber: 3, activePlayer: 'bob' })
+    const atk = zoneEntry({
+      playedOnTurn: 2, materialCost: 300_000, name: 'Ironclad',
+      meta: { costDelta: -200_000 }, // Excalibur discounting the OWNER's OWN card
+    })
+    const def = zoneEntry({ materialCost: 60_000, name: 'Bastion' })
+    g.state.zones[0].cards.a.push(atk)
+    g.state.zones[0].cards.b.push(def)
+    g.state.activeBattle = {
+      zoneId: 1, aggressor: 'a', attackerIds: [atk.instanceId],
+      defenderIds: [def.instanceId], distanceM: 1200, distanceModifiedBy: [],
+      summons: [], continuation: null,
+    }
+    g.state.zones[0].lastActivatedTurn = 3
+    return { g, atk, def }
+  }
+
+  it('(a) a card carrying costDelta that dies in battle lands in state.destroyed with no costDelta', () => {
+    const { g, atk, def } = inBattle()
+    const s = applyAction(g, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT',
+      results: { [atk.instanceId]: 40, [def.instanceId]: 95 }, repairs: [],
+    })
+    if (!s.ok) throw new Error(s.error)
+    const r = applyAction(s.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.destroyed.a).toHaveLength(1)
+    expect(r.game.state.destroyed.a[0].name).toBe('Ironclad')
+    expect(r.game.state.destroyed.a[0].meta).not.toHaveProperty('costDelta')
+  })
+
+  // The strong assertion: the player-visible consequence. Ironclad dies
+  // carrying costDelta, side a's empty deck forces a reshuffle that draws it
+  // straight back — and it must cost the full 300k, not the Excalibur-
+  // discounted 100k, the second time around.
+  it('(b) after a reshuffle it is drawn and prices at FULL cost through effectiveCostInGame', () => {
+    const { g, atk, def } = inBattle()
+    const s = applyAction(g, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT',
+      results: { [atk.instanceId]: 40, [def.instanceId]: 95 }, repairs: [],
+    })
+    if (!s.ok) throw new Error(s.error)
+    const d = applyAction(s.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, makeCtx())
+    if (!d.ok) throw new Error(d.error)
+    expect(d.game.privates.a.deck).toHaveLength(0) // reshuffle-on-draw precondition
+    const t = applyAction(d.game, 'bob', { type: 'END_TURN' }, makeCtx())
+    if (!t.ok) throw new Error(t.error)
+    expect(t.game.state.log.some((l) => l.includes('reshuffles 1 card(s)'))).toBe(true)
+    expect(t.game.state.destroyed.a).toEqual([])
+    expect(t.game.privates.a.hand).toHaveLength(1)
+    const drawn = t.game.privates.a.hand[0]
+    expect(drawn.name).toBe('Ironclad')
+    expect(effectiveCostInGame(t.game.state, 'a', drawn)).toBe(300_000)
+    expect(drawn.meta).not.toHaveProperty('costDelta')
   })
 })
