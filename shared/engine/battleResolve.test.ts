@@ -148,6 +148,29 @@ describe('DECIDE_BATTLE_REPORT', () => {
   })
 })
 
+describe('activatedOnTurn', () => {
+  it('does not leak the stamp into the destroyed snapshot on a battle death', () => {
+    const { g, atk, def } = inBattle()
+    // def carries a spent activation stamp going into the battle — the
+    // destroyed snapshot must drop it, the same way endTurn's Temporary
+    // cull does (see gameEngine.test.ts), or it rides along through
+    // state.destroyed and back into the deck via reshuffleDiscard.
+    def.activatedOnTurn = 3
+    const s = applyAction(g, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT',
+      results: { [atk.instanceId]: 95, [def.instanceId]: 40 }, repairs: [],
+    })
+    if (!s.ok) throw new Error(s.error)
+    const r = applyAction(s.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true })
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.destroyed.b).toHaveLength(1)
+    const snapshot = r.game.state.destroyed.b[0]
+    expect(snapshot).not.toHaveProperty('activatedOnTurn')
+    expect(snapshot).not.toHaveProperty('playedOnTurn')
+    expect(snapshot).not.toHaveProperty('movedOnTurn')
+  })
+})
+
 describe('death triggers on report approval', () => {
   // The attacker (side a / Loggerhead's owner) dies while the DEFENDER
   // ('bob', side b) is the one approving — owner and approver deliberately
