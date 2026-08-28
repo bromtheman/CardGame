@@ -868,8 +868,10 @@ matching the existing wave-1/wave-2 assertions.
 - Modify: `frontend/src/pages/game/HandBar.tsx`
 - Modify: `frontend/src/pages/game/GameBoardPage.tsx`
 
-**`BattleOverlay`** keeps its **own** local `ActiveBattle` type and its own mirror
-of `participantsOf` (the engine does not export one). Both need the summon merge,
+**`BattleOverlay`** declares `type Battle = NonNullable<PublicGameState['activeBattle']>`
+— a **derived alias**, so it already inherited `summons` and `continuation` from
+Task 1 and needs no type change. What it does keep is its own mirror of
+`participantsOf` (the engine exports none), and **that** needs the summon merge,
 using the same list-membership rule as Task 3 — attacker ids take the aggressor's
 side, defender ids the defender's.
 
