@@ -1,22 +1,93 @@
 import { KEYWORDS, SPAWN_DISTANCE_DEFAULT_M } from '../gameSettings.ts'
-import type { Side } from './engineTypes.ts'
+import type { BattleContinuation, Side, ZoneCardEntry } from './engineTypes.ts'
 import type { EngineGame } from './engineTypes.ts'
 import { err, otherSide, registerHandler, zoneById } from './gameEngine.ts'
 
+// The only place the activeBattle object literal is constructed (spec §4.3,
+// departure 1) — so the next field added to it is one edit here rather than
+// three call sites. summons/continuation default to "none": only a forced
+// battle (declareForcedBattle) ever populates them.
+function setBattle(game: EngineGame, spec: {
+  zoneId: number
+  aggressor: Side
+  attackerIds: string[]
+  defenderIds: string[]
+  summons?: ZoneCardEntry[]
+  continuation?: BattleContinuation | null
+}): void {
+  game.state.activeBattle = {
+    zoneId: spec.zoneId, aggressor: spec.aggressor,
+    attackerIds: spec.attackerIds, defenderIds: spec.defenderIds,
+    distanceM: SPAWN_DISTANCE_DEFAULT_M, distanceModifiedBy: [],
+    summons: spec.summons ?? [],
+    continuation: spec.continuation ?? null,
+  }
+}
+
+// setBattle plus the zone-activation stamp plus the fleet log line — used
+// only by ATTACK_ENEMY_FLEET and RESPOND_TO_ATTACK, where declaring the
+// battle IS the zone's one activation for the turn. Kept byte-identical in
+// behaviour across the setBattle/lockBattle/declareForcedBattle split.
 function lockBattle(
   game: EngineGame, zoneId: number, aggressor: Side, attackerIds: string[], defenderIds: string[],
 ): void {
-  game.state.activeBattle = {
-    zoneId, aggressor, attackerIds, defenderIds,
-    distanceM: SPAWN_DISTANCE_DEFAULT_M, distanceModifiedBy: [],
-    // A regular declared battle has neither: only a forced battle
-    // (declareForcedBattle, DP3, spec §4.3) ever populates these.
-    summons: [], continuation: null,
-  }
+  setBattle(game, { zoneId, aggressor, attackerIds, defenderIds })
   zoneById(game.state, zoneId)!.lastActivatedTurn = game.turnNumber
   game.state.log.push(
     `Fleet battle declared in zone ${zoneId} — ${attackerIds.length} vs ${defenderIds.length}. Fight it in From The Depths, then report results.`,
   )
+}
+
+// DP3 (spec §4.3): a card-forced battle. Two rulings distinguish it from an
+// ordinary fleet attack, and both are load-bearing (departure 1) — reusing
+// lockBattle unchanged would violate both:
+//   - It is NOT a zone activation: lastActivatedTurn is left untouched unless
+//     the caller explicitly passes activatesZone (Eclipse alone does, per its
+//     own card text).
+//   - It skips the Stealthy opt-out entirely — the card *forces* the fight,
+//     so there is no awaitingResponse window; the battle locks immediately.
+// Sets no alert card (spec §4.3, departure 2): the BattleOverlay this raises
+// is already louder and already public, and the alert slot is single/shared
+// with the opponent's own alerts.
+//
+// Returns false — so the calling effect 400s and applyAction discards the
+// clone — without mutating `game` at all, on: no such zone, a battle already
+// active, an empty attacker or defender list, or an id that is neither an
+// on-field entry on its own side nor one of the listed summons. Membership in
+// `summons` (not a side field) decides which side a summon belongs to, so the
+// same check serves attacker- and defender-side summons alike (decision 18).
+export function declareForcedBattle(game: EngineGame, spec: {
+  zoneId: number
+  aggressor: Side
+  attackerIds: string[]
+  defenderIds: string[]
+  summons?: ZoneCardEntry[]
+  continuation?: BattleContinuation | null
+  cause: string            // card name, for the log line
+  activatesZone?: boolean  // stamps lastActivatedTurn; Eclipse alone passes true
+}): boolean {
+  const zone = zoneById(game.state, spec.zoneId)
+  if (!zone) return false
+  if (game.state.activeBattle) return false
+  if (spec.attackerIds.length === 0 || spec.defenderIds.length === 0) return false
+  const defenderSide = otherSide(spec.aggressor)
+  const summonIds = new Set((spec.summons ?? []).map((s) => s.instanceId))
+  const onField = (side: Side, id: string) => zone.cards[side].some((c) => c.instanceId === id)
+  for (const id of spec.attackerIds) {
+    if (!onField(spec.aggressor, id) && !summonIds.has(id)) return false
+  }
+  for (const id of spec.defenderIds) {
+    if (!onField(defenderSide, id) && !summonIds.has(id)) return false
+  }
+  setBattle(game, spec)
+  if (spec.activatesZone) zone.lastActivatedTurn = game.turnNumber
+  // Never "Fleet battle" — these are usually 1v1, and that phrase is reserved
+  // for ATTACK_ENEMY_FLEET's own line. The tail sentence is kept verbatim:
+  // players rely on it to know the overlay wants a From The Depths result.
+  game.state.log.push(
+    `${spec.cause} forces a battle in zone ${spec.zoneId} — ${spec.attackerIds.length} vs ${spec.defenderIds.length}. Fight it in From The Depths, then report results.`,
+  )
+  return true
 }
 
 registerHandler('ATTACK_ENEMY_FLEET', (game, actor, action) => {
