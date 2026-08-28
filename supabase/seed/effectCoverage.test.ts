@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { loadSeedData } from './transform'
-import { TRIGGERS } from '../../shared/gameSettings'
+import { TRIGGERS, GT_HEAVY_AIRSHIP_MIN_COST } from '../../shared/gameSettings'
 import '../../shared/engine/index'
 import { DATA_EFFECT_KEYS, effectName, isImplemented } from '../../shared/effects/registry'
 
@@ -34,6 +34,18 @@ const KNOWN_GAPS: Record<string, string> = {
 
   'WF:Ambush': 'wave 5', 'DWG:Ongoing Attrition': 'wave 5', 'OW:Sub Killer': 'wave 5',
   'DWG:Recurring Threat': 'wave 5', 'OW:Sabotage': 'wave 5',
+}
+
+// Cards that pass G2 — they resolve at least one implemented effect — but
+// whose card text is only partly built. G2 asks "any implemented effect?",
+// not "does all of the text work?", so it cannot see these, and they cannot
+// go in KNOWN_GAPS without tripping the stale-entry assertion. Delete an
+// entry when its wave finishes the card.
+const PARTIAL: Record<string, string> = {
+  'DWG:Plunderer':
+    'wave 4 — clause 2 (survive a victorious fleet battle, or damage the enemy base, then draw from the enemy deck) needs a battle-resolve and base-attack hook. Its costModifier is implemented.',
+  'DWG:DWG Waters':
+    'wave 4 — clauses 2-3 need a battle-declare dispatch point. Its persistent zone claim is implemented.',
 }
 
 // cardText is optional on SeedCard, so it must be optional here too.
@@ -77,8 +89,12 @@ function classify(card: { faction: string; name: string; cardText?: string; meta
 // read unconditionally by PLAY_CARD_TO_ZONE regardless of type
 // (resolvePlayEffects's key list there does not branch on card.type), so it
 // is technically reachable for a vehicle too.
+// Wave 2 adds `onActivate` to the vehicle row: ACTIVATE_VEHICLE
+// (shared/engine/activate.ts) dispatches it for a hull already on the board,
+// which only a vehicle can be. It is deliberately absent from the ability
+// row — an ability is spendCard'd on resolution and never enters zone.cards.
 const REACHABLE_TRIGGERS: Record<string, readonly string[]> = {
-  vehicle: ['onPlayEffect', 'playOnZoneEffect', 'onDeathEffect', 'costModifier'],
+  vehicle: ['onPlayEffect', 'playOnZoneEffect', 'onDeathEffect', 'costModifier', 'onActivate'],
   ability: ['onPlayEffect', 'playOnZoneEffect', 'playOnVehicleEffect', 'playOnCardEffect', 'costModifier'],
 }
 
@@ -140,5 +156,30 @@ describe('built-in card effect coverage', () => {
   it('wave 1 is complete — no wave-1 entries remain', () => {
     expect(Object.values(KNOWN_GAPS).filter((w) => w === 'wave 1')).toEqual([])
     expect(Object.keys(KNOWN_GAPS)).toHaveLength(31)
+  })
+
+  it('PARTIAL names real cards that currently pass G1 and G2, and never overlaps KNOWN_GAPS', async () => {
+    const { cards } = await loadSeedData()
+    const byKey = new Map(cards.map((c) => [key(c), c]))
+    const problems: string[] = []
+    for (const k of Object.keys(PARTIAL)) {
+      const card = byKey.get(k)
+      if (!card) { problems.push(`${k} (no such card)`); continue }
+      if (KNOWN_GAPS[k] !== undefined) { problems.push(`${k} (also in KNOWN_GAPS)`); continue }
+      const { unimplemented, silent } = classify(card)
+      // A card that is wholly broken belongs in KNOWN_GAPS, not here.
+      if (unimplemented.length > 0 || silent) problems.push(`${k} (is a full gap, not a partial)`)
+    }
+    expect(problems).toEqual([])
+  })
+
+  it('the GT airship pool splits 6 light / 8 heavy on the spec §7.3 cost cliff', async () => {
+    const { cards } = await loadSeedData()
+    const airships = cards.filter(
+      (c) => c.isBuiltIn && c.faction === 'GT' && c.vehicleType === 'airship',
+    )
+    const heavy = airships.filter((c) => c.materialCost >= GT_HEAVY_AIRSHIP_MIN_COST)
+    expect(airships).toHaveLength(14)
+    expect(heavy).toHaveLength(8)
   })
 })
