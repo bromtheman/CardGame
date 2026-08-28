@@ -261,8 +261,22 @@ export const wfVehicles = [
             [TRIGGERS.PLAY_ON_VEHICLE]: 'allForTheCauseEffect'
         }
     },
-    
-    
-    
-
+    {
+        name: 'Martyr',
+        isBuiltIn: true,
+        cardText: '',
+        materialCost: 8500,
+        blueprintCost: 8500,
+        cpCost: 0,
+        imageUrl: '',
+        playerId: null,
+        vehicleType: 'plane',
+        type: 'vehicle',
+        faction: FACTIONS.WF,
+        blueprintId: null,
+        keywords: [],
+        meta: {
+            summonOnly: true
+        }
+    },
 ];

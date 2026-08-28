@@ -46,6 +46,16 @@ describe('loadSeedData', () => {
       seen.set(key, c)
     }
   })
+  it('seeds the three summon-only vehicles, flagged and text-free', async () => {
+    const { cards } = await loadSeedData()
+    for (const name of ['Flying Squirrel', 'Martyr', 'Parapet']) {
+      const card = cards.find((c) => c.name === name)
+      expect(card, `${name} is missing from the seed`).toBeDefined()
+      expect(card!.meta).toMatchObject({ summonOnly: true })
+      expect((card!.cardText ?? '').trim()).toBe('')
+      expect(card!.keywords ?? []).toEqual([])
+    }
+  })
 })
 
 describe('vehicle_type patches (upstream OW-Built-in.js enum-key bug)', () => {

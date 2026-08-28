@@ -25,6 +25,8 @@ export interface DeckCardInfo {
   faction: string
   vehicleType: string | null
   ownerId: string | null
+  // Spawned, never drafted (spec §7.1).
+  summonOnly?: boolean
 }
 
 export interface DeckValidationResult {
@@ -57,6 +59,10 @@ export function validateDeck(
     const card = cardInfo.get(cardId)
     if (!card) {
       errors.push(`Unknown card id: ${cardId}`)
+      continue
+    }
+    if (card.summonOnly) {
+      errors.push(`Card ${cardId} cannot be added to a deck`)
       continue
     }
     if (card.isBuiltIn) {

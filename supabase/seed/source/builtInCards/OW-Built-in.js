@@ -483,4 +483,22 @@ export const owVehicles = [
             [TRIGGERS.PLAY_ON_CARD]: 'garrisonEffect',
         }
     },
+    {
+        name: 'Parapet',
+        isBuiltIn: true,
+        cardText: '',
+        materialCost: 259000,
+        blueprintCost: 259000,
+        cpCost: 0,
+        imageUrl: '',
+        playerId: null,
+        vehicleType: 'plane',
+        type: 'vehicle',
+        faction: FACTIONS.OW,
+        blueprintId: null,
+        keywords: [],
+        meta: {
+            summonOnly: true
+        }
+    },
 ];

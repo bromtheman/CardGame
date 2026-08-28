@@ -370,5 +370,23 @@ export const dwgVehicles = [
         meta: {
             [TRIGGERS.ON_PLAY]: 'flyingSquirrelAttackEffect',
         }
+    },
+    {
+        name: 'Flying Squirrel',
+        isBuiltIn: true,
+        cardText: '',
+        materialCost: 84000,
+        blueprintCost: 84000,
+        cpCost: 0,
+        imageUrl: '',
+        playerId: null,
+        vehicleType: 'plane',
+        type: 'vehicle',
+        faction: FACTIONS.DWG,
+        blueprintId: null,
+        keywords: [],
+        meta: {
+            summonOnly: true
+        }
     }
 ];
