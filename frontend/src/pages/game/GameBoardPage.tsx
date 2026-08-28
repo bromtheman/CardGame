@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import type { CardInstance, PublicGameState } from '@shared/engine/gameInit'
 import type { Side } from '@shared/engine/engineTypes'
 import type { LobbySettings } from '@shared/lobbySettings'
-import { battleFrozen, biomeAllows, effectiveCostInGame, findVehicle, legalZonesFor } from '@shared/engine/index'
+import { battleFrozen, biomeAllows, effectiveCostInGame, effectName, findVehicle, legalZonesFor } from '@shared/engine/index'
 import { shortHandNumber } from '@shared/format'
 import { useGameQuery, useMyGamePlayerQuery, useUsernames } from '../../lib/games'
 import { useRealtimeInvalidate } from '../../lib/realtime'
@@ -117,6 +117,21 @@ export function GameBoardPage() {
     cancelAllModes()
     setMoveMode({ phase: 'pickZone', instanceId, kind: 'mobile' })
   }
+  // Effect names whose activated ability needs a destination zone. Kept
+  // explicit: the alternative is a new meta key, and one card needs it.
+  const ZONE_TARGETED_ACTIVATIONS = new Set(['monsoonActivate'])
+
+  function onActivateClick(instanceId: string) {
+    if (!state) return
+    cancelAllModes()
+    const found = findVehicle(state, instanceId)
+    const name = found ? effectName(found.entry, 'onActivate') : null
+    if (name && ZONE_TARGETED_ACTIVATIONS.has(name)) {
+      setMoveMode({ phase: 'pickZone', instanceId, kind: 'activate' })
+      return
+    }
+    void send({ type: 'ACTIVATE_VEHICLE', instanceId })
+  }
   function onCancelMove() {
     setMoveMode(null)
   }
@@ -156,6 +171,8 @@ export function GameBoardPage() {
     if (moveMode?.phase === 'pickZone') {
       if (moveMode.kind === 'mobile') {
         void send({ type: 'MOVE_VEHICLE', instanceId: moveMode.instanceId, zoneId })
+      } else if (moveMode.kind === 'activate') {
+        void send({ type: 'ACTIVATE_VEHICLE', instanceId: moveMode.instanceId, zoneId })
       } else {
         void send({ type: 'USE_HERO_POWER', power: 'rapidRedeployment', instanceId: moveMode.instanceId, zoneId })
       }
@@ -275,10 +292,12 @@ export function GameBoardPage() {
             highlighted={interactiveZoneIds.includes(zone.id)}
             onZoneClick={interactiveZoneIds.includes(zone.id) ? () => onZoneClick(zone.id) : undefined}
             canMoveVehicles={canActivateZones && !fieldTargeting && !placingCard && !swapMode}
+            canActivateVehicles={canActivateZones && !fieldTargeting && !placingCard && !swapMode}
             moveVehiclePickMode={moveMode?.phase === 'pickVehicle'}
             selectedForMoveId={moveMode?.phase === 'pickZone' ? moveMode.instanceId : null}
             onPickVehicleForMove={onPickVehicleForMove}
             onMobileMoveClick={onMobileMoveClick}
+            onActivateClick={onActivateClick}
             fieldTargetingActive={!!fieldTargeting}
             onFieldTargetClick={onFieldTargetClick}
             swapPickOwnMode={swapMode?.phase === 'pickOwn'}

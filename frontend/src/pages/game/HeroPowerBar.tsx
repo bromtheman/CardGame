@@ -11,7 +11,7 @@ import { PromptDialog } from '../../components/ConfirmDialog'
 // actual state; this type just describes its shape for both consumers.
 export type MoveMode =
   | { phase: 'pickVehicle' }
-  | { phase: 'pickZone'; instanceId: string; kind: 'mobile' | 'heroPower' }
+  | { phase: 'pickZone'; instanceId: string; kind: 'mobile' | 'heroPower' | 'activate' }
 
 // Swap-mode for the DWG faction power (Boarding Party): pick one of my DWG
 // ships on the board, then an enemy ship in the same zone. GameBoardPage
