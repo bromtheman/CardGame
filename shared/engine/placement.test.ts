@@ -366,6 +366,182 @@ describe('PLAY_CARD_TARGETING_CARD_IN_HAND', () => {
   })
 })
 
+describe('deployVehicle extraction and PLAY_CARD_TARGETING_CARD_IN_HAND hand direction (Task 4)', () => {
+  // Synthetic playOnCardEffect stand-in shaped like Excalibur ("pick a card
+  // in hand and discount it") — never a real seeded effect name.
+  registerEffect('t_handTargetVehicle', ({ game, actor, targetInstanceId }) => {
+    if (typeof targetInstanceId !== 'string') return false
+    const target = game.privates[actor].hand.find((c) => c.instanceId === targetInstanceId)
+    if (!target) return false
+    target.meta = { ...target.meta, costDelta: -200_000 }
+    return true
+  })
+
+  // Test 1: regression over the extraction — same placement count as before,
+  // and proof the surge is still read BEFORE pay() reduces materials.
+  it('PLAY_CARD_TO_ZONE still lands additionalSpawns + resourceSurge hulls, surge read before payment', () => {
+    const { g, card } = withHand({
+      vehicleType: 'ship', materialCost: 60_000,
+      meta: { additionalSpawns: 1, resourceSurge: { materialsAtLeast: 100_000, extraSpawns: 1 } },
+    })
+    g.state.resources.a.materials = 100_000 // exactly at the surge threshold
+    const r = applyAction(g, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    // card itself + printed additionalSpawns(1) + surge extraSpawns(1) = 3.
+    // If the surge read moved to AFTER pay(), materials would already be
+    // 100000-60000=40000 (under the 100000 threshold) by the time it's
+    // checked, suppressing the surge extra and landing only 2.
+    expect(r.game.state.zones[0].cards.a).toHaveLength(3)
+    const ids = r.game.state.zones[0].cards.a.map((e) => e.instanceId)
+    expect(new Set(ids).size).toBe(3)
+    for (const e of r.game.state.zones[0].cards.a) {
+      expect(e).toMatchObject({ playedOnTurn: g.turnNumber, movedOnTurn: null })
+    }
+    expect(r.game.state.resources.a.materials).toBe(40_000)
+  })
+
+  // Test 2: the DP6 hand direction itself — deploy AND fire, and never leak
+  // the hand target's name into the public log.
+  it('a vehicle carrying playOnCardEffect deploys to a legal zoneId and fires the effect on the hand target', () => {
+    const { g, card } = withHand({
+      vehicleType: 'ship', materialCost: 550_000, name: 'Excalibur Stand-in',
+      meta: { playOnCardEffect: 't_handTargetVehicle' },
+    })
+    g.state.resources.a.materials = 600_000
+    const target = inst({ type: 'vehicle', faction: 'AI', materialCost: 300_000, name: 'Secret AI Ship' })
+    g.privates.a.hand.push(target)
+    g.state.counts.a.hand = 2
+    const r = applyAction(g, 'alice', {
+      type: 'PLAY_CARD_TARGETING_CARD_IN_HAND',
+      instanceId: card.instanceId, targetInstanceId: target.instanceId, zoneId: 1,
+    }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.zones[0].cards.a).toHaveLength(1)
+    expect(r.game.state.zones[0].cards.a[0].instanceId).toBe(card.instanceId)
+    expect(r.game.privates.a.hand).toHaveLength(1)
+    expect(r.game.privates.a.hand[0].instanceId).toBe(target.instanceId)
+    expect(r.game.privates.a.hand[0].meta.costDelta).toBe(-200_000)
+    // state.log is public to both players — the target sits in the actor's
+    // OWN hand, but naming it still leaks hand contents to the opponent.
+    expect(r.game.state.log.some((l) => l.includes('Secret AI Ship'))).toBe(false)
+    expect(r.game.state.log.some((l) => l.includes('deployed to zone 1'))).toBe(true)
+  })
+
+  // Test 3: no zoneId at all is rejected.
+  it('rejects the same play with no zoneId', () => {
+    const { g, card } = withHand({
+      vehicleType: 'ship', materialCost: 550_000, name: 'Excalibur Stand-in',
+      meta: { playOnCardEffect: 't_handTargetVehicle' },
+    })
+    g.state.resources.a.materials = 600_000
+    const target = inst({ type: 'vehicle', faction: 'AI', materialCost: 300_000 })
+    g.privates.a.hand.push(target)
+    g.state.counts.a.hand = 2
+    const r = applyAction(g, 'alice', {
+      type: 'PLAY_CARD_TARGETING_CARD_IN_HAND', instanceId: card.instanceId, targetInstanceId: target.instanceId,
+    })
+    expect(r).toMatchObject({ ok: false, status: 400 })
+    expect(g.privates.a.hand).toHaveLength(2)
+    expect(g.state.resources.a.materials).toBe(600_000)
+  })
+
+  // Test 4: an illegal zoneId for the hull's biome is rejected — legalZonesFor
+  // still gates it.
+  it("rejects the same play with an illegal zoneId for the hull's biome", () => {
+    const { g, card } = withHand({
+      vehicleType: 'ship', materialCost: 550_000, name: 'Excalibur Stand-in',
+      meta: { playOnCardEffect: 't_handTargetVehicle' },
+    })
+    g.state.resources.a.materials = 600_000
+    const target = inst({ type: 'vehicle', faction: 'AI', materialCost: 300_000 })
+    g.privates.a.hand.push(target)
+    g.state.counts.a.hand = 2
+    // zone 3 is land; a ship's legal biomes are water/beach (zones 1 and 2).
+    expect(legalZonesFor(g.state, 'a', card)).toEqual([1, 2])
+    const r = applyAction(g, 'alice', {
+      type: 'PLAY_CARD_TARGETING_CARD_IN_HAND',
+      instanceId: card.instanceId, targetInstanceId: target.instanceId, zoneId: 3,
+    })
+    expect(r).toMatchObject({ ok: false, status: 400 })
+    expect(g.privates.a.hand).toHaveLength(2)
+    expect(g.state.resources.a.materials).toBe(600_000)
+  })
+
+  // Test 5: not spendCard'd — it is a hull, not a spent ability.
+  it('the vehicle is not spendCard-ed: it stays on the board and is absent from state.destroyed', () => {
+    const { g, card } = withHand({
+      vehicleType: 'ship', materialCost: 550_000, name: 'Excalibur Stand-in',
+      meta: { playOnCardEffect: 't_handTargetVehicle' },
+    })
+    g.state.resources.a.materials = 600_000
+    const target = inst({ type: 'vehicle', faction: 'AI', materialCost: 300_000 })
+    g.privates.a.hand.push(target)
+    g.state.counts.a.hand = 2
+    const r = applyAction(g, 'alice', {
+      type: 'PLAY_CARD_TARGETING_CARD_IN_HAND',
+      instanceId: card.instanceId, targetInstanceId: target.instanceId, zoneId: 1,
+    }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.zones[0].cards.a.map((e) => e.instanceId)).toContain(card.instanceId)
+    expect(r.game.state.destroyed.a).toHaveLength(0)
+  })
+
+  // Test 6: ability regression — behaves exactly as before, with or without
+  // a stray zoneId (which it must ignore).
+  it('an ability carrying playOnCardEffect still plays exactly as before, with or without a stray zoneId', () => {
+    const run = (withZoneId: boolean) => {
+      const { g, card: ability } = withHand({
+        type: 'ability', vehicleType: null, materialCost: 5000, cpCost: 1, name: 'Hand Order',
+        meta: { playOnCardEffect: 't_handTargetVehicle' },
+      })
+      const target = inst({ type: 'vehicle', faction: 'AI', materialCost: 300_000 })
+      g.privates.a.hand.push(target)
+      g.state.counts.a.hand = 2
+      const r = withZoneId
+        ? applyAction(g, 'alice', {
+            type: 'PLAY_CARD_TARGETING_CARD_IN_HAND',
+            instanceId: ability.instanceId, targetInstanceId: target.instanceId, zoneId: 99,
+          })
+        : applyAction(g, 'alice', {
+            type: 'PLAY_CARD_TARGETING_CARD_IN_HAND',
+            instanceId: ability.instanceId, targetInstanceId: target.instanceId,
+          })
+      if (!r.ok) throw new Error(r.error)
+      expect(r.game.state.zones[0].cards.a).toHaveLength(0)
+      expect(r.game.privates.a.hand).toHaveLength(1)
+      expect(r.game.privates.a.hand[0].instanceId).toBe(target.instanceId)
+      expect(r.game.privates.a.hand[0].meta.costDelta).toBe(-200_000)
+      expect(r.game.state.destroyed.a).toHaveLength(1)
+      expect(r.game.state.destroyed.a[0]).toMatchObject({ name: 'Hand Order' })
+      expect(r.game.state.destroyed.a[0]).not.toHaveProperty('instanceId')
+      expect(r.game.state.log.some((l) => l === 'Hand Order resolved')).toBe(true)
+    }
+    run(false)
+    run(true) // zoneId: 99 doesn't even exist as a zone — still ignored
+  })
+
+  // Test 7: the no-legal-target escape — plain PLAY_CARD_TO_ZONE deploys a
+  // playOnCardEffect vehicle fine and never dispatches the effect.
+  it('a vehicle carrying playOnCardEffect played through plain PLAY_CARD_TO_ZONE deploys without firing it (spec §4.3 departure 4)', () => {
+    const { g, card } = withHand({
+      vehicleType: 'ship', materialCost: 550_000, name: 'Excalibur Stand-in',
+      meta: { playOnCardEffect: 't_handTargetVehicle' },
+    })
+    g.state.resources.a.materials = 600_000
+    const r = applyAction(g, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.zones[0].cards.a).toHaveLength(1)
+    expect(r.game.state.zones[0].cards.a[0].instanceId).toBe(card.instanceId)
+    expect(r.game.privates.a.hand).toHaveLength(0)
+    // t_handTargetVehicle IS implemented, so silence (no "not implemented"
+    // note, no trace of the effect name) is exactly what proves it never
+    // dispatched through this path — PLAY_CARD_TO_ZONE's trigger keys are
+    // ['playOnZoneEffect', 'onPlayEffect'] only.
+    expect(r.game.state.log.some((l) => l.includes('t_handTargetVehicle'))).toBe(false)
+    expect(r.game.state.log.some((l) => l.includes('deployed to zone 1'))).toBe(true)
+  })
+})
+
 describe('SET_ALERT_CARD', () => {
   it('reveals an ability card from hand, keeps it in hand, and logs the reveal', () => {
     const { g, card } = withHand({ type: 'ability', vehicleType: null, materialCost: 0, name: 'Ambush Alert' })

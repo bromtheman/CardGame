@@ -141,6 +141,38 @@ function resolvePlayEffects(
   return null
 }
 
+// Extracted from PLAY_CARD_TO_ZONE's vehicle branch so PLAY_CARD_TARGETING_
+// CARD_IN_HAND can deploy a vehicle too (spec §4.3 DP6). Places the card
+// itself, then additionalSpawns (spec §3.9) + resourceSurge (spec §4.6)
+// copies on top, capped at ADDITIONAL_SPAWNS_CAP. Callers must read `surged`
+// BEFORE pay() reduces materials — see their own comments for why. Returns
+// every instanceId placed (card + copies), for placedInstanceIds.
+function deployVehicle(
+  game: EngineGame, ctx: EngineContext, actor: Side,
+  card: CardInstance, zoneId: number, surged: boolean,
+): string[] {
+  const placedInstanceIds: string[] = []
+  const zone = game.state.zones.find((z) => z.id === zoneId)!
+  const entry: ZoneCardEntry = {
+    ...card, playedOnTurn: game.turnNumber, movedOnTurn: null, activatedOnTurn: null,
+  }
+  zone.cards[actor].push(entry)
+  placedInstanceIds.push(entry.instanceId)
+  // additionalSpawns: one payment lands N+1 hulls (spec §3.9). resourceSurge
+  // (spec §4.6) adds more on top, but only when the surge condition held.
+  const printed = Math.max(0, Math.floor(Number(card.meta.additionalSpawns) || 0))
+  const extra = Math.min(printed + (surged ? surgeSpawnsFor(card) : 0), ADDITIONAL_SPAWNS_CAP)
+  for (let i = 0; i < extra; i++) {
+    const copy: ZoneCardEntry = {
+      ...card, instanceId: ctx.newId(), meta: copyMeta(card.meta),
+      playedOnTurn: game.turnNumber, movedOnTurn: null, activatedOnTurn: null,
+    }
+    zone.cards[actor].push(copy)
+    placedInstanceIds.push(copy.instanceId)
+  }
+  return placedInstanceIds
+}
+
 registerHandler('PLAY_CARD_TO_ZONE', (game, actor, action, ctx) => {
   if (action.type !== 'PLAY_CARD_TO_ZONE') return err(400, 'Bad action')
   const card = game.privates[actor].hand.find((c) => c.instanceId === action.instanceId)
@@ -170,27 +202,9 @@ registerHandler('PLAY_CARD_TO_ZONE', (game, actor, action, ctx) => {
   takeFromHand(game, actor, action.instanceId)
   pay(game, actor, card)
 
-  const placedInstanceIds: string[] = []
-  if (card.type === 'vehicle') {
-    const zone = game.state.zones.find((z) => z.id === action.zoneId)!
-    const entry: ZoneCardEntry = {
-      ...card, playedOnTurn: game.turnNumber, movedOnTurn: null, activatedOnTurn: null,
-    }
-    zone.cards[actor].push(entry)
-    placedInstanceIds.push(entry.instanceId)
-    // additionalSpawns: one payment lands N+1 hulls (spec §3.9). resourceSurge
-    // (spec §4.6) adds more on top, but only when the surge condition held.
-    const printed = Math.max(0, Math.floor(Number(card.meta.additionalSpawns) || 0))
-    const extra = Math.min(printed + (surged ? surgeSpawnsFor(card) : 0), ADDITIONAL_SPAWNS_CAP)
-    for (let i = 0; i < extra; i++) {
-      const copy: ZoneCardEntry = {
-        ...card, instanceId: ctx.newId(), meta: copyMeta(card.meta),
-        playedOnTurn: game.turnNumber, movedOnTurn: null, activatedOnTurn: null,
-      }
-      zone.cards[actor].push(copy)
-      placedInstanceIds.push(copy.instanceId)
-    }
-  }
+  const placedInstanceIds = card.type === 'vehicle'
+    ? deployVehicle(game, ctx, actor, card, action.zoneId, surged)
+    : []
 
   const failure = resolvePlayEffects(
     game, actor, card, ctx,
@@ -286,7 +300,6 @@ registerHandler('PLAY_CARD_TARGETING_CARD_IN_HAND', (game, actor, action, ctx) =
   if (typeof action.targetInstanceId !== 'string') return err(400, 'A target is required')
   const card = game.privates[actor].hand.find((c) => c.instanceId === action.instanceId)
   if (!card) return err(400, 'That card is not in your hand')
-  if (card.type !== 'ability') return err(400, 'Vehicles must target a zone')
 
   const effectMeta = effectName(card, 'playOnCardEffect')
   if (effectMeta === null) return err(400, `${card.name} does not target a card in hand`)
@@ -297,19 +310,47 @@ registerHandler('PLAY_CARD_TARGETING_CARD_IN_HAND', (game, actor, action, ctx) =
     return err(400, 'That target is not in your hand')
   }
 
+  // A vehicle also needs a legal zone to deploy into (spec §4.3 DP6) — same
+  // gate PLAY_CARD_TO_ZONE uses. An ability ignores zoneId entirely, stray
+  // or not, exactly as before.
+  if (
+    card.type === 'vehicle'
+    && (typeof action.zoneId !== 'number' || !legalZonesFor(game.state, actor, card).includes(action.zoneId))
+  ) {
+    return err(400, 'That vehicle cannot deploy to that zone')
+  }
+
   if (!canAffordInGame(game, actor, card)) return err(400, 'You cannot afford that card')
 
   if (game.state.alertCard?.instanceId === action.instanceId) game.state.alertCard = null
 
+  // Read the surge before paying — same ordering PLAY_CARD_TO_ZONE relies on
+  // (pay() reduces materials, which would flip the condition off before the
+  // spawn count is decided).
+  const surged = halfCostSuppressed(game.state, actor, card)
+
   takeFromHand(game, actor, action.instanceId)
   pay(game, actor, card)
 
+  // A vehicle deploys like any other hull; an ability places nothing on the
+  // board.
+  const placedInstanceIds = card.type === 'vehicle'
+    ? deployVehicle(game, ctx, actor, card, action.zoneId as number, surged)
+    : []
+
   const failure = resolvePlayEffects(
-    game, actor, card, ctx, { targetInstanceId: action.targetInstanceId }, ['playOnCardEffect', 'onPlayEffect'],
+    game, actor, card, ctx,
+    { targetInstanceId: action.targetInstanceId, placedInstanceIds },
+    ['playOnCardEffect', 'onPlayEffect'],
   )
   if (failure) return failure
-  spendCard(game, actor, card)
+  // A vehicle is a hull that stays on the board — not spendCard'd. Only
+  // abilities are spent on resolution (spec §4.3 DP6).
+  if (card.type !== 'vehicle') spendCard(game, actor, card)
 
-  game.state.log.push(`${card.name} resolved`)
+  // Never log the hand target's name — state.log is public to both players.
+  game.state.log.push(
+    card.type === 'vehicle' ? `${card.name} deployed to zone ${action.zoneId}` : `${card.name} resolved`,
+  )
   return { ok: true, game }
 })
