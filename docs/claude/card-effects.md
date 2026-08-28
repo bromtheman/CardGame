@@ -249,9 +249,31 @@ stale-entry assertion rejects it. That is what `PARTIAL` exists for. It opens
 with Plunderer (its `costModifier` works; clause 2 needs a battle hook) and DWG
 Waters (its zone claim works; clauses 2–3 need battle-declare).
 
-Two guard blind spots remain open and are not going to close on their own: a
-card that has left `KNOWN_GAPS` is no longer checked at all (Garrison's trigger
-key can be reverted today with the suite green), and the same-type mix-up above.
+Four guard blind spots remain open and are not going to close on their own:
+
+1. A card that has left `KNOWN_GAPS` is no longer checked at all (Garrison's
+   trigger key can be reverted today with the suite green).
+2. The same-type mix-up above — G3 cannot catch it.
+3. **Nothing asserts `supabase/seed/seed_data.sql` matches
+   `supabase/seed/source/*.js`.** G1/G2/G3 and the stale-entry assertion all
+   read `source/*.js` via `loadSeedData()`, so a generated SQL file that has
+   drifted from its source passes every check while the deploy applies the
+   stale one. Found in wave 3, after Tasks 5-10 edited only `source/*.js` and
+   nothing regenerated the SQL until the wave's own docs task caught it.
+   `npm run seed:build`, then grep the output for your names, before every
+   commit that touches a card's `meta` — see [supabase.md](supabase.md).
+4. **A registered effect that no card names is invisible to G1/G2/G3.** All
+   three guards iterate seeded cards and ask whether each one's *named*
+   effects are implemented; a `registerEffect` call with no card anywhere
+   pointing at it is simply never visited. This is how `excaliburOnPlay` sat
+   registered-but-unreachable for a full wave in wave 3, caught only because
+   a test happened to call `effectFor` on it directly — which proves the
+   function exists, not that any card can reach it. If you register an effect
+   ahead of seeding the card that uses it, grep the seed source for the name
+   before calling the task done.
+
+A fifth, older blind spot — a partly-built card passing G1/G2 despite
+incomplete text — was closed in wave 2 by the `PARTIAL` map above.
 
 ## Play-time cost modifiers
 
