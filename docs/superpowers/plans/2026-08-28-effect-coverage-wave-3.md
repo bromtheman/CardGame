@@ -77,10 +77,12 @@ the step — report it rather than guessing.
    line, watching the test go red, and restoring — transcript in the report.
    This is what surfaced every weak test in wave 2 and it replaces most of what
    a per-task reviewer was doing.
-3. **Dedicated per-task review only on Tasks 1, 2, 3, 4 and 9** — the ones
-   touching state shape, engine control flow or a freeze. Tasks 5–8 and 10–12
-   are card and UI work over settled machinery; the teeth check plus the suite is
-   the gate there, and the final review is the net.
+3. **Dedicated per-task review on Tasks 1, 2, 3, 4, 6, 7, 8 and 9** — every task
+   touching state shape, engine control flow, or a freeze. Tasks 6, 7 and 8 make
+   the list because they write `state.pendingEffect`, which *is* the freeze.
+   Tasks 5, 10, 11 and 12 are card and UI work over settled machinery; the teeth
+   check plus the suite is the gate there, and the final review is the net.
+   (Eight of twelve, against wave 2's seventeen of seventeen.)
 4. **One final whole-branch review on the most capable model available**, given
    the whole diff, the spec and the running ledger. In wave 2 it found the two
    worst bugs, and it found them *because* it saw across tasks.
@@ -211,9 +213,11 @@ legitimate fleet attack.
 **Files:**
 - Modify: `shared/engine/battleDeclare.ts`
 - Modify: `shared/effects/primitives.ts`
-- Modify: `shared/gameSettings.ts`
 - Test: `shared/engine/battleDeclare.test.ts` (create if absent),
   `shared/effects/primitives.test.ts`
+
+This task introduces **no** new constant — nothing here is a tunable. If you
+find yourself wanting one, that is a signal you have misread the task; report it.
 
 **Interfaces:**
 - Consumes: `BattleContinuation`, `ActiveBattle.summons` (Task 1)
