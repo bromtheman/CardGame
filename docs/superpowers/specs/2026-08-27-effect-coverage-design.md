@@ -60,7 +60,7 @@ Taken during this design:
 | # | Decision |
 |---|---|
 | 5 | All 65 cards ship in one spec, delivered in five ordered waves (§10) |
-| 6 | Forced battles and mid-resolution choices share **one** suspension slot, `state.pendingEffect` (§4.2) |
+| 6 | Forced battles and mid-resolution choices share **one** suspension slot, `state.pendingEffect` (§4.2). **Narrowed in wave 3** to choices only; a battle wait suspends in `ActiveBattle.continuation` (§4.3, departure 3) |
 | 7 | Summon-only vehicles are **seeded cards** flagged `meta.summonOnly`, not a second species of card object (§7.1) |
 | 8 | Conditional Half-Cost is a **hand-side, price-time** property; hulls on the board keep their printed keywords (§4.6) |
 | 9 | Effects are **parameterised TypeScript factories**, not a data DSL in `meta` (§5) |
@@ -73,6 +73,16 @@ Taken during wave 2:
 | 11 | **Spawning is not playing.** A vehicle placed by `spawnVehicles` does not fire its own `onPlayEffect` (§7.4) |
 | 12 | A suspended choice can be **declined**, and `pendingEffect.options` is **public** (§4.2, departures 3 and 5) |
 | 13 | Partially-implemented cards are tracked in a `PARTIAL` map beside `KNOWN_GAPS`, not left invisible (§4.1) |
+
+Taken during wave 3:
+
+| # | Decision |
+|---|---|
+| 14 | An effect waiting on a **battle** suspends in `ActiveBattle.continuation`, not in `pendingEffect`. Decision 6's "one slot" holds for choices only (§4.3, departure 3) |
+| 15 | A forced battle sets **no** alert card, narrowing decision 3 to wave 5's riders (§4.3, departure 2) |
+| 16 | A forced battle target is picked through a **choice dialog**, not board targeting. On-field vehicles are already public, so this leaks nothing, and it needs no new picking UI (§4.3, departure 4) |
+| 17 | `lockBattle` is **split**, not reused: only Eclipse stamps `lastActivatedTurn` (§4.3, departure 1) |
+| 18 | A battle summon is identified by **list membership**, not a side field, so one array serves attacker- and defender-side summons (§4.4) |
 
 ## 3. Scope
 
@@ -143,8 +153,10 @@ This guard is the item that stops the gap reopening, and it lands first.
 
 Every effect before wave 2 was `(payload) => boolean` and fully resolved inside
 one action. Two families cannot: a choice must wait for the player, and
-Trebuchet's "you may repeat this effect" must wait for a battle report. One
-slot serves both.
+Trebuchet's "you may repeat this effect" must wait for a battle report. This
+slot was designed to serve both; **wave 3 found that it cannot**, and split the
+battle case out into `ActiveBattle.continuation` — see §4.3, departure 3. What
+follows describes the choice slot, which is all this field ever holds.
 
 **This section describes what wave 2 built, not a sketch.** It departs from the
 original design in five places, each marked.
@@ -154,7 +166,7 @@ interface PendingEffect {
   effect: string                    // registry name to re-enter
   side: Side                        // who owes the decision
   card: CardInstance                // the suspending card, verbatim
-  kind: 'choice'                    // 'battle' arrives with wave 3
+  kind: 'choice'                    // the only value; see §4.3, departure 3
   prompt: string                    // the dialog's one-line question
   options: { id: string; label: string }[]
   data?: Record<string, unknown>    // effect-owned continuation state
@@ -217,9 +229,12 @@ alert card. `pendingEffect` is public and carries the card, so the opponent
 already sees what froze the game; and an engine-set alert would hit
 `SET_ALERT_CARD`'s "opponent holds the slot → 409" rule and could reject the
 card play outright. Decision 3 therefore covers effects that **force opponent
-interaction** — forced battles, and riders planted on the opponent's next
-battle, from wave 3 on — not a choice owed by the player who acted. No hand
-button is restored either way.
+interaction** — not a choice owed by the player who acted. No hand button is
+restored either way. **Wave 3 narrowed this again** (§4.3, departure 2): a
+forced battle raises the `BattleOverlay`, which is louder than the banner and
+carries the same collision risk, so decision 3 now reaches only wave 5's
+riders — an effect planted on the opponent's own next battle, where nothing
+else announces itself.
 
 **Options are public (departure 5 — a new constraint).** `pendingEffect` lives
 in `PublicGameState`, so `options` is visible to both players. A choice may only
@@ -235,10 +250,10 @@ exist. Check this before adding a choice.
 |---|---|---|
 | DP1 | `onActivate` | New `ACTIVATE_VEHICLE { instanceId, targetInstanceId?, zoneId? }` action, handled in `shared/engine/activate.ts`. `activatedOnTurn: number | null` on `ZoneCardEntry` (**required**, so `tsc` finds every entry literal; defaulted in `normalizeState`) enforces once-per-turn, and is stamped **before** the effect fires so a suspending activation cannot re-enter. The CP price is card data: `meta.activateCpCost` — a number, the same class as `additionalSpawns`, so no registry change. No freshly-deployed restriction: the card text says "once per turn" and nothing more |
 | DP2 | Battle triggers | `onBattleEffect` fires at **lock** and at **resolve** with a `BattleContext` payload (`phase`, `zoneId`, `isDefender`, `survived`, `won`). `onBattleVictory` / `onBattleDefeat` are resolve-only sugar dispatched per side outcome. A side **wins** when the enemy has no surviving participant and **loses** when it has none of its own; both false is a draw |
-| DP3 | Forced battle | `declareForcedBattle(game, ctx, { zoneId, aggressor, attackerIds, defenderIds, summons, cause })`, exported from `battleDeclare.ts`, reusing `lockBattle`. Skips the Stealthy opt-out — the card *forces* the fight — and sets the alert card |
+| DP3 | Forced battle | `declareForcedBattle(game, { zoneId, aggressor, attackerIds, defenderIds, summons, continuation, cause, activatesZone })`, exported from `battleDeclare.ts`. Skips the Stealthy opt-out — the card *forces* the fight. **Built in wave 3; it departs from this row in three places, marked below.** |
 | DP4 | Choice | `state.pendingEffect`, built in wave 2 — see §4.2 for the shipped shape, freeze rule and resume mechanics |
 | DP5 | Rest-of-turn riders | Extends the existing `state.scheduled[]` discriminated union rather than adding a state field: it already carries `side` and `dueTurn` and is already processed in `endTurn` |
-| DP6 | `playOnVehicleEffect` on **vehicle** cards | The gap recorded in `architecture.md`. `PLAY_CARD_TARGETING_CARD_ON_FIELD` gains an optional `zoneId` and accepts a vehicle carrying that key: the vehicle deploys to the zone (with `additionalSpawns`), then the effect fires |
+| DP6 | A **vehicle** whose effect targets something outside its own zone | The two gaps recorded in `architecture.md`. `PLAY_CARD_TARGETING_CARD_IN_HAND` gains an optional `zoneId` and accepts a vehicle carrying `playOnCardEffect`: the vehicle deploys to the zone (with `additionalSpawns` and `resourceSurge`), then the effect fires, and the card is **not** `spendCard`'d. **Wave 3 built the hand direction only** — see departure 4 |
 
 Two rulings fall out:
 
@@ -249,6 +264,86 @@ Two rulings fall out:
   screen rules do not gate it — otherwise Martyr Attack fails against a target in
   a land zone.
 
+#### DP3 and DP6 as wave 3 built them — four departures
+
+**`lockBattle` is not reused; it is split (departure 1).** `lockBattle` stamps
+`zone.lastActivatedTurn` and logs "Fleet battle declared" unconditionally. Both
+are wrong for a forced battle: the stamp contradicts this section's own ruling
+that a forced battle is not a zone activation, and reused unchanged it silently
+spends the zone's one activation per turn — surfacing two actions later as a 409
+on a legitimate fleet attack. `battleDeclare.ts` therefore splits into three:
+`setBattle` builds the `activeBattle` object and is the **only** literal
+constructing it, so a future field is one edit; `lockBattle` is `setBattle` plus
+the stamp plus the fleet log line, leaving `ATTACK_ENEMY_FLEET` and
+`RESPOND_TO_ATTACK` byte-identical in behaviour; `declareForcedBattle` is
+`setBattle` plus its own log line naming the cause, and stamps
+`lastActivatedTurn` **only** when passed `activatesZone` — Eclipse alone.
+
+It refuses (returns `false`, so the calling effect 400s and `applyAction`
+discards the clone) on: no such zone, a battle already active, an empty attacker
+or defender list, or an id that is neither an on-field entry on its own side nor
+one of the listed summons.
+
+**A forced battle sets no alert card (departure 2, narrowing decision 3
+again).** The alert slot is a one-line banner meaning "a card was revealed, its
+effect is pending"; a forced battle raises the full `BattleOverlay`, which is
+strictly louder and already public. Three of the five forced-battle cards are
+board vehicles rather than abilities in hand, and `SET_ALERT_CARD` accepts only
+ability cards in hand. The slot is also single and shared, so an engine-set
+alert can collide with an alert the opponent already holds — the 409 that
+`SET_ALERT_CARD` raises for exactly that case. Decision 3 now covers only the
+riders of wave 5, which plant an effect on the opponent's own next battle.
+
+**The battle continuation lives on `ActiveBattle`, not in `pendingEffect`
+(departure 3).** §4.2 predicted a `kind: 'battle'` value on the suspension slot.
+It cannot work: `pendingEffect !== null` freezes the game to `PENDING_ACTIONS`,
+which admits neither `SUBMIT_BATTLE_REPORT` nor `DECIDE_BATTLE_REPORT`, so a
+battle declared under such a slot could never be reported. Relaxing that freeze
+would break the invariant that a non-null `pendingEffect` means the game is
+frozen on a choice — an invariant three current readers rely on — and would
+leave an orphaned slot able to deadlock a game. Instead:
+
+```ts
+interface BattleContinuation {
+  effect: string                    // registry name to re-enter when the battle resolves
+  side: Side
+  card: CardInstance
+  data?: Record<string, unknown>    // effect-owned continuation state
+}
+```
+
+`ActiveBattle.continuation` cannot outlive its battle, because
+`DECIDE_BATTLE_REPORT` already nulls `activeBattle`. The continuation fires
+there, **after** the death triggers, and carries the same rollback escape as
+`pendingEffect`: an `effectFor` that returns `null` logs and drops rather than
+stranding the game. `pendingEffect.kind` therefore stays `'choice'` only, and a
+continuation that then wants a decision — Trebuchet's repeat — writes an
+ordinary choice into the now-free slot, exactly as a suspending death effect
+does.
+
+**DP6 built the hand direction only (departure 4).** The row above originally
+gave `PLAY_CARD_TARGETING_CARD_ON_FIELD` the optional `zoneId`, for Trebuchet.
+Trebuchet's text reads "**When Played**, you may choose to have this vehicle
+battle an opponents vehicle from the same zone" — an on-play trigger and a
+choice, not a targeted play — so its seed key is corrected to `onPlayEffect`
+(§6) and it picks its opponent through the same choice dialog as Braveheart,
+Eclipse and Orbit Flank. "You may" is then literally the dialog's decline. That
+leaves **no** vehicle carrying `playOnVehicleEffect`, so the field direction has
+no customer and was not built; `REACHABLE_TRIGGERS`' `vehicle` row gains
+`playOnCardEffect` only.
+
+Excalibur is the hand direction and cannot be served any other way: it targets a
+card in the player's own hand, and `pendingEffect.options` is public (§4.2,
+departure 5), so a choice would leak the hand. It stays playable through plain
+`PLAY_CARD_TO_ZONE` with its effect unfired when no legal target exists —
+otherwise a 550k blocker becomes unplayable — and skipping a purely
+self-beneficial effect costs no one else, the same latitude `cancel` already
+grants.
+
+The shared deploy body — placement, `additionalSpawns`, `resourceSurge` — is
+extracted out of `PLAY_CARD_TO_ZONE` into `deployVehicle`, which both handlers
+call, rather than duplicated.
+
 ### 4.4 Battle summons
 
 `ActiveBattle` gains `summons: ZoneCardEntry[]`. Summoned combatants live only
@@ -257,6 +352,32 @@ they evaporate **regardless of HP** — no repair eligibility, no death record,
 nothing pushed to `state.destroyed`. `participantsOf` merges the two sources, so
 reporting, the spawn sheet and approval are otherwise unchanged.
 `normalizeState` defaults `summons` to `[]` on legacy rows.
+
+**`ActiveBattle` is declared three times.** `engineTypes.ts`, structurally
+inline in `PublicGameState` (`gameInit.ts`), and again as a local type inside
+`BattleOverlay.tsx`, which keeps its own mirror of `participantsOf` because the
+engine does not export one. `summons` and `continuation` (§4.3, departure 3)
+must be added to all three, and the merge to both copies of `participantsOf`.
+
+**A summon carries no side field.** Membership decides it: an id in
+`attackerIds` belongs to the aggressor, one in `defenderIds` to the defender, so
+`participantsOf` needs only a per-list fallback into the summon map. Wave 4's
+Onyx Throne, which summons a Parapet onto the *defending* side, works unchanged.
+
+**What "evaporate" excludes, precisely.** In `DECIDE_BATTLE_REPORT` a summon is
+skipped by every branch of the resolution loop: no removal from `zone.cards`
+(it was never there), no `discardCard`, no `onDeathEffect` — a summoned
+PredatorX or Orbit is a draftable card that could carry one — and it is not
+counted in the "N vehicle(s) lost" line, because nothing left either player's
+board. One summary line reports the summons instead. Repairs are refused twice
+over: `validateRepairChoices` rejects a summon id outright, and `autoRepairIds`
+receives only the non-summon roster, so a Scrappy summon cannot auto-repair.
+Its ending HP is still **required** in the report — the report-completeness
+check counts every participant — it simply changes nothing.
+
+The rule is stronger than `isSummonOnly` and does not depend on it: Air Strafe's
+PredatorX and Orbit Flank's Orbit are ordinary draftable cards and evaporate
+too. Write the sweep so it never pushes, rather than reusing the guard.
 
 Card text marks the distinction reliably:
 
@@ -297,6 +418,21 @@ at play time only — base damage, repairs and in-battle resources use the
 unmodified effective cost"). Deltas stack additively. Because it is a stored
 number rather than an effect name, it needs no entry in the registry's
 `ALL_META_KEYS` or HandBar's `ALL_TRIGGER_KEYS`.
+
+**"Per-instance" means the delta dies with the instance (clarified in wave 3).**
+`discardCard` strips `costDelta` from **every** card leaving play, not only from
+a captured card going home. Wave 3's final review found the gap: the strip
+originally ran only inside the `owner !== controller` branch, which was
+sufficient while Marauder — which stamps a *captured* card — was the only
+consumer. Excalibur is the first effect to stamp a player's **own** card, and
+without an unconditional strip a discounted hull that died carried its discount
+into `state.destroyed`, `reshuffleDiscard` fed it back into the owner's deck,
+and the discount became permanent and re-stackable by a second Excalibur. The
+hero power `salvage` was a shorter path to the same result. `reshuffleDiscard`
+mints a fresh `instanceId` for every returning card, so the instance the delta
+belonged to no longer exists — stripping is what "per-instance" already meant.
+`ownerSide` stripping stays scoped to the going-home path; it is about
+ownership, not pricing.
 
 Serves Marauder (−50k) and Excalibur (−200k).
 
@@ -408,11 +544,37 @@ Decision 1 makes these corrections, not choices. All are edits to
 | Flying Squirrel Attack | `onPlayEffect` | "Choose an enemy vehicle" | → `playOnVehicleEffect` |
 | Air Strafe | `playOnZoneEffect` | "Choose an enemy ship" | → `playOnVehicleEffect` |
 | All for the Cause | `playOnVehicleEffect` | "Choose a zone" | → `playOnZoneEffect` |
+| Trebuchet | `playOnVehicleEffect` | "**When Played**, you may choose to have this vehicle battle…" | → `onPlayEffect` (§4.3, departure 4) |
 
-Cosmetic, in the same pass: `Orbit Flank`'s effect name carries a trailing space
-(the registry trims it), and `CauldronEffect` / `MartyrAttackEffect` are
-capitalised inconsistently with every other name. Normalised to
-`orbitFlankEffect`, `cauldronEffect`, `martyrAttackEffect`.
+Cosmetic: `Orbit Flank`'s effect name carries a trailing space (the registry
+trims it), and `CauldronEffect` / `MartyrAttackEffect` are capitalised
+inconsistently with every other name. Normalised to `orbitFlankEffect`,
+`cauldronEffect`, `martyrAttackEffect`.
+
+⚠ **Wave 1 normalised only `cauldronEffect`.** An earlier version of this
+section claimed all three landed "in the same pass"; that was false. `Orbit
+Flank`'s trailing space and `MartyrAttackEffect`'s capitalisation both survived
+into wave 3, which corrects them alongside its own cards. Note that
+`shared/effects/registry.test.ts` deliberately uses the literal
+`'orbitFlankEffect '` as a hand-built fixture for `effectName`'s trim, which is
+correct to leave as it is.
+
+### Cards shipped with no authored effect name
+
+Three wave-3 cards carry meta that cannot dispatch anything, so the names
+themselves are content this wave authors rather than merely implements:
+
+| Card | Today | Authored |
+|---|---|---|
+| Braveheart | `meta: {}` | `onActivate: 'braveheartActivate'`, `activateCpCost: 1` — its text prints "pay 1cp" |
+| Excalibur | `meta: {}` | `playOnCardEffect: 'excaliburEffect'` |
+| Eclipse | `onActivate: 'eclipseEffect'`, no `activateCpCost` | `activateCpCost: 0` |
+
+**Eclipse costs no CP.** Its text reads "Once per turn this vehicle may target…"
+and, unlike Braveheart's, never mentions a payment. `ACTIVATE_VEHICLE` and
+`BoardZone`'s button both require *both* keys, so without an explicit `0` the
+ability has no button and is unreachable — the card is currently in exactly that
+state.
 
 This supersedes the Marauder ruling recorded as item 1 in
 `docs/claude/card-effects.md`; that doc is updated in wave 1.
@@ -499,6 +661,25 @@ battle, repeatable, on a 500k card.
   condition is friendly-only, per its own wording. Both predicates are evaluated
   **before** the played card lands, so they must exclude its own instance and any
   `additionalSpawns` copies.
+
+Added in wave 3:
+
+- **Gang Up's "all your vehicles" excludes Inoffensive ones.** Inoffensive is
+  precisely "cannot attack" — `ATTACK_ENEMY_FLEET` rejects such an attacker by
+  name — and a forced battle is not a licence to break it. The card fails (400)
+  when that leaves no attacker.
+- **Trebuchet's "fully heal it" needs no mechanic.** The board tracks no HP;
+  ending HP exists only inside a battle report, where a survivor either lives
+  (≥ `SURVIVE_HP_PERCENT`) or is repaired. Trebuchet prints `SCRAPPY`, which
+  already repairs it free across the whole 80–89.999% band, so the clause is
+  satisfied by its own keyword. Only the win test is new: **Trebuchet still on
+  the field and every defender gone**, read off the post-resolution state, which
+  needs no outcome plumbing on the payload.
+- **Trebuchet's repeat is unbounded but self-limiting.** Each iteration requires
+  another clean win and another enemy vehicle left in the zone, so it terminates
+  on the zone's population. Card text imposes no other cap and none is invented.
+- **"Fights alone" means the target is the only defender.** Its allies in the
+  zone do not join, whatever they are.
 
 ### 7.4 Spawning is not playing
 
@@ -587,18 +768,22 @@ Marauder is corrected in this wave (§6) but is not one of the 65.
 | Sapphire Screen | LH | `spawnVehicles` ×1 Sapphire into **each** zone, stamped Mobile + Stealthy |
 | All for the Cause | WF | `playOnZoneEffect` (corrected) — grant Temporary to all friendly vehicles in the zone, then spawn 1 Martyr each (2 if that vehicle cost more than 250k) |
 
-### Wave 3 — forced battles (8)
+### Wave 3 — forced battles (9)
 
 | Card | Faction | Mechanism |
 |---|---|---|
 | Flying Squirrel Attack | DWG | `playOnVehicleEffect` (corrected) — target fights alone vs 3 × Flying Squirrel (summons) |
-| Martyr Attack | WF | target fights alone vs 4 × Martyr, or 6 if it is an airship or a player design of 400k or more |
-| Air Strafe | SS | `playOnVehicleEffect` (corrected) — target ship fights alone vs 2 × PredatorX; if the target is a player design, a chosen Hydra or Cyclone joins as a third summon |
-| Orbit Flank | LH | DP4 choice — (a) board-spawn an Orbit with Temporary into any zone, or (b) a chosen enemy vehicle fights alone vs one Orbit summon |
-| Gang Up | DWG | target enemy vehicle vs **all** your vehicles in that zone; no summons |
-| Braveheart | SS | DP1 + DP3, `activateCpCost: 1` — 1v1 vs an enemy vehicle in the same zone |
-| Eclipse | LH | DP1 + DP3 — 1v1 vs a non-Stealthy enemy in its zone; stamps `lastActivatedTurn` itself |
-| Trebuchet | OW | DP6 + DP3 + DP4 — optional 1v1 on deploy; on a clean win, fully heal and offer the repeat |
+| Martyr Attack | WF | `playOnVehicleEffect` — target fights alone vs 4 × Martyr, or 6 if it is an airship or a player design of 400k or more |
+| Air Strafe | SS | `playOnVehicleEffect` (corrected) — target ship fights alone vs 2 × PredatorX; if the target is a player design, a chosen Hydra or Cyclone joins as a third summon. The choice resolves **before** the battle is declared |
+| Orbit Flank | LH | DP4, two chained choices — mode, then either a zone (board-spawn an Orbit with Temporary) or an enemy vehicle (fights alone vs one Orbit summon) |
+| Gang Up | DWG | `playOnVehicleEffect` — target enemy vehicle vs all your **non-Inoffensive** vehicles in that zone (§7.3); no summons |
+| Braveheart | SS | DP1 + DP3 + DP4, `activateCpCost: 1` — choice over enemy vehicles in its own zone, then 1v1 |
+| Eclipse | LH | DP1 + DP3 + DP4, `activateCpCost: 0` — choice over **non-Stealthy** enemies in its zone, then 1v1; stamps `lastActivatedTurn` itself |
+| Trebuchet | OW | `onPlayEffect` (corrected) + DP3 + DP4 — a choice over enemy vehicles in the zone it deployed to, declined via cancel; on a clean win, the battle continuation offers the same choice again |
+| Excalibur | SS | DP6 (hand direction) — deploys to a zone and stamps `costDelta: -200000` on a chosen AI ship in hand |
+
+Excalibur was re-filed here out of wave 1 rather than shipped half-wired: it is
+the only vehicle whose text targets a card in hand, and DP6 is what carries it.
 
 ### Wave 4 — battle triggers and defender selection (8)
 
@@ -684,7 +869,7 @@ an effect break tests.
 | **0** | Diagnostic fix, `effectCoverage.test.ts` (G1/G2), catalog-probe broadening, `registerEffect(…, { needsCatalog })` | 0 |
 | **1** | `grant`, `drawFromPool`, `whenPlayed`, `resourceSurge`, `costDelta`, `grantKeywords`, Osprey data, Marauder correction, `card-effects.md` update | **34** |
 | **2** | DP1 `ACTIVATE_VEHICLE`, DP4 `pendingEffect`, the three summon rows, `spawnVehicles`, the `PARTIAL` guard map, and the UI for both dispatch points | 9 |
-| **3** | DP3 forced battle, DP6 Trebuchet, battle summons | 8 |
+| **3** | DP3 forced battle, DP6 hand direction (Excalibur), battle summons, `ActiveBattle.continuation` | **9** |
 | **4** | DP2 battle triggers, Buzzsaw/Veles defender rule, Plunderer clause 2 | 8 |
 | **5** | DP5 riders | 5 |
 | | Falcon Squadron exemption | 1 |

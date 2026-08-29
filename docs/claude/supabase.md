@@ -70,12 +70,36 @@ and refreshed by `npm run functions:sync`
 
 ## Deploying
 
-Deploy via `deploy_edge_function` with the function's **entry file plus every
-synced shared file** as the files payload — a partial payload deletes the files
-you omit. Read the current deployment first (`get_edge_function`) when unsure
-what the payload must contain. After deploy, bump nothing locally: DB is the
-source of truth for the deployed version number. Deploy `game-action` after any
-engine/effects change; `lobby-action` after game-init/deck/lobby changes.
+**Use the script, not the MCP tool:**
+
+```bash
+npm run functions:deploy -- game-action            # add --dry-run to list the payload first
+```
+
+`scripts/deploy-function.mjs` derives the payload from the same
+`shared-manifest.json` that `functions:sync` reads, so the two can never
+disagree about which files a function needs, and it POSTs the bytes straight
+from disk to `POST /v1/projects/{ref}/functions/deploy`. It needs
+`SUPABASE_ACCESS_TOKEN` in the environment (a personal access token from
+supabase.com/dashboard/account/tokens); it reads it from `process.env` and
+never prints or stores it. `SUPABASE_PROJECT_REF` overrides the default ref.
+`verify_jwt` defaults to **false**, which is correct for all three functions
+here — pass `--verify-jwt` only if that ever changes.
+
+⚠ **Do not assemble the payload by hand, and do not deploy through the
+`deploy_edge_function` MCP tool for `game-action`.** Its payload is 23 files
+and ~161 KB; wave 3 tried it twice and both attempts were truncated by
+response-length limits into a **5-file** payload. A partial payload **deletes
+the files you omit**, so that would have stripped 18 runtime modules and
+failed the function at boot for every player. The MCP tool remains fine for a
+small function you can send whole in one call.
+
+A partial payload deletes the files you omit — the script guards this by
+failing when a manifest-listed file is missing from the function directory
+(run `npm run functions:sync` first) and by printing the file count before it
+sends. After deploy, bump nothing locally: the DB is the source of truth for
+the version number. Deploy `game-action` after any engine/effects change;
+`lobby-action` after game-init/deck/lobby changes.
 
 - **Before redeploying `game-action` for a wave that registers a previously
   unregistered effect name**, check whether any active game holds a card
@@ -106,13 +130,19 @@ engine/effects change; `lobby-action` after game-init/deck/lobby changes.
 
 - **Smoke-test the catalog probe after any deploy that touches it or adds a
   `needsCatalog` effect.** In a real game, play one card whose effect mints from
-  the catalog *without* suspending (e.g. Defensive Parapet) and one that
-  suspends and then mints on resolution (Special Foundries or Robotic
-  Assemblers) — the second is the only exercise the `state.pendingEffect.card`
-  source ever gets, since it has no unit test and tsc does not read the file.
-  A probe regression shows up as a 400 on the resolving action, not on the play.
+  the catalog *without* suspending (e.g. Defensive Parapet, or wave 3's Flying
+  Squirrel Attack) and one that suspends and then mints on resolution (Special
+  Foundries, Robotic Assemblers, or wave 3's Air Strafe played against a
+  player-design target) — the second kind is the only exercise the
+  `state.pendingEffect.card` source ever gets, since it has no unit test and
+  tsc does not read the file. Air Strafe against a player design is only the
+  *second* real exercise of that path anywhere in the codebase, and the first
+  since wave 2 built it — worth confirming deliberately rather than assuming
+  it still works by analogy. A probe regression shows up as a 400 on the
+  resolving action, not on the play.
 
-(Backlog: a script that assembles the full-directory payload automatically.)
+(That backlog item — "a script that assembles the full-directory payload
+automatically" — is closed by `scripts/deploy-function.mjs` above.)
 
 ## Migrations & data
 

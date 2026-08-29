@@ -86,6 +86,18 @@ frontend (supabase-js) ──invoke──> edge function ──applyAction──
   at the owner's END_TURN; cleared when the card is played.
 - `scheduled[]` — deferred deliveries (e.g. `changeOrderDraw`), processed in
   `endTurn` after materials + draw for the incoming side.
+- `activeBattle` — `ActiveBattle | null`: `zoneId`, `aggressor`,
+  `attackerIds`/`defenderIds`, `distanceM`, `distanceModifiedBy`, plus two
+  fields wave 3 added. `summons: ZoneCardEntry[]` are combatants that exist
+  only for this battle: never pushed to `zone.cards`, and evaporate on report
+  approval regardless of HP — no repair eligibility, no death record, nothing
+  sent to `state.destroyed` (spec §4.4). `continuation: BattleContinuation |
+  null` names an effect to re-enter once the battle resolves — Trebuchet's
+  "you may repeat this effect" is the one card that populates it; see the
+  choice-freeze note below for why this could not live on `pendingEffect`
+  instead. `participantsOf` (`shared/engine/battleResolve.ts`) merges on-field
+  entries with `summons`, so reporting, the spawn sheet and approval read both
+  uniformly; `BattleOverlay.tsx` keeps its own mirror of the same merge.
 - Battle freeze: `awaitingResponse` / `activeBattle` / `pendingReport` non-null
   freezes the game to `BATTLE_ACTIONS` only. `CONCEDE`, `ABANDON`, and battle
   actions are also in `OFF_TURN_ACTIONS` (the off-turn player may owe a response).
@@ -100,8 +112,24 @@ frontend (supabase-js) ──invoke──> edge function ──applyAction──
   power dispatches a registry effect, and (b) `DECIDE_BATTLE_REPORT` clears
   `activeBattle`/`pendingReport` **before** firing death triggers
   (`battleResolve.ts`), so any death effect that suspends does so only after
-  the battle freeze has already lifted. A death effect that suspends via
-  `choice` (wave 3 is assigned one) is the first thing that will exercise this.
+  the battle freeze has already lifted. No death effect has exercised this
+  yet — none of waves 1-3 register one, and it stays open for whichever later
+  wave first does.
+
+  **A battle wait is not a `pendingEffect`, and cannot be one.** The original
+  design (spec §4.2) predicted a `kind: 'battle'` value on this same slot;
+  wave 3 found it cannot work and did not build it. `pendingEffect !== null`
+  freezes the game to `PENDING_ACTIONS`, which admits neither
+  `SUBMIT_BATTLE_REPORT` nor `DECIDE_BATTLE_REPORT` — a battle declared while
+  that slot were occupied could never be reported, deadlocking the game.
+  Relaxing the freeze to admit them would break the invariant that a non-null
+  `pendingEffect` always means "frozen on a choice", which existing readers
+  rely on. `pendingEffect.kind` therefore stays `'choice'` only; a wait on a
+  battle's resolution lives on `ActiveBattle.continuation` instead (see above),
+  which cannot outlive its battle because `DECIDE_BATTLE_REPORT` already nulls
+  `activeBattle` — and a continuation that itself wants a decision (Trebuchet's
+  repeat) writes an ordinary choice into the now-free `pendingEffect` slot,
+  exactly as a suspending death effect would.
 
 ## The snapshot-destructure trap
 
@@ -172,19 +200,15 @@ neither may crash. SS/WF/GT powers are future work (spec §10).
 
 ## Known gaps (rulings on file — don't "fix" silently)
 
-- VEHICLE cards carrying `playOnVehicleEffect` (Trebuchet is the only one) have
-  **no dispatch point yet**: `PLAY_CARD_TO_ZONE` fires only
-  `playOnZoneEffect`/`onPlayEffect`, and `PLAY_CARD_TARGETING_CARD_ON_FIELD`
-  (which does dispatch `playOnVehicleEffect`) accepts ability cards only.
-  Implementing Trebuchet's effect requires adding that firing point first;
-  ability-card `playOnVehicleEffect` names already fire. Wave 3 owns this.
-  (`onActivate` was in this list until wave 2 built `ACTIVATE_VEHICLE`; it now
-  dispatches. The battle triggers — `onBattleEffect` / `onBattleVictory` /
-  `onBattleDefeat` — are still undispatched, and are wave 4's.)
-- The same gap in reverse: **a vehicle whose text targets a card in hand has no
-  play path at all.** Excalibur ("pick one AI ship in hand and reduce its cost
-  by 200k") is the only one; it was re-filed out of wave 1 into wave 3 rather
-  than half-wired, and its seed row still carries an empty `meta`.
+- **DP2, the battle triggers — `onBattleEffect` / `onBattleVictory` /
+  `onBattleDefeat` — are still undispatched, and are wave 4's.** Unlike every
+  other gap that has ever sat in this list, these three keys appear on **zero**
+  seeded cards today — not merely undispatched but unauthored — so wave 4 must
+  both add the dispatch point(s) and write the seed `meta` for each of its
+  eight cards; there is nothing existing to "wire up." That also means G1/G2/G3
+  cannot see them coming: a key nothing dispatches and nothing names is
+  invisible to all three guards until the first card is seeded, which is
+  exactly why they must land together.
 - Salvaged vehicles keep `meta.additionalSpawns` (ruled acceptable).
 - `placement.ts` logs "<card> resolved" / "<card> deployed" **unconditionally**,
   including when the effect suspended on a choice and the game is now frozen.

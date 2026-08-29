@@ -368,7 +368,7 @@ export const dwgVehicles = [
         faction: FACTIONS.DWG,
         blueprintId: null,
         meta: {
-            [TRIGGERS.ON_PLAY]: 'flyingSquirrelAttackEffect',
+            [TRIGGERS.PLAY_ON_VEHICLE]: 'flyingSquirrelAttackEffect',
         }
     },
     {

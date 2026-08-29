@@ -77,8 +77,14 @@ export const RHEA_MAX_PLANE_COST = 300_000 // Rhea: "base cost under 300k" (excl
 export const GT_HEAVY_AIRSHIP_MIN_COST = 400_000 // spec §7.3: the GT airship cost cliff
 
 export const MARAUDER_DISCOUNT = 50_000  // Marauder: enemy vehicle costs 50k less
-export const EXCALIBUR_DISCOUNT = 200_000 // Excalibur: AI ship in hand costs 200k less
+export const EXCALIBUR_COST_DELTA = -200_000 // Excalibur: AI ship in hand costs 200k less
 export const REPAIRMEN_READY_DRAW_MAX_COST = 200_000 // Repairmen Ready draws below this
+
+export const FLYING_SQUIRREL_ATTACK_COUNT = 3 // Flying Squirrel Attack: target fights this many summons
+export const MARTYR_ATTACK_COUNT = 4          // Martyr Attack: base summon count
+export const MARTYR_ATTACK_BOOSTED_COUNT = 6  // Martyr Attack: target is an airship, or a 400k+ player design
+export const MARTYR_ATTACK_BOOST_MIN_COST = 400_000
+export const AIR_STRAFE_PREDATOR_COUNT = 2    // Air Strafe: PredatorX summons (always); +1 chosen hull vs a player design
 
 // Human-readable names for the seven hero powers, used wherever a power id
 // is shown to a player (Kraken's refresh choice).

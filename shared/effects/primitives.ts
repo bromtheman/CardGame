@@ -175,16 +175,16 @@ export function catalogCard(ctx: EngineContext, cardName: string): SnapshotCard 
   return ctx.catalog.find((c) => c.isBuiltIn && c.name === cardName) ?? null
 }
 
-// Place one hull on the board. SPAWNING IS NOT PLAYING (spec §7.4): no
-// payment, no placement legality, no onPlayEffect. Keywords come from the
-// summoning card, on top of whatever the row prints; the add is idempotent.
-export function spawnInto(
-  game: EngineGame, ctx: EngineContext, actor: Side, zoneId: number,
-  snapshot: SnapshotCard, keywords: string[] = [],
-): ZoneCardEntry | null {
-  const zone = game.state.zones.find((z) => z.id === zoneId)
-  if (!zone) return null
-  const entry: ZoneCardEntry = {
+// Build one ZoneCardEntry off a catalog snapshot — the per-entry stamp list
+// (playedOnTurn, movedOnTurn, activatedOnTurn) lives here and nowhere else.
+// Keywords come from the summoning card, on top of whatever the row prints;
+// the merge is idempotent (a keyword already printed is not duplicated).
+// Touches no zone — callers decide whether the hull is pushed onto the board
+// (spawnInto) or kept off it entirely as a battle summon (summonHulls).
+export function mintHull(
+  game: EngineGame, ctx: EngineContext, snapshot: SnapshotCard, keywords: string[] = [],
+): ZoneCardEntry {
+  return {
     ...snapshot,
     instanceId: ctx.newId(),
     keywords: [...snapshot.keywords, ...keywords.filter((k) => !snapshot.keywords.includes(k))],
@@ -192,8 +192,35 @@ export function spawnInto(
     movedOnTurn: null,
     activatedOnTurn: null,
   }
+}
+
+// Place one hull on the board. SPAWNING IS NOT PLAYING (spec §7.4): no
+// payment, no placement legality, no onPlayEffect.
+export function spawnInto(
+  game: EngineGame, ctx: EngineContext, actor: Side, zoneId: number,
+  snapshot: SnapshotCard, keywords: string[] = [],
+): ZoneCardEntry | null {
+  const zone = game.state.zones.find((z) => z.id === zoneId)
+  if (!zone) return null
+  const entry = mintHull(game, ctx, snapshot, keywords)
   zone.cards[actor].push(entry)
   return entry
+}
+
+// Mint `count` hulls of a named catalog card without touching any zone. A
+// battle summon (spec §4.4) exists only inside ActiveBattle.summons — never
+// zone.cards — so this is spawnInto's construction half with the placement
+// half removed. A card missing from the catalog is a data bug, not an empty
+// pool: null tells the caller to fail the play rather than fizzle, the same
+// contract spawnVehicles already uses for the same reason.
+export function summonHulls(
+  game: EngineGame, ctx: EngineContext, cardName: string, count: number, keywords: string[] = [],
+): ZoneCardEntry[] | null {
+  const snapshot = catalogCard(ctx, cardName)
+  if (!snapshot) return null
+  const hulls: ZoneCardEntry[] = []
+  for (let i = 0; i < count; i++) hulls.push(mintHull(game, ctx, snapshot, keywords))
+  return hulls
 }
 
 // Spawn `count` copies of a named catalog card into the played zone, or into
@@ -260,6 +287,28 @@ export function grantKeywords(spec: {
 }
 
 export interface ChoiceOption { id: string; label: string }
+
+// Enemy vehicles a forced-battle choice may offer as a target. `zoneId: null`
+// searches every zone — Orbit Flank's mode (b) picks an enemy vehicle
+// anywhere on the board, not just where Orbit Flank itself was played, so a
+// zone-scoped-only signature would leave that mode unimplementable. On-field
+// vehicles are already public, so surfacing this as pendingEffect.options
+// leaks nothing (spec §4.3, departure 4).
+export function enemyVehicleOptions(
+  game: EngineGame, actor: Side, zoneId: number | null,
+  filter?: (e: ZoneCardEntry) => boolean,
+): ChoiceOption[] {
+  const enemy = otherSide(actor)
+  const zones = zoneId === null ? game.state.zones : game.state.zones.filter((z) => z.id === zoneId)
+  const options: ChoiceOption[] = []
+  for (const zone of zones) {
+    for (const entry of zone.cards[enemy] as ZoneCardEntry[]) {
+      if (filter && !filter(entry)) continue
+      options.push({ id: entry.instanceId, label: entry.name })
+    }
+  }
+  return options
+}
 
 // Suspend for a player decision (spec §4.2, DP4). First entry writes
 // state.pendingEffect and returns true; RESOLVE_PENDING_EFFECT re-enters the

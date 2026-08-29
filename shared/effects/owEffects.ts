@@ -1,9 +1,12 @@
-import { choice, drawFromPool, grant, grantKeywords, spawnVehicles, whenPlayed, zoneOccupants } from './primitives.ts'
+import {
+  choice, drawFromPool, enemyVehicleOptions, grant, grantKeywords, spawnVehicles, whenPlayed, zoneOccupants,
+} from './primitives.ts'
 import { registerEffect } from './registry.ts'
 import { GT_HEAVY_AIRSHIP_MIN_COST, KEYWORDS } from '../gameSettings.ts'
 import type { ZoneCardEntry } from '../engine/engineTypes.ts'
-import { copyMeta } from '../engine/gameEngine.ts'
+import { copyMeta, otherSide, zoneById } from '../engine/gameEngine.ts'
 import { moveEntry } from '../engine/heroPowers.ts'
+import { declareForcedBattle } from '../engine/battleDeclare.ts'
 
 // OW built-in card effects. Cards whose faction is GT but whose seed row
 // lives in OW-Built-in.js are registered here too.
@@ -99,3 +102,96 @@ registerEffect('defensiveParapetEffect', spawnVehicles({
   zones: 'target',
   keywords: [KEYWORDS.INOFFENSIVE, KEYWORDS.SCRAPPY, KEYWORDS.BLOCKER],
 }), { needsCatalog: true })
+
+// "When Played, you may choose to have this vehicle battle an opponents
+// vehicle from the same zone in a 1v1. If the trebuchet wins without
+// becoming damaged beyond repair, fully heal it and you may repeat this
+// effect." The only three-phase effect in the wave (spec §4.3, departure 3),
+// and the only consumer of ActiveBattle.continuation. Seed correction:
+// PLAY_ON_VEHICLE -> ON_PLAY (spec §6, §4.3 departure 4) — the text is "When
+// Played... you may choose", an on-play trigger with a choice, not a
+// targeted play, so it picks its opponent through the same choice dialog as
+// Braveheart/Eclipse/Orbit Flank rather than needing its own dispatch point.
+//
+// Three entries share this one registry name, and the payloads for (a) and
+// (c) are otherwise IDENTICAL shapes — `continuation` is the only thing that
+// tells them apart (task 9 brief):
+//   (a) on play:        resolution === undefined && continuation === undefined
+//   (b) choice answered: resolution !== undefined
+//   (c) battle resolved: continuation !== undefined
+const TREBUCHET = 'trebuchetEffect'
+
+// (a) offers the 1v1; (b) is its resolve, once answered. This is also what a
+// clean win (c, below) re-invokes for the repeat: a synthetic first-entry
+// payload built from the zoneId stashed at declare time reaches this exact
+// options()/resolve() pair, so "you may repeat this effect" IS (a) asked
+// again — not a second mechanism.
+const trebuchetChoice = choice({
+  effect: TREBUCHET,
+  prompt: 'Have Trebuchet battle an enemy vehicle from this zone in a 1v1?',
+  options: ({ game, actor, targetZoneId }) => (
+    typeof targetZoneId === 'number' ? enemyVehicleOptions(game, actor, targetZoneId) : []
+  ),
+  data: ({ targetZoneId }) => ({ zoneId: targetZoneId }),
+  resolve: (payload, choiceId) => {
+    // Empty options (no enemy vehicle in the zone) land here too — do
+    // nothing and return true, so Trebuchet still deploys (or, on a repeat,
+    // still ends quietly) without a suspension. This IS "you may": declining
+    // via `cancel` on a non-empty offer is the other half.
+    if (choiceId === null) return true
+    const { game, actor, card } = payload
+    const zoneId = payload.pending?.data?.zoneId
+    if (typeof zoneId !== 'number') return false
+    // Re-confirm the target is still legal — RESOLVE_PENDING_EFFECT's own
+    // zoneId/targetInstanceId fields are client-supplied and unvalidated;
+    // only choiceId (checked against pending.options by choice() itself) and
+    // this server-side re-check are trusted, the same guard Braveheart and
+    // Eclipse both carry (docs/claude/card-effects.md).
+    if (!enemyVehicleOptions(game, actor, zoneId).some((o) => o.id === choiceId)) return false
+    return declareForcedBattle(game, {
+      zoneId,
+      aggressor: actor,
+      attackerIds: [card.instanceId],
+      defenderIds: [choiceId],
+      cause: card.name,
+      // Names itself: DECIDE_BATTLE_REPORT re-enters TREBUCHET with this once
+      // the battle resolves (spec §4.3, departure 3). zoneId and defenderIds
+      // are stashed here, at declare time, because entry (c) below has no
+      // other route back to either — continuation carries no targetZoneId of
+      // its own, and outcome HP is never plumbed onto any payload.
+      continuation: { effect: TREBUCHET, side: actor, card, data: { zoneId, defenderIds: [choiceId] } },
+    })
+  },
+})
+
+registerEffect(TREBUCHET, (payload) => {
+  if (payload.continuation === undefined) return trebuchetChoice(payload)
+
+  // (c): the battle this card forced has just resolved. activeBattle is
+  // already null (DECIDE_BATTLE_REPORT nulls it before firing the
+  // continuation), so the whole win test reads off zone.cards — no outcome
+  // plumbing needed, and nothing to invent for "fully heal it" (spec §7.3):
+  // Trebuchet's own printed SCRAPPY already repairs it free across the whole
+  // 80-89.999% band. "Damaged beyond repair" means destroyed, not merely
+  // damaged, so a Scrappy-repaired survivor still gets the repeat.
+  const { game, continuation } = payload
+  const zoneId = continuation.data?.zoneId
+  const defenderIds = continuation.data?.defenderIds
+  if (typeof zoneId !== 'number' || !Array.isArray(defenderIds)) return true
+  const zone = zoneById(game.state, zoneId)
+  if (!zone) return true
+  // Survived: Trebuchet itself is still on its own side of the zone.
+  const survived = zone.cards[continuation.side].some((c) => c.instanceId === continuation.card.instanceId)
+  if (!survived) return true // damaged beyond repair — no repeat
+  // Won: every defender stashed at declare time is gone from the enemy's
+  // side of the same zone.
+  const enemy = otherSide(continuation.side)
+  const won = defenderIds.every((id) => typeof id === 'string' && !zone.cards[enemy].some((c) => c.instanceId === id))
+  if (!won) return true // a defender is still standing — no repeat
+  // A clean win: re-offer (a)'s choice in the same zone. The repeat is
+  // unbounded but self-limiting (spec §7.3) — nothing here caps it; an empty
+  // zone just lets the choice above's own empty-options rule end it quietly.
+  return trebuchetChoice({
+    game, actor: continuation.side, card: continuation.card, ctx: payload.ctx, targetZoneId: zoneId,
+  })
+})

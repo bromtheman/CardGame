@@ -69,13 +69,28 @@ export function GameBoardPage() {
   // Legal zones mirror heroPowers.ts's moveEntry — any zone but the current
   // one whose biome fits the vehicle, no screen-blocking check (that only
   // applies to playing a new card from hand, not relocating one already out).
-  const moveSource = moveMode?.phase === 'pickZone' ? findVehicle(state, moveMode.instanceId) : null
+  // 'handTarget' is excluded here — its instanceId names a HAND card
+  // (Excalibur), not an on-field one, so findVehicle would just miss.
+  const moveSource = moveMode?.phase === 'pickZone' && moveMode.kind !== 'handTarget'
+    ? findVehicle(state, moveMode.instanceId)
+    : null
   const legalForMove = moveSource
     ? state.zones
         .filter((z) => z.id !== moveSource.zone.id && biomeAllows(moveSource.entry.vehicleType, z.biome))
         .map((z) => z.id)
     : []
-  const interactiveZoneIds = placingCard ? legalForPlacing : moveMode?.phase === 'pickZone' ? legalForMove : []
+  // Excalibur's hand direction (DP6, spec §4.3 departure 4): the destination
+  // zone follows the same legality a plain deploy would use — this is the
+  // same deployVehicle a vehicle without a hand target goes through.
+  const handTargetCard = moveMode?.phase === 'pickZone' && moveMode.kind === 'handTarget'
+    ? (hand.find((c) => c.instanceId === moveMode.instanceId) ?? null)
+    : null
+  const legalForHandTarget = handTargetCard ? legalZonesFor(state, mySide, handTargetCard) : []
+  const interactiveZoneIds = placingCard
+    ? legalForPlacing
+    : moveMode?.phase === 'pickZone'
+      ? (moveMode.kind === 'handTarget' ? legalForHandTarget : legalForMove)
+      : []
 
   // Swap-mode (DWG's Boarding Party): mirrors move-mode's two-step shape.
   // Once an own ship is picked, only enemy ships in that same zone become
@@ -117,6 +132,14 @@ export function GameBoardPage() {
   function onMobileMoveClick(instanceId: string) {
     cancelAllModes()
     setMoveMode({ phase: 'pickZone', instanceId, kind: 'mobile' })
+  }
+  // Excalibur's hand direction (DP6, spec §4.3 departure 4): HandBar has
+  // already picked the hand target (an AI ship) by the time this fires —
+  // chain into the same pickZone phase for the destination zone rather than
+  // inventing a separate mode.
+  function onVehicleHandTargetPicked(instanceId: string, targetInstanceId: string) {
+    cancelAllModes()
+    setMoveMode({ phase: 'pickZone', instanceId, kind: 'handTarget', targetInstanceId })
   }
   // Effect names whose activated ability needs a destination zone. Kept
   // explicit: the alternative is a new meta key, and one card needs it.
@@ -174,6 +197,13 @@ export function GameBoardPage() {
         void send({ type: 'MOVE_VEHICLE', instanceId: moveMode.instanceId, zoneId })
       } else if (moveMode.kind === 'activate') {
         void send({ type: 'ACTIVATE_VEHICLE', instanceId: moveMode.instanceId, zoneId })
+      } else if (moveMode.kind === 'handTarget') {
+        void send({
+          type: 'PLAY_CARD_TARGETING_CARD_IN_HAND',
+          instanceId: moveMode.instanceId,
+          targetInstanceId: moveMode.targetInstanceId,
+          zoneId,
+        })
       } else {
         void send({ type: 'USE_HERO_POWER', power: 'rapidRedeployment', instanceId: moveMode.instanceId, zoneId })
       }
@@ -341,6 +371,7 @@ export function GameBoardPage() {
         fieldTargeting={fieldTargeting}
         onFieldTargetingChange={onFieldTargetingChange}
         moveMode={moveMode}
+        onVehicleHandTargetPicked={onVehicleHandTargetPicked}
         swapMode={swapMode}
         cancelBoardModes={cancelAllModes}
         onLiftedChange={setLiftedCard}

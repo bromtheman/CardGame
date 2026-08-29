@@ -299,7 +299,8 @@ export const lhVehicles = [
         blueprintId: null,
         keywords: [],
         meta: {
-            [TRIGGERS.ON_ACTIVATE]: 'eclipseEffect'
+            [TRIGGERS.ON_ACTIVATE]: 'eclipseEffect',
+            activateCpCost: 0
         }
     },
     {
@@ -370,7 +371,7 @@ export const lhVehicles = [
         faction: FACTIONS.LH,
         blueprintId: null,
         meta: {
-            [TRIGGERS.ON_PLAY]: 'orbitFlankEffect '
+            [TRIGGERS.ON_PLAY]: 'orbitFlankEffect'
         }
     },
     {

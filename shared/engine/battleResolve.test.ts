@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { applyAction, effectFor, repairCostOf } from './index'
 import { registerEffect } from '../effects/registry.ts'
+import type { ZoneCardEntry } from './engineTypes.ts'
 import { inst, makeCtx, makeGame, zoneEntry } from './testFixtures'
 
 function inBattle() {
@@ -12,9 +13,21 @@ function inBattle() {
   g.state.activeBattle = {
     zoneId: 1, aggressor: 'a', attackerIds: [atk.instanceId],
     defenderIds: [def.instanceId], distanceM: 1200, distanceModifiedBy: [],
+    summons: [], continuation: null,
   }
   g.state.zones[0].lastActivatedTurn = 3
   return { g, atk, def }
+}
+
+// A battle with an additional attacker-side battle summon (spec §4.4):
+// exists only for this fight, never in zone.cards. Defaults to a fresh
+// Martyr-flavoured entry; callers needing different HP/keywords override.
+function inBattleWithSummon(over: Partial<ZoneCardEntry> = {}) {
+  const { g, atk, def } = inBattle()
+  const summon = zoneEntry({ name: 'Martyr', playedOnTurn: 3, materialCost: 20000, ...over })
+  g.state.activeBattle!.summons.push(summon)
+  g.state.activeBattle!.attackerIds.push(summon.instanceId)
+  return { g, atk, def, summon }
 }
 
 describe('SUBMIT_BATTLE_REPORT', () => {
@@ -336,6 +349,7 @@ describe('Scrappy auto-repair', () => {
     g.state.activeBattle = {
       zoneId: 1, aggressor: 'a', attackerIds: [atk.instanceId],
       defenderIds: [def.instanceId], distanceM: 1200, distanceModifiedBy: [],
+      summons: [], continuation: null,
     }
     g.state.zones[0].lastActivatedTurn = 3
     return { g, atk, def }
@@ -377,6 +391,7 @@ describe('Scrappy auto-repair', () => {
     g.state.activeBattle = {
       zoneId: 1, aggressor: 'a', attackerIds: [atk.instanceId],
       defenderIds: [def.instanceId], distanceM: 1200, distanceModifiedBy: [],
+      summons: [], continuation: null,
     }
     g.state.zones[0].lastActivatedTurn = 3
     const submitted = applyAction(g, 'alice', {
@@ -444,5 +459,201 @@ describe('captured cards', () => {
     if (!r.ok) throw new Error(r.error)
     // bob's deck was empty — the recycled Ironclad is the card he draws
     expect(r.game.privates.b.hand.map((c) => c.name)).toEqual(['Ironclad'])
+  })
+})
+
+describe('battle summons (spec §4.4)', () => {
+  it('appears in participantsOf: SUBMIT_BATTLE_REPORT requires its ending HP', () => {
+    const { g, atk, def, summon } = inBattleWithSummon()
+    // Omitting the summon's id fails the completeness check, same as
+    // omitting any other participant's.
+    expect(applyAction(g, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT',
+      results: { [atk.instanceId]: 95, [def.instanceId]: 40 }, repairs: [],
+    })).toMatchObject({ ok: false, status: 400 })
+    const r = applyAction(g, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT',
+      results: { [atk.instanceId]: 95, [def.instanceId]: 40, [summon.instanceId]: 0 }, repairs: [],
+    })
+    expect(r.ok).toBe(true)
+  })
+
+  it('evaporates a summon reported at 0% — never reaches the discard or the deck', () => {
+    const { g, atk, def, summon } = inBattleWithSummon()
+    const s = applyAction(g, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT',
+      results: { [atk.instanceId]: 95, [def.instanceId]: 95, [summon.instanceId]: 0 }, repairs: [],
+    })
+    if (!s.ok) throw new Error(s.error)
+    const r = applyAction(s.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true })
+    if (!r.ok) throw new Error(r.error)
+    // The behavioural claim, checked first: it never reaches discardCard, so
+    // reshuffleDiscard can never feed it back into alice's deck as a
+    // draftable card. (The zone.cards claim below would hold trivially
+    // either way — a summon is never pushed there in the first place — so
+    // it is not the assertion doing the real work.)
+    expect(r.game.state.destroyed.a.some((c) => c.name === 'Martyr')).toBe(false)
+    expect(r.game.state.zones[0].cards.a.some((c) => c.instanceId === summon.instanceId)).toBe(false)
+  })
+
+  it('evaporates a summon reported at 100% too — gone regardless of HP', () => {
+    const { g, atk, def, summon } = inBattleWithSummon()
+    const s = applyAction(g, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT',
+      results: { [atk.instanceId]: 95, [def.instanceId]: 95, [summon.instanceId]: 100 }, repairs: [],
+    })
+    if (!s.ok) throw new Error(s.error)
+    const r = applyAction(s.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true })
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.destroyed.a.some((c) => c.name === 'Martyr')).toBe(false)
+    expect(r.game.state.zones[0].cards.a.some((c) => c.instanceId === summon.instanceId)).toBe(false)
+    expect(r.game.state.log).toContain('1 summoned vehicle(s) evaporated')
+  })
+
+  it('rejects a summon id in repairs — from the submitter and from the approver', () => {
+    const { g, atk, def, summon } = inBattleWithSummon()
+    const submitAttempt = applyAction(g, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT',
+      results: { [atk.instanceId]: 85, [def.instanceId]: 95, [summon.instanceId]: 85 },
+      repairs: [summon.instanceId],
+    })
+    expect(submitAttempt).toMatchObject({ ok: false, status: 400 })
+    if (!submitAttempt.ok) expect(submitAttempt.error).toContain('summoned vehicle')
+
+    const s = applyAction(g, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT',
+      results: { [atk.instanceId]: 85, [def.instanceId]: 95, [summon.instanceId]: 85 }, repairs: [],
+    })
+    if (!s.ok) throw new Error(s.error)
+    // bob (the approver, and not even the summon's owner) tries to list it —
+    // rejected for being a summon before ownership is ever considered.
+    const decideAttempt = applyAction(s.game, 'bob', {
+      type: 'DECIDE_BATTLE_REPORT', approve: true, repairs: [summon.instanceId],
+    })
+    expect(decideAttempt).toMatchObject({ ok: false, status: 400 })
+    if (!decideAttempt.ok) expect(decideAttempt.error).toContain('summoned vehicle')
+  })
+
+  it('does not auto-repair a Scrappy summon in the repair band, and does not charge its owner', () => {
+    const { g, atk, def, summon } = inBattleWithSummon({ keywords: ['scrappy'] })
+    const s = applyAction(g, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT',
+      results: { [atk.instanceId]: 95, [def.instanceId]: 95, [summon.instanceId]: 85 }, repairs: [],
+    })
+    if (!s.ok) throw new Error(s.error)
+    const r = applyAction(s.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true })
+    if (!r.ok) throw new Error(r.error)
+    // The behavioural claim, checked first: no "was repaired" line for it.
+    // autoRepairIds() is only ever handed the non-summon roster (Step 5 of
+    // the brief reverts exactly that filter and watches this go red).
+    expect(r.game.state.log.some((l) => l.includes('Martyr') && l.includes('repaired'))).toBe(false)
+    expect(r.game.state.resources.a.materials).toBe(100000)
+  })
+
+  it('never charges materials for a summon id in the owed loop, even if it slipped past validateRepairChoices', () => {
+    // validateRepairChoices rejects a summon id in repairs (400) whenever a
+    // report is submitted through the normal action API, so this path is not
+    // reachable that way. To test the owed loop's OWN guard in isolation —
+    // the defense-in-depth the brief's review asked for — construct a stored
+    // pendingReport directly, as if an earlier validation step already had a
+    // bug and let a summon id through into report.repairs. report.repairs is
+    // never re-validated at DECIDE time (only the approver's own list is),
+    // so this is the realistic shape a regression there would take.
+    const { g, atk, def, summon } = inBattleWithSummon({ materialCost: 80000 }) // non-Scrappy: real repair cost
+    g.state.pendingReport = {
+      submittedBy: 'a',
+      results: { [atk.instanceId]: 95, [def.instanceId]: 95, [summon.instanceId]: 85 },
+      repairs: [summon.instanceId],
+    }
+    const r = applyAction(g, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true })
+    if (!r.ok) throw new Error(r.error)
+    // The behavioural claim: alice is not charged repairCostOf(summon)
+    // (ceil(80000 * 0.5) = 40000) for a hull that evaporates regardless.
+    expect(r.game.state.resources.a.materials).toBe(100000)
+  })
+
+  it('does not fire an onDeathEffect a summon carries', () => {
+    // Synthetic t_-prefixed name — a real seeded onDeathEffect would stop
+    // testing anything the day it gets implemented for real.
+    registerEffect('t_summonMartyrOnDeath', ({ game }) => {
+      game.state.log.push('t_summonMartyrOnDeath fired')
+      return true
+    })
+    const { g, atk, def, summon } = inBattleWithSummon({ meta: { onDeathEffect: 't_summonMartyrOnDeath' } })
+    const s = applyAction(g, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT',
+      results: { [atk.instanceId]: 95, [def.instanceId]: 95, [summon.instanceId]: 0 }, repairs: [],
+    })
+    if (!s.ok) throw new Error(s.error)
+    const r = applyAction(s.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.log.some((l) => l.includes('t_summonMartyrOnDeath fired'))).toBe(false)
+  })
+
+  it('excludes summons from the "N vehicle(s) lost" count', () => {
+    const { g, atk, def, summon } = inBattleWithSummon()
+    const s = applyAction(g, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT',
+      // def (a real vehicle) dies too, so a count that wrongly included the
+      // summon would read 2.
+      results: { [atk.instanceId]: 95, [def.instanceId]: 40, [summon.instanceId]: 0 }, repairs: [],
+    })
+    if (!s.ok) throw new Error(s.error)
+    const r = applyAction(s.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true })
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.log).toContain('Battle resolved — 1 vehicle(s) lost')
+  })
+
+  it('invokes the continuation after approval — after death triggers, with data intact, battle fully cleared', () => {
+    registerEffect('t_battleDeathMarker', ({ game }) => {
+      game.state.log.push('t_battleDeathMarker fired')
+      return true
+    })
+    registerEffect('t_battleContinuation', (payload) => {
+      payload.game.state.log.push(`t_battleContinuation fired data=${JSON.stringify(payload.continuation?.data)}`)
+      return true
+    })
+    // A summon rides along in the same battle so the final activeBattle-null
+    // check below means something: this is the one test where a summon, a
+    // real death trigger, AND a continuation are all live at once, so a
+    // regression that left any of them half-handled has somewhere to show up
+    // (a stray zone.cards entry, a stray log line, or activeBattle staying
+    // non-null) rather than the field simply being null because nothing
+    // interesting happened.
+    const { g, atk, def, summon } = inBattleWithSummon()
+    def.meta = { onDeathEffect: 't_battleDeathMarker' }
+    const trebuchet = inst({ name: 'Trebuchet' })
+    g.state.activeBattle!.continuation = {
+      effect: 't_battleContinuation', side: 'a', card: trebuchet, data: { again: true },
+    }
+    const s = applyAction(g, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT',
+      results: { [atk.instanceId]: 95, [def.instanceId]: 40, [summon.instanceId]: 50 }, repairs: [],
+    })
+    if (!s.ok) throw new Error(s.error)
+    const r = applyAction(s.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.log).toContain('t_battleContinuation fired data={"again":true}')
+    const deathIdx = r.game.state.log.findIndex((l) => l.includes('t_battleDeathMarker fired'))
+    const contIdx = r.game.state.log.findIndex((l) => l.includes('t_battleContinuation fired'))
+    expect(deathIdx).toBeGreaterThanOrEqual(0)
+    expect(contIdx).toBeGreaterThan(deathIdx)
+    expect(r.game.state.zones[0].cards.a.some((c) => c.instanceId === summon.instanceId)).toBe(false)
+    expect(r.game.state.activeBattle).toBeNull()
+  })
+
+  it('drops a continuation whose effect is no longer registered, logging rather than throwing', () => {
+    const { g, atk, def } = inBattle()
+    const ghost = inst({ name: 'Ghost Rider' })
+    g.state.activeBattle!.continuation = { effect: 't_neverRegisteredBattleContinuation', side: 'a', card: ghost }
+    const s = applyAction(g, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT',
+      results: { [atk.instanceId]: 95, [def.instanceId]: 40 }, repairs: [],
+    })
+    if (!s.ok) throw new Error(s.error)
+    expect(() => applyAction(s.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true })).not.toThrow()
+    const r = applyAction(s.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true })
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.log.some((l) => l.includes('Ghost Rider') && l.includes('dropped'))).toBe(true)
   })
 })

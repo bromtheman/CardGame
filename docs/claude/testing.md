@@ -6,7 +6,7 @@ browser verification.
 ## Unit tests (vitest, repo root)
 
 ```bash
-npx vitest run                      # everything (423 tests / 29 files after wave 2)
+npx vitest run                      # everything (514 tests / 29 files after wave 3)
 npx vitest run shared/effects       # path filter — the ONLY sanctioned way to narrow
 ```
 
@@ -37,13 +37,26 @@ npx vitest run shared/effects       # path filter — the ONLY sanctioned way to
   Do *not* add `envDir` to the root config — that would make the suite depend on
   a gitignored file and still fail on a fresh clone and in CI. Corollary: a
   suite that is green only because *your shell* exports those vars is not green.
-- ⚠ **Never use a real seeded effect name as an "unimplemented" stand-in.** A
-  test asserting "unknown effect plays vanilla" silently stops testing anything
-  the day someone registers that name. Use synthetic `t_`-prefixed names — see
+- ⚠ **Never use a real seeded effect name as an "unimplemented" stand-in.**
+  Rename it to a synthetic `t_`-prefixed name instead — see
   `shared/engine/activate.test.ts`, `shared/engine/pendingEffect.test.ts`,
   `shared/effects/primitives.test.ts`, or `shared/effects/registry.test.ts`.
-  Existing offenders, all in `shared/engine/placement.test.ts`:
-  `eclipseEffect` (wave 3), `ambushEffect` / `sabotageEffect` (wave 5).
+  Existing offenders, both in `shared/engine/placement.test.ts`: `ambushEffect`
+  / `sabotageEffect` (wave 5).
+  **The failure mode is loud, not silent** — a claim this doc carried until
+  wave 3 disproved it. `noteUnimplemented` (`shared/effects/registry.ts`)
+  pushes its "plays as vanilla" log line only via `if (isImplemented(name))
+  continue`, i.e. only when the name is **not** implemented, so registering
+  the name makes the note vanish and a `toHaveLength(1)` assertion fails
+  loudly (`1 → 0`) — it does not pass quietly. Wave 3 verified this two ways:
+  empirically, by an implementer's mutation test, and independently, by a
+  reviewer reading `registry.ts` against `registry.test.ts`'s "skips
+  implemented ones" case. The rename is still correct practice — it decouples
+  the fixture from a card's registration state, so the test keeps exercising
+  the unimplemented path indefinitely rather than going red one day for a
+  reason unrelated to what it's meant to check — but the risk that motivated
+  it was misstated. See `shared/engine/placement.test.ts`'s "vehicle with
+  unimplemented onActivate deploys fine" test for the worked explanation.
 
 ## Live E2E (scripted, against the real project)
 

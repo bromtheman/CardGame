@@ -68,7 +68,7 @@ export const ssVehicles = [
         faction: FACTIONS.SS,
         blueprintId: null,
         meta: {
-            [TRIGGERS.PLAY_ON_ZONE]: 'airStrafeEffect'
+            [TRIGGERS.PLAY_ON_VEHICLE]: 'airStrafeEffect'
         }
     },{
         name: 'Repairmen Ready',
@@ -101,6 +101,7 @@ export const ssVehicles = [
         blueprintId: null,
         keywords: [KEYWORDS.BLOCKER],
         meta: {
+            [TRIGGERS.PLAY_ON_CARD]: 'excaliburEffect'
         }
     } ,{
         name: 'Asphodel',
@@ -133,6 +134,8 @@ export const ssVehicles = [
         blueprintId: null,
         keywords: [],
         meta: {
+            [TRIGGERS.ON_ACTIVATE]: 'braveheartActivate',
+            activateCpCost: 1
         }
     }
     ,{

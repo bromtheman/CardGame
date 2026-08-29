@@ -1,8 +1,12 @@
-import { DOUBLE_UP_MAX_COST, HERO_POWER_LABELS, KEYWORDS, MARAUDER_DISCOUNT, RESERVES_CARD_COUNT } from '../gameSettings.ts'
+import {
+  DOUBLE_UP_MAX_COST, FLYING_SQUIRREL_ATTACK_COUNT, HERO_POWER_LABELS, KEYWORDS,
+  MARAUDER_DISCOUNT, RESERVES_CARD_COUNT,
+} from '../gameSettings.ts'
 import type { ZoneCardEntry } from '../engine/engineTypes.ts'
-import { copyMeta, drawCard, zoneById } from '../engine/gameEngine.ts'
+import { copyMeta, drawCard, findVehicle, otherSide, zoneById } from '../engine/gameEngine.ts'
 import { effectiveMaterialCostOf } from '../engine/placement.ts'
-import { choice, grant, takeFromEnemyDeck } from './primitives.ts'
+import { declareForcedBattle } from '../engine/battleDeclare.ts'
+import { choice, grant, summonHulls, takeFromEnemyDeck } from './primitives.ts'
 import { registerCostModifier, registerEffect } from './registry.ts'
 import type { EffectPayload } from './registry.ts'
 
@@ -149,3 +153,46 @@ registerEffect(KRAKEN, choice({
     return true
   },
 }))
+
+// "Choose an enemy vehicle, that vehicle fights alone against a flying
+// squirrel (3x squadron)." DP3 (spec §4.3): the target is the sole defender
+// (§7.3 "fights alone") against FLYING_SQUIRREL_ATTACK_COUNT freshly minted
+// Flying Squirrel summons, which exist only for this battle (spec §4.4) — the
+// aggressor is the player who played the card, not the target's owner.
+registerEffect('flyingSquirrelAttackEffect', ({ game, actor, ctx, targetInstanceId, card }) => {
+  if (typeof targetInstanceId !== 'string') return false
+  const found = findVehicle(game.state, targetInstanceId)
+  if (!found || found.side !== otherSide(actor)) return false
+  const summons = summonHulls(game, ctx, 'Flying Squirrel', FLYING_SQUIRREL_ATTACK_COUNT)
+  if (!summons) return false
+  return declareForcedBattle(game, {
+    zoneId: found.zone.id,
+    aggressor: actor,
+    attackerIds: summons.map((s) => s.instanceId),
+    defenderIds: [targetInstanceId],
+    summons,
+    cause: card.name,
+  })
+}, { needsCatalog: true })
+
+// "Choose an enemy vehicle. Start a battle with that vehicle vs all your
+// vehicles from the same zone." DP3: the target is the sole defender (§7.3);
+// the attackers are the actor's own vehicles already in that zone, minus any
+// Inoffensive ones (§7.3 — Inoffensive means "cannot attack", and a forced
+// battle is not licence to break that). No summons. If that leaves no
+// attacker, declareForcedBattle's own empty-list check fails the play.
+registerEffect('gangUpEffect', ({ game, actor, targetInstanceId, card }) => {
+  if (typeof targetInstanceId !== 'string') return false
+  const found = findVehicle(game.state, targetInstanceId)
+  if (!found || found.side !== otherSide(actor)) return false
+  const attackerIds = found.zone.cards[actor]
+    .filter((c) => !c.keywords.includes(KEYWORDS.INOFFENSIVE))
+    .map((c) => c.instanceId)
+  return declareForcedBattle(game, {
+    zoneId: found.zone.id,
+    aggressor: actor,
+    attackerIds,
+    defenderIds: [targetInstanceId],
+    cause: card.name,
+  })
+})

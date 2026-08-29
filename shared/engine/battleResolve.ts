@@ -6,6 +6,11 @@ import { discardCard, err, registerHandler, zoneById } from './gameEngine.ts'
 import { effectiveMaterialCostOf } from './placement.ts'
 import { effectFor, effectName } from '../effects/registry.ts'
 
+// PublicGameState.activeBattle (gameInit.ts) structurally duplicates
+// ActiveBattle (engineTypes.ts) rather than importing it (spec §4.4), so this
+// is the type `game.state.activeBattle!` actually carries at this boundary.
+type Battle = NonNullable<EngineGame['state']['activeBattle']>
+
 export function repairCostOf(card: { materialCost: number; keywords: string[] }): number {
   if (card.keywords.includes(KEYWORDS.SCRAPPY)) return 0
   return Math.ceil(effectiveMaterialCostOf(card) * REPAIR_COST_RATE)
@@ -31,21 +36,33 @@ export function autoRepairIds(
   return ids
 }
 
+// Stronger than isSummonOnly and independent of it (spec §4.4): a battle
+// summon evaporates on report approval whether or not the underlying card is
+// draftable — Air Strafe's PredatorX and Orbit Flank's Orbit are ordinary
+// catalog cards that still vanish, because they were never really on the
+// board. A local predicate reads better than repeating this lookup at every
+// site that needs it.
+function isSummon(battle: Battle, id: string): boolean {
+  return battle.summons.some((s) => s.instanceId === id)
+}
+
 // Shared eligibility rule for a repair pick — used identically by the
 // submitter (SUBMIT_BATTLE_REPORT) and the approver (DECIDE_BATTLE_REPORT):
-// must be a real participant, must belong to the caller, must sit in the
-// repairable HP band, and must not be Fragile. Returns the first failure as
-// an ApplyResult, or null when every id is valid, so each caller keeps its
-// own early-return shape.
+// must be a real participant, must not be a battle summon (refused outright —
+// spec §4.4), must belong to the caller, must sit in the repairable HP band,
+// and must not be Fragile. Returns the first failure as an ApplyResult, or
+// null when every id is valid, so each caller keeps its own early-return shape.
 function validateRepairChoices(
   ids: string[],
   participants: Map<string, { entry: ZoneCardEntry; side: Side }>,
   results: Record<string, number>,
   actor: Side,
+  battle: Battle,
 ): ApplyResult | null {
   for (const id of ids) {
     const p = participants.get(id)
     if (!p) return err(400, 'Repair selection includes a non-participant')
+    if (isSummon(battle, id)) return err(400, `${p.entry.name} is a summoned vehicle and cannot be repaired`)
     if (p.side !== actor) return err(400, `${p.entry.name} is not yours to repair — its captain decides`)
     const hp = results[id]
     if (hp === undefined || hp < REPAIR_WINDOW_MIN_PERCENT || hp >= SURVIVE_HP_PERCENT) {
@@ -58,18 +75,34 @@ function validateRepairChoices(
   return null
 }
 
+// Merges the two sources a battle draws combatants from (spec §4.4): entries
+// still on the board, and summons that exist only inside this battle and
+// never reach zone.cards. A summon carries no side field — membership in
+// attackerIds/defenderIds decides it, so a listed id that misses the zone
+// lookup falls back to the summon map with the side its own list implies.
 function participantsOf(game: EngineGame): Map<string, { entry: ZoneCardEntry; side: Side }> {
   const battle = game.state.activeBattle!
   const zone = zoneById(game.state, battle.zoneId)!
+  const summonMap = new Map<string, ZoneCardEntry>(
+    battle.summons.map((s) => [s.instanceId, s as ZoneCardEntry]),
+  )
   const map = new Map<string, { entry: ZoneCardEntry; side: Side }>()
   for (const id of battle.attackerIds) {
     const entry = zone.cards[battle.aggressor].find((c) => c.instanceId === id)
     if (entry) map.set(id, { entry: entry as ZoneCardEntry, side: battle.aggressor })
+    else {
+      const summon = summonMap.get(id)
+      if (summon) map.set(id, { entry: summon, side: battle.aggressor })
+    }
   }
   const defenderSide: Side = battle.aggressor === 'a' ? 'b' : 'a'
   for (const id of battle.defenderIds) {
     const entry = zone.cards[defenderSide].find((c) => c.instanceId === id)
     if (entry) map.set(id, { entry: entry as ZoneCardEntry, side: defenderSide })
+    else {
+      const summon = summonMap.get(id)
+      if (summon) map.set(id, { entry: summon, side: defenderSide })
+    }
   }
   return map
 }
@@ -96,7 +129,9 @@ registerHandler('SUBMIT_BATTLE_REPORT', (game, actor, action) => {
     }
     void id
   }
-  const invalidRepair = validateRepairChoices(action.repairs, participants, action.results, actor)
+  const invalidRepair = validateRepairChoices(
+    action.repairs, participants, action.results, actor, game.state.activeBattle!,
+  )
   if (invalidRepair) return invalidRepair
   game.state.pendingReport = { submittedBy: actor, results: action.results, repairs: action.repairs }
   game.state.log.push(`Battle report submitted by player ${actor.toUpperCase()} — awaiting approval`)
@@ -113,13 +148,18 @@ registerHandler('DECIDE_BATTLE_REPORT', (game, actor, action, ctx) => {
     game.state.log.push('Battle report rejected — submit a corrected one')
     return { ok: true, game }
   }
+  const battle = game.state.activeBattle!
   const participants = participantsOf(game)
-  const roster = [...participants.values()]
+  // autoRepairIds must never see a summon (spec §4.4) — Scrappy's free-repair
+  // auto-pick would otherwise silently apply to a hull that isn't really on
+  // the board. This is the second of the two refusals; validateRepairChoices
+  // below is the first, for an explicitly-listed id.
+  const roster = [...participants.values()].filter((p) => !isSummon(battle, p.entry.instanceId))
 
   // Each side chooses only for its own vehicles: the submitter's picks came
   // with the report, the approver's arrive with the decision.
   const approverRepairs = Array.isArray(action.repairs) ? action.repairs : []
-  const invalidApproverRepair = validateRepairChoices(approverRepairs, participants, report.results, actor)
+  const invalidApproverRepair = validateRepairChoices(approverRepairs, participants, report.results, actor, battle)
   if (invalidApproverRepair) return invalidApproverRepair
 
   // A Set both unions the two sides' picks and makes an explicitly-listed
@@ -130,11 +170,16 @@ registerHandler('DECIDE_BATTLE_REPORT', (game, actor, action, ctx) => {
     ...autoRepairIds(roster, report.results),
   ])
 
-  // Repair affordability first (all-or-nothing), per owner.
+  // Repair affordability first (all-or-nothing), per owner. repairIds should
+  // never legitimately contain a summon id — validateRepairChoices and the
+  // non-summon roster fed to autoRepairIds above both refuse it upstream —
+  // but this loop must not trust that unconditionally: a future regression
+  // in either upstream guard must not silently charge a real vehicle's
+  // repair cost for a hull that evaporates regardless of HP (spec §4.4).
   const owed: Record<Side, number> = { a: 0, b: 0 }
   for (const id of repairIds) {
     const p = participants.get(id)
-    if (p) owed[p.side] += repairCostOf(p.entry)
+    if (p && !isSummon(battle, id)) owed[p.side] += repairCostOf(p.entry)
   }
   for (const side of ['a', 'b'] as Side[]) {
     if (owed[side] > game.state.resources[side].materials) {
@@ -142,14 +187,24 @@ registerHandler('DECIDE_BATTLE_REPORT', (game, actor, action, ctx) => {
     }
   }
   for (const side of ['a', 'b'] as Side[]) game.state.resources[side].materials -= owed[side]
-  const zone = zoneById(game.state, game.state.activeBattle!.zoneId)!
+  const zone = zoneById(game.state, battle.zoneId)!
   let destroyedCount = 0
+  let summonCount = 0
   const destroyedEntries: { entry: ZoneCardEntry; side: Side }[] = []
   for (const [id, { entry, side }] of participants) {
     const hp = report.results[id]
+    const summon = isSummon(battle, id)
+    if (summon) summonCount++
     const survives = hp >= SURVIVE_HP_PERCENT ||
       (hp >= REPAIR_WINDOW_MIN_PERCENT && repairIds.has(id))
-    if (!survives) {
+    // A summon is skipped by every consequence of "not surviving" — no
+    // zone.cards removal (it was never there), no discardCard (which would
+    // otherwise leak it into state.destroyed and, via reshuffleDiscard, the
+    // owner's deck), no destroyedEntries push (so no onDeathEffect dispatch
+    // below), no destroyedCount increment. It cannot reach the repair branch
+    // either in practice: validateRepairChoices and the roster filter above
+    // are what keep a summon id out of repairIds in the first place.
+    if (!survives && !summon) {
       zone.cards[side] = zone.cards[side].filter((c) => c.instanceId !== id)
       discardCard(game, side, entry)
       destroyedCount++
@@ -159,6 +214,13 @@ registerHandler('DECIDE_BATTLE_REPORT', (game, actor, action, ctx) => {
       game.state.log.push(`${entry.name} was repaired (${hp}%)`)
     }
   }
+  // One line for every summon in the battle, never one per card — six
+  // Martyrs must not produce six log lines (spec §4.4).
+  if (summonCount > 0) {
+    game.state.log.push(`${summonCount} summoned vehicle(s) evaporated`)
+  }
+  // Read before activeBattle is nulled below, or it is lost.
+  const continuation = battle.continuation
   game.state.activeBattle = null
   game.state.pendingReport = null
   game.state.log.push(`Battle resolved — ${destroyedCount} vehicle(s) lost`)
@@ -174,6 +236,22 @@ registerHandler('DECIDE_BATTLE_REPORT', (game, actor, action, ctx) => {
     if (!fn) continue
     if (!fn({ game, actor: side, card: entry, ctx })) {
       game.state.log.push(`${entry.name}'s death effect could not resolve`)
+    }
+  }
+
+  // The continuation (spec §4.3, departure 3): an effect that forced this
+  // battle and wants to run again now that it has resolved (Trebuchet's
+  // repeat). Fires exactly once, after every death trigger above, and — like
+  // RESOLVE_PENDING_EFFECT's rollback escape — logs and drops rather than
+  // throwing if its registry name is no longer there. A false return gets
+  // the same log-only treatment as a failing death effect: the report is
+  // already approved and cannot be rolled back over it.
+  if (continuation) {
+    const fn = effectFor(continuation.effect)
+    if (!fn) {
+      game.state.log.push(`${continuation.card.name}'s effect is no longer available — the continuation was dropped`)
+    } else if (!fn({ game, actor: continuation.side, card: continuation.card, ctx, continuation })) {
+      game.state.log.push(`${continuation.card.name}'s effect could not resolve`)
     }
   }
 

@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { catalogCard, choice, drawFromPool, grant, sequence, spawnVehicles, takeFromEnemyDeck, whenPlayed, zoneOccupants } from './primitives.ts'
-import { inst, makeCtx, makeGame, snap } from '../engine/testFixtures.ts'
+import {
+  catalogCard, choice, drawFromPool, enemyVehicleOptions, grant, mintHull, sequence, spawnVehicles,
+  summonHulls, takeFromEnemyDeck, whenPlayed, zoneOccupants,
+} from './primitives.ts'
+import { inst, makeCtx, makeGame, snap, zoneEntry } from '../engine/testFixtures.ts'
 
 describe('grant', () => {
   it('draws from your own deck and syncs counts', () => {
@@ -337,5 +340,64 @@ describe('drawFromPool excludes summon-only cards', () => {
     const fn = drawFromPool({ source: 'catalog', filter: { faction: 'WF' }, count: 1, allowEmpty: true })
     expect(fn({ game, actor: 'a', card: inst(), ctx })).toBe(true)
     expect(game.privates.a.hand).toHaveLength(0)
+  })
+})
+
+describe('mintHull', () => {
+  it('stamps a fresh id and the per-entry turn markers, merging and de-duplicating keywords', () => {
+    const game = makeGame({ turnNumber: 4 })
+    const snapshot = snap({ name: 'Parapet', keywords: ['blocker'] })
+    const entry = mintHull(game, makeCtx(), snapshot, ['blocker', 'inoffensive'])
+    expect(entry.instanceId).toBe('e-0')
+    expect(entry.keywords).toEqual(['blocker', 'inoffensive'])
+    expect(entry.playedOnTurn).toBe(4)
+    expect(entry.movedOnTurn).toBeNull()
+    expect(entry.activatedOnTurn).toBeNull()
+  })
+})
+
+describe('summonHulls', () => {
+  it('mints count fresh hulls with printed keywords plus granted ones de-duplicated, and pushes nothing into any zone', () => {
+    const game = makeGame()
+    const catalog = [snap({ name: 'Flying Squirrel', keywords: ['temporary'] })]
+    const ctx = makeCtx({ catalog })
+    const hulls = summonHulls(game, ctx, 'Flying Squirrel', 2, ['temporary', 'inoffensive'])
+    expect(hulls).not.toBeNull()
+    expect(hulls!.map((h) => h.instanceId)).toEqual(['e-0', 'e-1'])
+    expect(hulls![0].instanceId).not.toBe(hulls![1].instanceId)
+    for (const h of hulls!) expect(h.keywords).toEqual(['temporary', 'inoffensive'])
+    expect(game.state.zones.every((z) => z.cards.a.length === 0 && z.cards.b.length === 0)).toBe(true)
+  })
+
+  it('returns null for a name absent from the catalog', () => {
+    const game = makeGame()
+    expect(summonHulls(game, makeCtx({ catalog: [] }), 'Nonexistent', 1)).toBeNull()
+  })
+})
+
+describe('enemyVehicleOptions', () => {
+  it('lists only the enemy vehicles in the given zone, respecting the filter', () => {
+    const game = makeGame()
+    const mine = zoneEntry({ name: 'Mine', instanceId: 'mine-1' })
+    const foeOne = zoneEntry({ name: 'Foe One', instanceId: 'foe-1' })
+    const foeTwo = zoneEntry({ name: 'Foe Two', instanceId: 'foe-2', keywords: ['stealthy'] })
+    game.state.zones[0].cards.a.push(mine)
+    game.state.zones[0].cards.b.push(foeOne, foeTwo)
+    expect(enemyVehicleOptions(game, 'a', 1)).toEqual([
+      { id: 'foe-1', label: 'Foe One' },
+      { id: 'foe-2', label: 'Foe Two' },
+    ])
+    expect(enemyVehicleOptions(game, 'a', 1, (e) => !e.keywords.includes('stealthy'))).toEqual([
+      { id: 'foe-1', label: 'Foe One' },
+    ])
+  })
+
+  it('zoneId: null searches every zone — Orbit Flank mode (b) needs this', () => {
+    const game = makeGame()
+    const foeOne = zoneEntry({ name: 'Foe One', instanceId: 'foe-1' })
+    const foeElsewhere = zoneEntry({ name: 'Foe Elsewhere', instanceId: 'foe-3' })
+    game.state.zones[0].cards.b.push(foeOne)
+    game.state.zones[2].cards.b.push(foeElsewhere)
+    expect(enemyVehicleOptions(game, 'a', null).map((o) => o.id)).toEqual(['foe-1', 'foe-3'])
   })
 })
