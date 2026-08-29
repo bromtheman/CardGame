@@ -645,7 +645,7 @@ wrote them down instead of trusting the next wave to rediscover them.
    rule) and `docs/claude/supabase.md` (the probe and the deploy runbook). All
    four were updated at the close of wave 3 with everything above.
 3. Run the four commands in §1 and record your own baseline. If it is not
-   514 / 29 green, find out why before writing a line.
+   521 / 30 green, find out why before writing a line.
 4. Add `onBattleEffect`/`onBattleVictory`/`onBattleDefeat` to
    `REACHABLE_TRIGGERS`'s `vehicle` row **before** any card work (§3, §4.2
    above) — the same ordering wave 2 and wave 3 both used for their own new
