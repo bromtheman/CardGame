@@ -9,3 +9,6 @@ dist/
 .agents/
 .claude/
 skills-lock.json
+
+# QA login credentials — never commit
+scripts/qa-accounts.local
