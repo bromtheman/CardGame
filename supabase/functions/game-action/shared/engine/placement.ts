@@ -28,10 +28,29 @@ function screenBlocks(state: PublicGameState, side: Side, zoneId: number, vehicl
   return false
 }
 
+// A zone rider that forbids this side from PLAYING a card of some faction
+// there (Sub Killer, spec §4.3 "DP5 as wave 5 built it"). Read off
+// `data.blocksFaction` rather than off the rider's effect name, so the rule
+// lives here and the next blocking card needs no engine edit — the same
+// reasoning that made `defensiveOmission` a data key (spec §4.8).
+//
+// Deliberately only a PLAY restriction: MOVE_VEHICLE and the hero-power
+// relocation go through biomeAllows directly, and a spawn bypasses placement
+// legality entirely (spec §7.4). Sub Killer's text says "play".
+function riderBlocks(state: PublicGameState, side: Side, zoneId: number, faction: string): boolean {
+  return state.zoneEffects.some(
+    (e) => e.zoneId === zoneId && e.side === side && e.data?.blocksFaction === faction,
+  )
+}
+
 export function legalZonesFor(state: PublicGameState, side: Side, card: CardInstance): number[] {
   if (card.type !== 'vehicle' || card.vehicleType === null) return []
   return state.zones
-    .filter((z) => biomeAllows(card.vehicleType, z.biome) && !screenBlocks(state, side, z.id, card.vehicleType!))
+    .filter((z) => (
+      biomeAllows(card.vehicleType, z.biome) &&
+      !screenBlocks(state, side, z.id, card.vehicleType!) &&
+      !riderBlocks(state, side, z.id, card.faction)
+    ))
     .map((z) => z.id)
 }
 

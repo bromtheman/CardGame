@@ -4,6 +4,7 @@ import { choice } from './primitives.ts'
 import { inst, makeCtx, makeGame, snap, zoneEntry } from '../engine/testFixtures.ts'
 import {
   applyAction, declareForcedBattle, discardSnapshotOf, effectiveCostInGame, effectiveMaterialCostOf,
+  legalZonesFor,
   joinBattle,
 } from '../engine/index.ts'
 import type { CardInstance } from '../engine/gameInit.ts'
@@ -2524,5 +2525,138 @@ describe('wave 5 — Ambush', () => {
     expect(r.game.state.pendingEffect?.card.name).toBe('Chooser')
     expect(r.game.state.zoneEffects).toEqual([])
     expect(r.game.state.log.some((l) => l.includes('Ambush') && l.includes('not made'))).toBe(true)
+  })
+})
+
+describe('wave 5 — Sub Killer', () => {
+  const killerSnap = snap({
+    name: 'Sub Killer', faction: 'OW', type: 'ability', vehicleType: null,
+    materialCost: 100_000, cpCost: 1, cardText: 'Target an enemy submarine…',
+    meta: { playOnVehicleEffect: 'subKillerEffect' },
+  })
+  const killerCtx = () => makeCtx({ catalog: [killerSnap] })
+
+  // alice holds Sub Killer; bob has `targetType` in zone 1.
+  function armed(over: { targetType?: string; targetMeta?: Record<string, unknown>; myGtInZone?: boolean } = {}) {
+    const game = makeGame({ turnNumber: 3, activePlayer: 'alice' })
+    const card = inst({ ...killerSnap })
+    game.privates.a.hand.push(card)
+    game.state.counts.a.hand = 1
+    const target = zoneEntry({
+      name: 'Nautilus', vehicleType: over.targetType ?? 'sub', materialCost: 60_000,
+      meta: over.targetMeta ?? {},
+    })
+    game.state.zones[0].cards.b.push(target)
+    if (over.myGtInZone) {
+      game.state.zones[0].cards.a.push(zoneEntry({ name: 'GT Hull', faction: 'GT', vehicleType: 'airship' }))
+    }
+    return { game, card, target }
+  }
+
+  const play = (game: EngineGame, ids: { card: string; target: string }) =>
+    applyAction(game, 'alice', {
+      type: 'PLAY_CARD_TARGETING_CARD_ON_FIELD', instanceId: ids.card, targetInstanceId: ids.target,
+    }, killerCtx())
+
+  it('removes the target from play and leaves a GT-blocking rider on its zone', () => {
+    const { game, card, target } = armed()
+    const r = play(game, { card: card.instanceId, target: target.instanceId })
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.zones[0].cards.b).toHaveLength(0)
+    expect(r.game.state.destroyed.b.map((c) => c.name)).toEqual(['Nautilus'])
+    expect(r.game.state.zoneEffects).toEqual([{
+      effect: 'subKillerEffect', zoneId: 1, side: 'a', cardName: 'Sub Killer',
+      setOnTurn: 3, expiresOnTurn: 3, data: { blocksFaction: 'GT' },
+    }])
+  })
+
+  // Spec §7.3: "remove from play" is deliberately not "destroy", and this wave
+  // prints both words on different cards.
+  it('fires no death trigger — removal is not destruction', () => {
+    const { game, card, target } = armed({ targetMeta: { onDeathEffect: 'javelinOnDeath' } })
+    game.privates.b.deck = [inst({ name: 'Consolation' })]
+    game.state.counts.b.deck = 1
+    const r = play(game, { card: card.instanceId, target: target.instanceId })
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.privates.b.hand).toHaveLength(0)
+  })
+
+  it.each(['ship', 'tank'])('refuses a %s target', (vehicleType) => {
+    const { game, card, target } = armed({ targetType: vehicleType })
+    expect(play(game, { card: card.instanceId, target: target.instanceId }))
+      .toMatchObject({ ok: false, status: 400 })
+  })
+
+  it.each(['plane', 'airship'])('accepts a %s target', (vehicleType) => {
+    const { game, card, target } = armed({ targetType: vehicleType })
+    const r = play(game, { card: card.instanceId, target: target.instanceId })
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.zones[0].cards.b).toHaveLength(0)
+  })
+
+  it('refuses a friendly target', () => {
+    const { game, card } = armed()
+    const mine = zoneEntry({ name: 'My Sub', vehicleType: 'sub' })
+    game.state.zones[0].cards.a.push(mine)
+    expect(play(game, { card: card.instanceId, target: mine.instanceId }))
+      .toMatchObject({ ok: false, status: 400 })
+  })
+
+  it('refuses a zone the actor already holds a GT vehicle in', () => {
+    const { game, card, target } = armed({ myGtInZone: true })
+    expect(play(game, { card: card.instanceId, target: target.instanceId }))
+      .toMatchObject({ ok: false, status: 400 })
+  })
+
+  it('blocks the actor from PLAYING a GT vehicle into that zone, but not a non-GT one', () => {
+    const { game, card, target } = armed()
+    const r = play(game, { card: card.instanceId, target: target.instanceId })
+    if (!r.ok) throw new Error(r.error)
+    const gt = inst({ name: 'GT Airship', faction: 'GT', vehicleType: 'airship', materialCost: 10_000 })
+    const ow = inst({ name: 'OW Airship', faction: 'OW', vehicleType: 'airship', materialCost: 10_000 })
+    r.game.privates.a.hand.push(gt, ow)
+    r.game.state.counts.a.hand = 2
+    r.game.state.resources.a.materials = 50_000 // Sub Killer's 100k left the purse empty
+    expect(legalZonesFor(r.game.state, 'a', gt)).toEqual([2, 3])
+    expect(legalZonesFor(r.game.state, 'a', ow)).toEqual([1, 2, 3])
+    // The opponent is not restricted — the card blocks its own player.
+    expect(legalZonesFor(r.game.state, 'b', gt)).toEqual([1, 2, 3])
+    expect(applyAction(r.game, 'alice', {
+      type: 'PLAY_CARD_TO_ZONE', instanceId: gt.instanceId, zoneId: 1,
+    }, killerCtx())).toMatchObject({ ok: false, status: 400 })
+    const ok = applyAction(r.game, 'alice', {
+      type: 'PLAY_CARD_TO_ZONE', instanceId: ow.instanceId, zoneId: 1,
+    }, killerCtx())
+    expect(ok.ok).toBe(true)
+  })
+
+  it('lifts the block at its owner’s END_TURN, and draws nothing', () => {
+    const { game, card, target } = armed()
+    const r = play(game, { card: card.instanceId, target: target.instanceId })
+    if (!r.ok) throw new Error(r.error)
+    r.game.privates.a.deck = [inst({ name: 'Not A Reward' }), inst()]
+    r.game.state.counts.a.deck = 2
+    const ended = applyAction(r.game, 'alice', { type: 'END_TURN' }, killerCtx())
+    if (!ended.ok) throw new Error(ended.error)
+    expect(ended.game.state.zoneEffects).toEqual([])
+    expect(ended.game.privates.a.hand).toHaveLength(0)
+  })
+
+  // Its rider is a pure data marker, but it still lives in state.zoneEffects,
+  // so the lock dispatch hands it a battle payload like any other.
+  it('is a no-op when the lock dispatch hands it a battle', () => {
+    const { game, card, target } = armed()
+    const r = play(game, { card: card.instanceId, target: target.instanceId })
+    if (!r.ok) throw new Error(r.error)
+    const before = JSON.stringify(r.game.state)
+    const ok = effectFor('subKillerEffect')!({
+      game: r.game, actor: 'a', card: inst({ ...killerSnap }), ctx: killerCtx(),
+      battle: {
+        phase: 'lock', zoneId: 1, isDefender: false, isParticipant: false,
+        forced: false, survived: false, won: false, casualties: [],
+      },
+    })
+    expect(ok).toBe(true)
+    expect(JSON.stringify(r.game.state)).toBe(before)
   })
 })

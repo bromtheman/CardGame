@@ -18,7 +18,6 @@ const EXEMPT: Record<string, string> = {
 // lands — the "KNOWN_GAPS contains no stale entries" test below rejects
 // stale ones, so this list only shrinks.
 const KNOWN_GAPS: Record<string, string> = {
-  'OW:Sub Killer': 'wave 5',
   'DWG:Recurring Threat': 'wave 5', 'OW:Sabotage': 'wave 5',
 }
 
@@ -163,7 +162,7 @@ describe('built-in card effect coverage', () => {
       expect(Object.values(KNOWN_GAPS).filter((w) => w.startsWith(wave))).toEqual([])
       expect(Object.values(PARTIAL).filter((w) => w.startsWith(wave))).toEqual([])
     }
-    expect(Object.keys(KNOWN_GAPS)).toHaveLength(3)
+    expect(Object.keys(KNOWN_GAPS)).toHaveLength(2)
   })
 
   it('PARTIAL names real cards that currently pass G1 and G2, and never overlaps KNOWN_GAPS', async () => {

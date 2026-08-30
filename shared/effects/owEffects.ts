@@ -3,9 +3,9 @@ import {
   spawnVehicles, summonHulls, whenPlayed, zoneOccupants,
 } from './primitives.ts'
 import { registerEffect } from './registry.ts'
-import { GT_HEAVY_AIRSHIP_MIN_COST, KEYWORDS, VEHICLE_TYPES } from '../gameSettings.ts'
+import { FACTIONS, GT_HEAVY_AIRSHIP_MIN_COST, KEYWORDS, VEHICLE_TYPES } from '../gameSettings.ts'
 import type { Side, ZoneCardEntry } from '../engine/engineTypes.ts'
-import { copyMeta, zoneById } from '../engine/gameEngine.ts'
+import { copyMeta, discardCard, findVehicle, otherSide, zoneById } from '../engine/gameEngine.ts'
 import { moveEntry } from '../engine/heroPowers.ts'
 import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
 
@@ -18,6 +18,56 @@ registerEffect('palisadeEffect', grant({ draw: 1 }))
 registerEffect('javelinOnDeath', grant({ draw: 1 }))
 registerEffect('bulwarkOnPlay', grant({ cp: 2 }))
 registerEffect('maceEffect', grant({ cp: 1 }))
+
+// "Target an enemy submarine, plane, or airship vehicle in a zone that you do
+// not have a GT vehicle in. Remove it from play but you cannot play a GT
+// vehicle into that zone for the rest of the turn."
+//
+// DP5's zone half (spec §4.3, "DP5 as wave 5 built it"), and the one rider
+// this wave that is never dispatched: its marker is plain data, read by
+// legalZonesFor off `data.blocksFaction`. It still LIVES in state.zoneEffects
+// and so is still handed a battle payload at every lock in that zone, which is
+// what the `battle` guard below is for.
+//
+// "Remove it from play" is deliberately not "destroy" — Recurring Threat, one
+// wave-mate away, says destroy and means it (spec §7.3, decision 28). So the
+// hull leaves through discardCard, the single exit every card takes (a
+// captured hull still goes home, a summonOnly one still never reaches a
+// discard), and NO onDeathEffect fires.
+//
+// No { needsCatalog: true }: nothing here reads the catalog, and a lock
+// dispatch that cannot mint its payload card simply skips a rider that had
+// nothing to do anyway.
+const SUB_KILLER_TARGETS: readonly string[] = [
+  VEHICLE_TYPES.SUB, VEHICLE_TYPES.PLANE, VEHICLE_TYPES.AIRSHIP,
+]
+
+registerEffect('subKillerEffect', ({ game, actor, card, targetInstanceId, battle }) => {
+  if (battle) return true
+  if (typeof targetInstanceId !== 'string') return false
+  const found = findVehicle(game.state, targetInstanceId)
+  if (!found || found.side !== otherSide(actor)) return false
+  if (!SUB_KILLER_TARGETS.includes(found.entry.vehicleType ?? '')) return false
+  // "…in a zone that you do not have a GT vehicle in" — the actor's own hulls,
+  // by faction. Read before anything is removed, so a refusal costs nothing.
+  if (found.zone.cards[actor].some((c) => c.faction === FACTIONS.GT)) return false
+
+  const enemy = found.side
+  found.zone.cards[enemy] = found.zone.cards[enemy].filter((c) => c.instanceId !== targetInstanceId)
+  discardCard(game, enemy, found.entry)
+  game.state.zoneEffects.push({
+    effect: 'subKillerEffect', zoneId: found.zone.id, side: actor, cardName: card.name,
+    setOnTurn: game.turnNumber, expiresOnTurn: game.turnNumber,
+    // Generic rather than keyed off this effect's own name: placement.ts reads
+    // the rule, not the card, so the next blocking rider needs no engine edit
+    // — the same reasoning that made defensiveOmission a data key (spec §4.8).
+    data: { blocksFaction: FACTIONS.GT },
+  })
+  game.state.log.push(
+    `${found.entry.name} is removed from play — player ${actor.toUpperCase()} may deploy no GT vehicle to zone ${found.zone.id} this turn`,
+  )
+  return true
+})
 
 const gtAirship = drawFromPool({
   source: 'catalog', filter: { faction: 'GT', vehicleType: 'airship' }, count: 1,
