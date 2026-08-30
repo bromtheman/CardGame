@@ -233,18 +233,57 @@ async function startGame(p1, p2, spec, cards) {
       }
       die(`${name} never reached the hand in 30 turns`)
     },
+    // ATTACK_ENEMY_FLEET does not always lock the battle: a Stealthy or
+    // omissible defender raises the response window instead, and the lock —
+    // with it DP2's whole dispatch — happens on RESPOND_TO_ATTACK. Which
+    // branch you get depends on which hulls the deal handed out (Abactor is
+    // Stealthy, Corsair is not), so a harness that skips this passes or fails
+    // by luck. The defender opts nobody out, so every listed hull fights.
+    async lockIfPending(defender) {
+      const game = await g.load(defender)
+      if (!game.state.awaitingResponse) return
+      const res = await g.act(defender, { type: 'RESPOND_TO_ATTACK', optOutIds: [] })
+      if (res.status !== 200) die(`RESPOND_TO_ATTACK failed (HTTP ${res.status}): ${JSON.stringify(res.body).slice(0, 300)}`)
+    },
+    // Run `action` on `who`'s turn, ending turns and retrying while it fails
+    // for want of materials — income is SET to floor(turnNumber) * 75k each
+    // turn, so waiting is how a player affords anything. Any OTHER failure is
+    // returned immediately so the caller's step reports the real error rather
+    // than a timeout.
+    async attempt(who, action, rounds = 8) {
+      let last
+      for (let i = 0; i < rounds; i++) {
+        await g.passTo(who)
+        last = await g.act(who, action)
+        if (last.status === 200) return last
+        if (!JSON.stringify(last.body ?? '').includes('afford')) return last
+        const res = await g.act(who, { type: 'END_TURN' })
+        if (res.status !== 200) die(`END_TURN failed while waiting for materials (HTTP ${res.status})`)
+      }
+      return last
+    },
     // Deploy the cheapest affordable ship from `who`'s hand into `zoneId`.
-    async deployShip(who, zoneId) {
-      await g.passTo(who)
-      const game = await g.load(who)
-      const side = game.player_a === who.userId ? 'a' : 'b'
-      const affordable = (await g.hand(who))
-        .filter((c) => c.type === 'vehicle' && c.vehicleType === 'ship' &&
-          c.materialCost <= game.state.resources[side].materials && c.cpCost <= game.state.resources[side].cp)
-        .sort((x, y) => x.materialCost - y.materialCost)
-      for (const card of affordable) {
-        const res = await g.act(who, { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId })
-        if (res.status === 200) return card
+    //
+    // Spans turns on purpose. Income is SET to floor(turnNumber) * 75k at each
+    // turn start, so a player who cannot afford a hull now can afford one two
+    // turns later — and a caller staging three hulls would otherwise blow the
+    // first turn's budget on the first one and then fail. Each pass also draws
+    // a card, so an empty hand fills up too.
+    async deployShip(who, zoneId, rounds = 8) {
+      for (let i = 0; i < rounds; i++) {
+        await g.passTo(who)
+        const game = await g.load(who)
+        const side = game.player_a === who.userId ? 'a' : 'b'
+        const affordable = (await g.hand(who))
+          .filter((c) => c.type === 'vehicle' && c.vehicleType === 'ship' &&
+            c.materialCost <= game.state.resources[side].materials && c.cpCost <= game.state.resources[side].cp)
+          .sort((x, y) => x.materialCost - y.materialCost)
+        for (const card of affordable) {
+          const res = await g.act(who, { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId })
+          if (res.status === 200) return card
+        }
+        const res = await g.act(who, { type: 'END_TURN' })
+        if (res.status !== 200) die(`END_TURN failed while staging (HTTP ${res.status})`)
       }
       return null
     },
@@ -288,8 +327,7 @@ const games = []
   const keeper = await g.deployShip(p1, 1)
   if (!keeper) die('host could not deploy a second hull to zone 1')
 
-  await g.passTo(p1)
-  const cast = await g.act(p1, {
+  const cast = await g.attempt(p1, {
     type: 'PLAY_CARD_TARGETING_CARD_ON_FIELD',
     instanceId: threat.instanceId, targetInstanceId: doomed.instanceId,
   })
@@ -318,6 +356,7 @@ const games = []
   })
   step('guest attacked into the marked zone', attack.status === 200,
     attack.status === 200 ? '' : JSON.stringify(attack.body).slice(0, 300))
+  await g.lockIfPending(p1)
 
   game = await g.load(p1)
   const pending = game.state.pendingEffect
@@ -350,21 +389,28 @@ const games = []
       results: Object.fromEntries(ids.map((id) => [id, 100])), repairs: [],
     })
     if (submitted.status !== 200) die(`report submit failed (HTTP ${submitted.status}): ${JSON.stringify(submitted.body).slice(0, 300)}`)
+    // Count, do not name: Recurring Threat already put a snapshot of THIS
+    // card in the discard when it destroyed the original, so "no card by that
+    // name in state.destroyed" can never be true and would fail whatever the
+    // summon did. Nothing in this report is below the survive line, so the
+    // pile must be exactly as long afterwards as before.
+    const discardBefore = (await g.load(p1)).state.destroyed[hSide].length
     const decided = await g.act(p1, { type: 'DECIDE_BATTLE_REPORT', approve: true })
-    step('the summon evaporated on approval, leaving nothing behind', decided.status === 200 &&
-      !(await g.load(p1)).state.destroyed[hSide].some((c) => c.name === doomed.name), '')
+    const after = await g.load(p1)
+    step('the summon evaporated on approval, adding nothing to the discard',
+      decided.status === 200 && after.state.destroyed[hSide].length === discardBefore &&
+      after.state.activeBattle === null,
+      `discard ${discardBefore} -> ${after.state.destroyed[hSide].length}`)
   }
 
   // ---- Sub Killer: remove a DWG airship, and leave a GT block ------------
   const logger = await g.drawUntil(p1, 'Loggerhead')
-  await g.passTo(p1)
-  const flown = await g.act(p1, { type: 'PLAY_CARD_TO_ZONE', instanceId: logger.instanceId, zoneId: 2 })
+  const flown = await g.attempt(p1, { type: 'PLAY_CARD_TO_ZONE', instanceId: logger.instanceId, zoneId: 2 })
   step('host deployed a Loggerhead into zone 2', flown.status === 200,
     flown.status === 200 ? '' : JSON.stringify(flown.body).slice(0, 300))
 
   const killer = await g.drawUntil(p2, 'Sub Killer')
-  await g.passTo(p2)
-  const killed = await g.act(p2, {
+  const killed = await g.attempt(p2, {
     type: 'PLAY_CARD_TARGETING_CARD_ON_FIELD',
     instanceId: killer.instanceId, targetInstanceId: logger.instanceId,
   })
@@ -377,13 +423,24 @@ const games = []
     block?.data?.blocksFaction === 'GT' && typeof block.expiresOnTurn === 'number',
     `data=${JSON.stringify(block?.data)} expiresOnTurn=${block?.expiresOnTurn}`)
 
+  // Expire it HERE, on the very next END_TURN, rather than several steps later:
+  // a rest-of-turn rider is gone by the end of the turn that set it, so any
+  // later check is asserting against a board that has already moved on.
+  const endedNow = await g.act(p2, { type: 'END_TURN' })
+  if (endedNow.status !== 200) die(`END_TURN failed (HTTP ${endedNow.status})`)
+  game = await g.load(p2)
+  step('the rest-of-turn GT block expired at its owner\'s next END_TURN',
+    !(game.state.zoneEffects ?? []).some((e) => e.effect === 'subKillerEffect') &&
+    (game.state.zoneEffects ?? []).some((e) => e.effect === 'recurringThreatEffect'),
+    `riders now = ${JSON.stringify((game.state.zoneEffects ?? []).map((e) => e.effect))}`)
+
   // ---- Sabotage: FRAGILE now, a draw at the guest's own END_TURN ---------
   const sabotage = await g.drawUntil(p2, 'Sabotage')
   await g.passTo(p2)
   game = await g.load(p2)
   const victim = game.state.zones.flatMap((z) => z.cards[hSide])[0]
   if (!victim) die('no host hull left to sabotage')
-  const sabotaged = await g.act(p2, {
+  const sabotaged = await g.attempt(p2, {
     type: 'PLAY_CARD_TARGETING_CARD_ON_FIELD',
     instanceId: sabotage.instanceId, targetInstanceId: victim.instanceId,
   })
@@ -396,17 +453,15 @@ const games = []
     JSON.stringify(game.state.scheduled))
 
   const handBefore = (await g.hand(p2)).length
-  const blockBefore = ((await g.load(p2)).state.zoneEffects ?? []).length
   const ended = await g.act(p2, { type: 'END_TURN' })
   if (ended.status !== 200) die(`END_TURN failed (HTTP ${ended.status})`)
   game = await g.load(p2)
   step('the guest drew on their OWN end of turn (the watch paid out)',
     (await g.hand(p2)).length === handBefore + 1,
     `hand ${handBefore} -> ${(await g.hand(p2)).length}`)
-  step('the rest-of-turn GT block expired in the same pass',
-    (game.state.zoneEffects ?? []).length === blockBefore - 1 &&
-    !(game.state.zoneEffects ?? []).some((e) => e.effect === 'subKillerEffect'),
-    `${blockBefore} -> ${(game.state.zoneEffects ?? []).length} riders`)
+  step('the watch was dropped once it paid out',
+    !(game.state.scheduled ?? []).some((s) => s.type === 'sabotageWatch'),
+    JSON.stringify(game.state.scheduled))
 
   // ---- Ongoing Attrition: strike at the host's own fleet-attack lock -----
   const attrition = await g.drawUntil(p1, 'Ongoing Attrition')
@@ -416,8 +471,7 @@ const games = []
   await g.passTo(p2)
   const bait = await g.deployShip(p2, 3)
   if (!bait) die('guest could not deploy bait into zone 3')
-  await g.passTo(p1)
-  const claimed = await g.act(p1, { type: 'PLAY_CARD_TO_ZONE', instanceId: attrition.instanceId, zoneId: 3 })
+  const claimed = await g.attempt(p1, { type: 'PLAY_CARD_TO_ZONE', instanceId: attrition.instanceId, zoneId: 3 })
   step('Ongoing Attrition claimed zone 3', claimed.status === 200,
     claimed.status === 200 ? '' : JSON.stringify(claimed.body).slice(0, 300))
 
@@ -430,6 +484,7 @@ const games = []
     attackerIds: [zone3.cards[hSide][0].instanceId],
     targetIds: [zone3.cards[gSide][0].instanceId],
   })
+  await g.lockIfPending(p2)
   game = await g.load(p1)
   const hpAfter = game.state.zones.find((z) => z.id === 3).baseHp[gSide]
   step('the ATTACKER\'s own rider fired at lock and ground the base (DP2 departure 8)',
@@ -455,8 +510,7 @@ const games = []
   const theirs = await g.deployShip(p2, 1)
   if (!theirs) die('guest could not deploy a hull to zone 1')
 
-  await g.passTo(p1)
-  const set = await g.act(p1, { type: 'PLAY_CARD_TO_ZONE', instanceId: ambush.instanceId, zoneId: 1 })
+  const set = await g.attempt(p1, { type: 'PLAY_CARD_TO_ZONE', instanceId: ambush.instanceId, zoneId: 1 })
   step('Ambush claimed zone 1', set.status === 200,
     set.status === 200 ? '' : JSON.stringify(set.body).slice(0, 300))
 
@@ -476,6 +530,7 @@ const games = []
   })
   step('host attacked out of the ambushed zone', sprung.status === 200,
     sprung.status === 200 ? '' : JSON.stringify(sprung.body).slice(0, 300))
+  await g.lockIfPending(p2)
 
   game = await g.load(p1)
   const offer = game.state.pendingEffect

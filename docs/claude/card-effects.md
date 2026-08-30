@@ -336,7 +336,7 @@ currently empty and waiting for the next partly-built card.
 unimplemented effect name being added quietly. Adding a card to either map is
 now a deliberate act with a visible diff, which is exactly what it should be.
 
-Five guard blind spots remain open and are not going to close on their own:
+Six guard blind spots remain open and are not going to close on their own:
 
 1. A card that has left `KNOWN_GAPS` is no longer checked at all (Garrison's
    trigger key can be reverted today with the suite green).
@@ -360,6 +360,20 @@ Five guard blind spots remain open and are not going to close on their own:
    function exists, not that any card can reach it. If you register an effect
    ahead of seeding the card that uses it, grep the seed source for the name
    before calling the task done.
+
+6. ⚠ **Nothing compares the generated SQL to the LIVE `cards` table** — the
+   widest of the six, found in wave 5 by asking production what it actually
+   holds. G1/G2/G3 read `loadSeedData()`, and `seedDataSync.test.ts` compares
+   the source to `seed_data.sql`; the chain stops there. Production currently
+   serves **133** built-in cards where the seed produces **123**, and seven of
+   them name eight effects that do not exist (`balmungOnPlay`,
+   `blockadeEffect`, `nothungOnPlay`, `victoriaActivate`, `basherOnDeath`,
+   `harbringerBattle`, `judgementActivate`, `judgementCostModifier`). Six of
+   those cards appear in no commit in this repo at all. They play vanilla and
+   log the note, so nothing is broken — but they are the §1 audit's original
+   complaint, alive and invisible to every check. The seed is an idempotent
+   upsert on `id`, so applying it corrects a *drifted* row (Victoria); it
+   cannot remove an orphan the source never had.
 
 Two older ones are closed: a partly-built card passing G1/G2 despite
 incomplete text (wave 2's `PARTIAL` map above), and a `seed_data.sql` that had

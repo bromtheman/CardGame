@@ -102,6 +102,8 @@ Wave 4 measured this honestly and it is worth continuing.
 | Nothing stopped an **enemy** Recurring Threat marker on the same zone being offered to the defender | a **surviving mutation** |
 | A redundant `copyMeta` no test could distinguish from its absence | a **surviving mutation** |
 | The plan's own claim that only Recurring Threat needed `{ needsCatalog: true }` | implementation — the flag is about what the **dispatcher** reads, not the effect |
+| Seven live built-in cards the repo has never seen, naming eight unimplemented effects | **checking the live catalog** during the smoke run — 133 rows where the seed makes 123 |
+| A React duplicate-key error on every idle board, since the overlay was built | **browser verification** — `StealthyResponseBar` and `BattleOverlay` are siblings and both fell back to the bare key `'none'` |
 
 Mutation testing paid for itself three times, and every one of those three was
 a *test* defect rather than a code defect — which is exactly the class of
@@ -133,6 +135,50 @@ same investigation as a real one.
 | `npm --prefix frontend run lint` | 0, 7 warnings | 0, **7** warnings — the same inherited set, in the same 5 files |
 | `npm run seed:build` | — | byte-identical; no card `meta` changed this wave |
 | secrets audit over `main...HEAD` | — | clean |
+| `game-action` deploy | v13 | **v14**, ACTIVE, verified **by content** (every wave-5 symbol present in the deployed bundle) and by boot (its own `401 {"errors":["Not signed in"]}`, not a `BOOT_ERROR`) |
+| `scripts/smoke-wave5.mjs` | — | **27/27 steps passed** against v14 |
+| browser | — | zero console errors; badge, FRAGILE and the 600 m spawn distance all render |
+
+### What the live run actually proved
+
+Two staged games against the deployed function, 27 assertions:
+
+| Proved live | Why a unit test could not |
+|---|---|
+| the catalog probe's **fourth source for three new rider names** | the probe is edge-function code, outside the root tsconfig, with no test harness — and a name missing from `CATALOG_EFFECTS` is a rider that never fires, in production only |
+| **the attacker-side lock dispatch** (DP2 departure 8) | measured, not asserted: surplus 3 × 40 took the enemy base from 5000 to 4880 |
+| **`ZoneEffect.data` carrying a whole `SnapshotCard` through jsonb** | Recurring Threat's remembered hull came back out of Postgres and was minted into the battle |
+| **`ZoneEffect.expiresOnTurn`** swept by `endTurn`'s ending-side pass | the GT block was gone at its owner's very next `END_TURN`, leaving the permanent marker behind |
+| **`state.scheduled` as a real union** | `sabotageWatch` round-tripped and paid out — hand 14 → 15 on the guest's own end of turn |
+| **Ambush moving `distanceM` without spending the hero power** | 1200 → 600 with `distanceModifiedBy` still empty, and Tactical Positioning still offered in the overlay |
+
+In the browser, on a real board: the **RECURRING THREAT** badge renders on its
+zone with icon and tooltip; FRAGILE renders on exactly the one sabotaged hull
+and not its two `additionalSpawns` siblings; the battle overlay reads
+**"Spawn distance: 600 m"**; and the public log carries the deploy-order line
+the defender needs. Zero console errors.
+
+The two games are kept (`--keep`) for inspection, along with four lobbies from
+earlier runs — all named `wave5-smoke-*`, all safe to delete.
+
+### Three harness bugs, and why they are worth recording
+
+The smoke test failed twice before it passed, and **not once because of engine
+code**:
+
+1. It staged two hulls on one turn's income. Income is *set* to
+   `floor(turnNumber) × 75k` each turn, so staging has to span turns.
+2. It asserted "no card by that name in the discard" for the summon — but
+   Recurring Threat had already put a card of that name there when it destroyed
+   the original. The assertion could never pass, and had been failing for a
+   reason unrelated to what it claimed to test.
+3. **It did not handle the Stealthy response window.** `ATTACK_ENEMY_FLEET`
+   only locks the battle when no defender may opt out; otherwise the lock — and
+   with it DP2's entire dispatch — happens on `RESPOND_TO_ATTACK`. The first run
+   passed because the deal handed out a Corsair (no keyword); the second failed
+   because it handed out an Abactor (Stealthy). **A live test whose result
+   depends on the shuffle is not a test yet**, and it took a re-run with a
+   different deal to see it.
 
 The handoff predicted 661 tests. Believe the run: the wave-4 follow-up added ten
 before this branch opened.
@@ -163,39 +209,65 @@ are read after the wave ends rather than during it.
 
 ## 5. What is left
 
+### A finding this wave did not cause and cannot close
+
+**Production carries seven built-in cards this repo has never seen, naming
+eight effects that do not exist.** Found while checking the live catalog during
+the smoke run: it returns **133** built-ins where the seed source produces 123.
+
+| Card | Key | Effect named live |
+|---|---|---|
+| SS Balmung | `onPlayEffect` | `balmungOnPlay` |
+| SS Blockade | `playOnZoneEffect` | `blockadeEffect` |
+| SS Nothung | `onPlayEffect` | `nothungOnPlay` |
+| SS Victoria | `onActivate` | `victoriaActivate` |
+| WF Basher | `onDeathEffect` | `basherOnDeath` |
+| WF Harbringer | `onBattleEffect` | `harbringerBattle` |
+| WF Judgement | `onActivate` + `costModifier` | `judgementActivate`, `judgementCostModifier` |
+
+Six of the seven appear in **no commit in this repository** (`git log -S` finds
+nothing), so they were inserted by something predating this seed pipeline. The
+seventh, Victoria, *is* in the source — with a different trigger entirely
+(`onDeathEffect: victoriaOnDeath`), so the live row is stale.
+
+This is a **sixth guard blind spot**, and the widest one: G1/G2/G3 all read
+`loadSeedData()`, and `seedDataSync.test.ts` compares the source to the
+generated SQL — but **nothing compares the generated SQL to the live table**.
+The guard's promise is "no built-in card silently does nothing", and production
+has seven that do. They are not broken (they play vanilla and log the note),
+but they are exactly the §1 audit's original complaint, alive and invisible.
+
+Two of them — Basher and Harbringer — were dealt into a hand during this wave's
+own smoke run, so they are reachable in real games, not dormant rows.
+
+**Wave 5 did not fix this**, and should not have: adding six cards to the seed
+and implementing eight effects is another wave's work, and the decision of
+whether those cards should exist at all is the owner's. The cheap first step is
+to apply the current seed (`supabase/seed/seed_data.sql` is an idempotent
+upsert on `id`, so it would at least correct Victoria), then decide what to do
+about the six orphans.
+
 ### Unverified
 
-1. **The live smoke test is written and has not been run.**
-   `scripts/smoke-wave5.mjs` stages two games (DWG vs OW for four cards, WF vs
-   SS for Ambush) and asserts the paths no unit test can reach: the catalog
-   probe's fourth source for three **new** rider names, the attacker-side lock
-   dispatch, `ZoneEffect.expiresOnTurn` / `data` surviving jsonb, and
-   `state.scheduled` as a real union. It needs the wave-5 `game-action`
-   deployed, and **there are 6 active games**, so putting unreviewed engine code
-   in front of them is the owner's call rather than a step this wave should take
-   on its own. Run it after the merge deploys:
-
-   ```bash
-   node scripts/smoke-wave5.mjs --keep
-   ```
-
-2. **No wave-5 card has been seen in a browser.** The four new zone badges
-   (`crosshair`, `torpedo`, `noSubs`, `ghostShip`) render through code paths
-   wave 4 verified for DWG Waters, and the Recurring Threat summon reuses
-   wave 3's summon rendering — which wave 4 *did* verify live — but neither has
-   been looked at. `--keep` leaves a game to open.
-
-3. **Sub Killer's GT placement block is unit-tested only.** It cannot be
+1. **Sub Killer's GT placement block is unit-tested only.** It cannot be
    exercised live in the natural fixture: decks are single-faction, so an OW
    player holding Sub Killer can never also hold a GT vehicle to be refused.
    Proving it end to end needs a GT-faction deck on the *same* side, which is a
    fixture the smoke harness does not build.
 
-4. **Wave 4's six unplayed cards are still unplayed** — Dryad, The Onyx Throne,
+2. **Ambush's decline path and Ongoing Attrition's compensation draw were not
+   exercised live** — the smoke run takes every offer and spends every rider.
+   Both are covered end to end by unit tests through `applyAction`; only the
+   deployed-function round trip is unproven, and it shares every line with the
+   accept path that did run.
+
+3. **Wave 4's six unplayed cards are still unplayed** — Dryad, The Onyx Throne,
    Sacrilego, Iron Cordon, Terawatt, Plunderer. The wave-4 handoff named
    Terawatt (a choice dialog rendering *over* the battle overlay) and
    Buzzsaw/Veles (`StealthyResponseBar`, untested at any level) as the two with
-   the most unseen UI surface. Still true.
+   the most unseen UI surface. Still true — though wave 5's smoke run did drive
+   `RESPOND_TO_ATTACK` through the deployed function for the first time, which
+   is the handler behind that bar.
 
 ### Not built, and deliberately
 
@@ -230,3 +302,11 @@ card texts; the dispatcher, not the note about the dispatcher. Both of this
 wave's most consequential findings — the forced-battle ruling and the
 `needsCatalog` correction — came from doing that once, late, when the code was
 already green.
+
+The live run extends the same rule past the repository. Every check in this
+wave was green — 753 tests, an empty `KNOWN_GAPS`, a guard that reads the seed
+source and swears every built-in card works — while production served seven
+cards that source has never contained. **A guard can only promise things about
+the world it can see**, and this one's world ends at `loadSeedData()`. The
+cheapest way to find that out was to ask production what it actually had, which
+took one query and had not been done in five waves.
