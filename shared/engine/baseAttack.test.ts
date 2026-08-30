@@ -112,12 +112,25 @@ describe('DP2 on a base bombardment', () => {
     expect(raided.map((x) => x.card)).toEqual(['Striker'])
   })
 
-  it('does not fire when the bombardment is refused', () => {
+  it('does not fire when a Blocker refuses the bombardment', () => {
     const g = makeGame({ turnNumber: 3 })
     g.state.zones[0].cards.a.push(raider({ name: 'Plunderer' }))
     g.state.zones[0].cards.b.push(zoneEntry({ keywords: ['blocker'] }))
     expect(applyAction(g, 'alice', { type: 'ATTACK_ENEMY_BASE', zoneId: 1 }, makeCtx()))
       .toMatchObject({ ok: false, status: 400 }) // an enemy Blocker protects that base
+    expect(raided).toEqual([])
+  })
+
+  // An eligible striker too cheap to round up to a single point of damage: the
+  // roster is non-empty but the bombardment is still refused, so this is the
+  // only case that pins the dispatch BELOW the damage check rather than above
+  // it. Every other refusal returns before the roster is even built.
+  it('does not fire when an eligible striker deals no damage', () => {
+    const g = makeGame({ turnNumber: 3 })
+    g.state.zones[0].cards.a.push(raider({ name: 'Dinghy', materialCost: 500 }))
+    expect(baseStrikersIn(g.state.zones[0].cards.a as ZoneCardEntry[], 3)).toHaveLength(1)
+    expect(applyAction(g, 'alice', { type: 'ATTACK_ENEMY_BASE', zoneId: 1 }, makeCtx()))
+      .toMatchObject({ ok: false, status: 400 }) // floor(500/1000) === 0
     expect(raided).toEqual([])
   })
 
