@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { applyAction, effectFor, repairCostOf } from './index'
 import { registerEffect } from '../effects/registry.ts'
 import type { ZoneCardEntry } from './engineTypes.ts'
@@ -655,5 +655,162 @@ describe('battle summons (spec §4.4)', () => {
     const r = applyAction(s.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true })
     if (!r.ok) throw new Error(r.error)
     expect(r.game.state.log.some((l) => l.includes('Ghost Rider') && l.includes('dropped'))).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Wave 4: DP2 at resolve. It sits after the death triggers — so Iron Cordon
+// can see a destroyed airship already in state.destroyed — and before the
+// continuation, so Trebuchet still runs last (spec §4.3, DP2 departures 4-7).
+// ---------------------------------------------------------------------------
+
+interface ResolveFired { card: string; effect: string; survived: boolean; won: boolean; isDefender: boolean }
+let resolveFired: ResolveFired[] = []
+
+beforeAll(() => {
+  for (const name of ['t_resolveEffect', 't_resolveWin', 't_resolveLose']) {
+    registerEffect(name, ({ card, battle }) => {
+      resolveFired.push({
+        card: card.name, effect: name,
+        survived: battle?.survived ?? false,
+        won: battle?.won ?? false,
+        isDefender: battle?.isDefender ?? false,
+      })
+      return true
+    })
+  }
+  registerEffect('t_resolveOrder', ({ game, card }) => {
+    game.state.log.push(`battle-trigger:${card.name}`)
+    return true
+  })
+  registerEffect('t_deathOrder', ({ game, card }) => {
+    game.state.log.push(`death:${card.name}`)
+    return true
+  })
+  registerEffect('t_continuationOrder', ({ game, card }) => {
+    game.state.log.push(`continuation:${card.name}`)
+    return true
+  })
+  registerEffect('t_resolveFails', () => false)
+})
+
+beforeEach(() => { resolveFired = [] })
+
+const battleMeta = {
+  onBattleEffect: 't_resolveEffect',
+  onBattleVictory: 't_resolveWin',
+  onBattleDefeat: 't_resolveLose',
+}
+
+// Both combatants carry all three DP2 keys, so a single fixture shows which
+// key each side actually receives.
+function triggeringBattle() {
+  const g = makeGame({ turnNumber: 3 })
+  const atk = zoneEntry({ playedOnTurn: 2, name: 'Raider', meta: { ...battleMeta } })
+  const def = zoneEntry({ name: 'Bastion', meta: { ...battleMeta } })
+  g.state.zones[0].cards.a.push(atk)
+  g.state.zones[0].cards.b.push(def)
+  g.state.activeBattle = {
+    zoneId: 1, aggressor: 'a', attackerIds: [atk.instanceId],
+    defenderIds: [def.instanceId], distanceM: 1200, distanceModifiedBy: [],
+    summons: [], continuation: null,
+  }
+  g.state.zones[0].lastActivatedTurn = 3
+  return { g, atk, def }
+}
+
+function settle(g: ReturnType<typeof triggeringBattle>['g'], results: Record<string, number>) {
+  const s = applyAction(g, 'alice', { type: 'SUBMIT_BATTLE_REPORT', results, repairs: [] }, makeCtx())
+  if (!s.ok) throw new Error(s.error)
+  const r = applyAction(s.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, makeCtx())
+  if (!r.ok) throw new Error(r.error)
+  return r.game
+}
+
+describe('DP2 at battle resolve', () => {
+  it('gives victory to the winner, defeat to the loser, and onBattleEffect to both', () => {
+    const { g, atk, def } = triggeringBattle()
+    settle(g, { [atk.instanceId]: 95, [def.instanceId]: 10 })
+    const pairs = resolveFired.map((f) => `${f.card}:${f.effect}`)
+    expect(pairs).toContain('Raider:t_resolveEffect')
+    expect(pairs).toContain('Raider:t_resolveWin')
+    expect(pairs).toContain('Bastion:t_resolveEffect')
+    expect(pairs).toContain('Bastion:t_resolveLose')
+    expect(pairs).not.toContain('Raider:t_resolveLose')
+    expect(pairs).not.toContain('Bastion:t_resolveWin')
+  })
+
+  it('reports survived per participant and isDefender per side', () => {
+    const { g, atk, def } = triggeringBattle()
+    settle(g, { [atk.instanceId]: 95, [def.instanceId]: 10 })
+    const raiderEffect = resolveFired.find((f) => f.card === 'Raider' && f.effect === 't_resolveEffect')
+    const bastionEffect = resolveFired.find((f) => f.card === 'Bastion' && f.effect === 't_resolveEffect')
+    expect(raiderEffect).toMatchObject({ survived: true, won: true, isDefender: false })
+    expect(bastionEffect).toMatchObject({ survived: false, won: false, isDefender: true })
+  })
+
+  it('sends neither victory nor defeat on a draw', () => {
+    const { g, atk, def } = triggeringBattle()
+    settle(g, { [atk.instanceId]: 95, [def.instanceId]: 95 })
+    const pairs = resolveFired.map((f) => f.effect)
+    expect(pairs).toEqual(['t_resolveEffect', 't_resolveEffect'])
+  })
+
+  // A repaired survivor is a survivor: the win test reads the same predicate
+  // the destruction loop does, repairs included.
+  it('counts a repaired hull as a survivor, denying the enemy the win', () => {
+    const { g, atk, def } = triggeringBattle()
+    g.state.zones[0].cards.b[0].keywords = ['scrappy'] // auto-repairs free in the 80-90 band
+    settle(g, { [atk.instanceId]: 95, [def.instanceId]: 85 })
+    const raiderEffect = resolveFired.find((f) => f.card === 'Raider' && f.effect === 't_resolveEffect')
+    expect(raiderEffect?.won).toBe(false)
+  })
+
+  it('runs after the death triggers and before the continuation', () => {
+    const g = makeGame({ turnNumber: 3 })
+    const atk = zoneEntry({
+      playedOnTurn: 2, name: 'Raider', meta: { onBattleEffect: 't_resolveOrder' },
+    })
+    const def = zoneEntry({
+      name: 'Bastion', meta: { onDeathEffect: 't_deathOrder', onBattleEffect: 't_resolveOrder' },
+    })
+    g.state.zones[0].cards.a.push(atk)
+    g.state.zones[0].cards.b.push(def)
+    g.state.activeBattle = {
+      zoneId: 1, aggressor: 'a', attackerIds: [atk.instanceId],
+      defenderIds: [def.instanceId], distanceM: 1200, distanceModifiedBy: [],
+      summons: [],
+      continuation: { effect: 't_continuationOrder', side: 'a', card: inst({ name: 'Trebuchet' }) },
+    }
+    const out = settle(g, { [atk.instanceId]: 95, [def.instanceId]: 10 })
+    const at = (needle: string) => out.state.log.findIndex((l) => l.startsWith(needle))
+    expect(at('death:Bastion')).toBeGreaterThanOrEqual(0)
+    expect(at('battle-trigger:Raider')).toBeGreaterThan(at('death:Bastion'))
+    expect(at('continuation:Trebuchet')).toBeGreaterThan(at('battle-trigger:Raider'))
+  })
+
+  it('logs a note for a failing battle trigger without rejecting the approved report', () => {
+    const g = makeGame({ turnNumber: 3 })
+    const atk = zoneEntry({ playedOnTurn: 2, name: 'Raider', meta: { onBattleEffect: 't_resolveFails' } })
+    const def = zoneEntry({ name: 'Bastion' })
+    g.state.zones[0].cards.a.push(atk)
+    g.state.zones[0].cards.b.push(def)
+    g.state.activeBattle = {
+      zoneId: 1, aggressor: 'a', attackerIds: [atk.instanceId],
+      defenderIds: [def.instanceId], distanceM: 1200, distanceModifiedBy: [],
+      summons: [], continuation: null,
+    }
+    const out = settle(g, { [atk.instanceId]: 95, [def.instanceId]: 10 })
+    expect(out.state.log.some((l) => l.includes('Raider') && l.includes('could not resolve'))).toBe(true)
+    expect(out.state.zones[0].cards.b).toHaveLength(0) // the report still applied
+  })
+
+  // A destroyed hull is gone from zone.cards by the time DP2 runs, but the
+  // participants map still holds its entry — which is what lets Iron Cordon
+  // and Sacrilego revive one.
+  it('still dispatches for a participant that was destroyed', () => {
+    const { g, atk, def } = triggeringBattle()
+    settle(g, { [atk.instanceId]: 95, [def.instanceId]: 10 })
+    expect(resolveFired.some((f) => f.card === 'Bastion' && !f.survived)).toBe(true)
   })
 })

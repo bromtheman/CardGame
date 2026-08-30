@@ -5,6 +5,7 @@ import type { ApplyResult, EngineGame, Side, ZoneCardEntry } from './engineTypes
 import { discardCard, err, registerHandler, zoneById } from './gameEngine.ts'
 import { effectiveMaterialCostOf } from './placement.ts'
 import { effectFor, effectName } from '../effects/registry.ts'
+import { battleOutcome, dispatchBattleResolve } from './battleTriggers.ts'
 
 // PublicGameState.activeBattle (gameInit.ts) structurally duplicates
 // ActiveBattle (engineTypes.ts) rather than importing it (spec §4.4), so this
@@ -191,12 +192,17 @@ registerHandler('DECIDE_BATTLE_REPORT', (game, actor, action, ctx) => {
   let destroyedCount = 0
   let summonCount = 0
   const destroyedEntries: { entry: ZoneCardEntry; side: Side }[] = []
+  // DP2's win test reads the same `survives` predicate this loop already
+  // computes — repairs included, so a Scrappy hull patched back over the line
+  // is a survivor — and summons count (spec §4.3, DP2 departure 6).
+  const survivingIds = new Set<string>()
   for (const [id, { entry, side }] of participants) {
     const hp = report.results[id]
     const summon = isSummon(battle, id)
     if (summon) summonCount++
     const survives = hp >= SURVIVE_HP_PERCENT ||
       (hp >= REPAIR_WINDOW_MIN_PERCENT && repairIds.has(id))
+    if (survives) survivingIds.add(id)
     // A summon is skipped by every consequence of "not surviving" — no
     // zone.cards removal (it was never there), no discardCard (which would
     // otherwise leak it into state.destroyed and, via reshuffleDiscard, the
@@ -219,8 +225,14 @@ registerHandler('DECIDE_BATTLE_REPORT', (game, actor, action, ctx) => {
   if (summonCount > 0) {
     game.state.log.push(`${summonCount} summoned vehicle(s) evaporated`)
   }
-  // Read before activeBattle is nulled below, or it is lost.
+  // Read before activeBattle is nulled below, or they are lost. DP2's resolve
+  // dispatch fires after that nulling — the battle freeze must already be off,
+  // because a trigger may write state.pendingEffect — so the battle's identity
+  // has to be carried forward in locals rather than read back off state.
   const continuation = battle.continuation
+  const battleZoneId = battle.zoneId
+  const aggressor = battle.aggressor
+  const outcome = battleOutcome(participants, survivingIds, aggressor)
   game.state.activeBattle = null
   game.state.pendingReport = null
   game.state.log.push(`Battle resolved — ${destroyedCount} vehicle(s) lost`)
@@ -238,6 +250,19 @@ registerHandler('DECIDE_BATTLE_REPORT', (game, actor, action, ctx) => {
       game.state.log.push(`${entry.name}'s death effect could not resolve`)
     }
   }
+
+  // DP2 at resolve (spec §4.3). Deliberately placed AFTER the death triggers
+  // above: Iron Cordon's whole job is to save an allied GT airship that has
+  // just been destroyed, which means it must see that airship's snapshot
+  // already in state.destroyed to pull it back out. The airship's own
+  // onDeathEffect has therefore already fired by the time it is revived, and
+  // stands (DP2 departure 7) — the same latitude this handler already takes
+  // with a death effect that fails. Placed BEFORE the continuation below, so
+  // Trebuchet's repeat remains the last thing a battle does.
+  //
+  // participants still holds a destroyed hull's entry even though zone.cards
+  // no longer does, which is what makes the revive possible at all.
+  dispatchBattleResolve(game, ctx, battleZoneId, aggressor, participants, outcome)
 
   // The continuation (spec §4.3, departure 3): an effect that forced this
   // battle and wants to run again now that it has resolved (Trebuchet's
