@@ -2,9 +2,13 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { FunctionsHttpError } from '@supabase/supabase-js'
-import { DEFAULT_LOBBY_SETTINGS, validateLobbySettings } from '@shared/lobbySettings'
+import {
+  DEFAULT_LOBBY_SETTINGS, materialsPerTurnOf, validateLobbySettings,
+} from '@shared/lobbySettings'
 import type { LobbySettings } from '@shared/lobbySettings'
-import { ZONE_TYPES } from '@shared/gameSettings'
+import {
+  MAX_MATERIALS_PER_TURN, MIN_MATERIALS_PER_TURN, ZONE_TYPES,
+} from '@shared/gameSettings'
 import { shortHandNumber } from '@shared/format'
 import type { Database } from '../lib/database.types'
 import { useDecksQuery } from '../lib/decks'
@@ -16,12 +20,13 @@ import { useAuth } from '../lib/auth'
 type LobbyRow = Database['public']['Tables']['lobbies']['Row']
 
 // Compact settings readout so browsers see what they'd be joining.
-function zoneSummary(settings: unknown): string {
+function settingsSummary(settings: unknown): string {
   const parsed = validateLobbySettings(settings)
   if ('errors' in parsed) return 'custom settings'
-  return parsed.settings.zones
+  const zones = parsed.settings.zones
     .map((z) => `${z.biome} ${shortHandNumber(z.baseHp)}`)
     .join(' / ')
+  return `${zones} · ${shortHandNumber(materialsPerTurnOf(parsed.settings))}/turn`
 }
 
 async function lobbyAction(body: { action: string; lobbyId: string; deckId?: string }) {
@@ -139,7 +144,7 @@ export function LobbiesPage() {
       {myLobby ? (
         <section className="mt-4 rounded border border-brass-400 bg-ocean-900/60 p-4">
           <h2 className="font-display text-2xl">{myLobby.name}</h2>
-          <p className="text-sm text-ocean-300">{zoneSummary(myLobby.settings)}</p>
+          <p className="text-sm text-ocean-300">{settingsSummary(myLobby.settings)}</p>
           <p className="mt-1 text-ocean-300">
             {myLobby.guest_id && myLobby.guest_deck_id
               ? myLobby.host_id === me ? 'Opponent ready!' : 'Waiting for the host to start…'
@@ -185,6 +190,7 @@ export function LobbiesPage() {
                 Zone {i + 1}
                 <select className="mt-1 block rounded bg-ocean-950 p-2" value={zone.biome}
                   onChange={(e) => setSettings((s) => ({
+                    ...s,
                     zones: s.zones.map((z, j) => (j === i ? { ...z, biome: e.target.value as typeof z.biome } : z)),
                   }))}>
                   {Object.values(ZONE_TYPES).map((b) => <option key={b} value={b}>{b}</option>)}
@@ -192,10 +198,23 @@ export function LobbiesPage() {
                 <input type="number" className="mt-1 block w-24 rounded bg-ocean-950 p-2"
                   value={zone.baseHp}
                   onChange={(e) => setSettings((s) => ({
+                    ...s,
                     zones: s.zones.map((z, j) => (j === i ? { ...z, baseHp: Number(e.target.value) } : z)),
                   }))} />
               </label>
             ))}
+            <label className="text-sm text-ocean-300">
+              Resources / turn
+              <input type="number" className="mt-1 block w-32 rounded bg-ocean-950 p-2"
+                min={MIN_MATERIALS_PER_TURN} max={MAX_MATERIALS_PER_TURN} step={5000}
+                value={materialsPerTurnOf(settings)}
+                onChange={(e) => setSettings((s) => ({
+                  ...s, materialsPerTurn: Number(e.target.value),
+                }))} />
+              <span className="mt-1 block text-xs text-ocean-400">
+                × turn number — {shortHandNumber(materialsPerTurnOf(settings))} on turn 1
+              </span>
+            </label>
           </div>
           <button disabled={busy} onClick={createLobby}
             className="mt-3 rounded bg-brass-400 px-4 py-2 font-bold text-ocean-950 disabled:opacity-50">
@@ -221,7 +240,7 @@ export function LobbiesPage() {
             <li key={l.id} className="flex items-center gap-4 rounded border border-ocean-600 bg-ocean-900/60 p-3">
               <span className="flex-1">
                 <span className="font-display text-lg">{l.name}</span>
-                <span className="ml-3 text-sm text-ocean-300">{zoneSummary(l.settings)}</span>
+                <span className="ml-3 text-sm text-ocean-300">{settingsSummary(l.settings)}</span>
               </span>
               <button disabled={busy || !!myLobby} onClick={() => join(l)}
                 className="rounded bg-brass-400 px-3 py-1 font-bold text-ocean-950 disabled:opacity-50">

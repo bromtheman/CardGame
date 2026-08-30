@@ -35,12 +35,12 @@ function counterIds() {
   return () => `inst-${n++}`
 }
 
-function build(rngValues: number[]) {
+function build(rngValues: number[], settingsOver: Partial<LobbySettings> = {}) {
   let i = 0
   const rng = () => rngValues[i++ % rngValues.length]
   return buildInitialGame({
     gameId: 'game-1', playerA: 'alice', playerB: 'bob',
-    settings: SETTINGS,
+    settings: { ...SETTINGS, ...settingsOver },
     deckA: deckOf(Array.from({ length: 10 }, (_, k) => `a${k}`)),
     deckB: deckOf(Array.from({ length: 10 }, (_, k) => `b${k}`)),
     instanceId: counterIds(), rng,
@@ -91,10 +91,18 @@ describe('buildInitialGame', () => {
   it('rolls first player from rng and funds both with turn-1 income', () => {
     const a = build([0.2]) // < 0.5 → playerA
     expect(a.game.activePlayer).toBe('alice')
-    expect(a.game.state.resources.a).toEqual({ materials: 50000, cp: 3 })
-    expect(a.game.state.resources.b).toEqual({ materials: 50000, cp: 3 })
+    // SETTINGS carries no materialsPerTurn — the default income applies.
+    expect(a.game.state.resources.a).toEqual({ materials: 75000, cp: 3 })
+    expect(a.game.state.resources.b).toEqual({ materials: 75000, cp: 3 })
     const b = build([0.7]) // ≥ 0.5 → playerB
     expect(b.game.activePlayer).toBe('bob')
+  })
+
+  it('funds turn-1 income from the lobby materialsPerTurn when the host set one', () => {
+    const { game } = build([0.2], { materialsPerTurn: 120000 })
+    expect(game.state.resources.a).toEqual({ materials: 120000, cp: 3 })
+    expect(game.state.resources.b).toEqual({ materials: 120000, cp: 3 })
+    expect(game.settings.materialsPerTurn).toBe(120000)
   })
 
   it('shuffles deterministically with the injected rng', () => {

@@ -41,9 +41,19 @@ describe('END_TURN', () => {
     if (!r.ok) throw new Error(r.error)
     expect(r.game.turnNumber).toBe(2.5)
     expect(r.game.activePlayer).toBe('bob')
-    expect(r.game.state.resources.b.materials).toBe(100000) // floor(2.5) * 50k exactly
+    // makeGame's settings carry no materialsPerTurn — the default income applies.
+    expect(r.game.state.resources.b.materials).toBe(150000) // floor(2.5) * 75k exactly
     expect(r.game.privates.b.hand).toHaveLength(1)
     expect(r.game.state.counts.b).toEqual({ hand: 1, deck: 1 })
+  })
+  it('scales income by the lobby materialsPerTurn when the host set one', () => {
+    const g = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+    g.settings = { ...g.settings, materialsPerTurn: 120000 }
+    g.privates.b.deck = [inst(), inst()]
+    g.state.counts.b.deck = 2
+    const r = applyAction(g, 'alice', { type: 'END_TURN' })
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.resources.b.materials).toBe(240000) // floor(2.5) * 120k
   })
   it('culls temporary vehicles from both sides at turn start', () => {
     const g = makeGame()

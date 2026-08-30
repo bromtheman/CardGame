@@ -73,7 +73,9 @@ export interface EngineGame {
   winnerId: string | null
   turnNumber: number
   activePlayer: string
-  settings: { zones: { biome: string; baseHp: number }[] }
+  // Frozen copy of the lobby's settings. `materialsPerTurn` is optional —
+  // games started before the setting existed have no key (materialsPerTurnOf).
+  settings: { zones: { biome: string; baseHp: number }[]; materialsPerTurn?: number }
   state: PublicGameState
   privates: { a: PrivateState; b: PrivateState }
 }

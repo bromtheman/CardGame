@@ -56,6 +56,13 @@ frontend (supabase-js) ──invoke──> edge function ──applyAction──
 - All tunables (costs, caps, keywords, `MATERIALS_PER_TURN`, `LOG_MAX_ENTRIES`,
   `ADDITIONAL_SPAWNS_CAP`, …) live in `shared/gameSettings.ts`. Never inline a
   magic number that belongs there.
+- A few tunables are **per-lobby overridable**: the host picks them at lobby
+  creation, `validateLobbySettings` bounds them, and `lobby-action` START freezes
+  them into `game.settings`. `deckRules` and `materialsPerTurn` are the two worked
+  examples. Read an overridable tunable through its resolver
+  (`materialsPerTurnOf`), never straight from the `gameSettings.ts` constant —
+  lobbies and games saved before the setting existed carry no key, and the
+  resolver is what keeps them on the default.
 
 ## State highlights (`PublicGameState`)
 
@@ -176,8 +183,8 @@ must check by hand, not as covered by the guards above.
 
 - `END_TURN` (`endTurn`): half-turn numbering (`turnNumber + 0.5`), cull
   `temporary` keyword vehicles from BOTH sides, set incoming side's materials to
-  `floor(turnNumber) * MATERIALS_PER_TURN`, draw 1, process due `scheduled` items,
-  expire the ending side's alert card.
+  `floor(turnNumber) * materialsPerTurnOf(game.settings)`, draw 1, process due
+  `scheduled` items, expire the ending side's alert card.
 - Battles: declare (`battleDeclare.ts`) → optional stealthy response
   (`RESPOND_TO_ATTACK`) → both play in FTD → either player `SUBMIT_BATTLE_REPORT`
   → opponent `DECIDE_BATTLE_REPORT` (approve applies deaths/damage and fires

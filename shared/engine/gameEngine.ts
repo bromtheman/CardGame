@@ -1,4 +1,5 @@
-import { KEYWORDS, LOG_MAX_ENTRIES, MATERIALS_PER_TURN, VEHICLE_TYPES } from '../gameSettings.ts'
+import { KEYWORDS, LOG_MAX_ENTRIES, VEHICLE_TYPES } from '../gameSettings.ts'
+import { materialsPerTurnOf } from '../lobbySettings.ts'
 import { secureRng } from './gameInit.ts'
 import type { CardInstance, PublicGameState, SnapshotCard } from './gameInit.ts'
 import type {
@@ -236,7 +237,8 @@ function endTurn(game: EngineGame, ctx: EngineContext): ApplyResult {
       zone.cards[s] = keep
     }
   }
-  game.state.resources[side].materials = Math.floor(game.turnNumber) * MATERIALS_PER_TURN
+  game.state.resources[side].materials =
+    Math.floor(game.turnNumber) * materialsPerTurnOf(game.settings)
   drawCard(game, side, ctx)
 
   // Change Order redeliveries (Task 7): process every scheduled item due for

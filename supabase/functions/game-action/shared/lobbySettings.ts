@@ -1,4 +1,7 @@
-import { DEFAULT_BASE_HP, MAX_ZONE_BASE_HP, ZONE_COUNT, ZONE_TYPES } from './gameSettings.ts'
+import {
+  DEFAULT_BASE_HP, MATERIALS_PER_TURN, MAX_MATERIALS_PER_TURN, MAX_ZONE_BASE_HP,
+  MIN_MATERIALS_PER_TURN, ZONE_COUNT, ZONE_TYPES,
+} from './gameSettings.ts'
 import type { DeckRules } from './engine/deckValidation.ts'
 import type { ZoneType } from './types.ts'
 
@@ -10,6 +13,17 @@ export interface ZoneSetting {
 export interface LobbySettings {
   zones: ZoneSetting[]
   deckRules?: Partial<DeckRules>
+  // Materials granted per turn (× floor(turnNumber)). Optional: lobbies and
+  // games saved before this setting existed carry no key and keep the default.
+  materialsPerTurn?: number
+}
+
+// The one authority on a game's income rate. Every read goes through here so
+// a settings blob without the key (a legacy row) still funds turns.
+export function materialsPerTurnOf(
+  settings: { materialsPerTurn?: number } | null | undefined,
+): number {
+  return settings?.materialsPerTurn ?? MATERIALS_PER_TURN
 }
 
 const DECK_RULE_KEYS: (keyof DeckRules)[] = [
@@ -21,6 +35,7 @@ export const DEFAULT_LOBBY_SETTINGS: LobbySettings = {
     biome: ZONE_TYPES.WATER,
     baseHp: DEFAULT_BASE_HP,
   })),
+  materialsPerTurn: MATERIALS_PER_TURN,
 }
 
 export function validateLobbySettings(
@@ -47,6 +62,21 @@ export function validateLobbySettings(
     }
   }
   const result: LobbySettings = { zones: zones as ZoneSetting[] }
+  const materialsPerTurn = (value as { materialsPerTurn?: unknown }).materialsPerTurn
+  if (materialsPerTurn !== undefined) {
+    if (
+      typeof materialsPerTurn !== 'number' ||
+      !Number.isInteger(materialsPerTurn) ||
+      materialsPerTurn < MIN_MATERIALS_PER_TURN ||
+      materialsPerTurn > MAX_MATERIALS_PER_TURN
+    ) {
+      errors.push(
+        `Resources per turn must be a whole number between ${MIN_MATERIALS_PER_TURN} and ${MAX_MATERIALS_PER_TURN}`,
+      )
+    } else {
+      result.materialsPerTurn = materialsPerTurn
+    }
+  }
   const deckRules = (value as { deckRules?: unknown }).deckRules
   if (deckRules !== undefined) {
     if (deckRules === null || typeof deckRules !== 'object' || Array.isArray(deckRules)) {

@@ -93,8 +93,11 @@ overrides come from lobby settings. Nothing is hardcoded at usage sites.
   parity is NOT authoritative and carries no rules meaning.
 - At the start of each turn (either player's): remove all **Temporary** vehicles
   (both sides), then the active player draws 1 (empty deck → shuffle your discard into your deck and draw; if both are empty, no draw, no penalty)
-  and sets materials to `floor(turnNumber) × 50,000` (materials do NOT carry over
-  between turns — mana-style). CP persists and is only gained via effects.
+  and sets materials to `floor(turnNumber) × resources-per-turn` (materials do NOT
+  carry over between turns — mana-style). Resources per turn defaults to **75,000**
+  and is a per-lobby setting the host may change at lobby creation (whole number,
+  5,000–10,000,000); it is frozen into the game's settings at START, so a game
+  keeps the rate it began with. CP persists and is only gained via effects.
 - On their turn the active player may, in any order: play cards (paying material/CP
   costs), use hero powers, and activate zones. Then END_TURN.
 

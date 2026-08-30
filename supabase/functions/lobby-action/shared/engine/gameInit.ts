@@ -1,6 +1,5 @@
-import {
-  MATERIALS_PER_TURN, STARTING_CP_AMOUNT, STARTING_HAND_SIZE,
-} from '../gameSettings.ts'
+import { STARTING_CP_AMOUNT, STARTING_HAND_SIZE } from '../gameSettings.ts'
+import { materialsPerTurnOf } from '../lobbySettings.ts'
 import type { LobbySettings } from '../lobbySettings.ts'
 
 export type Rng = () => number
@@ -188,6 +187,7 @@ export function buildInitialGame(input: {
   }
   const activePlayer = input.rng() < 0.5 ? input.playerA : input.playerB
   const activeIsA = activePlayer === input.playerA
+  const turnOneIncome = materialsPerTurnOf(input.settings)
   const state: PublicGameState = {
     zones: input.settings.zones.map((zone, i) => ({
       id: i + 1,
@@ -200,8 +200,8 @@ export function buildInitialGame(input: {
     // reset (not accumulated) at their first turn start, so this is purely
     // a display symmetry, not an economic change.
     resources: {
-      a: { materials: MATERIALS_PER_TURN, cp: STARTING_CP_AMOUNT },
-      b: { materials: MATERIALS_PER_TURN, cp: STARTING_CP_AMOUNT },
+      a: { materials: turnOneIncome, cp: STARTING_CP_AMOUNT },
+      b: { materials: turnOneIncome, cp: STARTING_CP_AMOUNT },
     },
     counts: {
       a: { hand: aPrivate.hand.length, deck: aPrivate.deck.length },
