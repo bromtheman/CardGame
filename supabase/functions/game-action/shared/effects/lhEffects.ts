@@ -139,7 +139,7 @@ registerEffect(ORBIT_FLANK, choice({
       if (!found || found.side !== otherSide(actor)) return false
       const summons = summonHulls(game, ctx, 'Orbit', 1)
       if (!summons) return false
-      return declareForcedBattle(game, {
+      return declareForcedBattle(game, ctx, {
         zoneId: found.zone.id,
         aggressor: actor,
         attackerIds: summons.map((s) => s.instanceId),
@@ -227,13 +227,13 @@ registerEffect(ECLIPSE, choice({
     return self ? enemyVehicleOptions(game, actor, self.zone.id, eclipseTargetable) : []
   },
   resolve: (payload, choiceId) => {
-    const { game, actor, card } = payload
+    const { game, actor, card, ctx } = payload
     if (choiceId === null) return false // no non-Stealthy enemy vehicle in the zone
     const self = eclipseZone(game, actor, card)
     if (!self) return false
     const stillLegal = enemyVehicleOptions(game, actor, self.zone.id, eclipseTargetable).some((o) => o.id === choiceId)
     if (!stillLegal) return false
-    return declareForcedBattle(game, {
+    return declareForcedBattle(game, ctx, {
       zoneId: self.zone.id,
       aggressor: actor,
       attackerIds: [card.instanceId],

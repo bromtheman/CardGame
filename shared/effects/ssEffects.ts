@@ -113,7 +113,7 @@ registerEffect(AIR_STRAFE, choice({
       if (!found) return false
       const summons = summonHulls(game, ctx, 'PredatorX', AIR_STRAFE_PREDATOR_COUNT)
       if (!summons) return false
-      return declareForcedBattle(game, {
+      return declareForcedBattle(game, ctx, {
         zoneId: found.zone.id,
         aggressor: actor,
         attackerIds: summons.map((s) => s.instanceId),
@@ -138,7 +138,7 @@ registerEffect(AIR_STRAFE, choice({
     const hull = summonHulls(game, ctx, choiceId, 1)
     if (!predators || !hull) return false
     const summons = [...predators, ...hull]
-    return declareForcedBattle(game, {
+    return declareForcedBattle(game, ctx, {
       zoneId: stashedZoneId,
       aggressor: actor,
       attackerIds: summons.map((s) => s.instanceId),
@@ -184,7 +184,7 @@ registerEffect(BRAVEHEART, choice({
     return self ? enemyVehicleOptions(game, actor, self.zone.id) : []
   },
   resolve: (payload, choiceId) => {
-    const { game, actor, card } = payload
+    const { game, actor, card, ctx } = payload
     if (choiceId === null) return false // no enemy vehicle in the zone — nothing to fight
     const self = braveheartZone(game, actor, card)
     if (!self) return false
@@ -193,7 +193,7 @@ registerEffect(BRAVEHEART, choice({
     // No activatesZone: a forced battle is not a zone activation (spec §4.3
     // ruling) — Eclipse alone is the exception, and says so in its own text.
     // A fleet attack in this zone later this turn is unaffected.
-    return declareForcedBattle(game, {
+    return declareForcedBattle(game, ctx, {
       zoneId: self.zone.id,
       aggressor: actor,
       attackerIds: [card.instanceId],

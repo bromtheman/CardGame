@@ -139,7 +139,7 @@ const trebuchetChoice = choice({
     // still ends quietly) without a suspension. This IS "you may": declining
     // via `cancel` on a non-empty offer is the other half.
     if (choiceId === null) return true
-    const { game, actor, card } = payload
+    const { game, actor, card, ctx } = payload
     const zoneId = payload.pending?.data?.zoneId
     if (typeof zoneId !== 'number') return false
     // Re-confirm the target is still legal — RESOLVE_PENDING_EFFECT's own
@@ -148,7 +148,7 @@ const trebuchetChoice = choice({
     // this server-side re-check are trusted, the same guard Braveheart and
     // Eclipse both carry (docs/claude/card-effects.md).
     if (!enemyVehicleOptions(game, actor, zoneId).some((o) => o.id === choiceId)) return false
-    return declareForcedBattle(game, {
+    return declareForcedBattle(game, ctx, {
       zoneId,
       aggressor: actor,
       attackerIds: [card.instanceId],

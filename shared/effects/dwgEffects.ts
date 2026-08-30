@@ -165,7 +165,7 @@ registerEffect('flyingSquirrelAttackEffect', ({ game, actor, ctx, targetInstance
   if (!found || found.side !== otherSide(actor)) return false
   const summons = summonHulls(game, ctx, 'Flying Squirrel', FLYING_SQUIRREL_ATTACK_COUNT)
   if (!summons) return false
-  return declareForcedBattle(game, {
+  return declareForcedBattle(game, ctx, {
     zoneId: found.zone.id,
     aggressor: actor,
     attackerIds: summons.map((s) => s.instanceId),
@@ -181,14 +181,14 @@ registerEffect('flyingSquirrelAttackEffect', ({ game, actor, ctx, targetInstance
 // Inoffensive ones (§7.3 — Inoffensive means "cannot attack", and a forced
 // battle is not licence to break that). No summons. If that leaves no
 // attacker, declareForcedBattle's own empty-list check fails the play.
-registerEffect('gangUpEffect', ({ game, actor, targetInstanceId, card }) => {
+registerEffect('gangUpEffect', ({ game, actor, ctx, targetInstanceId, card }) => {
   if (typeof targetInstanceId !== 'string') return false
   const found = findVehicle(game.state, targetInstanceId)
   if (!found || found.side !== otherSide(actor)) return false
   const attackerIds = found.zone.cards[actor]
     .filter((c) => !c.keywords.includes(KEYWORDS.INOFFENSIVE))
     .map((c) => c.instanceId)
-  return declareForcedBattle(game, {
+  return declareForcedBattle(game, ctx, {
     zoneId: found.zone.id,
     aggressor: actor,
     attackerIds,
