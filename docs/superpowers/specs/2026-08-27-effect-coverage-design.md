@@ -94,7 +94,7 @@ Taken during wave 4:
 | 22 | A **spent ability** keeps firing through `state.zoneEffects`, dispatched by the registry name the entry already stores — one name per card, whatever the occasion (§4.3, DP2 departure 2) |
 | 23 | **Reviving a destroyed hull does not roll the battle back**: its `onDeathEffect` has already fired and stands (§4.3, DP2 departure 7) |
 | 24 | Defender omission is **plain card data**, not an effect and not a keyword — an effect used as a predicate inverts the registry's contract, and a keyword cannot carry the condition (§4.8) |
-| 25 | A decline that would **harm the other player** is not offered at all: DWG Waters' interception is automatic, where Terawatt's join and its own clause 2 stay declinable (§7.3) |
+| 25 | A decline that would **harm the other player** is not offered at all: DWG Waters' interception is automatic, where Terawatt's join and its own clause 2 stay declinable (§7.3). Automatic ≠ permanent — the interception is a gate the attacker can win through, and their survivors then deal the deferred damage via the battle continuation |
 
 ## 3. Scope
 
@@ -875,9 +875,23 @@ Added in wave 3:
   satisfied by its own keyword. Only the win test is new: **Trebuchet still on
   the field and every defender gone**, read off the post-resolution state, which
   needs no outcome plumbing on the payload.
-- **Trebuchet's repeat is unbounded but self-limiting.** Each iteration requires
-  another clean win and another enemy vehicle left in the zone, so it terminates
-  on the zone's population. Card text imposes no other cap and none is invented.
+- **Trebuchet's repeat is bounded by the zone's population *when the chain
+  began*.** ⚠ **Corrected after wave 4.** This originally read "unbounded but
+  self-limiting… it terminates on the zone's population", which was true only
+  while a zone's population could not grow mid-chain. Dryad (wave 4)
+  board-spawns a replacement whenever it is dragged into a defensive battle —
+  forced ones included — so a Trebuchet feeding on Dryads destroyed one, faced
+  its replacement, and was offered the repeat again forever.
+
+  The fix is to Trebuchet, not to Dryad, so both cards keep their printed text
+  (and §7.3's own Catshark ruling already says a forced battle IS a battle).
+  The continuation carries `chainIds`, re-derived at every entry as *(still in
+  the zone)* ∩ *(already in the chain)*. That set only ever narrows: a hull the
+  last battle destroyed drops out, and one spawned mid-chain was never in it.
+  Each iteration requires destroying a member, so the chain terminates in at
+  most as many battles as there were eligible enemies when it started. Card
+  text still imposes no cap and none is invented — the bound is exactly the one
+  this ruling always claimed to have.
 - **"Fights alone" means the target is the only defender.** Its allies in the
   zone do not join, whatever they are.
 
@@ -908,20 +922,35 @@ Added in wave 4:
   no reading in the tabletop game this models. "Alone" means the defending side
   has exactly one participant, and Terawatt itself is excluded from the offer when
   it *is* that participant.
-- **DWG Waters' clause-3 interception is automatic, not offered.** The text reads
-  "you can force them to beat this ship in battle first before doing damage with
-  their surviving vehicles", but two things make a reactive offer unbuildable.
-  First, a zone admits **one activation per turn** (`lastActivatedTurn`, checked
-  and set by both `ATTACK_ENEMY_BASE` and `ATTACK_ENEMY_FLEET`), so "fight, then
-  bombard" cannot be a single turn's sequence in the first place. Second, every
-  choice dialog carries a universal decline (§4.2, departure 3) — so an offered
-  interception would let the defender decline, void the attacker's zone
-  activation, *and* take no damage, which is the one shape of decline that harms
-  the other player rather than only its own chooser. The claim itself is
-  therefore the election: a direct base attack in a zone the enemy holds as DWG
-  Waters becomes a forced battle against a summoned DWG guardian, and no damage
-  lands that turn. Terawatt's join and clause 2's summon stay declinable, because
-  declining those forfeits only the decliner's own upside.
+- **DWG Waters' clause-3 interception is automatic, not offered — and it is a
+  gate, not a wall.** The text reads "you can force them to beat this ship in
+  battle **first** before doing damage with their surviving vehicles."
+
+  *Automatic* because every choice dialog carries a universal decline (§4.2,
+  departure 3), so an offered interception would let the defender decline, void
+  the attacker's zone activation, **and** take no damage — the one shape of
+  decline that harms the other player rather than only its own chooser. The
+  claim itself is the election. Terawatt's join and clause 2's summon stay
+  declinable, because declining those forfeits only the decliner's own upside.
+
+  *A gate* because the sentence has two halves and the card is owed both.
+  ⚠ **Corrected after wave 4**, which built only the first half and stopped
+  there — leaving a claimed zone's base **permanently** un-bombardable, since
+  every later attempt was intercepted afresh. That is a far bigger card than
+  the text describes. The obstacle was real: a zone admits **one activation per
+  turn** (`lastActivatedTurn`, set by both `ATTACK_ENEMY_BASE` and
+  `ATTACK_ENEMY_FLEET`), so "fight, then bombard" cannot be one turn's
+  sequence. But wave 4's own `ActiveBattle.continuation` (§4.3, departure 3)
+  carries the second half across the gap: the interception declares the battle
+  and attaches a continuation naming the **aggressor** as its side, so that
+  `battle.won` on the resolve context reads "did the attacker beat the
+  guardian" — the guardian being the only defender, winning *is* beating the
+  ship. On a win, the strikers that survived deal the deferred base damage,
+  re-checked against the board as it then stands (a destroyed base takes
+  nothing more; a Blocker that arrived during the fight still shields it).
+
+  So the zone is not closed — it is defended. The attacker who wins the fight
+  gets their damage, one turn later, with whatever survived.
 - **"One DWG vehicle with a cost <60k from the game" is the catalog**, not a
   deck or a hand: "from the game" is the same phrasing Special Foundries uses for
   a named catalog pool, and a choice over a hand would leak it (§4.2, departure

@@ -688,6 +688,132 @@ describe('DWG Waters clauses 2 and 3', () => {
       expect(out.state.zones[0].baseHp.b).toBe(1000 - 40)
     })
 
+    // "Beat this ship in battle FIRST before doing damage with their surviving
+    // vehicles" — a gate, not a wall. The damage is deferred behind the fight,
+    // not cancelled, and rides ActiveBattle.continuation because the battle and
+    // the bombardment cannot share a turn.
+    it('the deferred bombardment lands when the attacker beats the guardian', () => {
+      const out = bombard()
+      const battle = out.state.activeBattle
+      if (!battle) throw new Error('no interception')
+      expect(out.state.zones[0].baseHp.b).toBe(1000) // nothing yet
+      const striker = battle.attackerIds[0]
+      const guardian = battle.summons[0].instanceId
+      const ctx = makeCtx({ catalog: fullCatalog })
+      const submitted = applyAction(out, 'alice', {
+        type: 'SUBMIT_BATTLE_REPORT',
+        results: { [striker]: 95, [guardian]: 5 }, repairs: [],
+      }, ctx)
+      if (!submitted.ok) throw new Error(submitted.error)
+      const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, ctx)
+      if (!decided.ok) throw new Error(decided.error)
+      // The 40k Raider survived, so floor(40000/1000) = 40 lands now.
+      expect(decided.game.state.zones[0].baseHp.b).toBe(1000 - 40)
+      expect(decided.game.state.log.join('\n')).toContain('the guardian is beaten')
+    })
+
+    // The guardian holding must stop the damage EVEN WHEN a striker survived.
+    // With a single striker, "the guardian held" and "no striker survived" are
+    // the same board, so the `won` check would be untestable — two strikers,
+    // one of which lives, is what separates them.
+    it('nothing lands when the guardian holds, even with a surviving striker', () => {
+      const game = claimed()
+      game.state.zones[0].cards.a.push(
+        zoneEntry({ name: 'Raider', materialCost: 40_000, playedOnTurn: 2 }),
+        zoneEntry({ name: 'Cutter', materialCost: 90_000, playedOnTurn: 2 }),
+      )
+      const ctx = makeCtx({ catalog: fullCatalog })
+      const attacked = applyAction(game, 'alice', { type: 'ATTACK_ENEMY_BASE', zoneId: 1 }, ctx)
+      if (!attacked.ok) throw new Error(attacked.error)
+      const battle = attacked.game.state.activeBattle
+      if (!battle) throw new Error('no interception')
+      const [first, second] = battle.attackerIds
+      const guardian = battle.summons[0].instanceId
+      const submitted = applyAction(attacked.game, 'alice', {
+        type: 'SUBMIT_BATTLE_REPORT',
+        results: { [first]: 5, [second]: 95, [guardian]: 95 }, repairs: [],
+      }, ctx)
+      if (!submitted.ok) throw new Error(submitted.error)
+      const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, ctx)
+      if (!decided.ok) throw new Error(decided.error)
+      // The Cutter lived, but the ship was not beaten — so no damage at all.
+      expect(decided.game.state.zones[0].baseHp.b).toBe(1000)
+    })
+
+    // "Their surviving vehicles" means the ones that FOUGHT, not everything
+    // standing in the zone when the report is finally approved. A report can be
+    // approved a turn later, by which time the attacker may have moved more
+    // hulls in — those did not beat the guardian and must not benefit from it.
+    it('a hull that arrived after the interception adds nothing', () => {
+      const out = bombard()
+      const battle = out.state.activeBattle
+      if (!battle) throw new Error('no interception')
+      const striker = battle.attackerIds[0]
+      const guardian = battle.summons[0].instanceId
+      // Reinforcement that was never in the fight, old enough to pass the
+      // freshly-deployed filter.
+      out.state.zones[0].cards.a.push(zoneEntry({ name: 'Latecomer', materialCost: 90_000, playedOnTurn: 1 }))
+      const ctx = makeCtx({ catalog: fullCatalog })
+      const submitted = applyAction(out, 'alice', {
+        type: 'SUBMIT_BATTLE_REPORT',
+        results: { [striker]: 95, [guardian]: 5 }, repairs: [],
+      }, ctx)
+      if (!submitted.ok) throw new Error(submitted.error)
+      const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, ctx)
+      if (!decided.ok) throw new Error(decided.error)
+      // 40 from the Raider that actually fought — not 130.
+      expect(decided.game.state.zones[0].baseHp.b).toBe(1000 - 40)
+    })
+
+    // "With their SURVIVING vehicles" — a striker that died in the fight
+    // contributes nothing. Two strikers of different weights, so a wrong
+    // roster gives a different number rather than merely zero.
+    it('only the surviving strikers deal the deferred damage', () => {
+      const game = claimed()
+      game.state.zones[0].cards.a.push(
+        zoneEntry({ name: 'Raider', materialCost: 40_000, playedOnTurn: 2 }),
+        zoneEntry({ name: 'Cutter', materialCost: 90_000, playedOnTurn: 2 }),
+      )
+      const ctx = makeCtx({ catalog: fullCatalog })
+      const attacked = applyAction(game, 'alice', { type: 'ATTACK_ENEMY_BASE', zoneId: 1 }, ctx)
+      if (!attacked.ok) throw new Error(attacked.error)
+      const battle = attacked.game.state.activeBattle
+      if (!battle) throw new Error('no interception')
+      const [first, second] = battle.attackerIds
+      const guardian = battle.summons[0].instanceId
+      const submitted = applyAction(attacked.game, 'alice', {
+        type: 'SUBMIT_BATTLE_REPORT',
+        results: { [first]: 5, [second]: 95, [guardian]: 5 }, repairs: [],
+      }, ctx)
+      if (!submitted.ok) throw new Error(submitted.error)
+      const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, ctx)
+      if (!decided.ok) throw new Error(decided.error)
+      // The 40k Raider died; only the 90k Cutter is left to strike.
+      expect(decided.game.state.zones[0].baseHp.b).toBe(1000 - 90)
+    })
+
+    // A Blocker that reached the zone during the fight still protects the
+    // base — the same guard ATTACK_ENEMY_BASE applies, re-checked against the
+    // board as it stands when the damage would land.
+    it('a Blocker arriving during the battle still shields the base', () => {
+      const out = bombard()
+      const battle = out.state.activeBattle
+      if (!battle) throw new Error('no interception')
+      const striker = battle.attackerIds[0]
+      const guardian = battle.summons[0].instanceId
+      out.state.zones[0].cards.b.push(zoneEntry({ name: 'Wall', keywords: ['blocker'] }))
+      const ctx = makeCtx({ catalog: fullCatalog })
+      const submitted = applyAction(out, 'alice', {
+        type: 'SUBMIT_BATTLE_REPORT',
+        results: { [striker]: 95, [guardian]: 5 }, repairs: [],
+      }, ctx)
+      if (!submitted.ok) throw new Error(submitted.error)
+      const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, ctx)
+      if (!decided.ok) throw new Error(decided.error)
+      expect(decided.game.state.zones[0].baseHp.b).toBe(1000)
+      expect(decided.game.state.log.join('\n')).toContain('Blocker shields the base')
+    })
+
     it('picks the guardian deterministically under a seeded rng', () => {
       const first = bombard().state.activeBattle?.summons[0].name
       const second = bombard().state.activeBattle?.summons[0].name

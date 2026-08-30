@@ -6,7 +6,7 @@ browser verification.
 ## Unit tests (vitest, repo root)
 
 ```bash
-npx vitest run                      # everything (655 tests / 32 files after wave 4)
+npx vitest run                      # everything (661 tests / 32 files after wave 4)
 npx vitest run shared/effects       # path filter — the ONLY sanctioned way to narrow
 ```
 
@@ -99,15 +99,16 @@ Two things that cost time writing it, both worth knowing before the next one:
   needs, and the failure (`URL is not a constructor`) points nowhere near the
   assignment.
 
+The shape, if you write another from scratch: read `frontend/.env.local` for the
+project URL and publishable key, sign in both accounts against `/auth/v1/token`,
+build decks/lobby/game through the real functions, then assert on `games` rows.
+Record PASS/FAIL per step and print a summary.
 
-Pattern (used for every phase; reusable scaffolding in prior scripts): a `tsx`
-script that reads `frontend/.env.local` for URL + publishable key, signs in the
-two test accounts, builds decks/lobby/game through the real functions, then
-asserts on `games` rows. Record PASS/FAIL per step and print a summary.
-
-- Test accounts: `jacob.finn+ftdtest2@streetfeastapp.com` and
-  `...+ftdtest3@...` (passwords in the committed phase plan docs — deliberate
-  for now; **rotate/delete before anything goes public**).
+- Credentials live in `scripts/qa-accounts.local` (gitignored, `P1_*`/`P2_*`
+  pairs) — the same file `scripts/qa-login.mjs` reads. Passwords go only to
+  `/auth/v1/token` and are never printed. Older phase-plan docs name two
+  `jacob.finn+ftdtest*` accounts with passwords committed in the doc; those are
+  legacy and should be **rotated or deleted before anything goes public**.
 - The service-role key from local env may be used for assertions ONLY — never
   print it, never ship it in frontend code, never commit it.
 - Engine imports work in scripts via
