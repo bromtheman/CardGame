@@ -6,7 +6,8 @@ import { GT_HEAVY_AIRSHIP_MIN_COST, KEYWORDS } from '../gameSettings.ts'
 import type { ZoneCardEntry } from '../engine/engineTypes.ts'
 import { copyMeta, otherSide, zoneById } from '../engine/gameEngine.ts'
 import { moveEntry } from '../engine/heroPowers.ts'
-import { declareForcedBattle } from '../engine/battleDeclare.ts'
+import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
+import { summonHulls } from './primitives.ts'
 
 // OW built-in card effects. Cards whose faction is GT but whose seed row
 // lives in OW-Built-in.js are registered here too.
@@ -83,6 +84,13 @@ const gtHeavyAirship = drawFromPool({
   filter: { faction: 'GT', vehicleType: 'airship', minCost: GT_HEAVY_AIRSHIP_MIN_COST },
   count: 1,
 })
+// The Onyx Throne's second clause (DP1): "Once per turn, you may pay 1cp to
+// draw a GT heavy airship card." Same pool half Special Foundries' heavy
+// option draws from, filtered on faction + vehicleType + the §7.3 cost cliff —
+// never on the GT_AIRSHIP / GT_HEAVY_AIRSHIP source-file grouping arrays,
+// which misreport at least two cards' faction and type.
+registerEffect('onyxThroneActivate', gtHeavyAirship, { needsCatalog: true })
+
 registerEffect(SPECIAL_FOUNDRIES, choice({
   effect: SPECIAL_FOUNDRIES,
   prompt: 'Draw from which GT airship pool?',
@@ -92,6 +100,28 @@ registerEffect(SPECIAL_FOUNDRIES, choice({
   ],
   resolve: (payload, choiceId) => (choiceId === 'heavy' ? gtHeavyAirship(payload) : gtLightAirship(payload)),
 }), { needsCatalog: true })
+
+// Wave 4, DP2 (spec §4.3). "Whenever this vehicle would partake in a defensive
+// battle, spawn an allied Parapet alongside it for that battle" — the card
+// text's missing noun is authored in spec §7.2, and "for that battle" is what
+// makes it a battle SUMMON rather than a free 259k hull every time.
+//
+// It joins the battle that already exists rather than declaring one:
+// declareForcedBattle refuses outright while state.activeBattle is non-null,
+// and at lock it always is. joinBattle (battleDeclare.ts) is the only function
+// that appends to a battle in progress.
+//
+// isParticipant, because a DP2 effect can also be reached as a forced-battle
+// bystander; isDefender, because the text says "defensive".
+registerEffect('onyxThroneBattle', ({ game, actor, ctx, card, battle }) => {
+  if (!battle || battle.phase !== 'lock' || !battle.isParticipant || !battle.isDefender) return true
+  const hulls = summonHulls(game, ctx, 'Parapet', 1)
+  if (!hulls) return false
+  const [parapet] = hulls
+  if (!joinBattle(game, actor, parapet.instanceId, parapet)) return false
+  game.state.log.push(`A Parapet stands alongside ${card.name} in zone ${battle.zoneId}`)
+  return true
+}, { needsCatalog: true })
 
 // "Spawn two parapets into a zone. They gain Inoffensive, Scrappy, and blocker
 // keywords." Keywords come from the summoning card, not the Parapet row —

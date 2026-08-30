@@ -253,7 +253,7 @@ export const owVehicles = [
     },{
         name: 'The Onyx Throne',
         isBuiltIn: true,
-        cardText: 'Whenever this vehicle would partake in a defensive battle, spawn an allied alongside it. Once per turn, you may pay 1cp to draw a GT heavy airship card.',
+        cardText: 'Whenever this vehicle would partake in a defensive battle, spawn an allied Parapet alongside it for that battle. Once per turn, you may pay 1cp to draw a GT heavy airship card.',
         materialCost: 500000,
         blueprintCost: 492482,
         cpCost: 0,
@@ -263,7 +263,12 @@ export const owVehicles = [
         type: 'vehicle',
         faction: FACTIONS.OW,
         blueprintId: null,
-        keywords: [KEYWORDS.BLOCKER, KEYWORDS.INOFFENSIVE]
+        keywords: [KEYWORDS.BLOCKER, KEYWORDS.INOFFENSIVE],
+        meta: {
+            [TRIGGERS.ON_BATTLE_EFFECT]: 'onyxThroneBattle',
+            [TRIGGERS.ON_ACTIVATE]: 'onyxThroneActivate',
+            activateCpCost: 1,
+        }
     },
     {
         name: 'Eyrie',

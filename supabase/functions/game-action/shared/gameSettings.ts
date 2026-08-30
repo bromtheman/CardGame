@@ -86,6 +86,11 @@ export const MARTYR_ATTACK_BOOSTED_COUNT = 6  // Martyr Attack: target is an air
 export const MARTYR_ATTACK_BOOST_MIN_COST = 400_000
 export const AIR_STRAFE_PREDATOR_COUNT = 2    // Air Strafe: PredatorX summons (always); +1 chosen hull vs a player design
 
+// Catshark: "gain 30k resources this turn". No rider expires it — endTurn sets
+// the incoming side's materials to floor(turnNumber) * MATERIALS_PER_TURN
+// outright, so the grant lasts exactly until that side's next turn begins.
+export const CATSHARK_MATERIALS = 30_000
+
 // Human-readable names for the seven hero powers, used wherever a power id
 // is shown to a player (Kraken's refresh choice).
 export const HERO_POWER_LABELS: Record<string, string> = {

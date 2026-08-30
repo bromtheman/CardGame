@@ -188,6 +188,7 @@ export const ssVehicles = [
         blueprintId: null,
         keywords: [ KEYWORDS.SCRAPPY],
         meta: {
+            [TRIGGERS.ON_BATTLE_EFFECT]: 'catsharkBattle',
         }
     }, {
         name: 'Sacrilego',
@@ -237,6 +238,7 @@ export const ssVehicles = [
         blueprintId: null,
         keywords: [KEYWORDS.BLOCKER],
         meta: {
+            [TRIGGERS.ON_BATTLE_EFFECT]: 'dryadBattle',
         }
     }, {
         name: 'Typhoon',

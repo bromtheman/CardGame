@@ -1509,3 +1509,215 @@ describe('wave 3 — forced battles', () => {
     })
   })
 })
+
+describe('wave 4 — battle triggers at lock', () => {
+  const dryadHull = snap({ name: 'Dryad', faction: 'SS', vehicleType: 'ship', materialCost: 40_500, keywords: ['blocker'], meta: { onBattleEffect: 'dryadBattle' } })
+  const parapetHull = snap({ name: 'Parapet', faction: 'OW', vehicleType: 'plane', materialCost: 259_000, meta: { summonOnly: true } })
+
+  // A locked battle in zone 1 with `actor` on the defending side. DP2's lock
+  // dispatch has already conceptually happened by the time these tests call
+  // the effect directly, so the battle object must already exist — The Onyx
+  // Throne in particular joins it rather than declaring one.
+  function locked(game: EngineGame, spec: {
+    aggressor: 'a' | 'b'; attackerIds: string[]; defenderIds: string[]
+  }) {
+    game.state.activeBattle = {
+      zoneId: 1, aggressor: spec.aggressor,
+      attackerIds: spec.attackerIds, defenderIds: spec.defenderIds,
+      distanceM: 1200, distanceModifiedBy: [], summons: [], continuation: null,
+    }
+  }
+
+  const lockCtx = (isDefender: boolean, over: Partial<Record<string, unknown>> = {}) => ({
+    phase: 'lock' as const, zoneId: 1, isDefender, isParticipant: true,
+    forced: false, survived: false, won: false, ...over,
+  })
+
+  describe('catsharkBattle', () => {
+    it('grants 30k materials to a participant on either side', () => {
+      for (const isDefender of [false, true]) {
+        const game = makeGame()
+        const before = game.state.resources.a.materials
+        const ok = effectFor('catsharkBattle')!({
+          game, actor: 'a', card: inst({ name: 'Catshark' }), ctx: makeCtx(),
+          battle: lockCtx(isDefender),
+        })
+        expect(ok).toBe(true)
+        expect(game.state.resources.a.materials).toBe(before + 30_000)
+      }
+    })
+
+    it('grants nothing to a non-participant', () => {
+      const game = makeGame()
+      const before = game.state.resources.a.materials
+      const ok = effectFor('catsharkBattle')!({
+        game, actor: 'a', card: inst({ name: 'Catshark' }), ctx: makeCtx(),
+        battle: { ...lockCtx(true), isParticipant: false },
+      })
+      expect(ok).toBe(true)
+      expect(game.state.resources.a.materials).toBe(before)
+    })
+
+    it('fires end to end when an ordinary fleet attack locks over it', () => {
+      const game = makeGame({ turnNumber: 3 })
+      const attacker = zoneEntry({ playedOnTurn: 2 })
+      const catshark = zoneEntry({ name: 'Catshark', meta: { onBattleEffect: 'catsharkBattle' } })
+      game.state.zones[0].cards.a.push(attacker)
+      game.state.zones[0].cards.b.push(catshark)
+      const before = game.state.resources.b.materials
+      const r = applyAction(game, 'alice', {
+        type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
+        attackerIds: [attacker.instanceId], targetIds: [catshark.instanceId],
+      }, makeCtx())
+      if (!r.ok) throw new Error(r.error)
+      expect(r.game.state.resources.b.materials).toBe(before + 30_000)
+    })
+  })
+
+  describe('dryadBattle', () => {
+    it('board-spawns another Dryad on a defensive lock, without joining the battle', () => {
+      const game = makeGame()
+      const dryad = zoneEntry({ name: 'Dryad', instanceId: 'dryad-1', meta: { onBattleEffect: 'dryadBattle' } })
+      game.state.zones[0].cards.a.push(dryad)
+      locked(game, { aggressor: 'b', attackerIds: [], defenderIds: ['dryad-1'] })
+      const ok = effectFor('dryadBattle')!({
+        game, actor: 'a', card: dryad, ctx: makeCtx({ catalog: [dryadHull] }),
+        battle: lockCtx(true),
+      })
+      expect(ok).toBe(true)
+      expect(game.state.zones[0].cards.a.map((c) => c.name)).toEqual(['Dryad', 'Dryad'])
+      // A board spawn, not a battle summon (spec §4.4's wording table).
+      expect(game.state.activeBattle?.defenderIds).toEqual(['dryad-1'])
+      expect(game.state.activeBattle?.summons).toEqual([])
+    })
+
+    it('does nothing on an offensive lock', () => {
+      const game = makeGame()
+      const dryad = zoneEntry({ name: 'Dryad', instanceId: 'dryad-1' })
+      game.state.zones[0].cards.a.push(dryad)
+      const ok = effectFor('dryadBattle')!({
+        game, actor: 'a', card: dryad, ctx: makeCtx({ catalog: [dryadHull] }),
+        battle: lockCtx(false),
+      })
+      expect(ok).toBe(true)
+      expect(game.state.zones[0].cards.a).toHaveLength(1)
+    })
+
+    // The roster is snapshotted before any trigger runs, so a spawned Dryad
+    // cannot be dispatched by the same lock that spawned it. Two participating
+    // Dryads must produce two new hulls, never four.
+    it('two participating Dryads spawn exactly two, with no re-trigger', () => {
+      const game = makeGame({ turnNumber: 3 })
+      const attacker = zoneEntry({ playedOnTurn: 2 })
+      const d1 = zoneEntry({ name: 'Dryad', meta: { onBattleEffect: 'dryadBattle' } })
+      const d2 = zoneEntry({ name: 'Dryad', meta: { onBattleEffect: 'dryadBattle' } })
+      game.state.zones[0].cards.a.push(attacker)
+      game.state.zones[0].cards.b.push(d1, d2)
+      const r = applyAction(game, 'alice', {
+        type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
+        attackerIds: [attacker.instanceId], targetIds: [d1.instanceId, d2.instanceId],
+      }, makeCtx({ catalog: [dryadHull] }))
+      if (!r.ok) throw new Error(r.error)
+      expect(r.game.state.zones[0].cards.b).toHaveLength(4)
+    })
+
+    it('fails rather than fizzling when Dryad is missing from the catalog', () => {
+      const game = makeGame()
+      const dryad = zoneEntry({ name: 'Dryad', instanceId: 'dryad-1' })
+      game.state.zones[0].cards.a.push(dryad)
+      const ok = effectFor('dryadBattle')!({
+        game, actor: 'a', card: dryad, ctx: makeCtx(), battle: lockCtx(true),
+      })
+      expect(ok).toBe(false)
+    })
+  })
+
+  describe('onyxThroneBattle', () => {
+    it('summons a Parapet into the already-locked battle, on the defending side', () => {
+      const game = makeGame()
+      const throne = zoneEntry({ name: 'The Onyx Throne', instanceId: 'onyx-1' })
+      const foe = zoneEntry({ instanceId: 'foe-1' })
+      game.state.zones[0].cards.a.push(throne)
+      game.state.zones[0].cards.b.push(foe)
+      locked(game, { aggressor: 'b', attackerIds: ['foe-1'], defenderIds: ['onyx-1'] })
+      const ok = effectFor('onyxThroneBattle')!({
+        game, actor: 'a', card: throne, ctx: makeCtx({ catalog: [parapetHull] }),
+        battle: lockCtx(true),
+      })
+      expect(ok).toBe(true)
+      const battle = game.state.activeBattle
+      expect(battle?.summons.map((s) => s.name)).toEqual(['Parapet'])
+      expect(battle?.defenderIds).toEqual(['onyx-1', battle?.summons[0].instanceId])
+      // A battle summon, never a board unit (spec §4.4).
+      expect(game.state.zones[0].cards.a.map((c) => c.name)).toEqual(['The Onyx Throne'])
+    })
+
+    it('does nothing on an offensive lock', () => {
+      const game = makeGame()
+      const throne = zoneEntry({ name: 'The Onyx Throne', instanceId: 'onyx-1' })
+      const foe = zoneEntry({ instanceId: 'foe-1' })
+      game.state.zones[0].cards.a.push(throne)
+      game.state.zones[0].cards.b.push(foe)
+      locked(game, { aggressor: 'a', attackerIds: ['onyx-1'], defenderIds: ['foe-1'] })
+      const ok = effectFor('onyxThroneBattle')!({
+        game, actor: 'a', card: throne, ctx: makeCtx({ catalog: [parapetHull] }),
+        battle: lockCtx(false),
+      })
+      expect(ok).toBe(true)
+      expect(game.state.activeBattle?.summons).toEqual([])
+    })
+
+    it('fires end to end when the enemy attacks it, and the Parapet joins the report', () => {
+      const game = makeGame({ turnNumber: 3 })
+      const attacker = zoneEntry({ playedOnTurn: 2 })
+      const throne = zoneEntry({
+        name: 'The Onyx Throne', keywords: ['blocker', 'inoffensive'],
+        meta: { onBattleEffect: 'onyxThroneBattle' },
+      })
+      game.state.zones[0].cards.a.push(attacker)
+      game.state.zones[0].cards.b.push(throne)
+      const r = applyAction(game, 'alice', {
+        type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
+        attackerIds: [attacker.instanceId], targetIds: [throne.instanceId],
+      }, makeCtx({ catalog: [parapetHull] }))
+      if (!r.ok) throw new Error(r.error)
+      const battle = r.game.state.activeBattle
+      expect(battle?.summons.map((s) => s.name)).toEqual(['Parapet'])
+      expect(battle?.defenderIds).toHaveLength(2)
+    })
+  })
+
+  describe('onyxThroneActivate', () => {
+    const heavy = snap({ name: 'Nimbus', faction: 'GT', vehicleType: 'airship', materialCost: 530_000 })
+    const light = snap({ name: 'Warbird', faction: 'GT', vehicleType: 'airship', materialCost: 190_000 })
+
+    it('draws a GT airship from the heavy half of the pool only', () => {
+      const game = makeGame()
+      const ok = effectFor('onyxThroneActivate')!({
+        game, actor: 'a', card: inst({ name: 'The Onyx Throne' }),
+        ctx: makeCtx({ catalog: [heavy, light] }),
+      })
+      expect(ok).toBe(true)
+      expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Nimbus'])
+    })
+
+    it('costs 1 CP through ACTIVATE_VEHICLE, once per turn', () => {
+      const game = makeGame({ turnNumber: 3 })
+      const throne = zoneEntry({
+        name: 'The Onyx Throne',
+        meta: { onActivate: 'onyxThroneActivate', activateCpCost: 1 },
+      })
+      game.state.zones[0].cards.a.push(throne)
+      const ctx = makeCtx({ catalog: [heavy, light] })
+      const r = applyAction(game, 'alice', {
+        type: 'ACTIVATE_VEHICLE', instanceId: throne.instanceId,
+      }, ctx)
+      if (!r.ok) throw new Error(r.error)
+      expect(r.game.state.resources.a.cp).toBe(2)
+      expect(r.game.privates.a.hand.map((c) => c.name)).toEqual(['Nimbus'])
+      expect(applyAction(r.game, 'alice', {
+        type: 'ACTIVATE_VEHICLE', instanceId: throne.instanceId,
+      }, ctx)).toMatchObject({ ok: false, status: 409 })
+    })
+  })
+})

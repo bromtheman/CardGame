@@ -1,9 +1,10 @@
 import {
-  AIR_STRAFE_PREDATOR_COUNT, EXCALIBUR_COST_DELTA, KEYWORDS, REPAIRMEN_READY_DRAW_MAX_COST,
-  RHEA_MAX_PLANE_COST, VEHICLE_TYPES,
+  AIR_STRAFE_PREDATOR_COUNT, CATSHARK_MATERIALS, EXCALIBUR_COST_DELTA, KEYWORDS,
+  REPAIRMEN_READY_DRAW_MAX_COST, RHEA_MAX_PLANE_COST, VEHICLE_TYPES,
 } from '../gameSettings.ts'
 import {
-  costDelta, choice, drawFromPool, enemyVehicleOptions, grant, grantKeywords, sequence, summonHulls,
+  catalogCard, costDelta, choice, drawFromPool, enemyVehicleOptions, grant, grantKeywords,
+  sequence, spawnInto, summonHulls,
 } from './primitives.ts'
 import { registerEffect } from './registry.ts'
 import type { EngineGame, Side } from '../engine/engineTypes.ts'
@@ -202,3 +203,39 @@ registerEffect(BRAVEHEART, choice({
     })
   },
 }))
+
+// ---------------------------------------------------------------------------
+// Wave 4 — DP2 (spec §4.3). Both of these fire at battle LOCK, and both guard
+// on `isParticipant`: a DP2 effect can also be reached as a forced-battle
+// bystander, and neither card's text describes a battle it is not in.
+// ---------------------------------------------------------------------------
+
+// "Whenever this vehicle participates in a fleet combat, gain 30k resources
+// this turn." Either side — a battle it participates in is a battle whatever
+// declared it (spec §7.3), so no isDefender check. "This turn" needs no rider:
+// endTurn overwrites the incoming side's materials outright.
+registerEffect('catsharkBattle', (payload) => {
+  const { battle } = payload
+  if (!battle || battle.phase !== 'lock' || !battle.isParticipant) return true
+  return grant({ materials: CATSHARK_MATERIALS })(payload)
+})
+
+// "Whenever this ship participates in a defensive battle, spawn another dryad
+// into the zone under your control." A BOARD spawn, not a battle summon —
+// "spawn ... into the zone" is spec §4.4's wording for the permanent kind — so
+// the new hull enters zone.cards and does NOT join the battle in progress.
+//
+// It carries the same trigger, so it will spawn again in a later defensive
+// battle it takes part in. That compounding is the card; nothing here caps it.
+// Within ONE lock it cannot re-trigger, because the dispatch walks a roster
+// snapshotted before any effect runs (battleTriggers.ts).
+registerEffect('dryadBattle', ({ game, actor, ctx, battle }) => {
+  if (!battle || battle.phase !== 'lock' || !battle.isParticipant || !battle.isDefender) return true
+  const snapshot = catalogCard(ctx, 'Dryad')
+  // A card missing from the catalog is a data bug, not an empty pool — the
+  // same contract spawnVehicles and summonHulls both use.
+  if (!snapshot) return false
+  if (!spawnInto(game, ctx, actor, battle.zoneId, snapshot)) return false
+  game.state.log.push(`Another Dryad takes root in zone ${battle.zoneId}`)
+  return true
+}, { needsCatalog: true })
