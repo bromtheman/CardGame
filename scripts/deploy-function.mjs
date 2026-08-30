@@ -15,8 +15,15 @@
 //                           token from https://supabase.com/dashboard/account/tokens
 //   SUPABASE_PROJECT_REF    optional, defaults to the project in docs/claude/supabase.md
 //
-// The token is read from the environment and never printed, logged, or
-// written anywhere. Nothing else in this script touches secrets.
+// Both are read from the process environment first and, failing that, from
+// `.env.local` at the REPO ROOT — the directory holding this `scripts/` folder,
+// which is the worktree root when run from one. Deliberately NOT
+// `frontend/.env.local`: that file holds only the publishable anon key and is a
+// browser bundle's input, so a management token must never live there.
+//
+// The token is never printed, logged, or written anywhere, and `.env.local` is
+// covered by `.gitignore`'s `.env.*`. Nothing else in this script touches
+// secrets.
 //
 // verify_jwt defaults to FALSE, which is correct for every function in this
 // repo: all three do their own getUser() auth check and CORS handling in
@@ -24,7 +31,7 @@
 // stops being true — turning it on breaks every client call in production.
 
 import { readFile } from 'node:fs/promises'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -41,6 +48,36 @@ function die(message) {
   console.error(`\n  ✗ ${message}\n`)
   process.exit(1)
 }
+
+// Minimal `.env.local` reader: `KEY=value`, `export KEY=value`, optional
+// surrounding quotes, `#` comments and blank lines skipped. Deliberately not a
+// dotenv dependency — this reads one file, for two known keys, and a parser
+// that silently mangles a token is worse than none.
+//
+// The process environment WINS, so `$env:SUPABASE_ACCESS_TOKEN = "..."` still
+// overrides the file exactly as it did before.
+function readEnvLocal(dir) {
+  const file = path.join(dir, '.env.local')
+  if (!existsSync(file)) return {}
+  const out = {}
+  for (const raw of readFileSync(file, 'utf8').split(/\r?\n/)) {
+    const line = raw.trim()
+    if (line === '' || line.startsWith('#')) continue
+    const eq = line.indexOf('=')
+    if (eq < 1) continue
+    const key = line.slice(0, eq).replace(/^export\s+/, '').trim()
+    let value = line.slice(eq + 1).trim()
+    if ((value.startsWith('"') && value.endsWith('"')) ||
+        (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1)
+    }
+    if (key) out[key] = value
+  }
+  return out
+}
+
+const fileEnv = readEnvLocal(ROOT)
+const envValue = (key) => process.env[key] || fileEnv[key] || ''
 
 if (!fnName) {
   die('Usage: node scripts/deploy-function.mjs <function-name> [--dry-run] [--verify-jwt]')
@@ -89,15 +126,20 @@ if (dryRun) {
 
 // ------------------------------------------------------------------- deploy
 
-const token = process.env.SUPABASE_ACCESS_TOKEN
+const token = envValue('SUPABASE_ACCESS_TOKEN')
 if (!token) {
   die('SUPABASE_ACCESS_TOKEN is not set.\n' +
-      '    Create one at https://supabase.com/dashboard/account/tokens, then:\n' +
+      '    Create one at https://supabase.com/dashboard/account/tokens, then EITHER\n' +
+      '    put it in .env.local at the REPO ROOT (gitignored via .env.*):\n' +
+      '      SUPABASE_ACCESS_TOKEN=sbp_...\n' +
+      '    or set it in the environment, which takes precedence:\n' +
       '      export SUPABASE_ACCESS_TOKEN=sbp_...      (bash)\n' +
       '      $env:SUPABASE_ACCESS_TOKEN = "sbp_..."    (PowerShell)\n' +
-      '    The script reads it from the environment and never prints or stores it.')
+      '    The repo root, NOT frontend/.env.local — that one is a browser bundle\n' +
+      '    input and holds only the publishable anon key.\n' +
+      '    Either way the value is never printed or stored by this script.')
 }
-const projectRef = process.env.SUPABASE_PROJECT_REF || DEFAULT_PROJECT_REF
+const projectRef = envValue('SUPABASE_PROJECT_REF') || DEFAULT_PROJECT_REF
 
 const form = new FormData()
 form.append('metadata', JSON.stringify({

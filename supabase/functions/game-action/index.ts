@@ -109,7 +109,18 @@ Deno.serve(async (req) => {
   // just been asked for its second phase (spec §4.7).
   if (engineGame.state.pendingEffect) candidates.push(engineGame.state.pendingEffect.card)
 
-  if (candidates.some(wantsCatalog)) {
+  // Fourth source (wave 4): a persistent zone claim keeps firing long after its
+  // card was spent, so it is in none of the three above — not in a hand, not on
+  // the field, and not the pending card until it has already suspended once.
+  // DWG Waters is the case: its battle-time riders mint a guest hull out of the
+  // catalog, and both would resolve against an empty one. The entry stores the
+  // registry name directly, so this needs no card lookup — it asks
+  // CATALOG_EFFECTS about the name itself.
+  const zoneEffectWantsCatalog = engineGame.state.zoneEffects.some(
+    (e) => typeof e.effect === 'string' && CATALOG_EFFECTS.has(e.effect.trim()),
+  )
+
+  if (zoneEffectWantsCatalog || candidates.some(wantsCatalog)) {
     const { data: cardRows, error: catalogError } = await admin.from('cards').select('*').eq('is_built_in', true)
     if (catalogError) return json(500, { errors: ['Failed to load the card catalog'] })
     catalog = (cardRows ?? []).map(snapshotCard)

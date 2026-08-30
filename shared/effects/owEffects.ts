@@ -1,12 +1,13 @@
 import {
-  choice, drawFromPool, enemyVehicleOptions, grant, grantKeywords, spawnVehicles, whenPlayed, zoneOccupants,
+  choice, drawFromPool, enemyVehicleOptions, grant, grantKeywords, sacrificeToSave,
+  spawnVehicles, summonHulls, whenPlayed, zoneOccupants,
 } from './primitives.ts'
 import { registerEffect } from './registry.ts'
-import { GT_HEAVY_AIRSHIP_MIN_COST, KEYWORDS } from '../gameSettings.ts'
+import { GT_HEAVY_AIRSHIP_MIN_COST, KEYWORDS, VEHICLE_TYPES } from '../gameSettings.ts'
 import type { ZoneCardEntry } from '../engine/engineTypes.ts'
-import { copyMeta, otherSide, zoneById } from '../engine/gameEngine.ts'
+import { copyMeta, zoneById } from '../engine/gameEngine.ts'
 import { moveEntry } from '../engine/heroPowers.ts'
-import { declareForcedBattle } from '../engine/battleDeclare.ts'
+import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
 
 // OW built-in card effects. Cards whose faction is GT but whose seed row
 // lives in OW-Built-in.js are registered here too.
@@ -83,6 +84,13 @@ const gtHeavyAirship = drawFromPool({
   filter: { faction: 'GT', vehicleType: 'airship', minCost: GT_HEAVY_AIRSHIP_MIN_COST },
   count: 1,
 })
+// The Onyx Throne's second clause (DP1): "Once per turn, you may pay 1cp to
+// draw a GT heavy airship card." Same pool half Special Foundries' heavy
+// option draws from, filtered on faction + vehicleType + the §7.3 cost cliff —
+// never on the GT_AIRSHIP / GT_HEAVY_AIRSHIP source-file grouping arrays,
+// which misreport at least two cards' faction and type.
+registerEffect('onyxThroneActivate', gtHeavyAirship, { needsCatalog: true })
+
 registerEffect(SPECIAL_FOUNDRIES, choice({
   effect: SPECIAL_FOUNDRIES,
   prompt: 'Draw from which GT airship pool?',
@@ -92,6 +100,57 @@ registerEffect(SPECIAL_FOUNDRIES, choice({
   ],
   resolve: (payload, choiceId) => (choiceId === 'heavy' ? gtHeavyAirship(payload) : gtLightAirship(payload)),
 }), { needsCatalog: true })
+
+// Wave 4, DP2 (spec §4.3). "Whenever this vehicle would partake in a defensive
+// battle, spawn an allied Parapet alongside it for that battle" — the card
+// text's missing noun is authored in spec §7.2, and "for that battle" is what
+// makes it a battle SUMMON rather than a free 259k hull every time.
+//
+// It joins the battle that already exists rather than declaring one:
+// declareForcedBattle refuses outright while state.activeBattle is non-null,
+// and at lock it always is. joinBattle (battleDeclare.ts) is the only function
+// that appends to a battle in progress.
+//
+// isParticipant, because a DP2 effect can also be reached as a forced-battle
+// bystander; isDefender, because the text says "defensive".
+registerEffect('onyxThroneBattle', ({ game, actor, ctx, card, battle }) => {
+  if (!battle || battle.phase !== 'lock' || !battle.isParticipant || !battle.isDefender) return true
+  const hulls = summonHulls(game, ctx, 'Parapet', 1)
+  if (!hulls) return false
+  const [parapet] = hulls
+  if (!joinBattle(game, actor, parapet.instanceId, parapet)) return false
+  game.state.log.push(`A Parapet stands alongside ${card.name} in zone ${battle.zoneId}`)
+  return true
+}, { needsCatalog: true })
+
+const IRON_CORDON = 'ironCordonBattle'
+
+// "Whenever this vehicle survives a battle in which an allied GT airship is
+// destroyed, you may sacrifice this vehicle to save that airship."
+//
+// "GT airship" unqualified is the whole fourteen-card pool — faction GT,
+// vehicleType airship — not the eight heavy ones (spec §7.3). The Onyx
+// Throne's own second clause says "GT heavy airship" and means the eight,
+// which is what makes the distinction deliberate rather than sloppy.
+//
+// Saving it does NOT unwind the airship's onDeathEffect: that fired earlier in
+// the same DECIDE_BATTLE_REPORT, before this trigger could run, and stands
+// (spec §4.3, DP2 departure 7).
+const ironCordonSave = sacrificeToSave({
+  effect: IRON_CORDON,
+  prompt: 'Sacrifice Iron Cordon to save a destroyed GT airship?',
+  eligible: (battle, actor) => battle.casualties.filter((c) =>
+    c.side === actor &&
+    c.entry.faction === 'GT' &&
+    c.entry.vehicleType === VEHICLE_TYPES.AIRSHIP),
+})
+
+registerEffect(IRON_CORDON, (payload) => {
+  if (payload.resolution !== undefined) return ironCordonSave(payload)
+  const { battle } = payload
+  if (!battle || battle.phase !== 'resolve' || !battle.isParticipant || !battle.survived) return true
+  return ironCordonSave(payload)
+})
 
 // "Spawn two parapets into a zone. They gain Inoffensive, Scrappy, and blocker
 // keywords." Keywords come from the summoning card, not the Parapet row —
@@ -139,7 +198,7 @@ const trebuchetChoice = choice({
     // still ends quietly) without a suspension. This IS "you may": declining
     // via `cancel` on a non-empty offer is the other half.
     if (choiceId === null) return true
-    const { game, actor, card } = payload
+    const { game, actor, card, ctx } = payload
     const zoneId = payload.pending?.data?.zoneId
     if (typeof zoneId !== 'number') return false
     // Re-confirm the target is still legal — RESOLVE_PENDING_EFFECT's own
@@ -148,18 +207,18 @@ const trebuchetChoice = choice({
     // this server-side re-check are trusted, the same guard Braveheart and
     // Eclipse both carry (docs/claude/card-effects.md).
     if (!enemyVehicleOptions(game, actor, zoneId).some((o) => o.id === choiceId)) return false
-    return declareForcedBattle(game, {
+    return declareForcedBattle(game, ctx, {
       zoneId,
       aggressor: actor,
       attackerIds: [card.instanceId],
       defenderIds: [choiceId],
       cause: card.name,
       // Names itself: DECIDE_BATTLE_REPORT re-enters TREBUCHET with this once
-      // the battle resolves (spec §4.3, departure 3). zoneId and defenderIds
-      // are stashed here, at declare time, because entry (c) below has no
-      // other route back to either — continuation carries no targetZoneId of
-      // its own, and outcome HP is never plumbed onto any payload.
-      continuation: { effect: TREBUCHET, side: actor, card, data: { zoneId, defenderIds: [choiceId] } },
+      // the battle resolves (spec §4.3, departure 3). Only zoneId is stashed:
+      // entry (c) has no other route back to it, but the win/survive test now
+      // comes off the engine's own outcome rather than a declare-time
+      // defenderIds snapshot — see (c) below.
+      continuation: { effect: TREBUCHET, side: actor, card, data: { zoneId } },
     })
   },
 })
@@ -169,25 +228,26 @@ registerEffect(TREBUCHET, (payload) => {
 
   // (c): the battle this card forced has just resolved. activeBattle is
   // already null (DECIDE_BATTLE_REPORT nulls it before firing the
-  // continuation), so the whole win test reads off zone.cards — no outcome
-  // plumbing needed, and nothing to invent for "fully heal it" (spec §7.3):
-  // Trebuchet's own printed SCRAPPY already repairs it free across the whole
-  // 80-89.999% band. "Damaged beyond repair" means destroyed, not merely
-  // damaged, so a Scrappy-repaired survivor still gets the repeat.
-  const { game, continuation } = payload
+  // continuation), so the outcome arrives on `payload.battle` — the SAME
+  // BattleContext the resolve triggers were handed, scoped to this hull.
+  //
+  // Wave 4 replaced the previous test, which asked whether every defender
+  // stashed at DECLARE time was gone from the zone. That was correct while a
+  // battle's roster could not change after it locked; Terawatt's join broke it
+  // — a defender that joined afterwards was invisible to the stash, so
+  // Trebuchet scored a battle it had lost as a clean win and took a free
+  // repeat. `battle.won` is computed over the battle's FINAL roster.
+  //
+  // Nothing to invent for "fully heal it" (spec §7.3): Trebuchet's own printed
+  // SCRAPPY already repairs it free across the whole 80-89.999% band. "Damaged
+  // beyond repair" means destroyed, not merely damaged, so a Scrappy-repaired
+  // survivor still gets the repeat — which `survived` already reflects,
+  // because it is computed after repairs.
+  const { game, continuation, battle } = payload
   const zoneId = continuation.data?.zoneId
-  const defenderIds = continuation.data?.defenderIds
-  if (typeof zoneId !== 'number' || !Array.isArray(defenderIds)) return true
-  const zone = zoneById(game.state, zoneId)
-  if (!zone) return true
-  // Survived: Trebuchet itself is still on its own side of the zone.
-  const survived = zone.cards[continuation.side].some((c) => c.instanceId === continuation.card.instanceId)
-  if (!survived) return true // damaged beyond repair — no repeat
-  // Won: every defender stashed at declare time is gone from the enemy's
-  // side of the same zone.
-  const enemy = otherSide(continuation.side)
-  const won = defenderIds.every((id) => typeof id === 'string' && !zone.cards[enemy].some((c) => c.instanceId === id))
-  if (!won) return true // a defender is still standing — no repeat
+  if (typeof zoneId !== 'number') return true
+  if (!zoneById(game.state, zoneId)) return true
+  if (!battle || !battle.survived || !battle.won) return true
   // A clean win: re-offer (a)'s choice in the same zone. The repeat is
   // unbounded but self-limiting (spec §7.3) — nothing here caps it; an empty
   // zone just lets the choice above's own empty-options rule end it quietly.

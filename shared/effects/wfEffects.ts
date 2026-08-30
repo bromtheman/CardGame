@@ -65,7 +65,7 @@ registerEffect('martyrAttackEffect', ({ game, actor, ctx, targetInstanceId, card
   const count = boosted ? MARTYR_ATTACK_BOOSTED_COUNT : MARTYR_ATTACK_COUNT
   const summons = summonHulls(game, ctx, 'Martyr', count)
   if (!summons) return false
-  return declareForcedBattle(game, {
+  return declareForcedBattle(game, ctx, {
     zoneId: found.zone.id,
     aggressor: actor,
     attackerIds: summons.map((s) => s.instanceId),

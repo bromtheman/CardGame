@@ -18,10 +18,6 @@ const EXEMPT: Record<string, string> = {
 // lands — the "KNOWN_GAPS contains no stale entries" test below rejects
 // stale ones, so this list only shrinks.
 const KNOWN_GAPS: Record<string, string> = {
-  'SS:Catshark': 'wave 4', 'SS:Dryad': 'wave 4', 'OW:The Onyx Throne': 'wave 4',
-  'SS:Sacrilego': 'wave 4', 'OW:Iron Cordon': 'wave 4', 'LH:Terawatt': 'wave 4',
-  'WF:Buzzsaw': 'wave 4', 'WF:Veles': 'wave 4',
-
   'WF:Ambush': 'wave 5', 'DWG:Ongoing Attrition': 'wave 5', 'OW:Sub Killer': 'wave 5',
   'DWG:Recurring Threat': 'wave 5', 'OW:Sabotage': 'wave 5',
 }
@@ -31,12 +27,10 @@ const KNOWN_GAPS: Record<string, string> = {
 // not "does all of the text work?", so it cannot see these, and they cannot
 // go in KNOWN_GAPS without tripping the stale-entry assertion. Delete an
 // entry when its wave finishes the card.
-const PARTIAL: Record<string, string> = {
-  'DWG:Plunderer':
-    'wave 4 — clause 2 (survive a victorious fleet battle, or damage the enemy base, then draw from the enemy deck) needs a battle-resolve and base-attack hook. Its costModifier is implemented.',
-  'DWG:DWG Waters':
-    'wave 4 — clauses 2-3 need a battle-declare dispatch point. Its persistent zone claim is implemented.',
-}
+// Empty as of wave 4: both entries (Plunderer's clause 2, DWG Waters'
+// clauses 2-3) were closed by the wave that owned them. The assertion below
+// still runs over it, so the next partly-built card has a home ready.
+const PARTIAL: Record<string, string> = {}
 
 // cardText is optional on SeedCard, so it must be optional here too.
 function classify(card: { faction: string; name: string; cardText?: string; meta?: unknown }) {
@@ -89,10 +83,22 @@ function classify(card: { faction: string; name: string; cardText?: string; meta
 // (shared/engine/activate.ts) dispatches it for a hull already on the board,
 // which only a vehicle can be. It is deliberately absent from the ability
 // row — an ability is spendCard'd on resolution and never enters zone.cards.
+// Wave 4 adds the three DP2 keys to the vehicle row, ahead of the first card
+// that names one — the ordering wave 2 used for onActivate and wave 3 for
+// playOnCardEffect. G3 skips any card still in KNOWN_GAPS, so this table only
+// bites the moment a card is closed, and the failure then reads as "this card
+// is mis-wired" rather than "the table is out of date".
+//
+// They are deliberately absent from the `ability` row. An ability is
+// spendCard'd on resolution and never enters zone.cards, so it can never be a
+// battle participant. DWG Waters is the apparent exception and is not one: its
+// battle-time riders fire from state.zoneEffects, dispatched by the registry
+// name that entry already stores, under its existing playOnZoneEffect key —
+// so no ability carries a DP2 key (spec §4.3, DP2 departure 2).
 const REACHABLE_TRIGGERS: Record<string, readonly string[]> = {
   vehicle: [
     'onPlayEffect', 'playOnZoneEffect', 'onDeathEffect', 'costModifier', 'onActivate',
-    'playOnCardEffect',
+    'playOnCardEffect', 'onBattleEffect', 'onBattleVictory', 'onBattleDefeat',
   ],
   ability: ['onPlayEffect', 'playOnZoneEffect', 'playOnVehicleEffect', 'playOnCardEffect', 'costModifier'],
 }
@@ -152,11 +158,12 @@ describe('built-in card effect coverage', () => {
     expect(stale).toEqual([])
   })
 
-  it('waves 1, 2 and 3 are complete — no wave-1, wave-2 or wave-3 entries remain', () => {
-    expect(Object.values(KNOWN_GAPS).filter((w) => w.startsWith('wave 1'))).toEqual([])
-    expect(Object.values(KNOWN_GAPS).filter((w) => w.startsWith('wave 2'))).toEqual([])
-    expect(Object.values(KNOWN_GAPS).filter((w) => w.startsWith('wave 3'))).toEqual([])
-    expect(Object.keys(KNOWN_GAPS)).toHaveLength(13)
+  it('waves 1-4 are complete — only wave-5 entries remain', () => {
+    for (const wave of ['wave 1', 'wave 2', 'wave 3', 'wave 4']) {
+      expect(Object.values(KNOWN_GAPS).filter((w) => w.startsWith(wave))).toEqual([])
+      expect(Object.values(PARTIAL).filter((w) => w.startsWith(wave))).toEqual([])
+    }
+    expect(Object.keys(KNOWN_GAPS)).toHaveLength(5)
   })
 
   it('PARTIAL names real cards that currently pass G1 and G2, and never overlaps KNOWN_GAPS', async () => {

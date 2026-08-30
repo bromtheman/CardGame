@@ -1,6 +1,8 @@
-import { describe, expect, it } from 'vitest'
-import { applyAction } from './index'
-import { makeGame, zoneEntry } from './testFixtures'
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { applyAction, baseDamageFrom, baseStrikersIn } from './index'
+import { registerEffect } from '../effects/registry'
+import type { ZoneCardEntry } from './engineTypes'
+import { makeCtx, makeGame, zoneEntry } from './testFixtures'
 
 function armed(over: Record<string, unknown> = {}) {
   const g = makeGame({ turnNumber: 3 })
@@ -58,5 +60,87 @@ describe('ATTACK_ENEMY_BASE', () => {
     const r = applyAction(g, 'alice', { type: 'ATTACK_ENEMY_BASE', zoneId: 1 })
     if (!r.ok) throw new Error(r.error)
     expect(r.game.state.zones[0].baseHp.b).toBe(1000 - 40) // floor(40000/1000)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Wave 4: a bombardment is not a battle, but it is the other half of
+// Plunderer's one clause, so ATTACK_ENEMY_BASE dispatches onBattleVictory
+// (spec §4.3, DP2 departure 5).
+// ---------------------------------------------------------------------------
+
+let raided: { card: string; phase: string; won: boolean; survived: boolean }[] = []
+
+beforeAll(() => {
+  registerEffect('t_raidSpy', ({ card, battle }) => {
+    raided.push({
+      card: card.name,
+      phase: battle?.phase ?? 'none',
+      won: battle?.won ?? false,
+      survived: battle?.survived ?? false,
+    })
+    return true
+  })
+})
+
+beforeEach(() => { raided = [] })
+
+const raider = (over: Partial<ZoneCardEntry> = {}) =>
+  zoneEntry({ materialCost: 40000, playedOnTurn: 2, meta: { onBattleVictory: 't_raidSpy' }, ...over })
+
+describe('DP2 on a base bombardment', () => {
+  it('fires onBattleVictory for a contributing vehicle, in the baseAttack phase', () => {
+    const g = makeGame({ turnNumber: 3 })
+    g.state.zones[0].cards.a.push(raider({ name: 'Plunderer' }))
+    const r = applyAction(g, 'alice', { type: 'ATTACK_ENEMY_BASE', zoneId: 1 }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(raided).toEqual([{ card: 'Plunderer', phase: 'baseAttack', won: true, survived: true }])
+  })
+
+  // baseStrikersIn's roster, not everything standing in the zone: a hull that
+  // dealt no damage did not inflict damage to the enemy base.
+  it('does not fire for a sub, an Inoffensive hull, or one played this turn', () => {
+    const g = makeGame({ turnNumber: 3 })
+    g.state.zones[0].cards.a.push(
+      raider({ name: 'Striker' }),
+      raider({ name: 'Diver', vehicleType: 'sub' }),
+      raider({ name: 'Pacifist', keywords: ['inoffensive'] }),
+      raider({ name: 'Rookie', playedOnTurn: 3 }),
+    )
+    const r = applyAction(g, 'alice', { type: 'ATTACK_ENEMY_BASE', zoneId: 1 }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(raided.map((x) => x.card)).toEqual(['Striker'])
+  })
+
+  it('does not fire when a Blocker refuses the bombardment', () => {
+    const g = makeGame({ turnNumber: 3 })
+    g.state.zones[0].cards.a.push(raider({ name: 'Plunderer' }))
+    g.state.zones[0].cards.b.push(zoneEntry({ keywords: ['blocker'] }))
+    expect(applyAction(g, 'alice', { type: 'ATTACK_ENEMY_BASE', zoneId: 1 }, makeCtx()))
+      .toMatchObject({ ok: false, status: 400 }) // an enemy Blocker protects that base
+    expect(raided).toEqual([])
+  })
+
+  // An eligible striker too cheap to round up to a single point of damage: the
+  // roster is non-empty but the bombardment is still refused, so this is the
+  // only case that pins the dispatch BELOW the damage check rather than above
+  // it. Every other refusal returns before the roster is even built.
+  it('does not fire when an eligible striker deals no damage', () => {
+    const g = makeGame({ turnNumber: 3 })
+    g.state.zones[0].cards.a.push(raider({ name: 'Dinghy', materialCost: 500 }))
+    expect(baseStrikersIn(g.state.zones[0].cards.a as ZoneCardEntry[], 3)).toHaveLength(1)
+    expect(applyAction(g, 'alice', { type: 'ATTACK_ENEMY_BASE', zoneId: 1 }, makeCtx()))
+      .toMatchObject({ ok: false, status: 400 }) // floor(500/1000) === 0
+    expect(raided).toEqual([])
+  })
+
+  it('agrees with baseDamageFrom about who strikes', () => {
+    const entries = [
+      raider({ name: 'Striker' }),
+      raider({ name: 'Diver', vehicleType: 'sub' }),
+      raider({ name: 'Rookie', playedOnTurn: 3 }),
+    ]
+    expect(baseStrikersIn(entries, 3).map((c) => c.name)).toEqual(['Striker'])
+    expect(baseDamageFrom(entries, 3)).toBe(40)
   })
 })

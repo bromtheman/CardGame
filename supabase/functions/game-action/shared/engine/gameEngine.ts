@@ -80,6 +80,17 @@ export function registerHandler(type: GameAction['type'], handler: Handler) {
   handlers.set(type, handler)
 }
 
+// Every action type applyAction can dispatch: the registry's keys plus the
+// three handled inline below. Exported for one reason — shared/engine/
+// battleFreeze.test.ts asserts that its rejection sweep covers all of them, so
+// a future action type cannot be added without that suite noticing it was
+// never tested against the two freezes. `tsc` cannot serve that role here: the
+// root tsconfig excludes **/*.test.ts, so a compile-time exhaustiveness check
+// in a test file is never actually checked.
+export function knownActionTypes(): GameAction['type'][] {
+  return [...handlers.keys(), 'END_TURN', 'CONCEDE', 'ABANDON']
+}
+
 // Defensive shape-repair for rows created before this phase (or by an older
 // deployed lobby-action): missing fields become their empty defaults so the
 // freeze check and handlers never trip over `undefined`.
@@ -103,10 +114,16 @@ export function normalizeState(state: PublicGameState): void {
       }
     }
   }
-  // Nested defaulting for a live mid-battle row (spec §4.4): summons and
-  // continuation did not exist before this wave, so a battle declared by
-  // older code has neither. Guarded on a truthy activeBattle — a null one
+  // Nested defaulting on live rows, guarded on a truthy parent — a null one
   // (already normalized above) is left alone, never dereferenced.
+  //
+  // omissibleIds did not exist before wave 4, so an attack declared by older
+  // code has none (spec §4.8).
+  if (state.awaitingResponse) {
+    const pending = state.awaitingResponse as Partial<NonNullable<PublicGameState['awaitingResponse']>>
+    if (pending.omissibleIds === undefined) pending.omissibleIds = []
+  }
+  // summons and continuation did not exist before wave 3 (spec §4.4).
   if (state.activeBattle) {
     const battle = state.activeBattle as Partial<NonNullable<PublicGameState['activeBattle']>>
     if (battle.summons === undefined) battle.summons = []
@@ -182,17 +199,19 @@ export function copyMeta(meta: Record<string, unknown>): Record<string, unknown>
 // home to an owner other than its controller; a card that was never captured
 // carries no `ownerSide` to strip. Printed meta (`additionalSpawns` and
 // friends) is card data and stays.
-export function discardCard(game: EngineGame, controller: Side, card: CardInstance): void {
+// The snapshot form a card takes on its way out of play: per-entry stamps
+// removed, captor stamps stripped. Extracted so exactly one derivation exists —
+// discardCard writes it, and reviveEntry (shared/engine/battleTriggers.ts)
+// rebuilds it to find which pile entry belongs to a hull it is bringing back.
+// A second, drifting copy of this logic would let a revive remove the wrong
+// snapshot.
+export function discardSnapshotOf(card: CardInstance, controller: Side): SnapshotCard {
   // Every per-entry stamp must be named here. TypeScript does NOT catch one you
   // forget — extra properties in a rest spread are legal — so it would ride
   // into state.destroyed and, via reshuffleDiscard, into a deck.
   const {
     instanceId: _instanceId, playedOnTurn: _p, movedOnTurn: _m, activatedOnTurn: _a, ...snapshot
   } = card as ZoneCardEntry
-  // Summon-only cards are spawned, never drafted (spec §7.1). They must never
-  // reach a discard, because that is a deck's back door. This is the single
-  // exit out of play, so guarding it here covers every path at once.
-  if (isSummonOnly(card)) return
   const owner = ownerSideOf(card, controller)
   const { costDelta: _costDelta, ...withoutCostDelta } = snapshot.meta
   snapshot.meta = withoutCostDelta
@@ -200,7 +219,15 @@ export function discardCard(game: EngineGame, controller: Side, card: CardInstan
     const { ownerSide: _ownerSide, ...meta } = snapshot.meta
     snapshot.meta = meta
   }
-  game.state.destroyed[owner].push(snapshot as SnapshotCard)
+  return snapshot as SnapshotCard
+}
+
+export function discardCard(game: EngineGame, controller: Side, card: CardInstance): void {
+  // Summon-only cards are spawned, never drafted (spec §7.1). They must never
+  // reach a discard, because that is a deck's back door. This is the single
+  // exit out of play, so guarding it here covers every path at once.
+  if (isSummonOnly(card)) return
+  game.state.destroyed[ownerSideOf(card, controller)].push(discardSnapshotOf(card, controller))
 }
 
 export function checkVictory(game: EngineGame): void {
@@ -314,22 +341,33 @@ export function applyAction(
   if (game.state.pendingEffect !== null && !PENDING_ACTIONS.has(action.type)) {
     return err(409, 'A card effect is waiting on a choice — resolve it first')
   }
-  // Defence for a state that should be unreachable today: pendingEffect and
-  // battleFrozen both set at once. If that ever happened, an action the
-  // pending check above already admitted (RESOLVE_PENDING_EFFECT, including
-  // { cancel: true } — the escape hatch that exists precisely to unstick a
-  // stranded game) must not be rejected here too, or CONCEDE/ABANDON would be
-  // the only actions left for either player. This does not widen
-  // BATTLE_ACTIONS itself, and changes nothing when only one freeze is set:
-  // pendingAdmitted is false whenever pendingEffect is null, so the lone-
-  // battleFrozen case is exactly what it was before.
+  // pendingEffect and battleFrozen may BOTH be set at once. Wave 4 made that
+  // ordinary rather than hypothetical: DP2 fires at battle lock, and two cards
+  // suspend there — Terawatt's join and DWG Waters' clause-2 summon — so the
+  // choice is written while the activeBattle that raised it still stands
+  // (spec §4.3, DP2 departure 3; decision 19). An earlier version of this
+  // comment argued the state was unreachable, on the grounds that
+  // DECIDE_BATTLE_REPORT nulls activeBattle before firing any effect. That
+  // argument only ever covered the RESOLVE half of the battle lifecycle; the
+  // lock half now reaches it directly.
   //
-  // Why the both-set state cannot happen today: the only action that can
-  // dispatch an effect while battleFrozen is DECIDE_BATTLE_REPORT, and it
-  // nulls activeBattle and pendingReport BEFORE firing the continuation
-  // (battleResolve.ts) — so by the time any effect could populate
-  // pendingEffect, battleFrozen is already false. That ordering is the one
-  // invariant this whole guard depends on.
+  // Three properties, all of which predate wave 4, are what make it safe — and
+  // shared/engine/battleFreeze.test.ts pins the whole sequence end to end:
+  //   1. The pendingEffect check above runs FIRST and admits only
+  //      PENDING_ACTIONS, so the battle actions BATTLE_ACTIONS would otherwise
+  //      allow (SUBMIT/DECIDE_BATTLE_REPORT, USE_HERO_POWER) stay rejected
+  //      while a choice is owed.
+  //   2. pendingAdmitted below stops this battle check from ALSO rejecting the
+  //      one action that can clear the slot — RESOLVE_PENDING_EFFECT, including
+  //      { cancel: true }, the escape hatch that exists precisely to unstick a
+  //      stranded game. Without it, CONCEDE/ABANDON would be all that is left.
+  //   3. RESOLVE_PENDING_EFFECT is an OFF_TURN_ACTION, which is what lets the
+  //      DEFENDER answer a lock-time choice on the aggressor's turn.
+  // Once answered or declined, pendingEffect is null and the battle is
+  // reportable exactly as it would have been. This does not widen
+  // BATTLE_ACTIONS, and changes nothing when only one freeze is set:
+  // pendingAdmitted is false whenever pendingEffect is null, so the
+  // lone-battleFrozen case is byte-identical to what it always was.
   const pendingAdmitted = game.state.pendingEffect !== null && PENDING_ACTIONS.has(action.type)
   if (battleFrozen(game.state) && !BATTLE_ACTIONS.has(action.type) && !pendingAdmitted) {
     return err(409, 'A battle is in progress — resolve it first')

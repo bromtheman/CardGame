@@ -39,6 +39,48 @@ frontend (supabase-js) ──invoke──> edge function ──applyAction──
   once-per-turn ability that suspends cannot be re-entered through a second
   activation. A card needs *both* `onActivate` and `activateCpCost` or it has no
   activated ability at all (see [card-effects.md](card-effects.md)).
+- **DP2, the battle triggers (`shared/engine/battleTriggers.ts`).** Built in
+  wave 4. It registers no handler; three existing seams call it —
+  `battleDeclare.ts` at lock, `battleResolve.ts` at resolve, `baseAttack.ts` on
+  a bombardment. Effects receive a `BattleContext` on `payload.battle`
+  (`phase`, `zoneId`, `isDefender`, `isParticipant`, `forced`, `survived`,
+  `won`, `casualties`), and its presence is the only thing distinguishing a
+  battle trigger from an ordinary play — the role `continuation` plays for
+  Trebuchet. `casualties` is resolve-only and is the **sole** route to "which
+  hulls died here, at what HP": by then `activeBattle` and `pendingReport` are
+  null and `state.destroyed` holds bare snapshots.
+  - **Lock has three sources**, in this order: every participant on both sides
+    (summons included); then, **only for a forced battle**, the defending
+    side's non-participants in that zone whose effect registered
+    `{ battleBystander: true }` (Terawatt alone); then `state.zoneEffects`
+    riders on that zone for the defending side (DWG Waters alone). The
+    bystander flag is what keeps every other battle trigger out of that pass,
+    so no other card needs an `isParticipant` guard it could forget.
+  - **Resolve** fires `onBattleEffect` for every participant, plus
+    `onBattleVictory`/`onBattleDefeat` per side outcome — **after** the death
+    triggers (so Iron Cordon can see a destroyed airship already in
+    `state.destroyed`) and **before** the continuation (so Trebuchet still runs
+    last). The continuation now receives the same `BattleContext`, which is
+    what stopped it re-deriving its win from a declare-time roster that
+    Terawatt's join could make stale.
+  - **`ATTACK_ENEMY_BASE`** dispatches `onBattleVictory` for exactly the hulls
+    `baseStrikersIn` says dealt damage, so Plunderer's one sentence stays one
+    implementation. It also offers the defender's zone riders an interception
+    first (`dispatchZoneInterception`) — DWG Waters' clause 3 turns the
+    bombardment into a battle and no damage lands.
+  - **One suspension per event.** There is one slot, and a battle can dispatch
+    several triggers. A second offer is **dropped** — by `choice()` itself, not
+    by the dispatcher skipping the effect, so a card with an unconditional
+    clause as well as an optional one still runs the unconditional half.
+  - `joinBattle` (`battleDeclare.ts`) is the only function that appends to a
+    battle already in progress; `declareForcedBattle` refuses outright while
+    `activeBattle` is non-null, which at lock it always is. `reviveEntry` /
+    `sacrificeEntry` / `canRevive` (`battleTriggers.ts`) are the revive
+    machinery Iron Cordon and Sacrilego share. **Always check `canRevive`
+    before offering a save**: a death trigger dispatched earlier in the same
+    `DECIDE_BATTLE_REPORT` can empty the discard (`grant({ draw: 1 })` on an
+    empty deck reshuffles the whole pile into it), and a casualty whose
+    snapshot has gone that way cannot come back.
 - `EngineContext = { rng: () => number; newId: () => string; catalog: SnapshotCard[] }`.
   Tests inject deterministic rng/ids via `testFixtures.ts` (`makeGame`, `makeCtx`).
   `game-action` injects `secureRng`, `crypto.randomUUID`, and a catalog probe
@@ -98,6 +140,16 @@ frontend (supabase-js) ──invoke──> edge function ──applyAction──
   instead. `participantsOf` (`shared/engine/battleResolve.ts`) merges on-field
   entries with `summons`, so reporting, the spawn sheet and approval read both
   uniformly; `BattleOverlay.tsx` keeps its own mirror of the same merge.
+- `awaitingResponse` — the defender's window before a fleet attack locks:
+  `{zoneId, aggressor, attackerIds, targetIds, stealthyIds, omissibleIds}`.
+  **Two** opt-out lists, not one. `stealthyIds` is unconditional (the Stealthy
+  keyword). `omissibleIds` (wave 4) holds defenders carrying
+  `meta.defensiveOmission` whose condition is met *for this attack* — Buzzsaw
+  and Veles may sit out unless the attacker's **committed selection** holds a
+  ship or tank, so it cannot be derived from the card alone and is computed in
+  `ATTACK_ENEMY_FLEET`. The window opens when **either** list is non-empty;
+  before wave 4 only Stealthy could raise it. `RESPOND_TO_ATTACK` accepts an
+  opt-out from either. Spec §4.8; `normalizeState` defaults `omissibleIds`.
 - Battle freeze: `awaitingResponse` / `activeBattle` / `pendingReport` non-null
   freezes the game to `BATTLE_ACTIONS` only. `CONCEDE`, `ABANDON`, and battle
   actions are also in `OFF_TURN_ACTIONS` (the off-turn player may owe a response).
@@ -107,14 +159,27 @@ frontend (supabase-js) ──invoke──> edge function ──applyAction──
   `battleFrozen`: `BATTLE_ACTIONS` admits `USE_HERO_POWER` and the three battle
   actions, none of which should be legal while a player owes a choice — and one
   of those three, `DECIDE_BATTLE_REPORT`, dispatches `onDeathEffect` right now.
-  So the two freezes are mutually exclusive today **not because either action
-  set is blind to effect code**, but for two narrower reasons: (a) no hero
-  power dispatches a registry effect, and (b) `DECIDE_BATTLE_REPORT` clears
-  `activeBattle`/`pendingReport` **before** firing death triggers
-  (`battleResolve.ts`), so any death effect that suspends does so only after
-  the battle freeze has already lifted. No death effect has exercised this
-  yet — none of waves 1-3 register one, and it stays open for whichever later
-  wave first does.
+  **Both freezes can be set at once, and wave 4 made that ordinary.** DP2
+  fires at battle lock, and two shipped cards suspend there — Terawatt's join
+  and DWG Waters' clause-2 summon — so `pendingEffect` is written while the
+  `activeBattle` that raised it still stands. An earlier version of this
+  section argued the state was unreachable; that argument only ever covered
+  `DECIDE_BATTLE_REPORT` (which nulls `activeBattle` before firing any effect),
+  and the *lock* half of the battle lifecycle reaches it directly.
+
+  Three properties make it safe, all of which predate wave 4:
+  (a) the `pendingEffect` check runs **first** and admits only
+  `PENDING_ACTIONS`, so `USE_HERO_POWER` and the battle actions
+  `BATTLE_ACTIONS` would otherwise allow stay rejected while a choice is owed;
+  (b) `pendingAdmitted` stops the battle check from also rejecting
+  `RESOLVE_PENDING_EFFECT` — including `{ cancel: true }`, the escape hatch
+  that exists to unstick a stranded game; (c) `RESOLVE_PENDING_EFFECT` is an
+  `OFF_TURN_ACTION`, which is what lets the **defender** answer on the
+  aggressor's turn. Answered or declined, the battle is then reportable as
+  normal. **`shared/engine/battleFreeze.test.ts` pins the whole sequence** —
+  every action type × both players — against a synthetic bystander rather than
+  through either card, so it keeps testing the invariant if both cards change.
+  Spec §4.3 DP2 departure 3, decision 19.
 
   **A battle wait is not a `pendingEffect`, and cannot be one.** The original
   design (spec §4.2) predicted a `kind: 'battle'` value on this same slot;
@@ -152,6 +217,15 @@ owner's deck, so it returns as a hand card carrying a board-only field. Nothing
 fails; it is visible only by inspecting the discard. **A new `ZoneCardEntry`
 field must be added to this destructure in the same change**, and a regression
 test driving a card through a real exit is the only net.
+
+Wave 4 extracted that derivation into `discardSnapshotOf(card, controller)`,
+which `discardCard` writes with and `reviveEntry` rebuilds to find *which* pile
+entry belongs to a hull it is bringing back. **Two snapshots of one card are
+not interchangeable**: `repairmenReadyEffect` grants SCRAPPY to a hull already
+on the board, so a plain and a Scrappy Cyclone share a `cardId` and differ in
+exactly the field that decides whether the owner gets a free upgrade back
+through `reshuffleDiscard`. Matching on `cardId` alone revived the wrong one.
+A second, drifting copy of the derivation would reopen that.
 
 This used to be two separate destructures (the cull and the death path) that
 had to be kept in step; `discardCard` collapsed them, so there is now one place
@@ -200,15 +274,6 @@ neither may crash. SS/WF/GT powers are future work (spec §10).
 
 ## Known gaps (rulings on file — don't "fix" silently)
 
-- **DP2, the battle triggers — `onBattleEffect` / `onBattleVictory` /
-  `onBattleDefeat` — are still undispatched, and are wave 4's.** Unlike every
-  other gap that has ever sat in this list, these three keys appear on **zero**
-  seeded cards today — not merely undispatched but unauthored — so wave 4 must
-  both add the dispatch point(s) and write the seed `meta` for each of its
-  eight cards; there is nothing existing to "wire up." That also means G1/G2/G3
-  cannot see them coming: a key nothing dispatches and nothing names is
-  invisible to all three guards until the first card is seeded, which is
-  exactly why they must land together.
 - Salvaged vehicles keep `meta.additionalSpawns` (ruled acceptable).
 - `placement.ts` logs "<card> resolved" / "<card> deployed" **unconditionally**,
   including when the effect suspended on a choice and the game is now frozen.

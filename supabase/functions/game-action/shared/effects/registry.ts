@@ -1,5 +1,7 @@
 import { TRIGGERS } from '../gameSettings.ts'
-import type { BattleContinuation, EngineContext, EngineGame, Side } from '../engine/engineTypes.ts'
+import type {
+  BattleContext, BattleContinuation, EngineContext, EngineGame, Side,
+} from '../engine/engineTypes.ts'
 import type { CardInstance, PendingEffect, PublicGameState } from '../engine/gameInit.ts'
 
 export interface EffectPayload {
@@ -23,6 +25,10 @@ export interface EffectPayload {
   // post-battle re-entry otherwise carry an identical payload shape — this
   // field is the only thing that lets an effect tell them apart.
   continuation?: BattleContinuation
+  // Set ONLY by the DP2 dispatch (shared/engine/battleTriggers.ts). Present on
+  // a battle trigger and absent everywhere else, so an effect that serves both
+  // a play and a battle — dwgWatersEffect does — branches on it.
+  battle?: BattleContext
 }
 export type EffectFn = (payload: EffectPayload) => boolean
 export type CostModifierFn = (state: PublicGameState, side: Side, card: CardInstance) => number
@@ -35,11 +41,21 @@ const costModifiers = new Map<string, CostModifierFn>()
 const catalogEffects = new Set<string>()
 export const CATALOG_EFFECTS: ReadonlySet<string> = catalogEffects
 
+// Effects that react to a battle their card is NOT fighting in (spec §4.3, DP2
+// departure 2). Derived from registration for the same reason CATALOG_EFFECTS
+// is — and load-bearing beyond bookkeeping: the forced-battle bystander pass
+// dispatches ONLY to members, which is what keeps every other battle trigger
+// out of it. Without the flag, all six DP2 cards would need an `isParticipant`
+// guard they could each silently forget. Terawatt is the only member today.
+const bystanderEffects = new Set<string>()
+export const BYSTANDER_EFFECTS: ReadonlySet<string> = bystanderEffects
+
 export function registerEffect(
-  name: string, fn: EffectFn, opts?: { needsCatalog?: boolean },
+  name: string, fn: EffectFn, opts?: { needsCatalog?: boolean; battleBystander?: boolean },
 ): void {
   effects.set(name, fn)
   if (opts?.needsCatalog) catalogEffects.add(name)
+  if (opts?.battleBystander) bystanderEffects.add(name)
 }
 export function registerCostModifier(name: string, fn: CostModifierFn): void { costModifiers.set(name, fn) }
 export const effectFor = (name: string): EffectFn | null => effects.get(name) ?? null
@@ -58,7 +74,12 @@ const ALL_META_KEYS = [...Object.values(TRIGGERS), 'costModifier']
 
 // Meta keys that carry plain data rather than an effect name, and which
 // satisfy a card's text on their own (spec §5).
-export const DATA_EFFECT_KEYS = ['additionalSpawns', 'resourceSurge'] as const
+// Buzzsaw and Veles carry `defensiveOmission` and no registry name at all
+// (spec §4.8): an effect returns a boolean meaning "resolved" and may mutate,
+// so using one as a pure eligibility predicate inverts this registry's
+// contract. It sits OUTSIDE TRIGGERS deliberately, so G3 never inspects it and
+// HandBar's ALL_TRIGGER_KEYS needs no change.
+export const DATA_EFFECT_KEYS = ['additionalSpawns', 'resourceSurge', 'defensiveOmission'] as const
 
 // Spec §3.9: cards referencing unimplemented effects play as vanilla, with a
 // note appended to the game log at play time. A card whose text names no
