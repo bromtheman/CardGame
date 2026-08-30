@@ -1436,10 +1436,12 @@ describe('wave 3 — forced battles', () => {
       expect(battle?.continuation?.effect).toBe('trebuchetEffect')
       expect(battle?.continuation?.side).toBe('a')
       expect(battle?.continuation?.card.instanceId).toBe('treb-1')
-      // Only the zone is stashed. The win/survive test comes off the engine's
-      // own outcome (payload.battle), not a declare-time defender snapshot —
-      // Terawatt can join after the declare, which made that snapshot stale.
-      expect(battle?.continuation?.data).toEqual({ zoneId: 1 })
+      // The zone, plus the chain's frozen eligible set. The win/survive test
+      // comes off the engine's own outcome (payload.battle) rather than a
+      // declare-time defender snapshot — Terawatt can join after the declare,
+      // which made that stale — while chainIds bounds the REPEAT, so a zone
+      // whose population grows mid-chain (Dryad) cannot feed it forever.
+      expect(battle?.continuation?.data).toEqual({ zoneId: 1, chainIds: ['foe-1'] })
     })
 
     it('5. a clean win with Trebuchet surviving >=90% re-suspends offering the remaining enemy vehicles', () => {
@@ -1493,7 +1495,13 @@ describe('wave 3 — forced battles', () => {
       }, ctx)
       if (!secondBattle.ok) throw new Error(secondBattle.error)
       expect(secondBattle.game.state.activeBattle?.defenderIds).toEqual(['foe-2'])
-      expect(secondBattle.game.state.activeBattle?.continuation?.data).toEqual({ zoneId: 1 })
+      // The chain NARROWS: each entry re-derives it as (still in the zone) ∩
+      // (already in the chain), so foe-1 — destroyed by the first battle —
+      // drops out and can never come back. That monotone shrink is what makes
+      // the repeat terminate.
+      expect(secondBattle.game.state.activeBattle?.continuation?.data).toEqual({
+        zoneId: 1, chainIds: ['foe-2', 'foe-3'],
+      })
 
       const afterSecondWin = approveReport(secondBattle.game, ctx, { 'treb-1': 95, 'foe-2': 30 })
       expect(afterSecondWin.state.pendingEffect?.effect).toBe('trebuchetEffect')
@@ -1507,7 +1515,9 @@ describe('wave 3 — forced battles', () => {
       if (!thirdBattle.ok) throw new Error(thirdBattle.error)
       expect(thirdBattle.game.state.activeBattle?.attackerIds).toEqual(['treb-1'])
       expect(thirdBattle.game.state.activeBattle?.defenderIds).toEqual(['foe-3'])
-      expect(thirdBattle.game.state.activeBattle?.continuation?.data).toEqual({ zoneId: 1 })
+      expect(thirdBattle.game.state.activeBattle?.continuation?.data).toEqual({
+        zoneId: 1, chainIds: ['foe-3'],
+      })
     })
   })
 })
@@ -2245,6 +2255,50 @@ describe('wave 4 — terawattJoin', () => {
     })).toBe(true)
     expect(game.state.activeBattle?.defenderIds).toHaveLength(2) // Throne + Parapet
     expect(game.state.pendingEffect).toBeNull()
+  })
+
+  // Regression for the second half of the same problem: Dryad board-spawns a
+  // replacement whenever it is dragged into a defensive battle, forced ones
+  // included, so a Trebuchet chain fed on Dryads never ran out of targets and
+  // spec §7.3's "terminates on the zone's population" was false. The chain is
+  // now bounded by the hulls eligible when it began, which a spawned Dryad is
+  // not — so the repeat ends even though the zone never empties.
+  it('does not let a Dryad spawned mid-chain feed Trebuchet another repeat', () => {
+    const dryadHull = snap({
+      name: 'Dryad', faction: 'SS', vehicleType: 'ship', materialCost: 40_500,
+      keywords: ['blocker'], meta: { onBattleEffect: 'dryadBattle' },
+    })
+    const game = makeGame({ turnNumber: 3 })
+    const treb = zoneEntry({ name: 'Trebuchet', instanceId: 'treb-1', playedOnTurn: 2, keywords: ['scrappy'] })
+    const dryad = zoneEntry({
+      name: 'Dryad', instanceId: 'dryad-1', vehicleType: 'ship',
+      meta: { onBattleEffect: 'dryadBattle' },
+    })
+    game.state.zones[0].cards.a.push(treb)
+    game.state.zones[0].cards.b.push(dryad)
+    const ctx = makeCtx({ catalog: [dryadHull] })
+
+    effectFor('trebuchetEffect')!({ game, actor: 'a', card: treb, ctx, targetZoneId: 1 })
+    const declared = applyAction(game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'dryad-1' }, ctx)
+    if (!declared.ok) throw new Error(declared.error)
+    // Dryad's own lock trigger already replaced it, so the zone will not be
+    // empty when the battle resolves — which is exactly what used to keep the
+    // chain alive.
+    expect(declared.game.state.zones[0].cards.b).toHaveLength(2)
+
+    const submitted = applyAction(declared.game, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT', results: { 'treb-1': 95, 'dryad-1': 10 }, repairs: [],
+    }, ctx)
+    if (!submitted.ok) throw new Error(submitted.error)
+    const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, ctx)
+    if (!decided.ok) throw new Error(decided.error)
+
+    // Trebuchet won cleanly and survived, and a fresh Dryad is standing right
+    // there — but it was not in the chain, so there is no repeat to offer.
+    expect(decided.game.state.zones[0].cards.b).toHaveLength(1)
+    expect(decided.game.state.zones[0].cards.b[0].name).toBe('Dryad')
+    expect(decided.game.state.zones[0].cards.a.some((c) => c.instanceId === 'treb-1')).toBe(true)
+    expect(decided.game.state.pendingEffect).toBeNull()
   })
 
   // Regression: Trebuchet's repeat used to re-derive its win from a roster

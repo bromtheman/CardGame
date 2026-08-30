@@ -24,7 +24,7 @@ Run this yourself before you touch anything; do not trust the numbers below if
 they disagree with your own run.
 
 ```bash
-npx vitest run                      # 655 passed / 32 files, 0 failed  ← NEVER pass --root
+npx vitest run                      # 661 passed / 32 files, 0 failed  ← NEVER pass --root
 npx tsc -p tsconfig.json --noEmit   # exit 0
 npm --prefix frontend run build     # exit 0
 npm --prefix frontend run lint      # exit 0, with 7 pre-existing warnings across 5 files
@@ -375,12 +375,14 @@ And in the browser, on a real board, with **zero console errors**:
    dialog rendering *over* the battle overlay, which no player has yet seen)
    and **Buzzsaw/Veles** (the response bar's new "sit out" label, which has no
    test of any kind — `StealthyResponseBar` is untested, pre-existing).
-2. **Two rulings are open for the owner**, both raised in PR #19 and neither a
-   defect. See §3's traps and the PR body: Dryad × Trebuchet makes Trebuchet's
-   repeat non-terminating (spec §7.3's "self-limiting on the zone's
-   population" premise is now false), and a DWG Waters zone becomes
-   *permanently* un-bombardable rather than merely un-bombardable this turn.
-   **Check whether they were resolved before you build on either card.**
+2. **Two rulings were raised in PR #19 and are now CLOSED** — both fixed in a
+   follow-up, both with regression tests, spec §7.3 amended for each. Trebuchet's
+   repeat is bounded by `chainIds`, re-derived every entry as *(still in the
+   zone)* ∩ *(already in the chain)*, so a Dryad spawned mid-chain can never
+   feed it; and DWG Waters' clause 3 is a gate rather than a wall — beat the
+   guardian and your surviving vehicles land the deferred base damage through
+   the battle continuation. Read both §7.3 entries before building on either
+   card: each carries a ⚠ marking what the earlier ruling got wrong.
 3. **The bystander pass scans only the defending side.** DWG Waters' clause 3
    is the one caller where a card effect drags the *attacker's* hulls into a
    fight, so an attacker-side Terawatt can never react to it. Flagged by

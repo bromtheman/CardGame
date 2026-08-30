@@ -4,10 +4,10 @@ import {
 } from '../gameSettings.ts'
 import type { EngineContext, ZoneCardEntry } from '../engine/engineTypes.ts'
 import type { SnapshotCard } from '../engine/gameInit.ts'
-import { copyMeta, drawCard, findVehicle, otherSide, zoneById } from '../engine/gameEngine.ts'
+import { checkVictory, copyMeta, drawCard, findVehicle, otherSide, zoneById } from '../engine/gameEngine.ts'
 import { effectiveMaterialCostOf } from '../engine/placement.ts'
 import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
-import { baseStrikersIn } from '../engine/baseAttack.ts'
+import { baseDamageFrom, baseStrikersIn } from '../engine/baseAttack.ts'
 import { choice, grant, summonHulls, takeFromEnemyDeck } from './primitives.ts'
 import { registerCostModifier, registerEffect } from './registry.ts'
 import type { EffectPayload } from './registry.ts'
@@ -196,9 +196,13 @@ function dwgWatersDefensiveGuest(payload: EffectPayload): boolean {
   return dwgWatersGuest(payload)
 }
 
-// Clause 3 (spec §7.3). "Force them to beat this ship in battle first before
-// doing damage" cannot be a same-turn sequence — a zone admits ONE activation
-// per turn — so it becomes: this turn they fight instead of bombarding.
+// Clause 3 (spec §7.3). "Force them to beat this ship in battle FIRST before
+// doing damage with their surviving vehicles" is a GATE, not a wall: the
+// bombardment is deferred behind a fight the attacker can win, and if they win
+// it their survivors still land the damage. The battle and the damage cannot
+// share a turn — a zone admits one activation — so the second half rides on
+// ActiveBattle.continuation and lands when the report is approved.
+//
 // Automatic rather than offered, because a declinable interception would let
 // the defender void the attacker's activation and take no damage (decision 25).
 function dwgWatersInterception(payload: EffectPayload): boolean {
@@ -227,7 +231,54 @@ function dwgWatersInterception(payload: EffectPayload): boolean {
     // activation; the interception redirects that activation rather than
     // refunding it. Eclipse is the only other caller that passes this.
     activatesZone: true,
+    // `side: aggressor` deliberately — the continuation belongs to the
+    // ATTACKER's half of the card's sentence, and it is what makes
+    // `battle.won` on the resolve context read "did the attacker beat the
+    // guardian" rather than "did the claim holder survive".
+    continuation: {
+      effect: DWG_WATERS_EFFECT, side: aggressor, card,
+      data: { zoneId: zone.id, strikerIds: strikers.map((s) => s.instanceId) },
+    },
   })
+}
+
+// Clause 3's second half: the attacker beat the ship, so their surviving
+// vehicles do the damage the interception deferred. Fires from
+// DECIDE_BATTLE_REPORT once the interception battle resolves.
+//
+// `battle.won` is the aggressor's, because the continuation names them as its
+// side. The guardian is the only defender, so winning IS beating the ship.
+function dwgWatersAftermath(payload: EffectPayload): boolean {
+  const { game, actor, continuation, battle } = payload
+  const zoneId = continuation?.data?.zoneId
+  const stashed = continuation?.data?.strikerIds
+  if (typeof zoneId !== 'number' || !Array.isArray(stashed)) return true
+  if (!battle || !battle.won) return true // the ship held, or it was a draw
+  const zone = zoneById(game.state, zoneId)
+  if (!zone) return true
+  const enemy = otherSide(actor)
+  // Re-apply every guard ATTACK_ENEMY_BASE itself would, against the board as
+  // it stands NOW: a base already destroyed takes nothing more, and a Blocker
+  // that reached the zone during the battle still protects it.
+  if (zone.baseHp[enemy] <= 0) return true
+  if (zone.cards[enemy].some((c) => c.keywords.includes(KEYWORDS.BLOCKER))) {
+    game.state.log.push(`Zone ${zoneId}: a Blocker shields the base — the deferred bombardment is called off`)
+    return true
+  }
+  // "With their surviving vehicles": the strikers this battle started with,
+  // minus whoever died in it. baseDamageFrom re-applies the sub / Inoffensive
+  // / freshly-deployed filters, so the roster stays the same one the original
+  // attack was measured against.
+  const survivors = (zone.cards[actor] as ZoneCardEntry[]).filter((c) => stashed.includes(c.instanceId))
+  const damage = baseDamageFrom(survivors, game.turnNumber)
+  if (damage <= 0) return true
+  zone.baseHp[enemy] = Math.max(0, zone.baseHp[enemy] - damage)
+  game.state.log.push(
+    `Zone ${zoneId}: the guardian is beaten — bombardment for ${damage} (${zone.baseHp[enemy]} HP remains)`,
+  )
+  if (zone.baseHp[enemy] === 0) game.state.log.push(`Zone ${zoneId} has fallen`)
+  checkVictory(game)
+  return true
 }
 
 // Clause 1: the marker itself — persistent state plus the board badge.
@@ -253,6 +304,10 @@ function dwgWatersClaim({ game, actor, card, targetZoneId }: EffectPayload): boo
 
 registerEffect(DWG_WATERS_EFFECT, (payload) => {
   if (payload.resolution !== undefined) return dwgWatersGuest(payload)
+  // The interception's own battle resolving — clause 3's second half. Checked
+  // before the phase branches: a continuation carries a 'resolve' context, and
+  // only `continuation` tells it apart from an ordinary resolve trigger.
+  if (payload.continuation !== undefined) return dwgWatersAftermath(payload)
   if (payload.battle?.phase === 'lock') return dwgWatersDefensiveGuest(payload)
   if (payload.battle?.phase === 'baseAttack') return dwgWatersInterception(payload)
   return dwgWatersClaim(payload)

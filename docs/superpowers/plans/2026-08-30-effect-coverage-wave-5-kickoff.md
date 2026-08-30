@@ -33,7 +33,7 @@ The handoff's §7 ("Before you start") is a checklist. Do it before writing code
 npx vitest run
 ```
 
-Expect **655 passing, 32 files**. Never pass `--root` — it silently runs 0
+Expect **661 passing, 32 files**. Never pass `--root` — it silently runs 0
 tests. If your numbers disagree with the handoff's, believe your own run and
 say so.
 

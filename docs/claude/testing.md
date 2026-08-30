@@ -6,7 +6,7 @@ browser verification.
 ## Unit tests (vitest, repo root)
 
 ```bash
-npx vitest run                      # everything (655 tests / 32 files after wave 4)
+npx vitest run                      # everything (661 tests / 32 files after wave 4)
 npx vitest run shared/effects       # path filter — the ONLY sanctioned way to narrow
 ```
 
