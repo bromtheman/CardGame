@@ -289,6 +289,23 @@ describe('doubleUpEffect', () => {
     expect(ok).toBe(false)
   })
 
+  // The 2026-08-30 balance pass narrowed the target from "DWG vehicle" to
+  // "DWG ship". inst() defaults to vehicleType 'ship', so every case above
+  // still exercises the accepting path.
+  it.each(['airship', 'plane', 'tank', 'sub'])(
+    'returns false for a DWG %s — the card now says "DWG ship card in hand"',
+    (vehicleType) => {
+      const { game, target } = withHandTarget({ vehicleType })
+      const doubleUpCard = inst({ type: 'ability', name: 'Double Up' })
+      const ok = effectFor('doubleUpEffect')!({
+        game, actor: 'a', card: doubleUpCard, ctx: makeCtx(), targetInstanceId: target.instanceId,
+      })
+      expect(ok).toBe(false)
+      const untouched = game.privates.a.hand.find((c) => c.instanceId === target.instanceId)!
+      expect(untouched.meta.additionalSpawns).toBeUndefined()
+    },
+  )
+
   it('returns false when the target is not a vehicle', () => {
     const { game, target } = withHandTarget({ type: 'ability' })
     const doubleUpCard = inst({ type: 'ability', name: 'Double Up' })

@@ -21,8 +21,8 @@ export const ssVehicles = [
     },{
         name: 'Victoria',
         isBuiltIn: true,
-        cardText: 'When this vehicle is destroyed, draw a card',
-        materialCost: 270000,
+        cardText: 'Each turn you may spend 200k resources to spawn another victoria into this zone',
+        materialCost: 250000,
         blueprintCost: 270185,
         cpCost: 0,
         imageUrl: 'victoria.png',
@@ -33,7 +33,7 @@ export const ssVehicles = [
         blueprintId: null,
         keywords: [],
         meta: {
-            [TRIGGERS.ON_DEATH]: 'victoriaOnDeath',
+            [TRIGGERS.ON_ACTIVATE]: 'victoriaActivate',
         }
     },
     {
@@ -73,7 +73,7 @@ export const ssVehicles = [
     },{
         name: 'Repairmen Ready',
         isBuiltIn: true,
-        cardText: 'Grant target vehicle scrappy. If the target is an AI vehicle that costs less than 200k, draw a card.',
+        cardText: 'Grant target vehicle scrappy. If the target is an AI vehicle that costs less than 400k, draw a card.',
         materialCost: 0,
         blueprintCost: 0,
         cpCost: 0,
@@ -107,8 +107,8 @@ export const ssVehicles = [
         name: 'Asphodel',
         isBuiltIn: true,
         cardText: '',
-        materialCost: 470521,
-        blueprintCost: 470000,
+        materialCost: 470000,
+        blueprintCost: 544000,
         cpCost: 0,
         imageUrl: 'asphodel.png',
         playerId: null,
@@ -116,14 +116,14 @@ export const ssVehicles = [
         type: 'vehicle',
         faction: FACTIONS.SS,
         blueprintId: null,
-        keywords: [],
+        keywords: [KEYWORDS.AIR_SCREEN],
         meta: {
         }
     } ,{
         name: 'Braveheart',
         isBuiltIn: true,
         cardText: 'Once per turn, you may pay 1cp to have this ship 1v1 an enemy vehicle in the same zone',
-        materialCost: 370000,
+        materialCost: 350000,
         blueprintCost: 371000,
         cpCost: 0,
         imageUrl: 'Braveheart.png',
@@ -157,23 +157,6 @@ export const ssVehicles = [
     }
 
     ,{
-        name: 'Rhea',
-        isBuiltIn: true,
-        cardText: 'When played, put a random SS plane with a base cost under 300k into your hand. Remove its temporary keyword',
-        materialCost: 560000,
-        blueprintCost: 563000,
-        cpCost: 0,
-        imageUrl: 'rhea.png',
-        playerId: null,
-        vehicleType: 'ship',
-        type: 'vehicle',
-        faction: FACTIONS.SS,
-        blueprintId: null,
-        keywords: [KEYWORDS.BLOCKER],
-        meta: {
-            [TRIGGERS.ON_PLAY]: 'rheaOnPlay',
-        }
-    },{
         name: 'Catshark',
         isBuiltIn: true,
         cardText: 'Whenever this vehicle participates in a fleet combat, gain 30k resources this turn',
@@ -273,6 +256,110 @@ export const ssVehicles = [
         blueprintId: null,
         keywords: [],
         meta: {
+        }
+    },
+     {
+        name: 'Argonaut',
+        isBuiltIn: true,
+        cardText: '',
+        materialCost: 90000,
+        blueprintCost: 94000,
+        cpCost: 0,
+        imageUrl: 'Argonaut.png',
+        playerId: null,
+        vehicleType: 'ship',
+        type: 'vehicle',
+        faction: FACTIONS.SS,
+        blueprintId: null,
+        keywords: [KEYWORDS.SCRAPPY],
+        meta: {
+        }
+    },
+     {
+        name: 'Chrysaor',
+        isBuiltIn: true,
+        cardText: 'While you have more than 200k resources, this card costs 100k more and spawns in a second Chrysaor',
+        materialCost: 100000,
+        blueprintCost: 116000,
+        cpCost: 0,
+        imageUrl: 'Chrysaor.png',
+        playerId: null,
+        vehicleType: 'ship',
+        type: 'vehicle',
+        faction: FACTIONS.SS,
+        blueprintId: null,
+        keywords: [KEYWORDS.STEALTHY],
+        meta: {
+        }
+    },
+     {
+        name: 'Paladin',
+        isBuiltIn: true,
+        cardText: 'While you have less than 240k materials, this can be played with halfcost and temporary',
+        materialCost: 240000,
+        blueprintCost: 240000,
+        cpCost: 0,
+        imageUrl: 'paladin.png',
+        playerId: null,
+        vehicleType: 'ship',
+        type: 'vehicle',
+        faction: FACTIONS.SS,
+        blueprintId: null,
+        keywords: [],
+        meta: {
+        }
+    },
+     {
+        name: 'Nothung',
+        isBuiltIn: true,
+        cardText: 'Whenever this vehicle is played into a zone, also create a friendly Sacrilego in that zone',
+        materialCost: 470000,
+        blueprintCost: 478000,
+        cpCost: 0,
+        imageUrl: 'nothung.png',
+        playerId: null,
+        vehicleType: 'ship',
+        type: 'vehicle',
+        faction: FACTIONS.SS,
+        blueprintId: null,
+        keywords: [KEYWORDS.BLOCKER],
+        meta: {
+            [TRIGGERS.ON_PLAY]: 'nothungOnPlay',
+        }
+    },
+     {
+        name: 'Balmung',
+        isBuiltIn: true,
+        cardText: 'When this is played into a zone, create a hydra card in hand and reduce its cost to zero',
+        materialCost: 630000,
+        blueprintCost: 636000,
+        cpCost: 0,
+        imageUrl: 'balmung.png',
+        playerId: null,
+        vehicleType: 'ship',
+        type: 'vehicle',
+        faction: FACTIONS.SS,
+        blueprintId: null,
+        keywords: [KEYWORDS.BLOCKER],
+        meta: {
+            [TRIGGERS.ON_PLAY]: 'balmungOnPlay',
+        }
+    },
+     {
+        name: 'Blockade',
+        isBuiltIn: true,
+        cardText: 'Choose a zone, whenever the opponent plays a vehicle into that zone while you have at least one vehicle there, a fleet battle immediately begins in that zone. If you lose with no surviving vehicles, the blockade goes away, otherwise it remains.',
+        materialCost: 100000,
+        blueprintCost: 0,
+        cpCost: 0,
+        imageUrl: 'blockade.png',
+        playerId: null,
+        vehicleType: null,
+        type: 'ability',
+        faction: FACTIONS.SS,
+        blueprintId: null,
+        meta: {
+            [TRIGGERS.PLAY_ON_ZONE]: 'blockadeEffect',
         }
     },
      {

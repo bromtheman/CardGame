@@ -129,7 +129,7 @@ export const dwgVehicles = [
     {
         name: 'Tarpon',
         isBuiltIn: true,
-        cardText: '',
+        cardText: 'While this vehicle is alive, you may not play any other aircraft into this zone',
         materialCost: 510000,
         blueprintCost: 511605,
         cpCost: 0,
@@ -139,7 +139,7 @@ export const dwgVehicles = [
         type: 'vehicle',
         faction: FACTIONS.DWG,
         blueprintId: null,
-        keywords: [KEYWORDS.SUB_SCREEN, KEYWORDS.AIR_SCREEN],
+        keywords: [KEYWORDS.FRAGILE],
         meta: {
         }
     },{
@@ -213,8 +213,8 @@ export const dwgVehicles = [
         name: 'Buccaneer',
         isBuiltIn: true,
         cardText: '',
-        materialCost: 250000,
-        blueprintCost: 250000,
+        materialCost: 200000,
+        blueprintCost: 296000,
         cpCost: 0,
         imageUrl: 'buccaneer.png',
         playerId: null,
@@ -222,7 +222,7 @@ export const dwgVehicles = [
         type: 'vehicle',
         faction: FACTIONS.DWG,
         blueprintId: null,
-        keywords: [KEYWORDS.HALF_COST],
+        keywords: [],
         meta: {
         }
     },{
@@ -244,7 +244,7 @@ export const dwgVehicles = [
     },{
         name: 'Double Up',
         isBuiltIn: true,
-        cardText: 'Target DWG vehicle card in hand That costs less than 400k. spawns an additional copy of that vehicle when played',
+        cardText: 'Target DWG ship card in hand That costs less than 400k. spawns an additional copy of that ship when played',
         materialCost: 0,
         blueprintCost: 0,
         cpCost: 0,
@@ -325,9 +325,9 @@ export const dwgVehicles = [
     },{
         name: 'Albacore',
         isBuiltIn: true,
-        cardText: '',
-        materialCost: 240000,
-        blueprintCost: 249522,
+        cardText: 'While this vehicle is alive, you may not play any other aircraft into this zone',
+        materialCost: 260000,
+        blueprintCost: 261000,
         cpCost: 0,
         imageUrl: 'albacore.png',
         playerId: null,
@@ -335,7 +335,7 @@ export const dwgVehicles = [
         type: 'vehicle',
         faction: FACTIONS.DWG,
         blueprintId: null,
-        keywords: [KEYWORDS.HALF_COST],
+        keywords: [KEYWORDS.FRAGILE],
         meta: {
         }
     },{
@@ -370,6 +370,23 @@ export const dwgVehicles = [
         blueprintId: null,
         meta: {
             [TRIGGERS.PLAY_ON_VEHICLE]: 'flyingSquirrelAttackEffect',
+        }
+    },
+    {
+        name: 'Sinners Luck',
+        isBuiltIn: true,
+        cardText: '',
+        materialCost: 250000,
+        blueprintCost: 267000,
+        cpCost: 0,
+        imageUrl: 'sinnersluck.png',
+        playerId: null,
+        vehicleType: VEHICLE_TYPES.SHIP,
+        type: 'vehicle',
+        faction: FACTIONS.DWG,
+        blueprintId: null,
+        keywords: [KEYWORDS.SCRAPPY],
+        meta: {
         }
     },
     {

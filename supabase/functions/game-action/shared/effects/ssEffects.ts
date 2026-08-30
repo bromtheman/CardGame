@@ -37,7 +37,9 @@ registerEffect('excaliburEffect', costDelta({
 }))
 
 // "Grant target vehicle scrappy. If the target is an AI vehicle that costs
-// less than 200k, draw a card."
+// less than 400k, draw a card." The threshold moved 200k -> 400k in the
+// 2026-08-30 balance pass; it lives in REPAIRMEN_READY_DRAW_MAX_COST, so the
+// card text is the only other place the number appears.
 registerEffect('repairmenReadyEffect', sequence(
   grantKeywords({ keywords: [KEYWORDS.SCRAPPY], target: 'field' }),
   (payload) => {

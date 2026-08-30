@@ -339,8 +339,15 @@ incomplete text (wave 2's `PARTIAL` map above), and a `seed_data.sql` that had
 drifted from `source/*.js` (wave 3's `seedDataSync.test.ts`).
 
 `PARTIAL` is **empty** as of wave 4 — both of its entries were closed by the
-wave that owned them — and `KNOWN_GAPS` holds only wave 5's five cards. The
+wave that owned them. `KNOWN_GAPS` holds 17: wave 5's original five, plus the
+twelve the 2026-08-30 balance pass added (labelled `balance 2026-08-30`, and
+enumerated with the mechanic each one needs in a comment above the map). The
 assertion loops waves 1-4 over both maps, so a reopened entry fails the build.
+
+Four of those twelve are one-liners over primitives that already exist
+(`SS:Nothung`, `SS:Balmung`, `WF:Basher`, `WF:Harbringer`); the other eight
+need engine work first. Whoever closes one must delete its `KNOWN_GAPS` entry
+and decrement the `toHaveLength` literal in the same commit.
 
 ## Play-time cost modifiers
 

@@ -20,6 +20,29 @@ const EXEMPT: Record<string, string> = {
 const KNOWN_GAPS: Record<string, string> = {
   'WF:Ambush': 'wave 5', 'DWG:Ongoing Attrition': 'wave 5', 'OW:Sub Killer': 'wave 5',
   'DWG:Recurring Threat': 'wave 5', 'OW:Sabotage': 'wave 5',
+  // The 2026-08-30 balance pass seeded twelve cards whose text needs behaviour
+  // the engine does not have yet. Every one plays vanilla and logs a note at
+  // play time (spec §3.9); none of them silently half-works.
+  //
+  //   new mechanics
+  //     DWG:Albacore / DWG:Tarpon  a per-player, per-zone aircraft deploy lock
+  //     SS:Chrysaor                a resourceSurge that RAISES the price
+  //     SS:Paladin                 a resourceSurge that GRANTS halfCost+temporary
+  //     SS:Blockade                a rider that fires when the ENEMY deploys
+  //     SS:Victoria                an activated ability paid in materials, not CP
+  //     WF:Judgement               the same, plus a costModifier off enemy hull types
+  //     WF:Purifier                a zone deploy prerequisite + "no base damage"
+  //   existing primitives, not yet registered under their own name
+  //     SS:Nothung                 spawnVehicles('Sacrilego')
+  //     SS:Balmung                 a catalog mint into hand at costDelta -cost
+  //     WF:Basher                  grant({ draw: 1 }) on death
+  //     WF:Harbringer              DWG Waters' clause-2 guest, WF ships <=100k
+  'DWG:Albacore': 'balance 2026-08-30', 'DWG:Tarpon': 'balance 2026-08-30',
+  'SS:Chrysaor': 'balance 2026-08-30', 'SS:Paladin': 'balance 2026-08-30',
+  'SS:Blockade': 'balance 2026-08-30', 'SS:Victoria': 'balance 2026-08-30',
+  'SS:Nothung': 'balance 2026-08-30', 'SS:Balmung': 'balance 2026-08-30',
+  'WF:Purifier': 'balance 2026-08-30', 'WF:Judgement': 'balance 2026-08-30',
+  'WF:Basher': 'balance 2026-08-30', 'WF:Harbringer': 'balance 2026-08-30',
 }
 
 // Cards that pass G2 — they resolve at least one implemented effect — but
@@ -163,7 +186,7 @@ describe('built-in card effect coverage', () => {
       expect(Object.values(KNOWN_GAPS).filter((w) => w.startsWith(wave))).toEqual([])
       expect(Object.values(PARTIAL).filter((w) => w.startsWith(wave))).toEqual([])
     }
-    expect(Object.keys(KNOWN_GAPS)).toHaveLength(5)
+    expect(Object.keys(KNOWN_GAPS)).toHaveLength(17)
   })
 
   it('PARTIAL names real cards that currently pass G1 and G2, and never overlaps KNOWN_GAPS', async () => {
