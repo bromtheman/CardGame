@@ -77,10 +77,16 @@ function legalTarget(game: EngineGame, actor: Side, targetInstanceId: unknown) {
 // resolve(payload, null) in the very same action, so the battle still
 // declares immediately with 2 summons — no suspension, no dialog. A player
 // design must suspend FIRST and declare the battle only from the
-// continuation (design spec §4.3, worked out in the task brief): once
-// pendingEffect is set the game freezes to PENDING_ACTIONS, which admits no
-// battle action, so a battle declared before the choice resolves could
-// never be reported and would deadlock the game.
+// continuation (design spec §4.3): the choice has to be answered before there
+// is a battle to report, because pendingEffect freezes the game to
+// PENDING_ACTIONS and no battle action is in that set.
+//
+// NOTE for later waves: this comment used to argue that the reverse order
+// would DEADLOCK the game. That is no longer true — wave 4 makes
+// pendingEffect and activeBattle coexisting routine and safe (decision 19,
+// shared/engine/battleFreeze.test.ts), and Terawatt and DWG Waters both do it
+// deliberately. What still holds is narrower: Air Strafe needs the answer to
+// know how many hulls to summon, so it cannot declare first.
 //
 // RESOLVE_PENDING_EFFECT carries neither the original targetInstanceId nor a
 // zoneId forward on its own — first entry's are gone by re-entry. Its action

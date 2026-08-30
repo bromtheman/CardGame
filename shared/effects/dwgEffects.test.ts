@@ -633,12 +633,44 @@ describe('DWG Waters clauses 2 and 3', () => {
     })
 
     // Clause 2 must not also fire for the battle clause 3 just created: the
-    // defender has no fleet of their own in it, and "alongside your fleet"
-    // needs a fleet (spec §7.3).
+    // defender has no fleet IN THAT BATTLE, and "alongside your fleet" needs a
+    // fleet (spec §7.3). The defender is given a hull standing in the zone but
+    // NOT dragged into the fight, so this can tell "no fleet in the battle"
+    // (what hasFleet checks) from "no fleet in the zone" — with an empty zone
+    // the two are indistinguishable and deleting the check still passes.
     it('does not also offer a clause-2 guest for its own battle', () => {
+      const game = claimed()
+      game.state.zones[0].cards.a.push(zoneEntry({ name: 'Raider', materialCost: 40_000, playedOnTurn: 2 }))
+      game.state.zones[0].cards.b.push(zoneEntry({ name: 'Bystander' })) // in the zone, not in the battle
+      const r = applyAction(game, 'alice', { type: 'ATTACK_ENEMY_BASE', zoneId: 1 }, makeCtx({ catalog: fullCatalog }))
+      if (!r.ok) throw new Error(r.error)
+      expect(r.game.state.activeBattle?.defenderIds).toHaveLength(1) // the guardian alone
+      expect(r.game.state.pendingEffect).toBeNull()
+      expect(r.game.state.activeBattle?.summons).toHaveLength(1)
+    })
+
+    // The guardian is a battle summon: it must evaporate on approval and never
+    // reach state.destroyed. Corsair and Marauder are both DRAFTABLE cards, so
+    // a leak would put a free one into the DWG player's deck via
+    // reshuffleDiscard (spec §4.4).
+    it('the guardian evaporates on approval and never reaches a discard', () => {
       const out = bombard()
-      expect(out.state.pendingEffect).toBeNull()
-      expect(out.state.activeBattle?.summons).toHaveLength(1)
+      const battle = out.state.activeBattle
+      if (!battle) throw new Error('no interception')
+      const striker = battle.attackerIds[0]
+      const guardian = battle.summons[0].instanceId
+      const submitted = applyAction(out, 'alice', {
+        type: 'SUBMIT_BATTLE_REPORT',
+        results: { [striker]: 95, [guardian]: 5 }, repairs: [],
+      }, makeCtx({ catalog: fullCatalog }))
+      if (!submitted.ok) throw new Error(submitted.error)
+      const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true },
+        makeCtx({ catalog: fullCatalog }))
+      if (!decided.ok) throw new Error(decided.error)
+      expect(decided.game.state.destroyed.a).toEqual([])
+      expect(decided.game.state.destroyed.b).toEqual([])
+      expect(decided.game.state.zones[0].cards.b).toEqual([])
+      expect(decided.game.state.log.join('\n')).toContain('summoned vehicle(s) evaporated')
     })
 
     it('leaves an unclaimed zone alone', () => {

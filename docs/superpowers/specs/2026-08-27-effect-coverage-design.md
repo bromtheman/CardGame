@@ -385,7 +385,7 @@ interface BattleContext {
 ```
 
 It reaches effects as `EffectPayload.battle`. `isParticipant` and `forced` exist
-for Terawatt (DP2 departure 2); `'baseAttack'` exists for Plunderer (DP2 departure 4).
+for Terawatt (DP2 departure 2); `'baseAttack'` exists for Plunderer (DP2 departure 5).
 
 **`casualties` is not a convenience — it is the only route to what it carries.**
 Iron Cordon needs "an allied GT airship destroyed **in this battle**", and
@@ -437,12 +437,22 @@ normal. A dedicated invariant suite (`shared/engine/battleFreeze.test.ts`) pins
 the whole sequence rather than leaving it implied by two cards' own tests.
 
 **One suspension per battle event (DP2 departure 4).** There is a single
-`pendingEffect` slot, so a DP2 trigger that would suspend while the slot is
-already occupied is **skipped with a log line** rather than overwriting the
-choice already owed. Dispatch order is fixed and deterministic (attackers in
-`attackerIds` order, then defenders in `defenderIds` order, then bystanders, then
-zone riders), so the skip is reproducible rather than racy. It is reachable only
-when two suspending DP2 cards meet in one battle.
+`pendingEffect` slot, so an OFFER that arrives while the slot is already
+occupied is **dropped, with a log line**, rather than overwriting the choice
+already owed. Dispatch order is fixed and deterministic (attackers in
+`attackerIds` order, then defenders in `defenderIds` order, then bystanders,
+then zone riders), so which offer loses is reproducible rather than racy.
+
+**The drop happens inside `choice()`, not in the dispatcher, and that placement
+is load-bearing.** An earlier build enforced it in the dispatch loop, which
+skipped the whole *effect* — starving any unconditional clause sharing a card
+with an optional one. Two surviving Sacrilegos then granted 1 CP between them
+instead of 1 each. Every trigger now runs; only the suspension is refused. The
+corollary for card authors: **put an unconditional clause before the choice**,
+and route a new suspension through `choice()` rather than writing
+`state.pendingEffect` by hand (Orbit Flank's second hop does, and bypasses the
+check). It is reachable whenever two suspending effects meet in one action —
+including a battle continuation losing the slot to a resolve trigger.
 
 **`onBattleVictory` also fires on a base bombardment (DP2 departure 5).** Plunderer
 reads "when this vehicle survives a victorious fleet battle **or inflicts damage
@@ -465,12 +475,31 @@ a Martyr Attack that was, in the fiction, a stalemate.
 Iron Cordon ("you may sacrifice this vehicle to save that airship") and
 Sacrilego's clause 2 both revive a hull that `DECIDE_BATTLE_REPORT` has already
 destroyed: `reviveEntry` pushes the `ZoneCardEntry` back into `zone.cards` and
-pulls one matching snapshot back out of `state.destroyed[owner]` (snapshots for
-one `cardId` are interchangeable, so removing any match is exact). But both are
+pulls the matching snapshot back out of `state.destroyed[owner]`. But both are
 **choices**, resolved in a later action, by which time the `onDeathEffect`s
 dispatched earlier in `DECIDE_BATTLE_REPORT` have already run. Their effects
 stand. This is the same latitude that handler already takes with a death effect
 that fails — the battle happened and cannot be rolled back over it.
+
+Two corrections to an earlier draft of this subsection, both found by review:
+
+**Two snapshots of one card are NOT interchangeable**, which that draft asserted
+they were ("removing any match is exact"). `repairmenReadyEffect` grants SCRAPPY
+to a hull already on the board, so a plain and a Scrappy copy of one card share
+a `cardId` and differ in exactly the field that decides whether the owner gets a
+free upgrade back through `reshuffleDiscard`. The lookup therefore rebuilds the
+exact discard form — `discardSnapshotOf`, the single derivation `discardCard`
+itself writes with — and matches on that, falling back to `cardId` only when
+nothing matches exactly, so a row that has drifted still comes back rather than
+stranding the player.
+
+**Offering a save requires checking the snapshot is still there (`canRevive`).**
+A death trigger dispatched EARLIER in the same `DECIDE_BATTLE_REPORT` can empty
+the discard: several are `grant({ draw: 1 })`, and `drawCard` on an empty deck
+calls `reshuffleDiscard`, which moves the **whole** pile into the deck. Both
+cards offered a hull that had left that way and then failed on the answer,
+leaving Decline as the only working reply. The general rule, which outlives
+these two cards: **`state.destroyed` is a live reservoir, not a log.**
 
 ### 4.4 Battle summons
 
@@ -1128,7 +1157,7 @@ is independently playable and covers half the population with no new machinery.
 | Suspension | `pendingEffect` freezes the game to `PENDING_ACTIONS`; only the owed side may resolve; `RESOLVE_PENDING_EFFECT` rejected when nothing is pending; an unknown `choiceId` leaves the slot intact; `cancel` clears it; empty options resolve without suspending; an unregistered pending effect clears rather than bricking the game |
 | Battle summons | Summons never enter `zone.cards`; evaporate on approval at every HP; never repairable; never pushed to `destroyed`; `summonOnly` excluded from `destroyed` at all three exits |
 | Dispatch points | Once-per-turn enforcement via `activatedOnTurn`; forced battles skip the Stealthy opt-out and do not consume `lastActivatedTurn` (Eclipse excepted); DP6 deploys the vehicle before firing |
-| Battle triggers (DP2) | Lock fires for every participant on both sides, summons included, and never for a non-participant except a registered bystander; resolve fires after death triggers and before the continuation; `won`/`survived` computed from the report over all participants; a trigger that would suspend into an occupied `pendingEffect` is skipped, not overwritten; `onBattleVictory` fires on a base bombardment for damage-contributing vehicles only |
+| Battle triggers (DP2) | Lock fires for every participant on both sides, summons included, and never for a non-participant except a registered bystander; resolve fires after death triggers and before the continuation; `won`/`survived` computed from the report over all participants; an offer arriving at an occupied `pendingEffect` is dropped while the rest of its effect still runs, so an unconditional clause is never starved; a save is offered only for a casualty `canRevive` still finds in the discard; `onBattleVictory` fires on a base bombardment for damage-contributing vehicles only |
 | Both freezes at once | `shared/engine/battleFreeze.test.ts`: a forced battle that suspends leaves `pendingEffect` **and** `activeBattle` set; every action type is rejected except `RESOLVE_PENDING_EFFECT`/`CONCEDE`/`ABANDON`; the off-turn owed side may answer; after resolve **or** cancel the battle is reportable and the report resolves normally |
 | Defender omission | `omissibleIds` computed only when the attacking selection holds no ship and no tank; the response window opens on either list; an opt-out id from either list is accepted and one from neither is rejected; a forced battle never opens the window |
 | Hidden info | No log line names a card entering a hand; `counts` resync on both sides after an enemy-deck draw |

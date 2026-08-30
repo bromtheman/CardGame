@@ -52,9 +52,12 @@ registerHandler('ATTACK_ENEMY_BASE', (game, actor, action, ctx) => {
   game.state.log.push(`Zone ${zone.id}: base bombardment for ${damage} (${zone.baseHp[enemy]} HP remains)`)
   if (zone.baseHp[enemy] === 0) game.state.log.push(`Zone ${zone.id} has fallen`)
   checkVictory(game)
-  // After checkVictory, so a trigger cannot alter a game that has already
-  // ended — and only on the success path, so a refused bombardment (a Blocker,
-  // an already-spent zone, nothing able to strike) fires nothing.
+  // Only on the success path, so a refused bombardment (a Blocker, an
+  // already-spent zone, nothing able to strike) fires nothing. Placed after
+  // checkVictory so the trigger sees the final status — NOT, as an earlier
+  // comment claimed, because that prevents it changing an ended game: nothing
+  // stops plundererRaid drawing after status flips to complete, and nothing
+  // needs to.
   dispatchBaseAttackVictory(game, ctx, zone.id, actor, strikers)
   return { ok: true, game }
 })
