@@ -74,7 +74,12 @@ const ALL_META_KEYS = [...Object.values(TRIGGERS), 'costModifier']
 
 // Meta keys that carry plain data rather than an effect name, and which
 // satisfy a card's text on their own (spec §5).
-export const DATA_EFFECT_KEYS = ['additionalSpawns', 'resourceSurge'] as const
+// Buzzsaw and Veles carry `defensiveOmission` and no registry name at all
+// (spec §4.8): an effect returns a boolean meaning "resolved" and may mutate,
+// so using one as a pure eligibility predicate inverts this registry's
+// contract. It sits OUTSIDE TRIGGERS deliberately, so G3 never inspects it and
+// HandBar's ALL_TRIGGER_KEYS needs no change.
+export const DATA_EFFECT_KEYS = ['additionalSpawns', 'resourceSurge', 'defensiveOmission'] as const
 
 // Spec §3.9: cards referencing unimplemented effects play as vanilla, with a
 // note appended to the game log at play time. A card whose text names no

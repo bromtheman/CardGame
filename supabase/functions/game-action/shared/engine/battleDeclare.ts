@@ -1,8 +1,13 @@
-import { KEYWORDS, SPAWN_DISTANCE_DEFAULT_M } from '../gameSettings.ts'
+import { KEYWORDS, SPAWN_DISTANCE_DEFAULT_M, VEHICLE_TYPES } from '../gameSettings.ts'
 import type { BattleContinuation, EngineContext, Side, ZoneCardEntry } from './engineTypes.ts'
 import type { EngineGame } from './engineTypes.ts'
 import { err, otherSide, registerHandler, zoneById } from './gameEngine.ts'
 import { dispatchBattleLock } from './battleTriggers.ts'
+
+// The one condition meta.defensiveOmission expresses today (spec §4.8). A
+// string rather than a boolean so a second condition is expressible without a
+// second meta key; Buzzsaw and Veles print identical text and share this one.
+export const OMISSION_UNLESS_SHIP_OR_TANK = 'unlessShipOrTank'
 
 // The only place the activeBattle object literal is constructed (spec §4.3,
 // departure 1) — so the next field added to it is one edit here rather than
@@ -161,18 +166,34 @@ registerHandler('ATTACK_ENEMY_FLEET', (game, actor, action, ctx) => {
       return err(400, `${card.name} is Inoffensive and cannot attack`)
     }
   }
+  // Spec §4.8: the attacking FORCE is the committed selection, not everything
+  // the aggressor owns in the zone — a hull sitting the battle out is not
+  // attacking. Read off the same ids already validated above.
+  const forceHasShipOrTank = action.attackerIds.some((id) => {
+    const card = mine.find((c) => c.instanceId === id)
+    return card?.vehicleType === VEHICLE_TYPES.SHIP || card?.vehicleType === VEHICLE_TYPES.TANK
+  })
   const stealthyIds: string[] = []
+  const omissibleIds: string[] = []
   for (const id of action.targetIds) {
     const card = theirs.find((c) => c.instanceId === id)
     if (!card) return err(400, 'Target selection includes a vehicle that is not in that zone')
     if (card.keywords.includes(KEYWORDS.STEALTHY)) stealthyIds.push(id)
+    // Plain card data, not a registry name (spec §4.8) — an effect returns a
+    // boolean meaning "resolved" and may mutate, so one cannot serve as a pure
+    // eligibility predicate.
+    if (card.meta.defensiveOmission === OMISSION_UNLESS_SHIP_OR_TANK && !forceHasShipOrTank) {
+      omissibleIds.push(id)
+    }
   }
-  if (stealthyIds.length > 0) {
+  // The window now opens on EITHER list. Before wave 4 only Stealthy could
+  // raise it, and an attack with no stealthy target locked immediately.
+  if (stealthyIds.length > 0 || omissibleIds.length > 0) {
     game.state.awaitingResponse = {
       zoneId: action.zoneId, aggressor: actor,
-      attackerIds: action.attackerIds, targetIds: action.targetIds, stealthyIds,
+      attackerIds: action.attackerIds, targetIds: action.targetIds, stealthyIds, omissibleIds,
     }
-    game.state.log.push(`Fleet attack declared in zone ${action.zoneId} — stealthy defenders may withdraw`)
+    game.state.log.push(`Fleet attack declared in zone ${action.zoneId} — some defenders may withdraw`)
     return { ok: true, game }
   }
   lockBattle(game, ctx, action.zoneId, actor, action.attackerIds, action.targetIds)
@@ -185,8 +206,13 @@ registerHandler('RESPOND_TO_ATTACK', (game, actor, action, ctx) => {
   const pending = game.state.awaitingResponse
   if (!pending) return err(409, 'No attack awaits a response')
   if (actor === pending.aggressor) return err(403, 'Only the defender responds')
+  // Either list is a valid source of an opt-out (spec §4.8): Stealthy's is
+  // unconditional, omissibleIds was computed against this attack's own
+  // attacking selection when the window opened.
   for (const id of action.optOutIds) {
-    if (!pending.stealthyIds.includes(id)) return err(400, 'Only stealthy vehicles may withdraw')
+    if (!pending.stealthyIds.includes(id) && !(pending.omissibleIds ?? []).includes(id)) {
+      return err(400, 'Only stealthy or omissible vehicles may withdraw')
+    }
   }
   const remaining = pending.targetIds.filter((id) => !action.optOutIds.includes(id))
   game.state.awaitingResponse = null

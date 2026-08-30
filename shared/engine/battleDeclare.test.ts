@@ -1,6 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import { applyAction, declareForcedBattle, joinBattle } from './index'
+import { applyAction, declareForcedBattle, joinBattle, normalizeState } from './index'
 import { registerEffect } from '../effects/registry'
+import type { ZoneCardEntry } from './engineTypes'
 import { inst, makeCtx, makeGame, zoneEntry } from './testFixtures'
 
 function battleground() {
@@ -340,6 +341,144 @@ describe('DP2 lock dispatch', () => {
       zoneId: 1, aggressor: 'a', attackerIds: ['ghost'], defenderIds: [def.instanceId], cause: 'Eclipse',
     })).toBe(false)
     expect(lockFired).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Wave 4: defender omission (spec §4.8). Buzzsaw and Veles print "this vehicle
+// may be omitted from defensive battles unless the attacking enemy force
+// contains a ship or tank" — a CONDITIONAL opt-out, which pending.stealthyIds
+// has no room for, so awaitingResponse gains a second list.
+// ---------------------------------------------------------------------------
+
+const omissible = (over: Partial<ZoneCardEntry> = {}) =>
+  zoneEntry({ name: 'Buzzsaw', meta: { defensiveOmission: 'unlessShipOrTank' }, ...over })
+
+function attackWith(attackers: ZoneCardEntry[], targets: ZoneCardEntry[]) {
+  const g = makeGame({ turnNumber: 3 })
+  for (const a of attackers) g.state.zones[0].cards.a.push(a)
+  for (const t of targets) g.state.zones[0].cards.b.push(t)
+  const r = applyAction(g, 'alice', {
+    type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
+    attackerIds: attackers.map((a) => a.instanceId), targetIds: targets.map((t) => t.instanceId),
+  }, makeCtx())
+  if (!r.ok) throw new Error(r.error)
+  return r.game
+}
+
+describe('defender omission', () => {
+  it('lists a Buzzsaw as omissible against an all-plane attacking force', () => {
+    const buzz = omissible()
+    const out = attackWith([zoneEntry({ vehicleType: 'plane', playedOnTurn: 2 })], [buzz])
+    expect(out.state.awaitingResponse?.omissibleIds).toEqual([buzz.instanceId])
+    expect(out.state.awaitingResponse?.stealthyIds).toEqual([])
+    expect(out.state.activeBattle).toBeNull() // the window opened; the battle has not locked
+  })
+
+  it('does not list it when the attacking force contains a ship', () => {
+    const buzz = omissible()
+    const out = attackWith([
+      zoneEntry({ vehicleType: 'plane', playedOnTurn: 2 }),
+      zoneEntry({ vehicleType: 'ship', playedOnTurn: 2 }),
+    ], [buzz])
+    expect(out.state.awaitingResponse).toBeNull()
+    expect(out.state.activeBattle).not.toBeNull() // no window at all — it locks straight away
+  })
+
+  it('does not list it when the attacking force contains a tank', () => {
+    const buzz = omissible()
+    const out = attackWith([zoneEntry({ vehicleType: 'tank', playedOnTurn: 2 })], [buzz])
+    expect(out.state.awaitingResponse).toBeNull()
+  })
+
+  // Spec §4.8: the "force" is the attacker's committed selection, not
+  // everything they own in the zone. A hull sitting the battle out is not
+  // attacking.
+  it('reads the force as the selection, not the whole zone', () => {
+    const g = makeGame({ turnNumber: 3 })
+    const plane = zoneEntry({ vehicleType: 'plane', playedOnTurn: 2 })
+    const benchedShip = zoneEntry({ vehicleType: 'ship', playedOnTurn: 2 })
+    const buzz = omissible()
+    g.state.zones[0].cards.a.push(plane, benchedShip)
+    g.state.zones[0].cards.b.push(buzz)
+    const r = applyAction(g, 'alice', {
+      type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
+      attackerIds: [plane.instanceId], targetIds: [buzz.instanceId],
+    }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.awaitingResponse?.omissibleIds).toEqual([buzz.instanceId])
+  })
+
+  it('opens the window on an omissible defender with no stealthy one present', () => {
+    const buzz = omissible()
+    const plain = zoneEntry({ name: 'Plain' })
+    const out = attackWith([zoneEntry({ vehicleType: 'plane', playedOnTurn: 2 })], [buzz, plain])
+    expect(out.state.awaitingResponse).not.toBeNull()
+    expect(out.state.awaitingResponse?.targetIds).toHaveLength(2)
+  })
+
+  it('accepts an omissible opt-out and locks with the rest', () => {
+    const buzz = omissible()
+    const plain = zoneEntry({ name: 'Plain' })
+    const out = attackWith([zoneEntry({ vehicleType: 'plane', playedOnTurn: 2 })], [buzz, plain])
+    const r = applyAction(out, 'bob', { type: 'RESPOND_TO_ATTACK', optOutIds: [buzz.instanceId] }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.activeBattle?.defenderIds).toEqual([plain.instanceId])
+  })
+
+  it('rejects an opt-out that is in neither list', () => {
+    const buzz = omissible()
+    const plain = zoneEntry({ name: 'Plain' })
+    const out = attackWith([zoneEntry({ vehicleType: 'plane', playedOnTurn: 2 })], [buzz, plain])
+    expect(applyAction(out, 'bob', { type: 'RESPOND_TO_ATTACK', optOutIds: [plain.instanceId] }, makeCtx()))
+      .toMatchObject({ ok: false, status: 400 })
+  })
+
+  it('accepts stealthy and omissible opt-outs together', () => {
+    const buzz = omissible()
+    const sneak = zoneEntry({ name: 'Sneak', keywords: ['stealthy'] })
+    const plain = zoneEntry({ name: 'Plain' })
+    const out = attackWith([zoneEntry({ vehicleType: 'plane', playedOnTurn: 2 })], [buzz, sneak, plain])
+    const r = applyAction(out, 'bob', {
+      type: 'RESPOND_TO_ATTACK', optOutIds: [buzz.instanceId, sneak.instanceId],
+    }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.activeBattle?.defenderIds).toEqual([plain.instanceId])
+  })
+
+  it('calls the attack off without spending the activation when every defender sits out', () => {
+    const buzz = omissible()
+    const out = attackWith([zoneEntry({ vehicleType: 'plane', playedOnTurn: 2 })], [buzz])
+    const r = applyAction(out, 'bob', { type: 'RESPOND_TO_ATTACK', optOutIds: [buzz.instanceId] }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.activeBattle).toBeNull()
+    expect(r.game.state.zones[0].lastActivatedTurn).toBeNull()
+  })
+
+  // Spec §4.8: a forced battle skips the response window entirely, exactly as
+  // it skips the Stealthy opt-out — the card forces the fight.
+  it('is exempt from a forced battle, which locks immediately', () => {
+    const g = makeGame({ turnNumber: 3 })
+    const attacker = zoneEntry({ vehicleType: 'plane', playedOnTurn: 2 })
+    const buzz = omissible()
+    g.state.zones[0].cards.a.push(attacker)
+    g.state.zones[0].cards.b.push(buzz)
+    expect(declareForcedBattle(g, makeCtx(), {
+      zoneId: 1, aggressor: 'a', attackerIds: [attacker.instanceId],
+      defenderIds: [buzz.instanceId], cause: 'Gang Up',
+    })).toBe(true)
+    expect(g.state.awaitingResponse).toBeNull()
+    expect(g.state.activeBattle?.defenderIds).toEqual([buzz.instanceId])
+  })
+
+  it('normalizeState defaults omissibleIds on a legacy awaitingResponse', () => {
+    const g = makeGame()
+    g.state.awaitingResponse = {
+      zoneId: 1, aggressor: 'a', attackerIds: ['x'], targetIds: ['y'], stealthyIds: ['y'],
+    } as NonNullable<typeof g.state.awaitingResponse>
+    delete (g.state.awaitingResponse as unknown as Record<string, unknown>).omissibleIds
+    normalizeState(g.state)
+    expect(g.state.awaitingResponse?.omissibleIds).toEqual([])
   })
 })
 

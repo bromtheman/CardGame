@@ -80,6 +80,7 @@ export interface PublicGameState {
   awaitingResponse: {
     zoneId: number; aggressor: 'a' | 'b'
     attackerIds: string[]; targetIds: string[]; stealthyIds: string[]
+    omissibleIds: string[]
   } | null
   // Structurally duplicates ActiveBattle in engineTypes.ts (not imported or
   // aliased) — any field added to one must be added to the other by hand.

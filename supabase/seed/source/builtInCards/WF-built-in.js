@@ -16,6 +16,7 @@ export const wfVehicles = [
         blueprintId: null,
         keywords: [],
         meta: {
+            defensiveOmission: 'unlessShipOrTank',
         }
     },
     {
@@ -33,6 +34,7 @@ export const wfVehicles = [
         blueprintId: null,
         keywords: [],
         meta: {
+            defensiveOmission: 'unlessShipOrTank',
         }
     },
     {

@@ -118,6 +118,12 @@ export function normalizeState(state: PublicGameState): void {
   // continuation did not exist before this wave, so a battle declared by
   // older code has neither. Guarded on a truthy activeBattle — a null one
   // (already normalized above) is left alone, never dereferenced.
+  // Same shape of nested defaulting as activeBattle below: omissibleIds did
+  // not exist before wave 4, so an attack declared by older code has none.
+  if (state.awaitingResponse) {
+    const pending = state.awaitingResponse as Partial<NonNullable<PublicGameState['awaitingResponse']>>
+    if (pending.omissibleIds === undefined) pending.omissibleIds = []
+  }
   if (state.activeBattle) {
     const battle = state.activeBattle as Partial<NonNullable<PublicGameState['activeBattle']>>
     if (battle.summons === undefined) battle.summons = []
