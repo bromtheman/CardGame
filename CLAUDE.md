@@ -41,6 +41,10 @@ Dev server: `npm --prefix frontend run dev` (port 5173; `.claude/launch.json` ha
   visible to both players.
 - Never commit secrets. Only the publishable anon key belongs in frontend env;
   run a secrets audit before any push (see docs/claude/workflow.md).
+- **Never type credentials into the sign-in form, and never ask the user to log in
+  for you.** To get a signed-in browser, run `node scripts/qa-login.mjs` (background —
+  it serves once and exits), then `await window.__qaLogin()` in the page. Passwords
+  stay in gitignored `scripts/qa-accounts.local`. Setup: docs/claude/testing.md.
 
 ## Supabase (remote-only)
 
@@ -58,5 +62,5 @@ Details: docs/claude/supabase.md.
 | [docs/claude/card-effects.md](docs/claude/card-effects.md) | adding/changing a card effect, keyword, or effect-driven UI |
 | [docs/claude/supabase.md](docs/claude/supabase.md) | deploying functions, writing migrations, changing auth/RLS, debugging 4xx/5xx from functions |
 | [docs/claude/frontend.md](docs/claude/frontend.md) | changing pages, realtime/reconnect behavior, dialogs, or query wiring |
-| [docs/claude/testing.md](docs/claude/testing.md) | writing tests, running E2E against the live backend, browser verification |
+| [docs/claude/testing.md](docs/claude/testing.md) | writing tests, running E2E against the live backend, browser verification, or needing a signed-in browser session |
 | [docs/claude/workflow.md](docs/claude/workflow.md) | branching, merging, pushing, deploy sequencing, or picking up backlog work |

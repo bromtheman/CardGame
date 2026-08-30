@@ -68,8 +68,41 @@ Dev server via the preview tools with launch config `frontend`
 (`.claude/launch.json`, port 5173) — never via raw Bash. Verify with
 `read_console_messages` (zero errors expected), `read_page`, and screenshots.
 Two-account games: sign the second account in from a second browser
-context/profile. Never type credentials the user hasn't provided for automation;
-the two test accounts above are the sanctioned ones.
+context/profile. Never type credentials into the sign-in form at all — use the QA
+login below, which is the sanctioned way to get a signed-in browser.
+
+### Signing in without typing a password
+
+`scripts/qa-login.mjs` exists so nobody — human or agent — has to type a password
+into the sign-in form to get a QA session.
+
+```bash
+cp scripts/qa-accounts.example scripts/qa-accounts.local   # then fill it in; gitignored
+node scripts/qa-login.mjs        # first account in the file
+node scripts/qa-login.mjs p2     # a named account
+```
+
+It signs in from Node against `/auth/v1/token`, then serves that session **once**
+on `127.0.0.1:5199` and exits, so run it in the background. In the dev-server page:
+
+```js
+await window.__qaLogin()   // -> the signed-in email
+```
+
+`window.__qaLogin` is installed by `frontend/src/lib/qaLogin.ts`, imported from
+`main.tsx` only under `import.meta.env.DEV` — it is absent from production builds.
+It calls `supabase.auth.setSession()`, so the session persists through the client's
+own storage and `AuthProvider` picks it up without a reload.
+
+- **`__qaLogin()` does not navigate.** It resolves with the signed-in email while the
+  page is still on `/login` — that is success, not failure. Navigate afterwards; the
+  session is already live, and it survives reloads via the client's own storage.
+- The handoff server refuses any request whose `Origin` is not localhost/127.0.0.1,
+  and is bound to loopback only.
+- Passwords live only in `scripts/qa-accounts.local` (gitignored) and are never
+  printed, logged, or written anywhere else.
+- Both seats of a two-player game still need two browser profiles — same origin
+  means same `localStorage`, so one profile holds one session.
 
 ## Gates before any merge (all must pass)
 

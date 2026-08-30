@@ -1,0 +1,20 @@
+# QA login credentials — template.
+#
+# Copy this file to scripts/qa-accounts.local and fill in real values.
+# scripts/qa-accounts.local is gitignored and must NEVER be committed.
+#
+# One EMAIL/PASSWORD pair per account. The prefix is the account name you pass
+# to the script (case-insensitive):
+#
+#   node scripts/qa-login.mjs        # uses the first account below
+#   node scripts/qa-login.mjs p2     # uses P2_*
+#
+# A game needs two players, so two accounts are the usual setup. Note that both
+# players cannot be signed in at once in the same browser profile — same origin,
+# same localStorage. Use a second browser profile for the second seat.
+
+P1_EMAIL=you@example.com
+P1_PASSWORD=your-password-here
+
+P2_EMAIL=second-account@example.com
+P2_PASSWORD=other-password-here
