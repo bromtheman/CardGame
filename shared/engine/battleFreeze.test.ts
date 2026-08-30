@@ -118,6 +118,24 @@ describe('both freezes set at once', () => {
     }
   })
 
+  // What the ordering of the two checks actually buys. With `pendingAdmitted`
+  // in place the two orders reject and admit exactly the same set, so status
+  // alone cannot tell them apart — the observable difference is which reason
+  // the player is given. A player who owes a choice must be told about the
+  // choice, not about the battle underneath it, or the message points them at
+  // the one thing they cannot act on.
+  it('blames the choice, not the battle, in every rejection', () => {
+    for (const [type, action] of Object.entries(SAMPLES)) {
+      if (ADMITTED.includes(type)) continue
+      const { g } = bothFrozen()
+      const r = applyAction(g, 'bob', action, makeCtx())
+      if (r.ok) throw new Error(`${type} was admitted`)
+      expect({ type, error: r.error }).toEqual({
+        type, error: 'A card effect is waiting on a choice — resolve it first',
+      })
+    }
+  })
+
   // The battle freeze alone would have admitted these three — that is exactly
   // why pendingEffect is its own check, ahead of it (spec §4.2, departure 2).
   it('rejects the battle actions and the hero power the battle freeze would admit', () => {
