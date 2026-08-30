@@ -62,6 +62,35 @@ reaches both automatically, but a meta key added OUTSIDE `TRIGGERS` must be
 added to both expressions. Better: export the list from the registry and delete
 the duplicate (open backlog item).
 
+## Workflow — TDD, unique keys, honest reporting
+
+Three rules govern every card-effect change, on top of the checklist below.
+
+**1. Card effects are TDD, no exceptions.** Write the failing engine test
+first, then implement until it passes, then run the full suite
+(`npx vitest run`) and **report the before→after passing count**. A wave that
+reports "tests pass" without both numbers has not been verified — the count is
+what catches a suite that silently stopped collecting tests.
+
+**2. Key effects by a unique registry id, never by a card's name.** The name in
+`meta` is a string frozen into `games.state` at deal time; the implementation
+behind it is code, redeployed for every game at once. So a name that two cards
+could carry silently rebinds one of them the moment the other's effect is
+registered. This is the Kraken/Paddlegun collision: Kraken snapshots dealt
+before its meta was corrected still name `paddlegunEffect`, so registering that
+name for Paddlegun made every such in-flight Kraken start firing Paddlegun's
+draw-from-the-enemy-deck effect, mid-game, with no reseed involved
+(`docs/superpowers/specs/2026-08-27-effect-coverage-design.md` §9.2; pre-deploy
+check in [supabase.md](supabase.md)). Give each effect its own id, and never
+reuse another card's.
+
+**3. After deploying, list what is still unimplemented — do not report the wave
+as complete.** Close out by naming the spec's effects that remain unbuilt
+(cross-check `KNOWN_GAPS` and the coverage guard against the spec's delivery
+table). "Wave N complete" is a claim about the spec, not about the diff, and
+the guard has known blind spots — a registered effect that no card names is
+invisible to G1/G2/G3.
+
 ## Adding a new effect — checklist
 
 1. Rules first: confirm the card's intended behavior against the spec / seeded
