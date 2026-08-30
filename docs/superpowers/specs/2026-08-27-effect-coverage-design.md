@@ -1331,12 +1331,18 @@ an effect break tests.
 | **2** | DP1 `ACTIVATE_VEHICLE`, DP4 `pendingEffect`, the three summon rows, `spawnVehicles`, the `PARTIAL` guard map, and the UI for both dispatch points | 9 |
 | **3** | DP3 forced battle, DP6 hand direction (Excalibur), battle summons, `ActiveBattle.continuation` | **9** |
 | **4** | DP2 battle triggers, Buzzsaw/Veles defender rule, Plunderer clause 2 | 8 |
-| **5** | DP5 riders | 5 |
+| **5** | DP5 riders (two homes), decision 3 closed, DP2 departures 8-9 | 5 |
 | | Falcon Squadron exemption | 1 |
 | | **total** | **65** |
 
 Wave 0 lands the guard first, so the gap is measured before it is closed. Wave 1
 is independently playable and covers half the population with no new machinery.
+
+**All five waves are delivered.** `KNOWN_GAPS` and `PARTIAL` are both empty and
+both still asserted; every one of the 65 cards resolves an implemented effect.
+The close-out — card by card against §8, which of these rulings reality
+contradicted, and what is left unverified — is
+`docs/superpowers/plans/2026-08-30-effect-coverage-wave-5-closeout.md`.
 
 ## 11. Testing
 
