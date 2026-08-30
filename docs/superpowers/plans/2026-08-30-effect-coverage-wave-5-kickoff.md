@@ -106,11 +106,17 @@ Work on a branch off `main`. The owner reviews via PR rather than local merges.
 `docs/claude/supabase.md` carries the runbook, and every rule in it was learned
 the hard way:
 
-- **Deploy with `node scripts/deploy-function.mjs game-action`, NOT the
-  `deploy_edge_function` MCP tool** — its 23-file, ~161 KB payload gets
-  silently truncated, and a partial payload deletes every file it omits.
-- **Apply the seed first, then deploy `game-action`.**
-- **Rebase or merge `main` before you deploy** — a deploy ships your whole
+- **Merging to `main` DEPLOYS.** A Supabase GitHub integration (enabled
+  2026-08-30) runs migrate + seed + deploy on every push to `main`, so a merged
+  PR reaches production by itself. Only functions declared in
+  `supabase/config.toml` are deployed, and a failed migrate step silently skips
+  the deploy — read the migrate log first if a deploy "did nothing".
+- **For an out-of-band deploy, use `node scripts/deploy-function.mjs
+  game-action`, NOT the `deploy_edge_function` MCP tool** — the MCP payload gets
+  silently truncated, and a partial payload deletes every file it omits. The
+  script reads `SUPABASE_ACCESS_TOKEN` from the repo-root `.env.local`.
+- **Apply the seed before the code reaches production**, whichever path you use.
+- **Merge `main` before deploying by hand** — a manual deploy ships your whole
   branch state, not just your diff.
 - **Check for live games already holding a name you're about to register.**
 - **Verify by content, not file count**: type-only imports are erased in

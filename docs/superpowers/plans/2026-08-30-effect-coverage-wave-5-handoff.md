@@ -236,14 +236,21 @@ assuming the field is free.
 
 Everything here bit wave 4 or is verified to be waiting for wave 5.
 
-### 4.1 Deploy runbook, unchanged and still true
+### 4.1 Deploy runbook — CHANGED on 2026-08-30, read it again
 
-- **Use `node scripts/deploy-function.mjs game-action`, never the
-  `deploy_edge_function` MCP tool** for `game-action`. Its payload is 23 files
-  and ~161 KB; the MCP path truncates silently, and a partial payload **deletes
-  the files it omits**. `$env:SUPABASE_ACCESS_TOKEN` (PowerShell — `export` is
-  bash and fails).
-- **Apply the seed first, then deploy.**
+- **Merging to `main` now deploys automatically.** A Supabase GitHub
+  integration runs migrate + seed + deploy on every push to `main`. Two traps
+  come with it: only functions declared in `supabase/config.toml` are deployed
+  (a missing one is silently never deployed, and `verify_jwt` there defaults to
+  **true**, which would 401 every request including the CORS preflight), and a
+  failed migrate step **skips** the deploy rather than reporting a function
+  error.
+- **For a manual/out-of-band deploy, use `node scripts/deploy-function.mjs
+  game-action`, never the `deploy_edge_function` MCP tool.** The MCP path
+  truncates silently and a partial payload **deletes the files it omits**. The
+  script reads `SUPABASE_ACCESS_TOKEN` from the repo-root `.env.local`, or the
+  environment (`$env:SUPABASE_ACCESS_TOKEN` — `export` is bash and fails).
+- **Apply the seed before the code reaches production.**
 - **Rebase or merge `main` before deploying.** A deploy ships the whole branch
   state, not your diff.
 - **Check for live games holding a name you're about to register.** A game's
