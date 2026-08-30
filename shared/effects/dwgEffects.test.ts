@@ -632,6 +632,29 @@ describe('DWG Waters clauses 2 and 3', () => {
       expect(out.state.zones[0].lastActivatedTurn).toBe(3)
     })
 
+    // Spec §4.3, DP2 departure 9. ATTACK_ENEMY_BASE now also dispatches the
+    // ATTACKER's own zone riders, with isDefender: false. Clause 3 branched on
+    // `phase === 'baseAttack'` alone, which was enough while only the defender
+    // was ever dispatched with that phase — reached as the attacker it would
+    // intercept its owner's own bombardment. Its text says "if THE ENEMY
+    // attacks you directly in this zone".
+    it('does not intercept a bombardment its own claimant is making', () => {
+      const game = claimed({ side: 'a' }) // alice holds the claim AND is attacking
+      game.state.zones[0].cards.a.push(
+        zoneEntry({ name: 'Raider', materialCost: 40_000, playedOnTurn: 2 }),
+      )
+      // Bob needs a hull that could BE a striker, or the guard is untestable:
+      // clause 3 reads the strikers of `otherSide(actor)`, and with an empty
+      // enemy side it bails on "nothing to fight" whether or not it should.
+      game.state.zones[0].cards.b.push(
+        zoneEntry({ name: 'Home Guard', materialCost: 50_000, playedOnTurn: 2 }),
+      )
+      const r = applyAction(game, 'alice', { type: 'ATTACK_ENEMY_BASE', zoneId: 1 }, makeCtx({ catalog: fullCatalog }))
+      if (!r.ok) throw new Error(r.error)
+      expect(r.game.state.activeBattle).toBeNull()
+      expect(r.game.state.zones[0].baseHp.b).toBe(960) // 40k / 1000 = 40 damage landed
+    })
+
     // Clause 2 must not also fire for the battle clause 3 just created: the
     // defender has no fleet IN THAT BATTLE, and "alongside your fleet" needs a
     // fleet (spec §7.3). The defender is given a hull standing in the zone but

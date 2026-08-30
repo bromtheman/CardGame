@@ -1,5 +1,5 @@
 import { TRIGGERS } from '../gameSettings.ts'
-import type { CardInstance, SnapshotCard } from './gameInit.ts'
+import type { CardInstance, SnapshotCard, ZoneEffect } from './gameInit.ts'
 import type {
   BattleCasualty, BattleContext, EngineContext, EngineGame, Side, ZoneCardEntry,
 } from './engineTypes.ts'
@@ -94,7 +94,7 @@ function lockRoster(game: EngineGame): BattleParticipant[] {
 //   1. every participant on both sides, summons included;
 //   2. ONLY on a forced battle, the defending side's non-participants in that
 //      zone whose onBattleEffect is registered { battleBystander: true };
-//   3. state.zoneEffects riders on that zone belonging to the defending side.
+//   3. state.zoneEffects riders on that zone, BOTH sides (DP2 departure 8).
 //
 // The PARTICIPANT roster is snapshotted before anything runs, so an effect
 // that adds a hull to the board (Dryad) or to the battle (The Onyx Throne)
@@ -131,22 +131,62 @@ export function dispatchBattleLock(game: EngineGame, ctx: EngineContext, forced:
     }
   }
 
-  // A spent ability keeps firing through state.zoneEffects (decision 22). The
-  // entry stores the registry name directly, so the effect is looked up by
-  // that rather than through a meta key, and the card it is handed is minted
-  // from the catalog by name — DWG Waters itself is in state.destroyed by now.
-  const riders = game.state.zoneEffects.filter((e) => e.zoneId === battle.zoneId && e.side === defenderSide)
-  for (const rider of riders) {
-    const fn = effectFor(rider.effect)
-    if (!fn) continue
-    const snapshot = ctx.catalog.find((c) => c.isBuiltIn && c.name === rider.cardName)
-    // A cardName the catalog cannot supply is a data problem, not a
-    // game-stopping one: skip the rider rather than failing a locked battle.
-    if (!snapshot) continue
-    const card: CardInstance = { ...snapshot, instanceId: ctx.newId() }
-    if (!fn({ game, actor: defenderSide, card, ctx, battle: context(true, false) })) {
-      game.state.log.push(`${rider.cardName}'s battle trigger could not resolve`)
-    }
+  // A spent ability keeps firing through state.zoneEffects (decision 22).
+  //
+  // BOTH sides, since wave 5 (spec §4.3, DP2 departure 8). Wave 4 scanned the
+  // defender's riders only, because DWG Waters was the only customer and it
+  // reacts to being attacked; Ambush and Ongoing Attrition fire on a battle
+  // their own owner declares, which a defender-only pass can never reach.
+  // Each rider now reads its own isDefender and self-selects, exactly as
+  // dwgWatersDefensiveGuest already did.
+  for (const rider of game.state.zoneEffects) {
+    if (rider.zoneId !== battle.zoneId) continue
+    fireRider(game, ctx, rider, context(rider.side !== battle.aggressor, false))
+  }
+}
+
+// One zone-effect rider, dispatched by the registry name its entry stores
+// rather than through a meta key — its card was spent turns (or a whole game)
+// ago, so it is in no hand and on no field. The payload card is minted from
+// the catalog by `cardName`, which is why a rider effect needs
+// `{ needsCatalog: true }` EVEN IF it never reads the catalog itself: without
+// the flag `game-action` never loads one, the lookup below fails, and the
+// rider is skipped in production while every unit test passes.
+//
+// A cardName the catalog cannot supply is a data problem, not a game-stopping
+// one: skip rather than fail an action that has already committed.
+function fireRider(
+  game: EngineGame, ctx: EngineContext, rider: ZoneEffect, battle: BattleContext,
+): void {
+  const fn = effectFor(rider.effect)
+  if (!fn) return
+  const snapshot = ctx.catalog.find((c) => c.isBuiltIn && c.name === rider.cardName)
+  if (!snapshot) return
+  const card: CardInstance = { ...snapshot, instanceId: ctx.newId() }
+  if (!fn({ game, actor: rider.side, card, ctx, battle })) {
+    game.state.log.push(`${rider.cardName}'s zone effect could not resolve`)
+  }
+}
+
+// The mirror of dispatchZoneInterception (below): the riders belonging to the
+// side that just ACTIVATED a zone with a bombardment (spec §4.3, DP2
+// departure 9). Ongoing Attrition is the only customer — "if that zone is
+// activated, and you are attacking…" — and the interception pass, which scans
+// the defender, can never reach it.
+//
+// `isDefender: false` is what keeps the two apart: dwgWatersInterception
+// guards on it, so a claim-holder bombarding a zone they hold does not
+// intercept their own attack.
+export function dispatchZoneActivation(
+  game: EngineGame, ctx: EngineContext, zoneId: number, actor: Side,
+): void {
+  const context: BattleContext = {
+    phase: 'baseAttack', zoneId, isDefender: false, isParticipant: false,
+    forced: false, survived: false, won: false, casualties: [],
+  }
+  for (const rider of game.state.zoneEffects) {
+    if (rider.zoneId !== zoneId || rider.side !== actor) continue
+    fireRider(game, ctx, rider, context)
   }
 }
 
@@ -238,14 +278,7 @@ export function dispatchZoneInterception(
     // One interception is enough: a battle already declared means the
     // bombardment is spent.
     if (game.state.activeBattle) return
-    const fn = effectFor(rider.effect)
-    if (!fn) continue
-    const snapshot = ctx.catalog.find((c) => c.isBuiltIn && c.name === rider.cardName)
-    if (!snapshot) continue
-    const card: CardInstance = { ...snapshot, instanceId: ctx.newId() }
-    if (!fn({ game, actor: defenderSide, card, ctx, battle: context })) {
-      game.state.log.push(`${rider.cardName}'s zone effect could not resolve`)
-    }
+    fireRider(game, ctx, rider, context)
   }
 }
 

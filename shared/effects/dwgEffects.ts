@@ -208,6 +208,13 @@ function dwgWatersDefensiveGuest(payload: EffectPayload): boolean {
 function dwgWatersInterception(payload: EffectPayload): boolean {
   const { game, actor, ctx, card, battle } = payload
   if (!battle) return true
+  // "If THE ENEMY attacks you directly in this zone." Since wave 5,
+  // ATTACK_ENEMY_BASE dispatches the ATTACKER's own riders too (spec §4.3, DP2
+  // departure 9), so `phase === 'baseAttack'` alone no longer means "I am being
+  // bombarded". Without this, a claimant bombarding a zone they hold intercepts
+  // their own attack — with the roles inverted, since everything below reads
+  // `otherSide(actor)` as the aggressor.
+  if (!battle.isDefender) return true
   if (game.state.activeBattle) return true // already intercepted by another rider
   const zone = zoneById(game.state, battle.zoneId)
   if (!zone) return true

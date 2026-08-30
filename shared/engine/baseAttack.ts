@@ -2,7 +2,7 @@ import { BASE_DAMAGE_DIVISOR, KEYWORDS, VEHICLE_TYPES } from '../gameSettings.ts
 import type { ZoneCardEntry } from './engineTypes.ts'
 import { checkVictory, err, otherSide, registerHandler, zoneById } from './gameEngine.ts'
 import { effectiveMaterialCostOf } from './placement.ts'
-import { dispatchBaseAttackVictory, dispatchZoneInterception } from './battleTriggers.ts'
+import { dispatchBaseAttackVictory, dispatchZoneActivation, dispatchZoneInterception } from './battleTriggers.ts'
 
 // Which hulls in a zone actually strike its enemy base: not subs, not
 // Inoffensive, not deployed this turn. The single definition of that roster —
@@ -59,5 +59,12 @@ registerHandler('ATTACK_ENEMY_BASE', (game, actor, action, ctx) => {
   // stops plundererRaid drawing after status flips to complete, and nothing
   // needs to.
   dispatchBaseAttackVictory(game, ctx, zone.id, actor, strikers)
+  // The ATTACKER's own zone riders (spec §4.3, DP2 departure 9). Ongoing
+  // Attrition's "if that zone is activated, and you are attacking…" fires
+  // here; the interception pass above scans the defender and can never reach
+  // it. After the damage, so a rider's extra damage stacks on a bombardment
+  // that actually landed, and after every early return, so a refused or
+  // intercepted attack activates nothing.
+  dispatchZoneActivation(game, ctx, zone.id, actor)
   return { ok: true, game }
 })
