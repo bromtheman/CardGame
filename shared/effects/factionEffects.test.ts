@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { effectFor } from './registry.ts'
+import { effectFor, registerEffect } from './registry.ts'
+import { choice } from './primitives.ts'
 import { inst, makeCtx, makeGame, snap, zoneEntry } from '../engine/testFixtures.ts'
 import {
   applyAction, declareForcedBattle, discardSnapshotOf, effectiveCostInGame, effectiveMaterialCostOf,
@@ -7,6 +8,17 @@ import {
 } from '../engine/index.ts'
 import type { CardInstance } from '../engine/gameInit.ts'
 import type { BattleCasualty, BattleContext, EngineContext, EngineGame } from '../engine/engineTypes.ts'
+
+// A synthetic battle trigger that takes the one suspension slot, so a wave-5
+// rider's own offer meets an occupied one. t_-prefixed and registered here
+// rather than borrowing a real card's name, which would couple this file to
+// that card's registration state (docs/claude/testing.md).
+registerEffect('t_slotHog', choice({
+  effect: 't_slotHog',
+  prompt: 'Hog the slot',
+  options: () => [{ id: 'x', label: 'X' }],
+  resolve: () => true,
+}))
 
 const DRAW_ONE = [
   'mandrelOnPlay', 'rookOnPlay', 'resoluteOnPlay', 'excruciatorOnPlay',
@@ -2336,5 +2348,181 @@ describe('wave 4 — terawattJoin', () => {
     // Terawatt survived, so the aggressor did not win — and Trebuchet gets no
     // repeat. Before the fix, this was an offered choice.
     expect(decided.game.state.pendingEffect).toBeNull()
+  })
+})
+
+// Wave 5 — DP5's rest-of-turn riders (spec §4.3, "DP5 as wave 5 built it").
+// Driven through applyAction rather than by calling the effects directly:
+// the lock dispatch, the catalog probe's rider source and endTurn's expiry
+// pass are the parts most likely to break, and only a real action exercises
+// all three.
+describe('wave 5 — Ambush', () => {
+  const ambushSnap = snap({
+    name: 'Ambush', faction: 'WF', type: 'ability', vehicleType: null,
+    materialCost: 0, cardText: 'Choose a zone…', meta: { playOnZoneEffect: 'ambushEffect' },
+  })
+  const ambushCtx = () => makeCtx({ catalog: [ambushSnap] })
+  const ambushCard = () => inst({ ...ambushSnap })
+
+  // alice plays Ambush on zone 1, then has a hull ready to attack with.
+  function armed() {
+    const game = makeGame({ turnNumber: 3, activePlayer: 'alice' })
+    const card = ambushCard()
+    game.privates.a.hand.push(card)
+    game.state.counts.a.hand = 1
+    const r = applyAction(game, 'alice', {
+      type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1,
+    }, ambushCtx())
+    if (!r.ok) throw new Error(r.error)
+    const attacker = zoneEntry({ name: 'Raider', playedOnTurn: 2 })
+    const defender = zoneEntry({ name: 'Home Fleet' })
+    r.game.state.zones[0].cards.a.push(attacker)
+    r.game.state.zones[0].cards.b.push(defender)
+    return { game: r.game, attacker, defender }
+  }
+
+  const attack = (game: EngineGame, ids: { attacker: string; defender: string }) =>
+    applyAction(game, 'alice', {
+      type: 'ATTACK_ENEMY_FLEET', zoneId: 1, attackerIds: [ids.attacker], targetIds: [ids.defender],
+    }, ambushCtx())
+
+  it('claims the zone with a rest-of-turn rider that draws if unused', () => {
+    const { game } = armed()
+    expect(game.state.zoneEffects).toEqual([{
+      effect: 'ambushEffect', zoneId: 1, side: 'a', cardName: 'Ambush',
+      setOnTurn: 3, expiresOnTurn: 3, data: { drawOnExpiry: true },
+    }])
+  })
+
+  it('refuses a second Ambush on a zone the same side already holds one in', () => {
+    const { game } = armed()
+    const second = ambushCard()
+    game.privates.a.hand.push(second)
+    game.state.counts.a.hand = 1
+    const r = applyAction(game, 'alice', {
+      type: 'PLAY_CARD_TO_ZONE', instanceId: second.instanceId, zoneId: 1,
+    }, ambushCtx())
+    expect(r).toMatchObject({ ok: false, status: 400 })
+  })
+
+  it('allows a second Ambush in a different zone', () => {
+    const { game } = armed()
+    const second = ambushCard()
+    game.privates.a.hand.push(second)
+    game.state.counts.a.hand = 1
+    const r = applyAction(game, 'alice', {
+      type: 'PLAY_CARD_TO_ZONE', instanceId: second.instanceId, zoneId: 2,
+    }, ambushCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.zoneEffects.map((e) => e.zoneId)).toEqual([1, 2])
+  })
+
+  it('offers at the ambusher own battle lock, and consumes the rider first', () => {
+    const { game, attacker, defender } = armed()
+    const r = attack(game, { attacker: attacker.instanceId, defender: defender.instanceId })
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.pendingEffect?.side).toBe('a')
+    expect(r.game.state.pendingEffect?.card.name).toBe('Ambush')
+    // Spent by the battle, whatever the answer turns out to be (spec §7.3).
+    expect(r.game.state.zoneEffects).toEqual([])
+  })
+
+  it('accepting moves the spawn distance 600m closer and grants the deploy order', () => {
+    const { game, attacker, defender } = armed()
+    const locked = attack(game, { attacker: attacker.instanceId, defender: defender.instanceId })
+    if (!locked.ok) throw new Error(locked.error)
+    const before = locked.game.state.activeBattle!.distanceM
+    const r = applyAction(locked.game, 'alice', {
+      type: 'RESOLVE_PENDING_EFFECT', choiceId: locked.game.state.pendingEffect!.options[0].id,
+    }, ambushCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.activeBattle!.distanceM).toBe(before - 600)
+    // Tactical Positioning's per-side ledger is NOT spent by a card.
+    expect(r.game.state.activeBattle!.distanceModifiedBy).toEqual([])
+    expect(r.game.state.log.some((l) => l.includes('Ambush') && l.includes('after'))).toBe(true)
+  })
+
+  it('clamps at the minimum spawn distance rather than going through it', () => {
+    const { game, attacker, defender } = armed()
+    const locked = attack(game, { attacker: attacker.instanceId, defender: defender.instanceId })
+    if (!locked.ok) throw new Error(locked.error)
+    locked.game.state.activeBattle!.distanceM = 100
+    const r = applyAction(locked.game, 'alice', {
+      type: 'RESOLVE_PENDING_EFFECT', choiceId: locked.game.state.pendingEffect!.options[0].id,
+    }, ambushCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.activeBattle!.distanceM).toBe(50) // SPAWN_DISTANCE_MIN_M
+  })
+
+  it('declining leaves the distance alone', () => {
+    const { game, attacker, defender } = armed()
+    const locked = attack(game, { attacker: attacker.instanceId, defender: defender.instanceId })
+    if (!locked.ok) throw new Error(locked.error)
+    const r = applyAction(locked.game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', cancel: true }, ambushCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.activeBattle!.distanceM).toBe(1200)
+  })
+
+  it('does not fire when its owner is the DEFENDER of a battle in that zone', () => {
+    const { game, attacker, defender } = armed()
+    // bob attacks into zone 1 instead: alice's ambush is not an offensive battle.
+    const bobsTurn = { ...game, activePlayer: 'bob', turnNumber: 3.5 }
+    const r = applyAction(bobsTurn, 'bob', {
+      type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
+      attackerIds: [defender.instanceId], targetIds: [attacker.instanceId],
+    }, ambushCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.pendingEffect).toBeNull()
+    expect(r.game.state.zoneEffects).toHaveLength(1)
+  })
+
+  it('does not fire on a bombardment — a base attack is not a battle fought', () => {
+    const { game } = armed()
+    const r = applyAction(game, 'alice', { type: 'ATTACK_ENEMY_BASE', zoneId: 1 }, ambushCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.pendingEffect).toBeNull()
+    expect(r.game.state.zoneEffects).toHaveLength(1)
+  })
+
+  it('draws at its owner END_TURN when no battle was fought there', () => {
+    const { game } = armed()
+    game.privates.a.deck = [inst({ name: 'Reward' }), inst()]
+    game.state.counts.a.deck = 2
+    const r = applyAction(game, 'alice', { type: 'END_TURN' }, ambushCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.privates.a.hand.map((c) => c.name)).toEqual(['Reward'])
+    expect(r.game.state.zoneEffects).toEqual([])
+  })
+
+  it('draws nothing at END_TURN once a battle has consumed it', () => {
+    const { game, attacker, defender } = armed()
+    const locked = attack(game, { attacker: attacker.instanceId, defender: defender.instanceId })
+    if (!locked.ok) throw new Error(locked.error)
+    const declined = applyAction(locked.game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', cancel: true }, ambushCtx())
+    if (!declined.ok) throw new Error(declined.error)
+    declined.game.state.activeBattle = null // the battle is over, however it went
+    declined.game.privates.a.deck = [inst({ name: 'Reward' }), inst()]
+    declined.game.state.counts.a.deck = 2
+    const r = applyAction(declined.game, 'alice', { type: 'END_TURN' }, ambushCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.privates.a.hand).toHaveLength(0)
+  })
+
+  // Spec §4.3, DP2 departure 4. The rider is spent BEFORE the offer, so a
+  // dropped offer still counts as "you fought there" — which is what the
+  // card's own compensation clause asks.
+  it('is consumed even when its offer is dropped for an occupied slot', () => {
+    const { game, attacker, defender } = armed()
+    // A participant that suspends first, taking the one slot.
+    const chooser = zoneEntry({ name: 'Chooser', meta: { onBattleEffect: 't_slotHog' } })
+    game.state.zones[0].cards.a.push(chooser)
+    const r = applyAction(game, 'alice', {
+      type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
+      attackerIds: [attacker.instanceId, chooser.instanceId], targetIds: [defender.instanceId],
+    }, ambushCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.pendingEffect?.card.name).toBe('Chooser')
+    expect(r.game.state.zoneEffects).toEqual([])
+    expect(r.game.state.log.some((l) => l.includes('Ambush') && l.includes('not made'))).toBe(true)
   })
 })

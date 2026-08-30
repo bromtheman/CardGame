@@ -139,7 +139,11 @@ export function dispatchBattleLock(game: EngineGame, ctx: EngineContext, forced:
   // their own owner declares, which a defender-only pass can never reach.
   // Each rider now reads its own isDefender and self-selects, exactly as
   // dwgWatersDefensiveGuest already did.
-  for (const rider of game.state.zoneEffects) {
+  // Snapshotted, like the participant roster above and for the same reason:
+  // a rider may remove ITSELF as it fires (Ambush is spent by the battle,
+  // Ongoing Attrition by its damage), and one that added an entry must not
+  // then be dispatched inside the same lock.
+  for (const rider of [...game.state.zoneEffects]) {
     if (rider.zoneId !== battle.zoneId) continue
     fireRider(game, ctx, rider, context(rider.side !== battle.aggressor, false))
   }
@@ -184,7 +188,7 @@ export function dispatchZoneActivation(
     phase: 'baseAttack', zoneId, isDefender: false, isParticipant: false,
     forced: false, survived: false, won: false, casualties: [],
   }
-  for (const rider of game.state.zoneEffects) {
+  for (const rider of [...game.state.zoneEffects]) {
     if (rider.zoneId !== zoneId || rider.side !== actor) continue
     fireRider(game, ctx, rider, context)
   }
@@ -273,7 +277,7 @@ export function dispatchZoneInterception(
     phase: 'baseAttack', zoneId, isDefender: true, isParticipant: false,
     forced: false, survived: false, won: false, casualties: [],
   }
-  for (const rider of game.state.zoneEffects) {
+  for (const rider of [...game.state.zoneEffects]) {
     if (rider.zoneId !== zoneId || rider.side !== defenderSide) continue
     // One interception is enough: a battle already declared means the
     // bombardment is spent.

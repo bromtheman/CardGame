@@ -151,16 +151,16 @@ describe('play-pipeline effect dispatch', () => {
     expect(r.game.state.resources.a.cp).toBe(3) // unchanged — Marauder's card text grants no CP
   })
 
-  it('ability with unimplemented playOnZoneEffect ambushEffect played to zone 1 succeeds vanilla, no entry added', () => {
+  it('ability with unimplemented playOnZoneEffect t_ambushEffect played to zone 1 succeeds vanilla, no entry added', () => {
     const { g, card } = withHand({
       type: 'ability', vehicleType: null, materialCost: 0, name: 'Ambush',
-      meta: { playOnZoneEffect: 'ambushEffect' },
+      meta: { playOnZoneEffect: 't_ambushEffect' },
     })
     const r = applyAction(g, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx())
     if (!r.ok) throw new Error(r.error)
     expect(r.game.state.zones[0].cards.a).toHaveLength(0)
     expect(r.game.privates.a.hand).toHaveLength(0)
-    expect(r.game.state.log.some((l) => l.includes('Ambush') && l.includes('ambushEffect') && l.includes('vanilla')))
+    expect(r.game.state.log.some((l) => l.includes('Ambush') && l.includes('t_ambushEffect') && l.includes('vanilla')))
       .toBe(true)
   })
 
@@ -177,8 +177,9 @@ describe('play-pipeline effect dispatch', () => {
     // Eclipse's registration state, so the test keeps exercising the
     // unimplemented path indefinitely, rather than going red — for a
     // reason unrelated to what it's meant to check — the moment a real
-    // card is built. ambushEffect/sabotageEffect below are the same shape
-    // and are wave 5's to rename when their cards are built.
+    // card is built. Wave 5 renamed the last two offenders — its own
+    // ambushEffect and sabotageEffect — for exactly that reason, so every
+    // stand-in in this file is now synthetic.
     const { g, card } = withHand({
       vehicleType: 'ship', materialCost: 10000, name: 'Some Ship',
       meta: { onActivate: 't_unimplementedOnActivate' },
@@ -208,7 +209,7 @@ describe('PLAY_ABILITY_CARD rejects cards that need a target', () => {
   it('rejects a card with playOnZoneEffect meta', () => {
     const { g, card } = withHand({
       type: 'ability', vehicleType: null, materialCost: 0, name: 'Ambush',
-      meta: { playOnZoneEffect: 'ambushEffect' },
+      meta: { playOnZoneEffect: 't_ambushEffect' },
     })
     const r = applyAction(g, 'alice', { type: 'PLAY_ABILITY_CARD', instanceId: card.instanceId })
     expect(r).toMatchObject({ ok: false, status: 400, error: 'Ambush needs a target' })
@@ -249,7 +250,7 @@ describe('PLAY_CARD_TO_ZONE ability-to-zone branch', () => {
   it('imposes no zone-legality restriction for a zone-targeted ability (any zone is fine)', () => {
     const { g, card } = withHand({
       type: 'ability', vehicleType: null, materialCost: 0, name: 'Ambush',
-      meta: { playOnZoneEffect: 'ambushEffect' },
+      meta: { playOnZoneEffect: 't_ambushEffect' },
     })
     const r = applyAction(g, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 3 }, makeCtx())
     if (!r.ok) throw new Error(r.error)
@@ -270,7 +271,7 @@ describe('PLAY_CARD_TO_ZONE ability-to-zone branch', () => {
   it('rejects a nonexistent zoneId for a zone-targeted ability, nothing spent', () => {
     const { g, card } = withHand({
       type: 'ability', vehicleType: null, materialCost: 5000, cpCost: 1, name: 'Ambush',
-      meta: { playOnZoneEffect: 'ambushEffect' },
+      meta: { playOnZoneEffect: 't_ambushEffect' },
     })
     const r = applyAction(g, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 99 })
     expect(r).toMatchObject({ ok: false, status: 400, error: 'No such zone' })
@@ -656,10 +657,10 @@ describe('SET_ALERT_CARD', () => {
 })
 
 describe('PLAY_CARD_TARGETING_CARD_ON_FIELD', () => {
-  it('unimplemented playOnVehicleEffect (sabotageEffect) targeting an enemy vehicle on the field succeeds vanilla', () => {
+  it('unimplemented playOnVehicleEffect (t_sabotageEffect) targeting an enemy vehicle on the field succeeds vanilla', () => {
     const { g, card } = withHand({
       type: 'ability', vehicleType: null, materialCost: 0, name: 'Sabotage',
-      meta: { playOnVehicleEffect: 'sabotageEffect' },
+      meta: { playOnVehicleEffect: 't_sabotageEffect' },
     })
     const enemy = zoneEntry({ vehicleType: 'ship' })
     g.state.zones[0].cards.b.push(enemy)
@@ -669,7 +670,7 @@ describe('PLAY_CARD_TARGETING_CARD_ON_FIELD', () => {
     if (!r.ok) throw new Error(r.error)
     expect(r.game.privates.a.hand).toHaveLength(0)
     expect(
-      r.game.state.log.some((l) => l.includes('Sabotage') && l.includes('sabotageEffect') && l.includes('vanilla')),
+      r.game.state.log.some((l) => l.includes('Sabotage') && l.includes('t_sabotageEffect') && l.includes('vanilla')),
     ).toBe(true)
     // The spent targeting ability lands in the discard, same as any other ability play.
     expect(r.game.state.destroyed.a).toHaveLength(1)
@@ -680,7 +681,7 @@ describe('PLAY_CARD_TARGETING_CARD_ON_FIELD', () => {
   it('rejects a nonexistent target instanceId', () => {
     const { g, card } = withHand({
       type: 'ability', vehicleType: null, materialCost: 0, name: 'Sabotage',
-      meta: { playOnVehicleEffect: 'sabotageEffect' },
+      meta: { playOnVehicleEffect: 't_sabotageEffect' },
     })
     expect(applyAction(g, 'alice', {
       type: 'PLAY_CARD_TARGETING_CARD_ON_FIELD', instanceId: card.instanceId, targetInstanceId: 'ghost',
@@ -701,7 +702,7 @@ describe('PLAY_CARD_TARGETING_CARD_ON_FIELD', () => {
   it('rejects missing or non-string targetInstanceId', () => {
     const { g, card } = withHand({
       type: 'ability', vehicleType: null, materialCost: 0, name: 'Sabotage',
-      meta: { playOnVehicleEffect: 'sabotageEffect' },
+      meta: { playOnVehicleEffect: 't_sabotageEffect' },
     })
     expect(applyAction(
       g, 'alice', { type: 'PLAY_CARD_TARGETING_CARD_ON_FIELD', instanceId: card.instanceId } as never,
