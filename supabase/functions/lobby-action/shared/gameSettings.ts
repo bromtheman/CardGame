@@ -9,7 +9,14 @@ export const FLIER_COPY_LIMIT = 6 // max plane+airship copies per deck
 export const SUB_COPY_LIMIT = 6
 
 export const DEFAULT_BASE_HP = 1000
-export const MATERIALS_PER_TURN = 50_000 // × floor(turnNumber)
+// × floor(turnNumber). The default only applies when the lobby carries no
+// `materialsPerTurn` override — read it through `materialsPerTurnOf`
+// (lobbySettings.ts), never straight from this constant.
+export const MATERIALS_PER_TURN = 75_000
+// Floor is CUSTOM_CARD_ROUND_TO: below the cheapest possible card cost, turn 1
+// could not buy anything at all. Ceiling matches the other big-number caps.
+export const MIN_MATERIALS_PER_TURN = 5_000
+export const MAX_MATERIALS_PER_TURN = 10_000_000
 export const BASE_DAMAGE_DIVISOR = 1000 // base dmg = floor(materialCost / this)
 
 export const SPAWN_DISTANCE_DEFAULT_M = 1200
