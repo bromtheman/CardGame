@@ -77,6 +77,29 @@ npx vitest run shared/effects       # path filter — the ONLY sanctioned way to
 
 ## Live E2E (scripted, against the real project)
 
+`scripts/smoke-wave4.mjs` is the worked, working example — and it is meant to be
+**reused**, not read as history. Point its `required` deck lists at the cards a
+wave needs and it does the rest: signs in both QA accounts from
+`scripts/qa-accounts.local`, builds two legal 20-card decks, creates a lobby,
+starts a game, then drives the **real deployed `game-action`** and reports
+PASS/FAIL per step. `--keep` leaves the game behind so you can open it in the
+browser; without it the lobby is cleaned up.
+
+Why it exists: `game-action`'s catalog probe is edge-function code, so `tsc`
+does not read it and no unit test can reach it — and a regression there is a
+card that silently does nothing in production while every check stays green.
+Three waves deferred this test before wave 4 ran it.
+
+Two things that cost time writing it, both worth knowing before the next one:
+
+- **A card in a hand is a `CardInstance` snapshot (camelCase — `vehicleType`,
+  `materialCost`), while a `games`/`cards` ROW is snake_case.** Mixing them
+  gives a filter that silently matches nothing.
+- **Never name a variable `URL`.** It shadows the global constructor `fetch`
+  needs, and the failure (`URL is not a constructor`) points nowhere near the
+  assignment.
+
+
 Pattern (used for every phase; reusable scaffolding in prior scripts): a `tsx`
 script that reads `frontend/.env.local` for URL + publishable key, signs in the
 two test accounts, builds decks/lobby/game through the real functions, then

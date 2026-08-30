@@ -332,11 +332,59 @@ reason `knownActionTypes()` is exported from `gameEngine.ts`.
 
 ---
 
-## 5. What wave 4 did NOT verify
+## 5. What wave 4 verified, and what it did not
 
-<!-- TASK-12-PLACEHOLDER: replace this block with the measured outcome of the
-     final verification, the whole-branch review, the deploy, and the in-game
-     smoke test before calling the wave done. -->
+**The in-game smoke test finally ran.** It had been outstanding since wave 2 —
+three waves' worth of "the engine is unit-tested, the wiring on top of it is
+not". `scripts/smoke-wave4.mjs` is the harness, and **it is reusable: point its
+`required` deck lists at your own cards and it builds the fixture for you.**
+
+It signs in both QA accounts, builds two legal 20-card decks, creates a lobby,
+starts a game, and then drives the **real deployed `game-action`** through the
+paths that no unit test can reach. **16/16 steps passed** against `game-action`
+v11. What it actually proves:
+
+| Proved live | Why it needed a live test |
+|---|---|
+| catalog probe source 1 (card in the caller's hand) | the probe is edge-function code, outside the root tsconfig, with no test harness |
+| **catalog probe source 4 (`state.zoneEffects`)** | wave 4 added it; a spent ability's rider is in no hand, on no field, and not the pending card |
+| catalog probe source 3 (`pendingEffect.card`) | the only prior exercise anywhere was wave 3's, which never ran |
+| DP2's lock dispatch | Catshark's 30k landed in production — measured, 150k − 100k + 30k = 80k |
+| `joinBattle` | the summoned Corsair is in the battle and **not** on the board |
+| both freezes set at once | `pendingEffect` owed to the defender while `activeBattle` stood, then reportable after the answer |
+
+And in the browser, on a real board, with **zero console errors**:
+
+- The `BattleOverlay` renders a battle summon correctly — labelled `(summoned)`
+  and carrying its "vanishes when the report is approved regardless of HP,
+  cannot be repaired" note. **This is wave 3's summon rendering, verified for
+  the first time.**
+- The battle-report form includes the summon, so report completeness works
+  through the UI and not just in the engine.
+- The `DWG WATERS` zone badge renders on the claimed zone.
+- The public battle log reads cleanly end to end and names no hidden card.
+
+### Still unverified
+
+1. **Six of the ten cards were not played in a live game.** The smoke test
+   exercises DWG Waters (all three clauses' machinery), Catshark, and the
+   summon/battle plumbing. Dryad, The Onyx Throne, Sacrilego, Iron Cordon,
+   Terawatt, Buzzsaw/Veles and Plunderer are covered only by unit tests. The
+   harness makes adding them cheap — a `required` deck list and a few more
+   steps — and the two with the most UI surface are **Terawatt** (the choice
+   dialog rendering *over* the battle overlay, which no player has yet seen)
+   and **Buzzsaw/Veles** (the response bar's new "sit out" label, which has no
+   test of any kind — `StealthyResponseBar` is untested, pre-existing).
+2. **Two rulings are open for the owner**, both raised in PR #19 and neither a
+   defect. See §3's traps and the PR body: Dryad × Trebuchet makes Trebuchet's
+   repeat non-terminating (spec §7.3's "self-limiting on the zone's
+   population" premise is now false), and a DWG Waters zone becomes
+   *permanently* un-bombardable rather than merely un-bombardable this turn.
+   **Check whether they were resolved before you build on either card.**
+3. **The bystander pass scans only the defending side.** DWG Waters' clause 3
+   is the one caller where a card effect drags the *attacker's* hulls into a
+   fight, so an attacker-side Terawatt can never react to it. Flagged by
+   review as a question; not resolved.
 
 ---
 
