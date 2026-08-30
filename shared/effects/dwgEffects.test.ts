@@ -497,6 +497,184 @@ describe('plundererRaid', () => {
   })
 })
 
+describe('DWG Waters clauses 2 and 3', () => {
+  // The guest pool "from the game" is the catalog (spec §7.3): built-in DWG
+  // vehicles under 60k, with the summonOnly exclusion repeated by hand because
+  // this filters ctx.catalog directly rather than going through drawFromPool.
+  const corsair = snap({ name: 'Corsair', faction: 'DWG', type: 'vehicle', materialCost: 30_000 })
+  const marauderHull = snap({ name: 'Marauder', faction: 'DWG', type: 'vehicle', materialCost: 40_000 })
+  const tooDear = snap({ name: 'Plunderer', faction: 'DWG', type: 'vehicle', materialCost: 180_000 })
+  const wrongFaction = snap({ name: 'Rook', faction: 'OW', type: 'vehicle', materialCost: 20_000 })
+  const squirrel = snap({
+    name: 'Flying Squirrel', faction: 'DWG', type: 'vehicle', materialCost: 20_000,
+    meta: { summonOnly: true },
+  })
+  const watersSnap = snap({ name: 'DWG Waters', faction: 'DWG', type: 'ability', vehicleType: null })
+  const fullCatalog = [corsair, marauderHull, tooDear, wrongFaction, squirrel, watersSnap]
+
+  function claimed(over: { side?: 'a' | 'b'; zoneId?: number } = {}) {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zoneEffects.push({
+      effect: 'dwgWatersEffect', zoneId: over.zoneId ?? 1, side: over.side ?? 'b',
+      cardName: 'DWG Waters', setOnTurn: 1,
+    })
+    return game
+  }
+
+  describe('clause 2 — a guest joins a defensive battle in the claimed zone', () => {
+    it('offers exactly the DWG vehicles under 60k, and nothing else', () => {
+      const game = claimed()
+      const attacker = zoneEntry({ playedOnTurn: 2 })
+      const defender = zoneEntry({ name: 'Home Fleet' })
+      game.state.zones[0].cards.a.push(attacker)
+      game.state.zones[0].cards.b.push(defender)
+      const r = applyAction(game, 'alice', {
+        type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
+        attackerIds: [attacker.instanceId], targetIds: [defender.instanceId],
+      }, makeCtx({ catalog: fullCatalog }))
+      if (!r.ok) throw new Error(r.error)
+      expect(r.game.state.pendingEffect?.side).toBe('b')
+      expect(r.game.state.pendingEffect?.options.map((o) => o.id).sort()).toEqual(['Corsair', 'Marauder'])
+    })
+
+    it('summons the chosen guest into the battle as a defender', () => {
+      const game = claimed()
+      const attacker = zoneEntry({ playedOnTurn: 2 })
+      const defender = zoneEntry({ name: 'Home Fleet' })
+      game.state.zones[0].cards.a.push(attacker)
+      game.state.zones[0].cards.b.push(defender)
+      const declared = applyAction(game, 'alice', {
+        type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
+        attackerIds: [attacker.instanceId], targetIds: [defender.instanceId],
+      }, makeCtx({ catalog: fullCatalog }))
+      if (!declared.ok) throw new Error(declared.error)
+      const r = applyAction(declared.game, 'bob', {
+        type: 'RESOLVE_PENDING_EFFECT', choiceId: 'Corsair',
+      }, makeCtx({ catalog: fullCatalog }))
+      if (!r.ok) throw new Error(r.error)
+      const battle = r.game.state.activeBattle
+      expect(battle?.summons.map((s) => s.name)).toEqual(['Corsair'])
+      expect(battle?.defenderIds).toHaveLength(2)
+      expect(r.game.state.zones[0].cards.b.map((c) => c.name)).toEqual(['Home Fleet']) // never a board unit
+    })
+
+    it('offers nothing on an OFFENSIVE battle in the claimed zone', () => {
+      const game = claimed({ side: 'a' }) // the aggressor holds the claim
+      const attacker = zoneEntry({ playedOnTurn: 2 })
+      const defender = zoneEntry({ name: 'Foe' })
+      game.state.zones[0].cards.a.push(attacker)
+      game.state.zones[0].cards.b.push(defender)
+      const r = applyAction(game, 'alice', {
+        type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
+        attackerIds: [attacker.instanceId], targetIds: [defender.instanceId],
+      }, makeCtx({ catalog: fullCatalog }))
+      if (!r.ok) throw new Error(r.error)
+      expect(r.game.state.pendingEffect).toBeNull()
+    })
+
+    it('offers nothing for a battle in an unclaimed zone', () => {
+      const game = claimed({ zoneId: 2 })
+      const attacker = zoneEntry({ playedOnTurn: 2 })
+      const defender = zoneEntry({ name: 'Home Fleet' })
+      game.state.zones[0].cards.a.push(attacker)
+      game.state.zones[0].cards.b.push(defender)
+      const r = applyAction(game, 'alice', {
+        type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
+        attackerIds: [attacker.instanceId], targetIds: [defender.instanceId],
+      }, makeCtx({ catalog: fullCatalog }))
+      if (!r.ok) throw new Error(r.error)
+      expect(r.game.state.pendingEffect).toBeNull()
+    })
+
+    it('declining leaves the battle unchanged and reportable', () => {
+      const game = claimed()
+      const attacker = zoneEntry({ playedOnTurn: 2 })
+      const defender = zoneEntry({ name: 'Home Fleet' })
+      game.state.zones[0].cards.a.push(attacker)
+      game.state.zones[0].cards.b.push(defender)
+      const declared = applyAction(game, 'alice', {
+        type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
+        attackerIds: [attacker.instanceId], targetIds: [defender.instanceId],
+      }, makeCtx({ catalog: fullCatalog }))
+      if (!declared.ok) throw new Error(declared.error)
+      const r = applyAction(declared.game, 'bob', {
+        type: 'RESOLVE_PENDING_EFFECT', cancel: true,
+      }, makeCtx({ catalog: fullCatalog }))
+      if (!r.ok) throw new Error(r.error)
+      expect(r.game.state.activeBattle?.summons).toEqual([])
+      expect(r.game.state.activeBattle?.defenderIds).toEqual([defender.instanceId])
+    })
+  })
+
+  describe('clause 3 — a direct base attack is intercepted', () => {
+    function bombard(catalog = fullCatalog) {
+      const game = claimed()
+      game.state.zones[0].cards.a.push(zoneEntry({ name: 'Raider', materialCost: 40_000, playedOnTurn: 2 }))
+      const r = applyAction(game, 'alice', { type: 'ATTACK_ENEMY_BASE', zoneId: 1 }, makeCtx({ catalog }))
+      if (!r.ok) throw new Error(r.error)
+      return r.game
+    }
+
+    it('converts the bombardment into a battle against a summoned guardian', () => {
+      const out = bombard()
+      const battle = out.state.activeBattle
+      expect(battle?.zoneId).toBe(1)
+      expect(battle?.aggressor).toBe('a')
+      expect(battle?.summons).toHaveLength(1)
+      expect(['Corsair', 'Marauder']).toContain(battle?.summons[0].name)
+      expect(battle?.defenderIds).toEqual([battle?.summons[0].instanceId])
+      expect(battle?.attackerIds).toHaveLength(1)
+    })
+
+    it('lands no base damage, and spends the attacker activation on the battle', () => {
+      const out = bombard()
+      expect(out.state.zones[0].baseHp.b).toBe(1000) // untouched
+      expect(out.state.zones[0].lastActivatedTurn).toBe(3)
+    })
+
+    // Clause 2 must not also fire for the battle clause 3 just created: the
+    // defender has no fleet of their own in it, and "alongside your fleet"
+    // needs a fleet (spec §7.3).
+    it('does not also offer a clause-2 guest for its own battle', () => {
+      const out = bombard()
+      expect(out.state.pendingEffect).toBeNull()
+      expect(out.state.activeBattle?.summons).toHaveLength(1)
+    })
+
+    it('leaves an unclaimed zone alone', () => {
+      const game = makeGame({ turnNumber: 3 })
+      game.state.zones[0].cards.a.push(zoneEntry({ materialCost: 40_000, playedOnTurn: 2 }))
+      const r = applyAction(game, 'alice', { type: 'ATTACK_ENEMY_BASE', zoneId: 1 }, makeCtx({ catalog: fullCatalog }))
+      if (!r.ok) throw new Error(r.error)
+      expect(r.game.state.activeBattle).toBeNull()
+      expect(r.game.state.zones[0].baseHp.b).toBe(1000 - 40)
+    })
+
+    it('lets the bombardment through when no guest is available', () => {
+      const out = bombard([watersSnap, tooDear, wrongFaction])
+      expect(out.state.activeBattle).toBeNull()
+      expect(out.state.zones[0].baseHp.b).toBe(1000 - 40)
+    })
+
+    it('picks the guardian deterministically under a seeded rng', () => {
+      const first = bombard().state.activeBattle?.summons[0].name
+      const second = bombard().state.activeBattle?.summons[0].name
+      expect(first).toBe(second)
+    })
+  })
+
+  it('clause 1 still claims the zone when played, with no battle context', () => {
+    const game = makeGame()
+    const ok = effectFor('dwgWatersEffect')!({
+      game, actor: 'a', card: inst({ name: 'DWG Waters' }),
+      ctx: makeCtx({ catalog: fullCatalog }), targetZoneId: 2,
+    })
+    expect(ok).toBe(true)
+    expect(game.state.zoneEffects).toHaveLength(1)
+    expect(game.state.zoneEffects[0]).toMatchObject({ effect: 'dwgWatersEffect', zoneId: 2, side: 'a' })
+  })
+})
+
 describe('captured cards mint copies for their captor', () => {
   // A copy is a new hull, not the captured card: exactly one card left the
   // enemy deck and exactly one goes back. A copy that inherited the capture

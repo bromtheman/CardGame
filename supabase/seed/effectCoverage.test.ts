@@ -27,10 +27,10 @@ const KNOWN_GAPS: Record<string, string> = {
 // not "does all of the text work?", so it cannot see these, and they cannot
 // go in KNOWN_GAPS without tripping the stale-entry assertion. Delete an
 // entry when its wave finishes the card.
-const PARTIAL: Record<string, string> = {
-  'DWG:DWG Waters':
-    'wave 4 — clauses 2-3 need a battle-declare dispatch point. Its persistent zone claim is implemented.',
-}
+// Empty as of wave 4: both entries (Plunderer's clause 2, DWG Waters'
+// clauses 2-3) were closed by the wave that owned them. The assertion below
+// still runs over it, so the next partly-built card has a home ready.
+const PARTIAL: Record<string, string> = {}
 
 // cardText is optional on SeedCard, so it must be optional here too.
 function classify(card: { faction: string; name: string; cardText?: string; meta?: unknown }) {
@@ -158,10 +158,11 @@ describe('built-in card effect coverage', () => {
     expect(stale).toEqual([])
   })
 
-  it('waves 1, 2 and 3 are complete — no wave-1, wave-2 or wave-3 entries remain', () => {
-    expect(Object.values(KNOWN_GAPS).filter((w) => w.startsWith('wave 1'))).toEqual([])
-    expect(Object.values(KNOWN_GAPS).filter((w) => w.startsWith('wave 2'))).toEqual([])
-    expect(Object.values(KNOWN_GAPS).filter((w) => w.startsWith('wave 3'))).toEqual([])
+  it('waves 1-4 are complete — only wave-5 entries remain', () => {
+    for (const wave of ['wave 1', 'wave 2', 'wave 3', 'wave 4']) {
+      expect(Object.values(KNOWN_GAPS).filter((w) => w.startsWith(wave))).toEqual([])
+      expect(Object.values(PARTIAL).filter((w) => w.startsWith(wave))).toEqual([])
+    }
     expect(Object.keys(KNOWN_GAPS)).toHaveLength(5)
   })
 

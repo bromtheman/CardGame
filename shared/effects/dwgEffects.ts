@@ -1,11 +1,13 @@
 import {
-  DOUBLE_UP_MAX_COST, FLYING_SQUIRREL_ATTACK_COUNT, HERO_POWER_LABELS, KEYWORDS,
-  MARAUDER_DISCOUNT, RESERVES_CARD_COUNT,
+  DOUBLE_UP_MAX_COST, DWG_WATERS_GUEST_MAX_COST, FLYING_SQUIRREL_ATTACK_COUNT,
+  HERO_POWER_LABELS, KEYWORDS, MARAUDER_DISCOUNT, RESERVES_CARD_COUNT,
 } from '../gameSettings.ts'
-import type { ZoneCardEntry } from '../engine/engineTypes.ts'
+import type { EngineContext, ZoneCardEntry } from '../engine/engineTypes.ts'
+import type { SnapshotCard } from '../engine/gameInit.ts'
 import { copyMeta, drawCard, findVehicle, otherSide, zoneById } from '../engine/gameEngine.ts'
 import { effectiveMaterialCostOf } from '../engine/placement.ts'
-import { declareForcedBattle } from '../engine/battleDeclare.ts'
+import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
+import { baseStrikersIn } from '../engine/baseAttack.ts'
 import { choice, grant, summonHulls, takeFromEnemyDeck } from './primitives.ts'
 import { registerCostModifier, registerEffect } from './registry.ts'
 import type { EffectPayload } from './registry.ts'
@@ -125,12 +127,111 @@ registerEffect('doubleUpEffect', ({ game, actor, card, targetInstanceId }) => {
 
 const DWG_WATERS_EFFECT = 'dwgWatersEffect'
 
-// claim a zone as DWG Waters for the rest of the game (DWG Waters).
-// Phase 1: the marker itself — persistent state plus the board badge. The
-// battle-time riders in the card text (a guest DWG vehicle under 60k joining
-// your defensive battles there, and gating direct base attacks behind it)
-// need a battle-declare dispatch point that does not exist yet.
-registerEffect('dwgWatersEffect', ({ game, actor, card, targetZoneId }) => {
+// "Choose a zone. For the rest of the game, whenever you fight a defensive
+// battle in that zone, you may choose one DWG vehicle with a cost <60k from
+// the game to fight alongside your fleet in that battle. If the enemy attacks
+// you directly in this zone, you can force them to beat this ship in battle
+// first before doing damage with their surviving vehicles."
+//
+// Three clauses behind ONE registry name, told apart by the payload — the same
+// shape Trebuchet uses with `continuation`, and the reason it must stay one
+// name: the zoneEffects entry stores the name it was claimed under, and that
+// is what dispatches both riders once the card itself is spent (decision 22).
+//
+//   clause 1  no battle, no resolution      → claim the zone
+//   clause 2  battle.phase === 'lock'       → offer a guest, then re-entry
+//   clause 3  battle.phase === 'baseAttack' → intercept the bombardment
+
+// "From the game" is the catalog, the same phrasing Special Foundries uses for
+// a named pool (spec §7.3). The summonOnly exclusion is repeated by hand
+// because this filters ctx.catalog directly rather than going through
+// drawFromPool, which is the one place that guard comes for free.
+function dwgGuestPool(ctx: EngineContext): SnapshotCard[] {
+  return ctx.catalog.filter((c) =>
+    c.isBuiltIn &&
+    c.faction === 'DWG' &&
+    c.type === 'vehicle' &&
+    c.materialCost < DWG_WATERS_GUEST_MAX_COST &&
+    c.meta.summonOnly !== true)
+}
+
+// Clause 2. Options are catalog card names — public, like Special Foundries'
+// pools — so offering them leaks nothing (spec §4.2, departure 5).
+const dwgWatersGuest = choice({
+  effect: DWG_WATERS_EFFECT,
+  prompt: 'Call in a DWG vehicle to fight alongside your fleet?',
+  options: ({ ctx }) => dwgGuestPool(ctx).map((c) => ({ id: c.name, label: c.name })),
+  data: ({ battle }) => ({ zoneId: battle?.zoneId }),
+  resolve: ({ game, actor, ctx, card, pending }, choiceId) => {
+    if (choiceId === null) return true
+    const zoneId = pending?.data?.zoneId
+    if (typeof zoneId !== 'number') return false
+    const battle = game.state.activeBattle
+    // The battle may have gone while the choice sat open; and the pool is
+    // re-derived rather than trusted, so a stale option cannot summon
+    // something that is no longer eligible.
+    if (!battle || battle.zoneId !== zoneId) return false
+    if (!dwgGuestPool(ctx).some((c) => c.name === choiceId)) return false
+    const hulls = summonHulls(game, ctx, choiceId, 1)
+    if (!hulls) return false
+    if (!joinBattle(game, actor, hulls[0].instanceId, hulls[0])) return false
+    game.state.log.push(`${card.name} calls in a ${choiceId} to zone ${zoneId}`)
+    return true
+  },
+})
+
+function dwgWatersDefensiveGuest(payload: EffectPayload): boolean {
+  const { game, actor, battle } = payload
+  if (!battle || !battle.isDefender) return true
+  const active = game.state.activeBattle
+  const zone = zoneById(game.state, battle.zoneId)
+  if (!active || !zone) return true
+  // "Alongside your fleet" needs a fleet: at least one of the defender's own
+  // board hulls in this battle. Without that check, clause 3's own battle —
+  // where the only defender is the guardian clause 3 just summoned — would
+  // also draw a clause-2 guest, and one card would put two hulls on the board
+  // for a bombardment it had already cancelled.
+  const hasFleet = active.defenderIds.some((id) => zone.cards[actor].some((c) => c.instanceId === id))
+  if (!hasFleet) return true
+  return dwgWatersGuest(payload)
+}
+
+// Clause 3 (spec §7.3). "Force them to beat this ship in battle first before
+// doing damage" cannot be a same-turn sequence — a zone admits ONE activation
+// per turn — so it becomes: this turn they fight instead of bombarding.
+// Automatic rather than offered, because a declinable interception would let
+// the defender void the attacker's activation and take no damage (decision 25).
+function dwgWatersInterception(payload: EffectPayload): boolean {
+  const { game, actor, ctx, card, battle } = payload
+  if (!battle) return true
+  if (game.state.activeBattle) return true // already intercepted by another rider
+  const zone = zoneById(game.state, battle.zoneId)
+  if (!zone) return true
+  const aggressor = otherSide(actor)
+  const strikers = baseStrikersIn(zone.cards[aggressor] as ZoneCardEntry[], game.turnNumber)
+  const pool = dwgGuestPool(ctx)
+  // No guardian to put up, or nothing to fight: let the bombardment through
+  // rather than failing the attacker's action over the defender's card.
+  if (strikers.length === 0 || pool.length === 0) return true
+  const pick = pool[Math.floor(ctx.rng() * pool.length)]
+  const guardian = summonHulls(game, ctx, pick.name, 1)
+  if (!guardian) return true
+  return declareForcedBattle(game, ctx, {
+    zoneId: zone.id,
+    aggressor,
+    attackerIds: strikers.map((s) => s.instanceId),
+    defenderIds: [guardian[0].instanceId],
+    summons: guardian,
+    cause: card.name,
+    // The attacker chose ATTACK_ENEMY_BASE, which spends the zone's one
+    // activation; the interception redirects that activation rather than
+    // refunding it. Eclipse is the only other caller that passes this.
+    activatesZone: true,
+  })
+}
+
+// Clause 1: the marker itself — persistent state plus the board badge.
+function dwgWatersClaim({ game, actor, card, targetZoneId }: EffectPayload): boolean {
   if (typeof targetZoneId !== 'number') return false
   const zone = zoneById(game.state, targetZoneId)
   if (!zone) return false
@@ -148,7 +249,14 @@ registerEffect('dwgWatersEffect', ({ game, actor, card, targetZoneId }) => {
     `Zone ${targetZoneId} becomes DWG Waters for player ${actor.toUpperCase()} — for the rest of the game`,
   )
   return true
-})
+}
+
+registerEffect(DWG_WATERS_EFFECT, (payload) => {
+  if (payload.resolution !== undefined) return dwgWatersGuest(payload)
+  if (payload.battle?.phase === 'lock') return dwgWatersDefensiveGuest(payload)
+  if (payload.battle?.phase === 'baseAttack') return dwgWatersInterception(payload)
+  return dwgWatersClaim(payload)
+}, { needsCatalog: true })
 
 // "When played, refresh one of your hero powers then gain 1cp." With no used
 // power there is nothing to refresh, and `choice` resolves without suspending

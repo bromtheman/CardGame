@@ -2,7 +2,7 @@ import { BASE_DAMAGE_DIVISOR, KEYWORDS, VEHICLE_TYPES } from '../gameSettings.ts
 import type { ZoneCardEntry } from './engineTypes.ts'
 import { checkVictory, err, otherSide, registerHandler, zoneById } from './gameEngine.ts'
 import { effectiveMaterialCostOf } from './placement.ts'
-import { dispatchBaseAttackVictory } from './battleTriggers.ts'
+import { dispatchBaseAttackVictory, dispatchZoneInterception } from './battleTriggers.ts'
 
 // Which hulls in a zone actually strike its enemy base: not subs, not
 // Inoffensive, not deployed this turn. The single definition of that roster —
@@ -37,6 +37,16 @@ registerHandler('ATTACK_ENEMY_BASE', (game, actor, action, ctx) => {
   const strikers = baseStrikersIn(zone.cards[actor] as ZoneCardEntry[], game.turnNumber)
   const damage = baseDamageFrom(zone.cards[actor] as ZoneCardEntry[], game.turnNumber)
   if (damage <= 0) return err(400, 'No vehicles able to strike (subs, inoffensive, and fresh deployments cannot)')
+
+  // A zone-effect rider on the DEFENDER's side may take the attack instead
+  // (spec §7.3, DWG Waters clause 3). Dispatched after every refusal above, so
+  // an illegal bombardment intercepts nothing, and before the damage below,
+  // because the whole point is that no damage lands. The rider declares the
+  // battle itself and passes activatesZone, so the attacker's one activation
+  // is spent on fighting rather than bombarding.
+  dispatchZoneInterception(game, ctx, zone.id, actor)
+  if (game.state.activeBattle) return { ok: true, game }
+
   zone.lastActivatedTurn = game.turnNumber
   zone.baseHp[enemy] = Math.max(0, zone.baseHp[enemy] - damage)
   game.state.log.push(`Zone ${zone.id}: base bombardment for ${damage} (${zone.baseHp[enemy]} HP remains)`)

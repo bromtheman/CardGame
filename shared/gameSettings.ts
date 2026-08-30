@@ -96,6 +96,11 @@ export const CATSHARK_MATERIALS = 30_000
 // write the number.
 export const SACRILEGO_HP_BOOST = 15
 
+// DWG Waters clause 2: "one DWG vehicle with a cost <60k from the game".
+// Exclusive, on printed materialCost — the same authority every other pool
+// filter reads.
+export const DWG_WATERS_GUEST_MAX_COST = 60_000
+
 // Human-readable names for the seven hero powers, used wherever a power id
 // is shown to a player (Kraken's refresh choice).
 export const HERO_POWER_LABELS: Record<string, string> = {

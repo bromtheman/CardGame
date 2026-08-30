@@ -194,6 +194,40 @@ export function dispatchBaseAttackVictory(
   }
 }
 
+// A direct base attack, offered to the DEFENDER's zone-effect riders before
+// any damage lands (spec §7.3). A rider may convert the bombardment into a
+// battle — DWG Waters' clause 3 is the only one today — by declaring one; the
+// caller reads `game.state.activeBattle` afterwards to find out whether that
+// happened, which is why nothing is returned here.
+//
+// Automatic, not offered: a declinable interception would let the defender
+// void the attacker's zone activation AND take no damage, which is the one
+// shape of decline that harms the other player rather than only its own
+// chooser (decision 25).
+export function dispatchZoneInterception(
+  game: EngineGame, ctx: EngineContext, zoneId: number, actor: Side,
+): void {
+  const defenderSide = otherSide(actor)
+  const context: BattleContext = {
+    phase: 'baseAttack', zoneId, isDefender: true, isParticipant: false,
+    forced: false, survived: false, won: false, casualties: [],
+  }
+  for (const rider of game.state.zoneEffects) {
+    if (rider.zoneId !== zoneId || rider.side !== defenderSide) continue
+    // One interception is enough: a battle already declared means the
+    // bombardment is spent.
+    if (game.state.activeBattle) return
+    const fn = effectFor(rider.effect)
+    if (!fn) continue
+    const snapshot = ctx.catalog.find((c) => c.isBuiltIn && c.name === rider.cardName)
+    if (!snapshot) continue
+    const card: CardInstance = { ...snapshot, instanceId: ctx.newId() }
+    if (!fn({ game, actor: defenderSide, card, ctx, battle: context })) {
+      game.state.log.push(`${rider.cardName}'s zone effect could not resolve`)
+    }
+  }
+}
+
 // Undo one death: put the hull back on the board and take its snapshot back
 // out of the discard. Iron Cordon and Sacrilego's clause 2 are the two
 // customers. The snapshot is matched on cardId alone — two copies of one card
