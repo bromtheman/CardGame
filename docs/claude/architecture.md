@@ -53,9 +53,24 @@ frontend (supabase-js) ──invoke──> edge function ──applyAction──
     (summons included); then, **only for a forced battle**, the defending
     side's non-participants in that zone whose effect registered
     `{ battleBystander: true }` (Terawatt alone); then `state.zoneEffects`
-    riders on that zone for the defending side (DWG Waters alone). The
-    bystander flag is what keeps every other battle trigger out of that pass,
-    so no other card needs an `isParticipant` guard it could forget.
+    riders on that zone, **on both sides** since wave 5 — Ambush and Ongoing
+    Attrition fire on a battle their own owner declares, which the original
+    defender-only pass could never reach. Each rider reads its own
+    `isDefender` and self-selects. The bystander flag is what keeps every
+    other battle trigger out of the second pass, so no other card needs an
+    `isParticipant` guard it could forget.
+  - **A rider effect needs `{ needsCatalog: true }` even when it reads no
+    catalog.** `fireRider` mints the rider's payload card from `ctx.catalog`
+    by `cardName`, so without the flag `game-action` never loads one and the
+    rider is silently skipped in production while every unit test passes. The
+    one exception is a rider that is pure data and never needs to *run* — Sub
+    Killer's placement block — which loses nothing by being skipped.
+  - **`ATTACK_ENEMY_BASE` dispatches the ATTACKER's riders too**
+    (`dispatchZoneActivation`, wave 5), after the damage and `checkVictory`,
+    with `isDefender: false`. `dispatchZoneInterception` remains the
+    defender's half. That is why `dwgWatersInterception` guards on
+    `isDefender`: reached as the attacker it would intercept its owner's own
+    bombardment, with the roles inverted.
   - **Resolve** fires `onBattleEffect` for every participant, plus
     `onBattleVictory`/`onBattleDefeat` per side outcome — **after** the death
     triggers (so Iron Cordon can see a destroyed airship already in
@@ -81,6 +96,12 @@ frontend (supabase-js) ──invoke──> edge function ──applyAction──
     `DECIDE_BATTLE_REPORT` can empty the discard (`grant({ draw: 1 })` on an
     empty deck reshuffles the whole pile into it), and a casualty whose
     snapshot has gone that way cannot come back.
+  - **`fireDeathEffect(game, ctx, side, entry)`** (`battleTriggers.ts`) is the
+    single dispatch for one hull's `onDeathEffect`, used by
+    `DECIDE_BATTLE_REPORT` and by Recurring Threat's "choose a friendly
+    vehicle, destroy it". **"Destroy" fires it; "remove from play" does not**
+    (spec §7.3, decision 28) — Sub Killer removes and fires nothing, the same
+    latitude `sacrificeEntry` already takes.
 - `EngineContext = { rng: () => number; newId: () => string; catalog: SnapshotCard[] }`.
   Tests inject deterministic rng/ids via `testFixtures.ts` (`makeGame`, `makeCtx`).
   `game-action` injects `secureRng`, `crypto.randomUUID`, and a catalog probe
@@ -133,8 +154,32 @@ frontend (supabase-js) ──invoke──> edge function ──applyAction──
 - `alertCard` — single shared slot `{side, instanceId, name, setOnTurn} | null`.
   Own new alert replaces yours; setting while the opponent holds it → 409; expires
   at the owner's END_TURN; cleared when the card is played.
-- `scheduled[]` — deferred deliveries (e.g. `changeOrderDraw`), processed in
-  `endTurn` after materials + draw for the incoming side.
+- `scheduled[]` — deferred work, and a **real union** since wave 5.
+  `changeOrderDraw` is delivered to the **incoming** side after materials +
+  draw; `sabotageWatch` resolves for the **ending** side at the close of the
+  turn that scheduled it. Each of the two loops switches on `type` and carries
+  forward what it does not own — a loop that consumed every due item of its
+  side would silently eat the other's.
+- `zoneEffects[]` — board-visible per-zone markers, and DP5's home for a
+  zone-scoped rider (spec §4.3, "DP5 as wave 5 built it"). Two optional fields
+  beyond `{ effect, zoneId, side, cardName, setOnTurn }`, neither needing a
+  `normalizeState` default because *absent* already means what every older row
+  means: `expiresOnTurn?: number` (absent = permanent; swept at its owner's
+  `END_TURN`) and `data?: Record<string, unknown>`, the effect-owned bag that
+  `PendingEffect.data` and `BattleContinuation.data` already are. The engine
+  itself reads only two keys out of `data` — `drawOnExpiry` in `endTurn`, and
+  `blocksFaction` in `legalZonesFor` (Sub Killer's GT block, deliberately a
+  rule rather than an effect-name check, so the next blocking card needs no
+  engine edit). `zoneEffectBadges.ts` renders the marker; its key includes the
+  array index, because one side may plant several Recurring Threats on one
+  zone.
+- **`endTurn` runs a pass for the ENDING side** before the turn number moves,
+  ahead of everything else. It resolves `sabotageWatch` items and expires
+  rest-of-turn `zoneEffects`. It exists because the older `scheduled` loop runs
+  *after* the flip and serves the incoming side — a full round too late for
+  every wave-5 tail, all of which read "…the turn" meaning the actor's own.
+  Running pre-increment is also what makes a Temporary hull count as having
+  survived: the cull happens at the next turn's start.
 - `activeBattle` — `ActiveBattle | null`: `zoneId`, `aggressor`,
   `attackerIds`/`defenderIds`, `distanceM`, `distanceModifiedBy`, plus two
   fields wave 3 added. `summons: ZoneCardEntry[]` are combatants that exist
@@ -255,10 +300,12 @@ must check by hand, not as covered by the guards above.
 
 ## Turn & battle flow
 
-- `END_TURN` (`endTurn`): half-turn numbering (`turnNumber + 0.5`), cull
-  `temporary` keyword vehicles from BOTH sides, set incoming side's materials to
+- `END_TURN` (`endTurn`), in order: **the ending side's turn-end pass**
+  (`sabotageWatch` items, then expiring `zoneEffects` riders — see above),
+  half-turn numbering (`turnNumber + 0.5`), cull `temporary` keyword vehicles
+  from BOTH sides, set incoming side's materials to
   `floor(turnNumber) * materialsPerTurnOf(game.settings)`, draw 1, process due
-  `scheduled` items, expire the ending side's alert card.
+  `scheduled` items for the incoming side, expire the ending side's alert card.
 - Battles: declare (`battleDeclare.ts`) → optional stealthy response
   (`RESPOND_TO_ATTACK`) → both play in FTD → either player `SUBMIT_BATTLE_REPORT`
   → opponent `DECIDE_BATTLE_REPORT` (approve applies deaths/damage and fires
@@ -285,8 +332,12 @@ neither may crash. SS/WF/GT powers are future work (spec §10).
 - `placement.ts` logs "<card> resolved" / "<card> deployed" **unconditionally**,
   including when the effect suspended on a choice and the game is now frozen.
   Uniform across every suspending on-play effect; cosmetic, unfixed.
-- Remaining unimplemented effect names are tracked in `KNOWN_GAPS` in
-  `supabase/seed/effectCoverage.test.ts`, with the wave that closes each one.
-  Cards still listed there play vanilla and log a note at play time. Cards that
-  are *partly* built are tracked separately in `PARTIAL` — see
+- Unimplemented effect names are tracked in `KNOWN_GAPS` in
+  `supabase/seed/effectCoverage.test.ts`; partly-built cards in `PARTIAL` — see
   [card-effects.md](card-effects.md) for which map a card belongs in.
+  **Both are EMPTY as of wave 5**: all 65 cards in the effect-coverage spec are
+  built. They stay asserted over, and the `toHaveLength(0)` is what stops a
+  newly-seeded card with an unimplemented name being added quietly.
+- `state.destroyed` is a **live reservoir, not a log** — `drawCard` on an empty
+  deck reshuffles the whole pile back into it, so anything reading the discard
+  after a death trigger has run must re-check (`canRevive`).

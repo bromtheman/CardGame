@@ -2352,6 +2352,24 @@ describe('wave 4 — terawattJoin', () => {
   })
 })
 
+// The dispatch in battleTriggers.ts mints a rider's payload card from
+// ctx.catalog by cardName, so an effect that must be REACHED as a zone rider
+// needs { needsCatalog: true } even when it reads no catalog itself. Asserted
+// at runtime rather than by reading the source: makeCtx hands every test a
+// catalog, so a missing flag is invisible to unit tests and shows up only as a
+// dead card in production (handoff trap 4.5).
+//
+// Sub Killer is deliberately absent: its rider is a pure data marker read by
+// legalZonesFor, so a lock dispatch that skips it costs nothing.
+describe('zone riders that must be dispatched carry needsCatalog', () => {
+  it.each(['dwgWatersEffect', 'ambushEffect', 'ongoingAttritionEffect', 'recurringThreatEffect'])(
+    '%s', (name) => { expect(CATALOG_EFFECTS.has(name)).toBe(true) },
+  )
+  it('subKillerEffect does not need it', () => {
+    expect(CATALOG_EFFECTS.has('subKillerEffect')).toBe(false)
+  })
+})
+
 // Wave 5 — DP5's rest-of-turn riders (spec §4.3, "DP5 as wave 5 built it").
 // Driven through applyAction rather than by calling the effects directly:
 // the lock dispatch, the catalog probe's rider source and endTurn's expiry
