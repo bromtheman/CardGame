@@ -6,7 +6,7 @@ browser verification.
 ## Unit tests (vitest, repo root)
 
 ```bash
-npx vitest run                      # everything (514 tests / 29 files after wave 3)
+npx vitest run                      # everything (655 tests / 32 files after wave 4)
 npx vitest run shared/effects       # path filter — the ONLY sanctioned way to narrow
 ```
 
@@ -17,6 +17,23 @@ npx vitest run shared/effects       # path filter — the ONLY sanctioned way to
 - Frontend tests under this runner must be **pure Node** — no DOM, no React
   imports (that's why `reconnectPolicy`/`time`/`games` logic lives in plain `.ts`
   lib modules; keep testable logic out of components).
+- `shared/engine/battleFreeze.test.ts` is an **invariant** suite rather than a
+  feature one: it pins that `state.pendingEffect` and `state.activeBattle` may
+  be non-null together (wave 4's Terawatt and DWG Waters both suspend at battle
+  lock) by sweeping every action type × both players. It drives that state with
+  a synthetic bystander rather than either card, so it keeps testing the
+  invariant if both cards change, and it asserts its sweep covers
+  `knownActionTypes()` — a new action type fails the file until someone decides
+  how it behaves under the two freezes. `tsc` cannot serve that role: the root
+  tsconfig excludes `**/*.test.ts`, so a compile-time exhaustiveness check
+  inside a test file is never actually checked.
+- ⚠ **After `git checkout --` on a `shared/` file, re-run `npm run
+  functions:sync`.** `core.autocrlf` smudges the restored file back to CRLF
+  while the synced edge-function copy stays LF. `git diff` shows **nothing**
+  (both normalize to the same blob), but `functionSharedSync.test.ts` compares
+  bytes and fails until you resync. It reads as a phantom failure on a clean
+  tree. This bites mutation testing in particular, where reverting a production
+  file is the whole loop.
 - Engine tests use `shared/engine/testFixtures.ts`: `makeGame()` (alice=side a,
   active; bob=b; factions a=DWG b=OW) and `makeCtx()` (rng cycles 0.1/0.5/0.9,
   ids `e-0`, `e-1`, …). Import the engine via `shared/engine/index.ts` in tests
