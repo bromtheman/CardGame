@@ -98,11 +98,19 @@ Details: docs/claude/supabase.md.
 
 ## Deploying edge functions
 
-**Use the deploy script. Do not deploy through the `deploy_edge_function` MCP
-tool, and do not delegate a deploy to a subagent** — both truncate the payload,
-and a truncated deploy **deletes every file it omits**, failing the function at
-boot for every player. (Wave 3 tried MCP twice; a 23-file payload arrived as 5.)
-Subagent deploys additionally stall on permission classification.
+**Merging to `main` deploys automatically** via the Supabase GitHub integration
+(branching). Functions are deployed only if declared in `supabase/config.toml`,
+and a failed migrate step silently skips the deploy step — details and the
+`verify_jwt` trap are in docs/claude/supabase.md. Migration filenames must keep
+the timestamp recorded in `supabase_migrations.schema_migrations`, or they are
+replayed and fail.
+
+For a manual or out-of-band deploy, **use the deploy script. Do not deploy
+through the `deploy_edge_function` MCP tool, and do not delegate a deploy to a
+subagent** — both truncate the payload, and a truncated deploy **deletes every
+file it omits**, failing the function at boot for every player. (Wave 3 tried MCP
+twice; a 23-file payload arrived as 5.) Subagent deploys additionally stall on
+permission classification.
 
 ```bash
 npm run functions:deploy -- game-action     # add --dry-run to list the payload first

@@ -1,0 +1,28 @@
+# Supabase project config, read by the GitHub integration on every push and PR.
+#
+# Deliberately minimal. The integration deploys ONLY what this file declares
+# (edge functions and storage buckets); API, Auth and seed settings are ignored
+# by default, and this file must stay that way — adding an [auth] or [api]
+# block here would push CLI defaults over the settings configured in the
+# dashboard.
+#
+# Every function does its own auth (`auth.getUser()`) and answers its own CORS
+# preflight, so all three opt out of the platform JWT check. `verify_jwt`
+# defaults to TRUE, and leaving it unset would make the platform 401 requests —
+# including the unauthenticated OPTIONS preflight — before the handler runs.
+#
+# `admin-card-image` is deployed in production but has no source in this repo,
+# so it is intentionally NOT declared: the integration only touches declared
+# functions, leaving that one on its current deployed version rather than
+# failing the deploy on a missing entrypoint.
+
+project_id = "wpgsjnjnvykxavaxibld"
+
+[functions.game-action]
+verify_jwt = false
+
+[functions.lobby-action]
+verify_jwt = false
+
+[functions.create-card]
+verify_jwt = false

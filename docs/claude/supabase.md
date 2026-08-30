@@ -70,7 +70,26 @@ and refreshed by `npm run functions:sync`
 
 ## Deploying
 
-**Use the script, not the MCP tool:**
+**Merging to `main` deploys automatically.** The Supabase GitHub integration
+(branching, enabled 2026-08-30) runs a 7-step workflow on every push and PR:
+clone → pull → health → configure → **migrate** → seed → **deploy**. A PR gets
+its own ephemeral preview database; merging to `main` applies new migrations and
+redeploys functions to production.
+
+Two consequences worth knowing before you touch anything here:
+
+- **Only functions declared in `supabase/config.toml` are deployed.** API, Auth
+  and seed settings are ignored by default. A function missing from that file is
+  silently never deployed — and `verify_jwt` defaults to **true**, so a function
+  declared without `verify_jwt = false` would 401 every request (including the
+  CORS `OPTIONS` preflight) before its handler runs. See the comments in
+  `supabase/config.toml`.
+- **A failed migrate step skips the deploy step.** They are parent and child in
+  the same DAG, so migration drift silently blocks function deploys rather than
+  reporting a function error. If a deploy "did nothing", read the migrate log
+  first.
+
+**For a manual/out-of-band deploy, use the script, not the MCP tool:**
 
 ```bash
 npm run functions:deploy -- game-action            # add --dry-run to list the payload first
@@ -146,10 +165,18 @@ automatically" — is closed by `scripts/deploy-function.mjs` above.)
 
 ## Migrations & data
 
-- Migrations live in `supabase/migrations/` AND must be applied remotely via
-  `apply_migration` (same SQL, same name). Existing ones cover profiles,
-  cards/hero_powers, signup hardening, decks/storage, lobbies/games, and the
-  `apply_action_tx` RPC.
+- Migrations live in `supabase/migrations/` and are applied on merge to `main`
+  by the GitHub integration. Existing ones cover profiles, cards/hero_powers,
+  signup hardening, decks/storage, lobbies/games, the `apply_action_tx` RPC, and
+  `profiles.is_admin`.
+- **A migration filename's timestamp IS its identity.** The integration applies
+  any version not already in `supabase_migrations.schema_migrations`, so a file
+  whose timestamp is not the recorded one gets replayed against a database that
+  already has those objects, and fails. Filenames were reconciled to the recorded
+  versions on 2026-08-30 after MCP `apply_migration` had assigned its own
+  timestamps (all six differed; `add_profile_is_admin` had no local file at all).
+  If you ever apply a migration through MCP again, write the file back with the
+  version MCP recorded — check with `list_migrations`.
 - Seed pipeline: `supabase/seed/` (`npm run seed:build` transforms
   `source/` → `seed_data.sql`); built-in cards have `is_built_in = true`.
 - RLS is on everywhere. `games` rows: participants-only SELECT, written only
