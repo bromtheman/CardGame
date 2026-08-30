@@ -52,7 +52,7 @@ Inherited and binding:
 |---|---|
 | 1 | **Card text is authoritative** over any ported implementation that disagrees |
 | 2 | A built-in card must not carry both `SCRAPPY` and an `onDeathEffect` |
-| 3 | `SET_ALERT_CARD` becomes automatic — the engine sets it; no hand button is restored. **Narrowed in wave 2** to effects that force opponent interaction; a pure choice sets no alert (§4.2) |
+| 3 | `SET_ALERT_CARD` becomes automatic — the engine sets it; no hand button is restored. **Narrowed in wave 2** to effects that force opponent interaction; a pure choice sets no alert (§4.2). **CLOSED in wave 5 with no customer**: narrowed again by waves 3 and 4 to reach only wave 5's riders, it reaches none of them either — every one announces itself through a zone badge, a public log line, a public `pendingEffect`, or a keyword on the board (§4.2, departure 4). No engine-set alert is built; `SET_ALERT_CARD` stays a manual action |
 | 4 | Fragile is auto-assigned to player-made airships only |
 
 Taken during this design:
@@ -95,6 +95,14 @@ Taken during wave 4:
 | 23 | **Reviving a destroyed hull does not roll the battle back**: its `onDeathEffect` has already fired and stands (§4.3, DP2 departure 7) |
 | 24 | Defender omission is **plain card data**, not an effect and not a keyword — an effect used as a predicate inverts the registry's contract, and a keyword cannot carry the condition (§4.8) |
 | 25 | A decline that would **harm the other player** is not offered at all: DWG Waters' interception is automatic, where Terawatt's join and its own clause 2 stay declinable (§7.3). Automatic ≠ permanent — the interception is a gate the attacker can win through, and their survivors then deal the deferred damage via the battle continuation |
+
+Taken during wave 5:
+
+| # | Decision |
+|---|---|
+| 26 | **DP5 splits by what a rider does**, not by which card owns it: a zone-scoped rider lives on `state.zoneEffects` with an `expiresOnTurn` stamp, a vehicle-scoped one on `state.scheduled[]` (§4.3, "DP5 as wave 5 built it") |
+| 27 | **Decision 3 is closed with no customer** — no engine-set alert card is built (§4.2, departure 4) |
+| 28 | **"Destroy" fires `onDeathEffect`; "remove from play" does not.** Recurring Threat destroys, Sub Killer removes; both exits still route through `discardCard` (§7.3) |
 
 ## 3. Scope
 
@@ -248,6 +256,18 @@ carries the same collision risk, so decision 3 now reaches only wave 5's
 riders — an effect planted on the opponent's own next battle, where nothing
 else announces itself.
 
+**Wave 5 closed it with no customer.** Walking its five riders: Ambush and
+Ongoing Attrition fire on their **owner's own** activation, Sub Killer
+restricts its owner's own future deployments, and Sabotage grants a keyword
+that renders on the target chip the instant it lands. Only Recurring Threat is
+planted on the opponent's own battle — and it is the loudest of the five: a
+permanent public zone badge from the moment it is played, then a public
+`pendingEffect` at the instant it matters, then a visible summon in the
+`BattleOverlay`. A banner would add nothing and would inherit
+`SET_ALERT_CARD`'s 409-on-collision rule. So decision 3 built nothing:
+`SET_ALERT_CARD` remains a manual action with no UI caller, and there is no
+longer a future wave for it to be narrowed into.
+
 **Options are public (departure 5 — a new constraint).** `pendingEffect` lives
 in `PublicGameState`, so `options` is visible to both players. A choice may only
 be offered over information the opponent already has. Wave 2's three qualify
@@ -264,7 +284,7 @@ exist. Check this before adding a choice.
 | DP2 | Battle triggers | `onBattleEffect` fires at **lock** and at **resolve** with a `BattleContext` payload (`phase`, `zoneId`, `isDefender`, `survived`, `won`). `onBattleVictory` / `onBattleDefeat` are resolve-only sugar dispatched per side outcome. A side **wins** when the enemy has no surviving participant and **loses** when it has none of its own; both false is a draw. **Built in wave 4; it departs from this row in seven places, numbered DP2 departure 1-7 below.** |
 | DP3 | Forced battle | `declareForcedBattle(game, { zoneId, aggressor, attackerIds, defenderIds, summons, continuation, cause, activatesZone })`, exported from `battleDeclare.ts`. Skips the Stealthy opt-out — the card *forces* the fight. **Built in wave 3; it departs from this row in three places, marked below.** |
 | DP4 | Choice | `state.pendingEffect`, built in wave 2 — see §4.2 for the shipped shape, freeze rule and resume mechanics |
-| DP5 | Rest-of-turn riders | Extends the existing `state.scheduled[]` discriminated union rather than adding a state field: it already carries `side` and `dueTurn` and is already processed in `endTurn` |
+| DP5 | Rest-of-turn riders | **Two homes, split by what the rider does** — this row originally predicted `state.scheduled[]` alone, and wave 5 found that serves only one of its four riders. A rider that changes how a battle or a placement in **one zone** resolves lives on `state.zoneEffects` (Ambush, Ongoing Attrition, Sub Killer); a rider that watches **one vehicle** across the turn lives on `state.scheduled[]` (Sabotage), exactly as written here. See "DP5 as wave 5 built it" below |
 | DP6 | A **vehicle** whose effect targets something outside its own zone | The two gaps recorded in `architecture.md`. `PLAY_CARD_TARGETING_CARD_IN_HAND` gains an optional `zoneId` and accepts a vehicle carrying `playOnCardEffect`: the vehicle deploys to the zone (with `additionalSpawns` and `resourceSurge`), then the effect fires, and the card is **not** `spendCard`'d. **Wave 3 built the hand direction only** — see departure 4 |
 
 Two rulings fall out:
@@ -500,6 +520,100 @@ calls `reshuffleDiscard`, which moves the **whole** pile into the deck. Both
 cards offered a hull that had left that way and then failed on the answer,
 leaving Decline as the only working reply. The general rule, which outlives
 these two cards: **`state.destroyed` is a live reservoir, not a log.**
+
+Two more departures, added by wave 5:
+
+**The lock rider pass scans BOTH sides (DP2 departure 8).** Wave 4 built the
+third lock source (`state.zoneEffects` riders) defender-only, because DWG
+Waters was its only customer, and its own final review flagged the narrowness
+as an open question. Wave 5's Ambush and Ongoing Attrition are **attacker**-side
+riders — each fires on a battle its owner declares — so the pass now dispatches
+every rider on the battle's zone, with `isDefender` computed per rider rather
+than hard-coded `true`. Nothing shipped changes: `dwgWatersDefensiveGuest`
+already returns on `!battle.isDefender`, which is exactly the self-selection
+this source was designed around.
+
+**A bombardment dispatches the ATTACKER's riders too (DP2 departure 9).**
+`dispatchZoneInterception` offers the *defender's* riders a chance to take the
+attack (DWG Waters' clause 3). Ongoing Attrition fires on its own owner's
+`ATTACK_ENEMY_BASE`, which that pass cannot reach, so `ATTACK_ENEMY_BASE` gains
+a second, separately named dispatch — after the damage and `checkVictory`, so
+an intercepted or refused bombardment fires nothing — carrying
+`phase: 'baseAttack'`, `isDefender: false`.
+
+That new context is why `dwgWatersInterception` gains an `isDefender` guard.
+It branched on `phase === 'baseAttack'` alone, which was sufficient while only
+the defender's riders were ever dispatched with that phase; reached as an
+attacker it would intercept its owner's own bombardment. The guard is what its
+card text ("if **the enemy** attacks you directly in this zone") always meant.
+
+#### DP5 as wave 5 built it
+
+The DP5 row above predicted `state.scheduled[]` for every rest-of-turn rider.
+It serves one of the four. The split, and why:
+
+| Rider's job | Home | Cards |
+|---|---|---|
+| change how a battle or a placement in **one zone** resolves | `state.zoneEffects` | Ambush, Ongoing Attrition, Sub Killer |
+| watch **one vehicle** across the turn | `state.scheduled[]` | Sabotage |
+
+A zone rider must be read at **battle lock and at placement time**, not only at
+turn end. `state.zoneEffects` already has a lock dispatch, a board badge, a
+`normalizeState` default and the catalog probe's fourth source;
+`state.scheduled` has none of those and is only ever read in `endTurn`. The
+rules are also **public and binding on the opponent** — Ambush's "deploy after
+the defending player" is an instruction the *defender* follows in From The
+Depths, and they cannot follow a rule they cannot see. Splitting one card
+across both lists would make it two rows that have to be kept in step.
+
+**`ZoneEffect` gains two optional fields**, both `PublicGameState` changes and
+both safe without a `normalizeState` default, because *absent* already means
+what every existing row means:
+
+```ts
+expiresOnTurn?: number                 // expire at the end of this half-turn; absent = permanent
+data?: Record<string, unknown>         // effect-owned rider state
+```
+
+`data` is the same bag `PendingEffect.data` and `BattleContinuation.data`
+already are — one generic field rather than one per card. It carries
+`{ drawOnExpiry: true }` for the two riders whose text prints a compensation
+draw, and `{ summon: SnapshotCard }` for Recurring Threat.
+
+**`state.scheduled[]` becomes a real union**, gaining
+`{ type: 'sabotageWatch'; side; dueTurn; instanceId }` beside
+`changeOrderDraw`.
+
+**`endTurn` gains a pass for the ENDING side.** Its existing `scheduled` loop
+runs after the turn flips and serves the *incoming* side, so the earliest it
+can fire for the acting player is a full round later. Every wave-5 tail reads
+"…the turn", meaning the actor's own turn (§7.3), so the new pass runs
+**before** `turnNumber` moves, while the board still stands as it did when the
+turn ended. That placement also settles Sabotage's only ambiguity: a Temporary
+hull is culled at the *next* turn's start, so it did survive this one. The pass
+switches on `type` and handles only `sabotageWatch`, leaving `changeOrderDraw`
+to the loop that already owns it.
+
+The tails are implemented **in `endTurn`**, not dispatched as effects. That is
+the shape this function already has — it contains `changeOrderDraw`'s whole
+redelivery — and dispatching instead would need a new payload discriminator, a
+new module, and `{ needsCatalog: true }` on two effects purely so the
+dispatcher could mint a payload card the tails never read.
+
+**Recurring Threat stores a snapshot, not a name.** The catalog the engine is
+handed is `is_built_in = true` only, so "summon a copy of that vehicle" cannot
+go through `catalogCard` — it would fail for exactly the custom hulls a player
+is likeliest to have built. The stored value is `discardSnapshotOf(entry,
+actor)`, the one derivation `discardCard` itself writes, so the remembered hull
+arrives already stripped of `costDelta` and of a captor's `ownerSide`.
+
+**Every `zoneEffects` rider is dispatched at lock, whether or not it wants to
+be.** The pass looks the effect up by the name the entry stores; an effect
+whose rider is a pure data marker (Sub Killer's GT block) must therefore return
+`true` untouched on any `battle` payload. And an effect the dispatcher must
+mint a payload card for needs `{ needsCatalog: true }` **even if the effect
+itself never reads the catalog** — the dispatcher's own `ctx.catalog` lookup is
+what fails otherwise, silently, in production only.
 
 ### 4.4 Battle summons
 
@@ -959,6 +1073,55 @@ Added in wave 4:
   because this pool is filtered off `ctx.catalog` rather than through
   `drawFromPool`.
 
+Added in wave 5:
+
+- **"The turn", in a rider's tail, is the actor's own turn.** Ambush ("if the
+  turn ends and you have not fought"), Ongoing Attrition ("for the rest of the
+  turn"), Sub Killer ("for the rest of the turn") and Sabotage ("if it survives
+  the turn") all resolve at that player's own `END_TURN`, before the turn
+  number moves — not a full round later, which is where `state.scheduled`'s
+  existing incoming-side loop would have put them.
+- **"Destroy" fires `onDeathEffect`; "remove from play" does not.** Recurring
+  Threat says *destroy*; Sub Killer says *remove from play*. Both texts are in
+  this one wave, which is what makes the contrast evidence rather than
+  convenience. Both exits still route through `discardCard` — the single exit,
+  so a captured hull goes home and a `summonOnly` hull never reaches a
+  discard — and Sub Killer's simply fires nothing, the same treatment
+  `sacrificeEntry` already gives Iron Cordon's sacrifice. `DECIDE_BATTLE_REPORT`'s
+  dispatch is extracted to `fireDeathEffect` so "destroy" means one thing in
+  both places.
+- **Ongoing Attrition counts zone population on both halves of its sentence.**
+  "Attacking with more vehicles than your opponent" and "for each vehicle you
+  have **in the zone** more than your opponent" are one count, not two: the
+  damage clause names the zone explicitly, and `ATTACK_ENEMY_BASE` has no
+  committed selection to read at all, so a selection-based condition would
+  silently restrict the card to fleet attacks when its own trigger is "if that
+  zone is activated". Condition and formula collapse to `surplus > 0`.
+- **Ongoing Attrition respects a Blocker and a fallen base**, as every other
+  base-damage path does. A blocked activation deals no damage, so the rider is
+  not consumed — and therefore still draws at turn end.
+- **Ambush is consumed by the battle; Ongoing Attrition by its damage.** Each
+  follows its own printed compensation clause. Ambush's reads "if the turn ends
+  and you have **not fought** in that zone", so fighting spends it whether or
+  not the offer was taken (or was dropped for an occupied slot). Ongoing
+  Attrition's reads "if this card leaves play **without dealing damage**", so
+  only damage spends it.
+- **Ambush's zone is public**, like every other zone claim. There is no private
+  zone-effect mechanism, and the same objection applies as to a choice over a
+  hand (§4.2, departure 5). It must be public in any case: the *defender*
+  cannot deploy first, or fight at the altered spawn distance, without being
+  told.
+- **Ambush does not spend `distanceModifiedBy`.** That list is Tactical
+  Positioning's once-per-battle-per-side ledger; Ambush is a card, not that
+  hero power, and a player who plays it keeps their own power. It clamps at
+  `SPAWN_DISTANCE_MIN_M` exactly as the hero power does.
+- **"Defensive fleet battle" (Recurring Threat) is any battle its claimant
+  defends**, forced or declared — §7.3's Catshark ruling already settles that a
+  forced battle is a battle. It carries DWG Waters' "alongside your fleet needs
+  a fleet" guard for the same reason clause 2 does: DWG Waters' clause 3
+  declares a battle whose only defender is a summoned guardian, and one zone
+  can hold both markers.
+
 ### 7.4 Spawning is not playing
 
 A vehicle placed by `spawnVehicles` enters `zone.cards` with its printed
@@ -1102,13 +1265,13 @@ resolve an implemented effect from an earlier wave:
 
 ### Wave 5 — riders (5)
 
-| Card | Faction | Mechanism |
+| Card | Faction | Mechanism (as built) |
 |---|---|---|
-| Ambush | WF | zone rider for the rest of the turn: deploy after the defender and 600 m closer in the next offensive battle there; unused at turn end → draw |
-| Ongoing Attrition | DWG | zone rider: on activation while out-numbering, 40k base damage per surplus vehicle; leaves play without dealing damage → draw |
-| Sub Killer | OW | remove a targeted enemy sub, plane or airship from a zone where you hold no GT vehicle; rider blocks GT deployment there for the turn |
-| Recurring Threat | DWG | destroy a friendly vehicle; permanent `zoneEffect` offering a battle summon of that vehicle in defensive battles there |
-| Sabotage | OW | `grantKeywords(['fragile'])` plus a `scheduled` rider: survives the turn → draw |
+| Ambush | WF | `zoneEffects` rider, `expiresOnTurn`: at the owner's own battle lock in that zone, a yes/no offer — take it and `distanceM` drops by `AMBUSH_DISTANCE_M` (clamped, `distanceModifiedBy` untouched) and the log grants the deploy-after permission. Consumed by the battle either way; intact at turn end → draw |
+| Ongoing Attrition | DWG | `zoneEffects` rider, `expiresOnTurn`: on the owner's own activation of that zone (fleet lock **or** bombardment) while out-numbering, `ONGOING_ATTRITION_DAMAGE_PER_VEHICLE` × surplus to the enemy base, Blocker and fallen-base guards applied. Consumed only by damage; intact at turn end → draw |
+| Sub Killer | OW | destroy-free removal of a targeted enemy sub/plane/airship from a zone holding no friendly GT vehicle, through `discardCard` and firing no death trigger; `zoneEffects` rider, `expiresOnTurn`, read by `legalZonesFor` to block that side's GT plays there |
+| Recurring Threat | DWG | destroy a friendly vehicle (its `onDeathEffect` **does** fire); permanent `zoneEffects` rider carrying the hull's snapshot in `data.summon`, offering a battle summon in defensive battles there |
+| Sabotage | OW | `grantKeywords(['fragile'])` plus a `scheduled` `sabotageWatch`: still on the board at the owner's `END_TURN` → draw |
 
 ### Exempt (1)
 
