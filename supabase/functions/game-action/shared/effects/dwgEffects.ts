@@ -171,6 +171,13 @@ function ongoingAttritionStrike(payload: EffectPayload): boolean {
   const { game, actor, card, battle } = payload
   if (!battle || battle.isDefender) return true
   if (battle.phase !== 'lock' && battle.phase !== 'baseAttack') return true
+  // "IF THAT ZONE IS ACTIVATED" — and §4.3 rules that a forced battle is not a
+  // zone activation: it neither consumes nor is blocked by lastActivatedTurn.
+  // So a card-forced fight in the claimed zone does not trigger this, even
+  // though the same fight WOULD trigger Ambush — whose text keys off fighting
+  // a battle there, not off activating the zone. The two cards read
+  // differently because they are written differently.
+  if (battle.forced) return true
   const zone = zoneById(game.state, battle.zoneId)
   if (!zone) return true
   const enemy = otherSide(actor)

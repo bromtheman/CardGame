@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { costModifierFor, effectFor } from './registry.ts'
 import { DOUBLE_UP_MAX_COST, KEYWORDS, RESERVES_CARD_COUNT } from '../gameSettings.ts'
 import { inst, makeCtx, makeGame, snap, zoneEntry } from '../engine/testFixtures.ts'
-import { applyAction } from '../engine/index.ts'
+import { applyAction, declareForcedBattle } from '../engine/index.ts'
 
 describe('marauderOnPlay', () => {
   it('takes a vehicle from the enemy deck and discounts it by 50k', () => {
@@ -1011,6 +1011,23 @@ describe('wave 5 — Ongoing Attrition', () => {
       },
     })
     expect(ok).toBe(true)
+    expect(game.state.zones[0].baseHp.b).toBe(1000)
+    expect(game.state.zoneEffects).toHaveLength(1)
+  })
+
+  // Spec §4.3: "a forced battle is not a zone activation" — it neither
+  // consumes nor is blocked by lastActivatedTurn. This card's trigger is the
+  // activation, so a card-forced fight in the claimed zone must not pay out,
+  // and the rider survives to draw. (Ambush, on the same zone, WOULD fire:
+  // its trigger is fighting a battle there, not activating the zone.)
+  it('does not fire on a forced battle — that is not a zone activation', () => {
+    const { game, mine, theirs } = claimed({ mine: 3, theirs: 1 })
+    const declared = declareForcedBattle(game, attritionCtx(), {
+      zoneId: 1, aggressor: 'a',
+      attackerIds: [mine[0].instanceId], defenderIds: [theirs[0].instanceId],
+      cause: 'Gang Up',
+    })
+    expect(declared).toBe(true)
     expect(game.state.zones[0].baseHp.b).toBe(1000)
     expect(game.state.zoneEffects).toHaveLength(1)
   })
