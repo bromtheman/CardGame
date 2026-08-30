@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { effectFor } from './registry.ts'
 import { inst, makeCtx, makeGame, snap, zoneEntry } from '../engine/testFixtures.ts'
 import {
-  applyAction, declareForcedBattle, effectiveCostInGame, effectiveMaterialCostOf,
+  applyAction, declareForcedBattle, effectiveCostInGame, effectiveMaterialCostOf, joinBattle,
 } from '../engine/index.ts'
 import type { CardInstance } from '../engine/gameInit.ts'
 import type { EngineContext, EngineGame } from '../engine/engineTypes.ts'
@@ -2074,6 +2074,17 @@ describe('wave 4 — terawattJoin', () => {
     })
     expect(declared).toBe(true)
     expect(game.state.pendingEffect).toBeNull()
+  })
+
+  // The reason resolve re-checks "alone" rather than trusting the offer: the
+  // choice can sit open while the board moves. joinBattle's own duplicate
+  // guard does NOT cover this — the joiner here is a different hull.
+  it('refuses once someone else has joined, so the vehicle is no longer alone', () => {
+    const { game, spare } = forced()
+    const optionId = game.state.pendingEffect!.options[0].id
+    expect(joinBattle(game, 'b', spare.instanceId)).toBe(true)
+    expect(applyAction(game, 'bob', { type: 'RESOLVE_PENDING_EFFECT', choiceId: optionId }, makeCtx()))
+      .toMatchObject({ ok: false, status: 400 })
   })
 
   it('refuses to join twice, and refuses once the battle is gone', () => {

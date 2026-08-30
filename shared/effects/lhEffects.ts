@@ -257,7 +257,10 @@ const TERAWATT = 'terawattJoin'
 //
 // Three conditions, each from a different part of the text:
 //   "due to enemy card effect" → battle.forced. An ordinary fleet attack is
-//     not that, however lonely the defender ends up.
+//     not that, however lonely the defender ends up. Defence in depth only:
+//     dispatchBattleLock runs the bystander pass exclusively for a forced
+//     battle, so no test can kill this guard — it exists so a future change to
+//     that dispatcher cannot silently widen the card.
 //   "alone"                    → the defending side has exactly one
 //     participant. Terawatt itself is excluded: if it IS that participant, the
 //     bystander pass skips it as a combatant and the participant pass hands it
