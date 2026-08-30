@@ -84,6 +84,18 @@ Taken during wave 3:
 | 17 | `lockBattle` is **split**, not reused: only Eclipse stamps `lastActivatedTurn` (§4.3, departure 1) |
 | 18 | A battle summon is identified by **list membership**, not a side field, so one array serves attacker- and defender-side summons (§4.4) |
 
+Taken during wave 4:
+
+| # | Decision |
+|---|---|
+| 19 | **Both freezes may be set at once.** A battle-lock choice leaves `pendingEffect` non-null while `activeBattle` is too; `applyAction`'s existing pending-first ordering already makes this well-defined, and decision 6's slot is still single (§4.3, DP2 departure 3) |
+| 20 | A DP2 trigger that would suspend into an **occupied** slot is skipped with a log line, never overwritten — dispatch order is fixed so the skip is reproducible (§4.3, DP2 departure 4) |
+| 21 | DP2 reaches a **non-participant** only through a bystander flag **derived from `registerEffect`**, in the manner of `CATALOG_EFFECTS`, so no other battle trigger can be reached by accident (§4.3, DP2 departure 2) |
+| 22 | A **spent ability** keeps firing through `state.zoneEffects`, dispatched by the registry name the entry already stores — one name per card, whatever the occasion (§4.3, DP2 departure 2) |
+| 23 | **Reviving a destroyed hull does not roll the battle back**: its `onDeathEffect` has already fired and stands (§4.3, DP2 departure 7) |
+| 24 | Defender omission is **plain card data**, not an effect and not a keyword — an effect used as a predicate inverts the registry's contract, and a keyword cannot carry the condition (§4.8) |
+| 25 | A decline that would **harm the other player** is not offered at all: DWG Waters' interception is automatic, where Terawatt's join and its own clause 2 stay declinable (§7.3) |
+
 ## 3. Scope
 
 **In:** all 65 broken cards, the six missing dispatch points, the silent-no-op
@@ -249,7 +261,7 @@ exist. Check this before adding a choice.
 | # | Point | Shape |
 |---|---|---|
 | DP1 | `onActivate` | New `ACTIVATE_VEHICLE { instanceId, targetInstanceId?, zoneId? }` action, handled in `shared/engine/activate.ts`. `activatedOnTurn: number | null` on `ZoneCardEntry` (**required**, so `tsc` finds every entry literal; defaulted in `normalizeState`) enforces once-per-turn, and is stamped **before** the effect fires so a suspending activation cannot re-enter. The CP price is card data: `meta.activateCpCost` — a number, the same class as `additionalSpawns`, so no registry change. No freshly-deployed restriction: the card text says "once per turn" and nothing more |
-| DP2 | Battle triggers | `onBattleEffect` fires at **lock** and at **resolve** with a `BattleContext` payload (`phase`, `zoneId`, `isDefender`, `survived`, `won`). `onBattleVictory` / `onBattleDefeat` are resolve-only sugar dispatched per side outcome. A side **wins** when the enemy has no surviving participant and **loses** when it has none of its own; both false is a draw |
+| DP2 | Battle triggers | `onBattleEffect` fires at **lock** and at **resolve** with a `BattleContext` payload (`phase`, `zoneId`, `isDefender`, `survived`, `won`). `onBattleVictory` / `onBattleDefeat` are resolve-only sugar dispatched per side outcome. A side **wins** when the enemy has no surviving participant and **loses** when it has none of its own; both false is a draw. **Built in wave 4; it departs from this row in seven places, numbered DP2 departure 1-7 below.** |
 | DP3 | Forced battle | `declareForcedBattle(game, { zoneId, aggressor, attackerIds, defenderIds, summons, continuation, cause, activatesZone })`, exported from `battleDeclare.ts`. Skips the Stealthy opt-out — the card *forces* the fight. **Built in wave 3; it departs from this row in three places, marked below.** |
 | DP4 | Choice | `state.pendingEffect`, built in wave 2 — see §4.2 for the shipped shape, freeze rule and resume mechanics |
 | DP5 | Rest-of-turn riders | Extends the existing `state.scheduled[]` discriminated union rather than adding a state field: it already carries `side` and `dueTurn` and is already processed in `endTurn` |
@@ -343,6 +355,103 @@ grants.
 The shared deploy body — placement, `additionalSpawns`, `resourceSurge` — is
 extracted out of `PLAY_CARD_TO_ZONE` into `deployVehicle`, which both handlers
 call, rather than duplicated.
+
+#### DP2 as wave 4 built it — seven departures
+
+The dispatch lives in `shared/engine/battleTriggers.ts`. Unlike every dispatch
+point before it, DP2's three keys were named on **zero** seeded cards when wave 4
+opened, so the wave authored the seed `meta` and the dispatch together.
+
+**`BattleContext` carries two more fields and a third phase (DP2 departure 1).**
+
+```ts
+interface BattleContext {
+  phase: 'lock' | 'resolve' | 'baseAttack'
+  zoneId: number
+  isDefender: boolean
+  isParticipant: boolean
+  forced: boolean            // declared by a card effect, not ATTACK_ENEMY_FLEET
+  survived: boolean          // resolve/baseAttack only; false at lock
+  won: boolean               // resolve/baseAttack only; false at lock
+}
+```
+
+It reaches effects as `EffectPayload.battle`. `isParticipant` and `forced` exist
+for Terawatt (DP2 departure 2); `'baseAttack'` exists for Plunderer (DP2 departure 4).
+
+**Lock dispatch has three sources, not one (DP2 departure 2).** Terawatt reads
+"whenever a friendly vehicle would be made to fight in battle **alone** due to
+enemy card effect, you may add this vehicle to the combat" — it reacts to a
+battle it is not in, which a participant-only loop cannot reach. Rather than
+widen the participant loop (which would make every other DP2 card depend on an
+`isParticipant` guard it could silently forget), the sources are kept separate
+and self-selecting:
+
+| Source | Who | Fires at |
+|---|---|---|
+| participants | every combatant on both sides, `summons` included | lock and resolve |
+| forced-battle bystanders | same-zone, same-side non-participants whose effect registered `{ battleBystander: true }` | `declareForcedBattle` only |
+| zone-effect riders | `state.zoneEffects` entries on the battle's zone, dispatched by the registry name the entry already stores | lock |
+
+`BYSTANDER_EFFECTS` is derived from `registerEffect`, exactly as `CATALOG_EFFECTS`
+is, so it cannot drift from the implementations. Terawatt is its only member, and
+the other five DP2 cards are therefore never dispatched as bystanders at all. The
+third source exists because DWG Waters is a **spent ability**: its rider fires
+from `state.zoneEffects`, not from a card on the board, and the same registry name
+(`dwgWatersEffect`) serves the claim and both riders — the payload's `battle`
+field is what tells them apart, the same way `continuation` tells Trebuchet's
+three entries apart (§4.3, departure 3).
+
+**A forced battle may leave `pendingEffect` set alongside `activeBattle`
+(DP2 departure 3).** Terawatt's join and DWG Waters' clause-2 summon are both "you
+may" decisions owed at the instant a battle locks, so `declareForcedBattle` and
+the lock dispatch can now write `state.pendingEffect` while `state.activeBattle`
+is already non-null. **This is the first time both freezes are set at once**, and
+`gameEngine.ts`'s comment calling that state unreachable is superseded. It is
+already safe rather than newly made safe: `applyAction` checks `pendingEffect`
+**before** the battle check and admits only `PENDING_ACTIONS`; its
+`pendingAdmitted` escape stops the battle check from rejecting the one action
+that can clear the slot; and `RESOLVE_PENDING_EFFECT` is already an
+`OFF_TURN_ACTION`, which is what lets the *defender* answer on the aggressor's
+turn. Once answered, `pendingEffect` is null and the battle is reportable as
+normal. A dedicated invariant suite (`shared/engine/battleFreeze.test.ts`) pins
+the whole sequence rather than leaving it implied by two cards' own tests.
+
+**One suspension per battle event (DP2 departure 4).** There is a single
+`pendingEffect` slot, so a DP2 trigger that would suspend while the slot is
+already occupied is **skipped with a log line** rather than overwriting the
+choice already owed. Dispatch order is fixed and deterministic (attackers in
+`attackerIds` order, then defenders in `defenderIds` order, then bystanders, then
+zone riders), so the skip is reproducible rather than racy. It is reachable only
+when two suspending DP2 cards meet in one battle.
+
+**`onBattleVictory` also fires on a base bombardment (DP2 departure 5).** Plunderer
+reads "when this vehicle survives a victorious fleet battle **or inflicts damage
+to the enemy base**, draw one card from the enemy deck" — one clause, two
+occasions. Giving `ATTACK_ENEMY_BASE` its own trigger key would split one card's
+text across two implementations and break the guard's one-implementation-per-card
+property, so `ATTACK_ENEMY_BASE` dispatches `onBattleVictory` to each vehicle that
+actually contributed damage (`baseDamageFrom`'s own filter — not merely present in
+the zone), with `phase: 'baseAttack'`, `survived: true`, `won: true`. Plunderer's
+whole implementation is then `survived && won`, which is true on both occasions.
+
+**Summons count as participants for the win test (DP2 departure 6).** The row above
+says a side wins when the enemy has no surviving participant; wave 4 rules that
+`summons` are participants for that test, because they fought. A surviving Martyr
+therefore denies its enemy a victory even though it evaporates a moment later.
+The alternative — ignoring summons — would hand Plunderer a victory draw against
+a Martyr Attack that was, in the fiction, a stalemate.
+
+**Saving a destroyed vehicle does not un-fire its death trigger (DP2 departure 7).**
+Iron Cordon ("you may sacrifice this vehicle to save that airship") and
+Sacrilego's clause 2 both revive a hull that `DECIDE_BATTLE_REPORT` has already
+destroyed: `reviveEntry` pushes the `ZoneCardEntry` back into `zone.cards` and
+pulls one matching snapshot back out of `state.destroyed[owner]` (snapshots for
+one `cardId` are interchangeable, so removing any match is exact). But both are
+**choices**, resolved in a later action, by which time the `onDeathEffect`s
+dispatched earlier in `DECIDE_BATTLE_REPORT` have already run. Their effects
+stand. This is the same latitude that handler already takes with a death effect
+that fails — the battle happened and cannot be rolled back over it.
 
 ### 4.4 Battle summons
 
@@ -492,6 +601,49 @@ registerEffect(name, fn, { needsCatalog: true })
 
 The set is derived from registrations and still exported under the same name, so
 `game-action`'s import is unchanged.
+
+### 4.8 Defender omission (wave 4)
+
+Buzzsaw and Veles share one line of text verbatim: "This vehicle may be omitted
+from defensive battles unless the attacking enemy force contains a ship or tank."
+`RESPOND_TO_ATTACK` already has an opt-out — `pending.stealthyIds`, checked
+against the Stealthy keyword — but that one is **unconditional**, and
+`awaitingResponse` has nowhere to record a condition.
+
+**The rule is plain card data, not an effect name.** Neither card can carry a
+registered effect for it: an effect returns a boolean meaning "resolved" and is
+free to mutate the game, so using one as a pure eligibility predicate inverts the
+registry's contract. Nor is it a keyword: a bare keyword cannot carry "unless a
+ship or tank", so the condition would end up hard-coded anyway, and keywords
+render on the card face while neither card prints one. It is therefore a data
+key in the `additionalSpawns` / `resourceSurge` class:
+
+```
+meta.defensiveOmission: 'unlessShipOrTank'
+```
+
+added to `DATA_EFFECT_KEYS` so G2 is satisfied without a registry name, and
+deliberately outside `TRIGGERS` so G3 never looks at it. A string rather than a
+boolean, so a second condition is expressible without a second key.
+
+`ATTACK_ENEMY_FLEET` computes `omissibleIds` alongside `stealthyIds` — targets
+carrying the key, when the **attacking** selection contains no `ship` and no
+`tank` — and `awaitingResponse` gains `omissibleIds: string[]` (defaulted in
+`normalizeState`, mirrored in `PublicGameState`). The handler now raises the
+response window when **either** list is non-empty, where before only Stealthy
+could raise it. `RESPOND_TO_ATTACK` accepts an opt-out id drawn from either list;
+everything downstream — the "all defenders slipped away" call-off, the lock — is
+unchanged.
+
+Two rulings fall out:
+
+- **A forced battle is exempt**, exactly as it is from the Stealthy opt-out
+  (§4.3): `declareForcedBattle` skips the response window entirely, because the
+  card *forces* the fight. "Defensive battles" in the card text means the
+  ordinary fleet attack that this window belongs to.
+- **The attacking *force* is the attacker's selection**, not everything they own
+  in the zone. `ATTACK_ENEMY_FLEET` already validates `attackerIds` as the
+  committed attackers, and a vehicle sitting the battle out is not attacking.
 
 ## 5. Primitives
 
@@ -681,6 +833,55 @@ Added in wave 3:
 - **"Fights alone" means the target is the only defender.** Its allies in the
   zone do not join, whatever they are.
 
+Added in wave 4:
+
+- **Catshark's "fleet combat" means any battle**, forced or declared. The card
+  says "whenever this vehicle participates in a fleet combat", and a battle it is
+  a participant in is a battle whatever declared it. Its "gain 30k resources this
+  turn" needs no rider to expire: `endTurn` sets the incoming side's materials to
+  `floor(turnNumber) × MATERIALS_PER_TURN` outright, so the grant survives exactly
+  until that side's next turn begins.
+- **Sacrilego's "+15 remaining hp percent" is read only where it changes the
+  outcome.** The board tracks no HP — ending HP exists only inside a battle
+  report — which is the same reason §7.3 above rules that Trebuchet's "fully heal
+  it" needs no mechanic. So the clause is implemented as: sacrifice Sacrilego to
+  save one friendly ship destroyed at **`SURVIVE_HP_PERCENT − 15` or better**
+  (75–89.99%), where the +15 would have carried it over the 90% survive line. A
+  ship destroyed below 75% is beyond the clause's reach, and a ship that already
+  survived gains nothing observable.
+- **"An allied GT airship" (Iron Cordon) is faction GT and `vehicleType:
+  airship`** — the fourteen-card pool of §7.3's cost-cliff ruling, both halves,
+  not the eight heavy ones. The card says "GT airship" unqualified, where The
+  Onyx Throne's own second clause says "GT heavy airship" and means the eight.
+- **Terawatt must be in the battle's zone.** Its text says only "a friendly
+  vehicle", but every other card that adds a combatant to a fight scopes itself to
+  one zone — Braveheart's "an enemy vehicle in the same zone", Gang Up's "all your
+  vehicles from the same zone" — and a hull three zones away joining a battle has
+  no reading in the tabletop game this models. "Alone" means the defending side
+  has exactly one participant, and Terawatt itself is excluded from the offer when
+  it *is* that participant.
+- **DWG Waters' clause-3 interception is automatic, not offered.** The text reads
+  "you can force them to beat this ship in battle first before doing damage with
+  their surviving vehicles", but two things make a reactive offer unbuildable.
+  First, a zone admits **one activation per turn** (`lastActivatedTurn`, checked
+  and set by both `ATTACK_ENEMY_BASE` and `ATTACK_ENEMY_FLEET`), so "fight, then
+  bombard" cannot be a single turn's sequence in the first place. Second, every
+  choice dialog carries a universal decline (§4.2, departure 3) — so an offered
+  interception would let the defender decline, void the attacker's zone
+  activation, *and* take no damage, which is the one shape of decline that harms
+  the other player rather than only its own chooser. The claim itself is
+  therefore the election: a direct base attack in a zone the enemy holds as DWG
+  Waters becomes a forced battle against a summoned DWG guardian, and no damage
+  lands that turn. Terawatt's join and clause 2's summon stay declinable, because
+  declining those forfeits only the decliner's own upside.
+- **"One DWG vehicle with a cost <60k from the game" is the catalog**, not a
+  deck or a hand: "from the game" is the same phrasing Special Foundries uses for
+  a named catalog pool, and a choice over a hand would leak it (§4.2, departure
+  5). The pool is exactly two cards — Corsair (30k) and Marauder (40k) — after
+  the standing `summonOnly` exclusion (§7.4), which must be repeated by hand
+  because this pool is filtered off `ctx.catalog` rather than through
+  `drawFromPool`.
+
 ### 7.4 Spawning is not playing
 
 A vehicle placed by `spawnVehicles` enters `zone.cards` with its printed
@@ -789,19 +990,38 @@ the only vehicle whose text targets a card in hand, and DP6 is what carries it.
 
 | Card | Faction | Mechanism |
 |---|---|---|
-| Catshark | SS | `onBattleEffect` at lock → `grant({ materials: 30000 })` for this turn |
-| Dryad | SS | `onBattleEffect` at lock, defensive only → board-spawn another Dryad into that zone |
-| The Onyx Throne | OW | `onBattleEffect` at lock, defensive only → battle-summon a Parapet; plus DP1 clause 2 (`activateCpCost: 1` → draw a heavy GT airship) |
-| Sacrilego | SS | `onBattleEffect` at resolve, survived → `grant({ cp: 1 })`; plus a sacrifice choice raising a friendly ship's ending HP by 15 |
-| Iron Cordon | OW | `onBattleEffect` at resolve → DP4 choice to sacrifice itself and save a destroyed allied GT airship |
-| Terawatt | LH | forced-battle hook → DP4 choice to join a friendly vehicle forced to fight alone |
-| Buzzsaw | WF | defender-selection rule in `ATTACK_ENEMY_FLEET` / `RESPOND_TO_ATTACK` — omissible unless the attacking force contains a ship or tank |
-| Veles | WF | same rule as Buzzsaw |
+| Card | Faction | Effect name | Mechanism |
+|---|---|---|---|
+| Catshark | SS | `catsharkBattle` | `onBattleEffect` at lock, participant → `grant({ materials: CATSHARK_MATERIALS })`, expiring with the turn |
+| Dryad | SS | `dryadBattle` | `onBattleEffect` at lock, participant + defender → board-spawn another Dryad into that zone (catalog) |
+| The Onyx Throne | OW | `onyxThroneBattle`, `onyxThroneActivate` | `onBattleEffect` at lock, participant + defender → battle-summon a Parapet **into the already-locked battle**; plus DP1 clause 2 (`activateCpCost: 1` → draw a GT **heavy** airship) |
+| Sacrilego | SS | `sacrilegoBattle` | `onBattleEffect` at resolve, survived → `grant({ cp: 1 })`, then a DP4 choice to sacrifice itself and save a friendly ship destroyed at 75–89.99% (§7.3) |
+| Iron Cordon | OW | `ironCordonBattle` | `onBattleEffect` at resolve, survived + an allied GT airship died in that battle → DP4 choice to sacrifice itself and revive it |
+| Terawatt | LH | `terawattJoin` | forced-battle **bystander** dispatch (§4.3, DP2 departure 2) → DP4 choice to join a friendly vehicle left as the sole defender |
+| Buzzsaw | WF | *(data key)* | `meta.defensiveOmission: 'unlessShipOrTank'` → `awaitingResponse.omissibleIds` (§4.8) |
+| Veles | WF | *(data key)* | same rule as Buzzsaw, verbatim card text |
 
-Plunderer's second clause ("survives a victorious fleet battle or damages the
-enemy base → draw from the enemy deck") lands in this wave too. It is not one of
-the 65 — Plunderer's `costModifier` is already implemented — but it needs the
-same trigger and a base-attack hook.
+The Onyx Throne joins the **existing** battle rather than declaring one:
+`declareForcedBattle` refuses outright when `state.activeBattle` is non-null, and
+at lock it always is. `joinBattle` (`battleDeclare.ts`, beside `setBattle`) is the
+one function that appends to a battle already in progress — pushing a minted hull
+onto `summons` and its id onto the joining side's list. Terawatt is its other
+customer, with an id already on the board and no summon.
+
+Two `PARTIAL` cards finish here too. Neither is one of the 65 — both already
+resolve an implemented effect from an earlier wave:
+
+- **Plunderer clause 2** — "survives a victorious fleet battle **or** inflicts
+  damage to the enemy base → draw one card from the enemy deck." One clause, one
+  implementation (`plundererRaid`, under `onBattleVictory`), reached on both
+  occasions because `ATTACK_ENEMY_BASE` dispatches `onBattleVictory` too (§4.3, DP2
+  departure 5). Its `costModifier` already works.
+- **DWG Waters clauses 2–3** — clause 2 is a zone-effect rider at defensive lock
+  offering a Corsair or Marauder as a battle summon (§4.3, DP2 departure 2,
+  third source); clause 3 turns a direct base attack in the claimed zone into a forced
+  battle against a summoned guardian, automatically (§7.3). Both keep the existing
+  `dwgWatersEffect` name, branching on `payload.battle`. Its persistent zone claim
+  (clause 1) already works.
 
 ### Wave 5 — riders (5)
 
@@ -889,6 +1109,9 @@ is independently playable and covers half the population with no new machinery.
 | Suspension | `pendingEffect` freezes the game to `PENDING_ACTIONS`; only the owed side may resolve; `RESOLVE_PENDING_EFFECT` rejected when nothing is pending; an unknown `choiceId` leaves the slot intact; `cancel` clears it; empty options resolve without suspending; an unregistered pending effect clears rather than bricking the game |
 | Battle summons | Summons never enter `zone.cards`; evaporate on approval at every HP; never repairable; never pushed to `destroyed`; `summonOnly` excluded from `destroyed` at all three exits |
 | Dispatch points | Once-per-turn enforcement via `activatedOnTurn`; forced battles skip the Stealthy opt-out and do not consume `lastActivatedTurn` (Eclipse excepted); DP6 deploys the vehicle before firing |
+| Battle triggers (DP2) | Lock fires for every participant on both sides, summons included, and never for a non-participant except a registered bystander; resolve fires after death triggers and before the continuation; `won`/`survived` computed from the report over all participants; a trigger that would suspend into an occupied `pendingEffect` is skipped, not overwritten; `onBattleVictory` fires on a base bombardment for damage-contributing vehicles only |
+| Both freezes at once | `shared/engine/battleFreeze.test.ts`: a forced battle that suspends leaves `pendingEffect` **and** `activeBattle` set; every action type is rejected except `RESOLVE_PENDING_EFFECT`/`CONCEDE`/`ABANDON`; the off-turn owed side may answer; after resolve **or** cancel the battle is reportable and the report resolves normally |
+| Defender omission | `omissibleIds` computed only when the attacking selection holds no ship and no tank; the response window opens on either list; an opt-out id from either list is accepted and one from neither is rejected; a forced battle never opens the window |
 | Hidden info | No log line names a card entering a hand; `counts` resync on both sides after an enemy-deck draw |
 | Determinism | Every pool draw stable under a seeded rng |
 | Normalization | `normalizeState` defaults `pendingEffect`, `summons`, `activatedOnTurn` and the extended `scheduled` union on legacy rows |
