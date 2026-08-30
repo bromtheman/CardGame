@@ -89,10 +89,22 @@ function classify(card: { faction: string; name: string; cardText?: string; meta
 // (shared/engine/activate.ts) dispatches it for a hull already on the board,
 // which only a vehicle can be. It is deliberately absent from the ability
 // row — an ability is spendCard'd on resolution and never enters zone.cards.
+// Wave 4 adds the three DP2 keys to the vehicle row, ahead of the first card
+// that names one — the ordering wave 2 used for onActivate and wave 3 for
+// playOnCardEffect. G3 skips any card still in KNOWN_GAPS, so this table only
+// bites the moment a card is closed, and the failure then reads as "this card
+// is mis-wired" rather than "the table is out of date".
+//
+// They are deliberately absent from the `ability` row. An ability is
+// spendCard'd on resolution and never enters zone.cards, so it can never be a
+// battle participant. DWG Waters is the apparent exception and is not one: its
+// battle-time riders fire from state.zoneEffects, dispatched by the registry
+// name that entry already stores, under its existing playOnZoneEffect key —
+// so no ability carries a DP2 key (spec §4.3, DP2 departure 2).
 const REACHABLE_TRIGGERS: Record<string, readonly string[]> = {
   vehicle: [
     'onPlayEffect', 'playOnZoneEffect', 'onDeathEffect', 'costModifier', 'onActivate',
-    'playOnCardEffect',
+    'playOnCardEffect', 'onBattleEffect', 'onBattleVictory', 'onBattleDefeat',
   ],
   ability: ['onPlayEffect', 'playOnZoneEffect', 'playOnVehicleEffect', 'playOnCardEffect', 'costModifier'],
 }
