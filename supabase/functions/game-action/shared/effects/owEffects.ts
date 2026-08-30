@@ -240,6 +240,10 @@ function trebuchetChoiceFor(chainIds: string[] | null) {
       // pending.options by choice() itself) and this server-side re-check are
       // trusted, the same guard Braveheart and Eclipse both carry
       // (docs/claude/card-effects.md).
+      // Defence in depth only: choice() has already checked choiceId against
+      // pending.options, which were built from this same filtered set, so no
+      // test can kill this line. It exists so options and the chain cannot
+      // silently diverge if either is ever computed differently.
       if (!chain.includes(choiceId)) return false
       if (!enemyVehicleOptions(game, actor, zoneId).some((o) => o.id === choiceId)) return false
       return declareForcedBattle(game, ctx, {
