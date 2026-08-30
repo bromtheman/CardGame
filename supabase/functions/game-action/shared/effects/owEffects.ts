@@ -1,8 +1,9 @@
 import {
-  choice, drawFromPool, enemyVehicleOptions, grant, grantKeywords, sacrificeToSave,
+  choice, drawFromPool, enemyVehicleOptions, grant, grantKeywords, sacrificeToSave, sequence,
   spawnVehicles, summonHulls, whenPlayed, zoneOccupants,
 } from './primitives.ts'
 import { registerEffect } from './registry.ts'
+import type { EffectFn } from './registry.ts'
 import { FACTIONS, GT_HEAVY_AIRSHIP_MIN_COST, KEYWORDS, VEHICLE_TYPES } from '../gameSettings.ts'
 import type { Side, ZoneCardEntry } from '../engine/engineTypes.ts'
 import { copyMeta, discardCard, findVehicle, otherSide, zoneById } from '../engine/gameEngine.ts'
@@ -68,6 +69,35 @@ registerEffect('subKillerEffect', ({ game, actor, card, targetInstanceId, battle
   )
   return true
 })
+
+// "Target a vehicle and give it FRAGILE. If it survives the turn, draw a
+// card." Unrestricted as to side — the text says only "a vehicle" — and
+// Fragile's own rule (never repairable, at any HP) is what makes the target
+// likelier to die than to pay off.
+//
+// DP5's vehicle half, and the only wave-5 rider that fits §4.3's original
+// prediction exactly: it watches an instance rather than a zone, so it has
+// nothing to badge and nothing to dispatch at lock. endTurn's ending-side
+// pass resolves it while the board still stands as it did when the turn
+// ended — which is also what makes a Temporary hull count as having survived,
+// since the cull runs at the NEXT turn's start.
+const sabotageWatch: EffectFn = ({ game, actor, targetInstanceId }) => {
+  if (typeof targetInstanceId !== 'string') return false
+  const found = findVehicle(game.state, targetInstanceId)
+  if (!found) return false
+  game.state.scheduled.push({
+    type: 'sabotageWatch', side: actor, dueTurn: game.turnNumber, instanceId: targetInstanceId,
+  })
+  // The hull is on the board and its keywords render there, so naming it
+  // leaks nothing.
+  game.state.log.push(`${found.entry.name} is sabotaged — Fragile, and watched until the turn ends`)
+  return true
+}
+
+registerEffect('sabotageEffect', sequence(
+  grantKeywords({ keywords: [KEYWORDS.FRAGILE], target: 'field' }),
+  sabotageWatch,
+))
 
 const gtAirship = drawFromPool({
   source: 'catalog', filter: { faction: 'GT', vehicleType: 'airship' }, count: 1,

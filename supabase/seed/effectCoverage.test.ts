@@ -17,9 +17,11 @@ const EXEMPT: Record<string, string> = {
 // baselined so the guard is green from day one. Delete entries as their wave
 // lands — the "KNOWN_GAPS contains no stale entries" test below rejects
 // stale ones, so this list only shrinks.
-const KNOWN_GAPS: Record<string, string> = {
-  'OW:Sabotage': 'wave 5',
-}
+//
+// EMPTY as of wave 5: all 65 cards are built. It stays asserted over, so a
+// newly-seeded card with an unimplemented effect name has a home ready — and
+// the toHaveLength(0) below is what stops one being added quietly.
+const KNOWN_GAPS: Record<string, string> = {}
 
 // Cards that pass G2 — they resolve at least one implemented effect — but
 // whose card text is only partly built. G2 asks "any implemented effect?",
@@ -157,12 +159,12 @@ describe('built-in card effect coverage', () => {
     expect(stale).toEqual([])
   })
 
-  it('waves 1-4 are complete — only wave-5 entries remain', () => {
-    for (const wave of ['wave 1', 'wave 2', 'wave 3', 'wave 4']) {
+  it('all five waves are complete — KNOWN_GAPS and PARTIAL are empty', () => {
+    for (const wave of ['wave 1', 'wave 2', 'wave 3', 'wave 4', 'wave 5']) {
       expect(Object.values(KNOWN_GAPS).filter((w) => w.startsWith(wave))).toEqual([])
       expect(Object.values(PARTIAL).filter((w) => w.startsWith(wave))).toEqual([])
     }
-    expect(Object.keys(KNOWN_GAPS)).toHaveLength(1)
+    expect(Object.keys(KNOWN_GAPS)).toHaveLength(0)
   })
 
   it('PARTIAL names real cards that currently pass G1 and G2, and never overlaps KNOWN_GAPS', async () => {

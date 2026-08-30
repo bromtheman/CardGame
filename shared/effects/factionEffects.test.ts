@@ -2951,3 +2951,119 @@ describe('wave 5 — Recurring Threat', () => {
     expect(r.game.state.activeBattle!.summons[0].isBuiltIn).toBe(false)
   })
 })
+
+describe('wave 5 — Sabotage', () => {
+  const sabotageSnap = snap({
+    name: 'Sabotage', faction: 'OW', type: 'ability', vehicleType: null,
+    materialCost: 30_000, cardText: 'Target a vehicle and give it FRAGILE…',
+    meta: { playOnVehicleEffect: 'sabotageEffect' },
+  })
+  const sabCtx = () => makeCtx({ catalog: [sabotageSnap] })
+
+  function armed(over: { targetKeywords?: string[]; friendly?: boolean } = {}) {
+    const game = makeGame({ turnNumber: 3, activePlayer: 'alice' })
+    game.privates.a.deck = [inst({ name: 'Reward' }), inst({ name: 'Spare' })]
+    game.state.counts.a.deck = 2
+    const card = inst({ ...sabotageSnap })
+    game.privates.a.hand.push(card)
+    game.state.counts.a.hand = 1
+    const target = zoneEntry({
+      name: 'Victim', vehicleType: 'ship', materialCost: 60_000,
+      keywords: over.targetKeywords ?? [], playedOnTurn: 2,
+    })
+    game.state.zones[0].cards[over.friendly ? 'a' : 'b'].push(target)
+    return { game, card, target }
+  }
+
+  const play = (game: EngineGame, ids: { card: string; target: string }) =>
+    applyAction(game, 'alice', {
+      type: 'PLAY_CARD_TARGETING_CARD_ON_FIELD', instanceId: ids.card, targetInstanceId: ids.target,
+    }, sabCtx())
+
+  it('gives the target FRAGILE and schedules a watch on it', () => {
+    const { game, card, target } = armed()
+    const r = play(game, { card: card.instanceId, target: target.instanceId })
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.zones[0].cards.b[0].keywords).toEqual(['fragile'])
+    expect(r.game.state.scheduled).toEqual([
+      { type: 'sabotageWatch', side: 'a', dueTurn: 3, instanceId: target.instanceId },
+    ])
+  })
+
+  it('does not duplicate FRAGILE on a hull that already has it', () => {
+    const { game, card, target } = armed({ targetKeywords: ['fragile', 'scrappy'] })
+    const r = play(game, { card: card.instanceId, target: target.instanceId })
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.zones[0].cards.b[0].keywords).toEqual(['fragile', 'scrappy'])
+  })
+
+  it('may target a friendly vehicle — the card says only “a vehicle”', () => {
+    const { game, card, target } = armed({ friendly: true })
+    const r = play(game, { card: card.instanceId, target: target.instanceId })
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.zones[0].cards.a[0].keywords).toEqual(['fragile'])
+  })
+
+  it('draws exactly one card at its owner’s END_TURN when the hull is still there', () => {
+    const { game, card, target } = armed()
+    const r = play(game, { card: card.instanceId, target: target.instanceId })
+    if (!r.ok) throw new Error(r.error)
+    const ended = applyAction(r.game, 'alice', { type: 'END_TURN' }, sabCtx())
+    if (!ended.ok) throw new Error(ended.error)
+    expect(ended.game.privates.a.hand.map((c) => c.name)).toEqual(['Reward'])
+    expect(ended.game.state.scheduled).toEqual([])
+  })
+
+  it('draws nothing when the hull left the board first, and still drops the watch', () => {
+    const { game, card, target } = armed()
+    const r = play(game, { card: card.instanceId, target: target.instanceId })
+    if (!r.ok) throw new Error(r.error)
+    r.game.state.zones[0].cards.b = [] // destroyed in a battle meanwhile
+    const ended = applyAction(r.game, 'alice', { type: 'END_TURN' }, sabCtx())
+    if (!ended.ok) throw new Error(ended.error)
+    expect(ended.game.privates.a.hand).toHaveLength(0)
+    expect(ended.game.state.scheduled).toEqual([])
+  })
+
+  // The turn-end pass runs BEFORE the flip, and the Temporary cull runs after
+  // it: a Temporary hull is culled at the NEXT turn's start, so it did survive
+  // this one (spec §4.3, "DP5 as wave 5 built it").
+  it('counts a Temporary hull as having survived the turn', () => {
+    const { game, card, target } = armed({ targetKeywords: ['temporary'] })
+    const r = play(game, { card: card.instanceId, target: target.instanceId })
+    if (!r.ok) throw new Error(r.error)
+    const ended = applyAction(r.game, 'alice', { type: 'END_TURN' }, sabCtx())
+    if (!ended.ok) throw new Error(ended.error)
+    expect(ended.game.privates.a.hand.map((c) => c.name)).toEqual(['Reward'])
+    expect(ended.game.state.zones[0].cards.b).toEqual([]) // culled at the new turn's start
+  })
+
+  // The card's whole point: Fragile can never be repaired, so a sabotaged hull
+  // in the 80-89.999% band dies where it would otherwise have been patched.
+  // Asserted end to end rather than by reading autoRepairIds.
+  it('makes a Scrappy hull in the repair band die instead of auto-repairing', () => {
+    const { game, card, target } = armed({ targetKeywords: ['scrappy'] })
+    const attacker = zoneEntry({ name: 'Raider', playedOnTurn: 2 })
+    game.state.zones[0].cards.a.push(attacker)
+    const r = play(game, { card: card.instanceId, target: target.instanceId })
+    if (!r.ok) throw new Error(r.error)
+    const locked = applyAction(r.game, 'alice', {
+      type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
+      attackerIds: [attacker.instanceId], targetIds: [target.instanceId],
+    }, sabCtx())
+    if (!locked.ok) throw new Error(locked.error)
+    const submitted = applyAction(locked.game, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT',
+      results: { [attacker.instanceId]: 100, [target.instanceId]: 85 }, repairs: [],
+    }, sabCtx())
+    if (!submitted.ok) throw new Error(submitted.error)
+    const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, sabCtx())
+    if (!decided.ok) throw new Error(decided.error)
+    expect(decided.game.state.zones[0].cards.b).toEqual([])
+    expect(decided.game.state.destroyed.b.map((c) => c.name)).toEqual(['Victim'])
+    // …and so the watch pays nothing.
+    const ended = applyAction(decided.game, 'alice', { type: 'END_TURN' }, sabCtx())
+    if (!ended.ok) throw new Error(ended.error)
+    expect(ended.game.privates.a.hand).toHaveLength(0)
+  })
+})
