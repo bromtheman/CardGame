@@ -1,7 +1,7 @@
 import { KEYWORDS, LOG_MAX_ENTRIES, VEHICLE_TYPES } from '../gameSettings.ts'
 import { materialsPerTurnOf } from '../lobbySettings.ts'
 import { secureRng } from './gameInit.ts'
-import type { CardInstance, PublicGameState, SnapshotCard } from './gameInit.ts'
+import type { CardInstance, PublicGameState, SnapshotCard, ZoneEffect } from './gameInit.ts'
 import type {
   ApplyResult, EngineContext, EngineGame, GameAction, Side, ZoneCardEntry,
 } from './engineTypes.ts'
@@ -241,10 +241,77 @@ export function checkVictory(game: EngineGame): void {
   }
 }
 
+// The ending side's half of DP5. Two lists, one pass, both scoped to that
+// side and to items due at or before the turn number as it stands now.
+//
+// The tails live here rather than being dispatched back into their effects,
+// for the same reason changeOrderDraw's whole redelivery lives in endTurn:
+// this function already owns expiry, and a rider's card was spent turns ago.
+// Dispatching would need a new payload discriminator and would force
+// { needsCatalog: true } onto two effects purely so the dispatcher could mint
+// a payload card that neither tail reads.
+function turnEndRiders(game: EngineGame, endingSide: Side, ctx: EngineContext): void {
+  // Sabotage: "if it survives the turn, draw a card". The hull is looked for
+  // across the whole board — the target may be either player's, and it may
+  // have been relocated since (spec §7.3).
+  const stillScheduled: PublicGameState['scheduled'] = []
+  for (const item of game.state.scheduled) {
+    // Switch on TYPE, not just on side and due date: changeOrderDraw belongs
+    // to the incoming-side loop below, and an item of that type due for the
+    // ending side must survive this pass untouched.
+    if (item.type !== 'sabotageWatch' || item.side !== endingSide || game.turnNumber < item.dueTurn) {
+      stillScheduled.push(item)
+      continue
+    }
+    if (findVehicle(game.state, item.instanceId)) {
+      drawCard(game, endingSide, ctx)
+      game.state.log.push(`A sabotaged vehicle survived the turn — player ${endingSide.toUpperCase()} draws`)
+    }
+  }
+  game.state.scheduled = stillScheduled
+
+  // Rest-of-turn zone riders. `expiresOnTurn` absent means permanent, which is
+  // what every row written before wave 5 is.
+  const stillRiding: ZoneEffect[] = []
+  for (const rider of game.state.zoneEffects) {
+    if (
+      rider.side !== endingSide ||
+      rider.expiresOnTurn === undefined ||
+      game.turnNumber < rider.expiresOnTurn
+    ) {
+      stillRiding.push(rider)
+      continue
+    }
+    // The compensation draw each card's own text prints (Ambush, Ongoing
+    // Attrition). A rider still standing at turn end is one that was never
+    // spent — both cards remove their own entry the moment they fire, so
+    // reaching here IS "unused".
+    if (rider.data?.drawOnExpiry === true) {
+      drawCard(game, endingSide, ctx)
+      game.state.log.push(
+        `${rider.cardName} expired unused in zone ${rider.zoneId} — player ${endingSide.toUpperCase()} draws`,
+      )
+    } else {
+      game.state.log.push(`${rider.cardName} expired in zone ${rider.zoneId}`)
+    }
+  }
+  game.state.zoneEffects = stillRiding
+}
+
 function endTurn(game: EngineGame, ctx: EngineContext): ApplyResult {
   // The side whose turn is ENDING is whoever is active right now — capture it
   // before activePlayer flips below, so alert expiry checks the right side.
   const endingSide = sideOf(game, game.activePlayer) as Side
+  // DP5's turn-end pass (spec §4.3, "DP5 as wave 5 built it"). Runs for the
+  // side whose turn is ENDING, and BEFORE turnNumber moves — which is the
+  // whole reason it is a second pass rather than a widening of the scheduled
+  // loop further down. That loop runs after the flip and serves the INCOMING
+  // side, so the earliest it can fire for the acting player is a full round
+  // later; every wave-5 tail reads "…the turn", meaning the actor's own
+  // (spec §7.3). Running pre-increment also settles Sabotage's only
+  // ambiguity: a Temporary hull is culled at the NEXT turn's start, so it did
+  // survive this one.
+  turnEndRiders(game, endingSide, ctx)
   game.turnNumber = Math.round((game.turnNumber + 0.5) * 10) / 10
   const incoming = game.activePlayer === game.playerA ? game.playerB : game.playerA
   game.activePlayer = incoming
@@ -274,7 +341,11 @@ function endTurn(game: EngineGame, ctx: EngineContext): ApplyResult {
   // belonging to the other side, is carried forward untouched.
   const stillScheduled: PublicGameState['scheduled'] = []
   for (const item of game.state.scheduled) {
-    if (item.side !== side || game.turnNumber < item.dueTurn) {
+    // The type check is part of the carry-forward condition, not just a
+    // dispatch: `scheduled` became a real union in wave 5, and a loop that
+    // consumed every due item of its side would silently EAT the types it
+    // cannot handle. turnEndRiders above owns sabotageWatch and mirrors this.
+    if (item.type !== 'changeOrderDraw' || item.side !== side || game.turnNumber < item.dueTurn) {
       stillScheduled.push(item)
       continue
     }
