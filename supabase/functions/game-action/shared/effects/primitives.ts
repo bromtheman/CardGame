@@ -1,6 +1,9 @@
 import type { CardInstance, SnapshotCard } from '../engine/gameInit.ts'
-import type { EngineContext, EngineGame, Side, ZoneCardEntry } from '../engine/engineTypes.ts'
+import type {
+  BattleCasualty, BattleContext, EngineContext, EngineGame, Side, ZoneCardEntry,
+} from '../engine/engineTypes.ts'
 import { drawCard, findVehicle, otherSide } from '../engine/gameEngine.ts'
+import { canRevive, reviveEntry, sacrificeEntry } from '../engine/battleTriggers.ts'
 import type { EffectFn, EffectPayload } from './registry.ts'
 
 // Move one card from the enemy's deck into the actor's hand. The log line
@@ -329,6 +332,23 @@ export function choice(spec: {
     if (payload.resolution === undefined) {
       const options = spec.options(payload)
       if (options.length === 0) return spec.resolve(payload, null)
+      // There is exactly one suspension slot, and wave 4 made it possible for
+      // two effects to want it in the same action: a battle can dispatch
+      // several triggers, and a battle continuation fires alongside them. An
+      // offer that arrives second is DROPPED rather than overwriting the
+      // choice already owed (spec §4.3, DP2 departure 4).
+      //
+      // Dropped here, at the suspension itself, rather than by the dispatcher
+      // skipping the whole effect: that is what lets a card whose text has an
+      // unconditional clause AND an optional one — Sacrilego's "gain 1cp.
+      // Additionally you may sacrifice it…" — still grant the CP when its
+      // offer cannot be made.
+      if (payload.game.state.pendingEffect !== null) {
+        payload.game.state.log.push(
+          `${payload.card.name}'s offer was not made — another choice is already pending`,
+        )
+        return true
+      }
       payload.game.state.pendingEffect = {
         effect: spec.effect,
         side: payload.actor,
@@ -346,4 +366,66 @@ export function choice(spec: {
     if (typeof chosen !== 'string' || !known.some((o) => o.id === chosen)) return false
     return spec.resolve(payload, chosen)
   }
+}
+
+// "You may sacrifice this vehicle to save one of the hulls that just died."
+// Iron Cordon and Sacrilego's clause 2 are the same shape with different
+// eligibility rules, so the whole two-phase dance lives here once.
+//
+// First entry (a DP2 resolve trigger, so `battle` is set) offers the choice
+// and STASHES the eligible casualties. That stash is not an optimisation: by
+// re-entry, activeBattle and pendingReport are null and state.destroyed holds
+// bare snapshots with no instanceId, so `battle.casualties` is unrecoverable.
+// It is also why nothing here reads payload.resolution's own
+// targetInstanceId/zoneId, which are client-supplied and unvalidated
+// (docs/claude/card-effects.md, "Suspending for a choice").
+//
+// Options carry the dead hulls' names, which were public on the board a moment
+// ago, so this leaks nothing (spec §4.2, departure 5).
+export function sacrificeToSave(spec: {
+  effect: string
+  prompt: string
+  eligible: (battle: BattleContext, actor: Side) => BattleCasualty[]
+}): EffectFn {
+  const eligibleFor = (p: EffectPayload) => {
+    if (!p.battle) return []
+    // `casualties` is required by the type, but a hand-built context in a test
+    // can omit it, and fire() has no try/catch — a throw there would take the
+    // whole DECIDE_BATTLE_REPORT down rather than logging a failed trigger.
+    const battle = { ...p.battle, casualties: p.battle.casualties ?? [] }
+    // Only offer what can actually be brought back. A death trigger dispatched
+    // EARLIER in this same DECIDE_BATTLE_REPORT can empty the discard —
+    // grant({ draw: 1 }) on an empty deck reshuffles the whole pile into it —
+    // and a casualty whose snapshot has gone that way is unrevivable. Offering
+    // it would leave the player a choice whose only working answer is Decline.
+    return spec.eligible(battle, p.actor).filter((c) => canRevive(p.game, c.side, c.entry))
+  }
+  return choice({
+    effect: spec.effect,
+    prompt: spec.prompt,
+    // Ending HP disambiguates two casualties of the same card — the dialog
+    // renders the label alone, so two identical buttons would be a coin flip.
+    // It is public: pendingReport.results lives in PublicGameState.
+    options: (p) => eligibleFor(p).map((c) => ({
+      id: c.entry.instanceId, label: `${c.entry.name} (${c.hp}%)`,
+    })),
+    data: (p) => ({ zoneId: p.battle?.zoneId, entries: eligibleFor(p).map((c) => c.entry) }),
+    resolve: ({ game, actor, card, pending }, choiceId) => {
+      // Empty options resolve straight through with null — nothing was
+      // eligible, so there is nothing to do and nothing to fail.
+      if (choiceId === null) return true
+      const zoneId = pending?.data?.zoneId
+      const entries = pending?.data?.entries
+      if (typeof zoneId !== 'number' || !Array.isArray(entries)) return false
+      const target = (entries as ZoneCardEntry[]).find((e) => e.instanceId === choiceId)
+      if (!target) return false
+      // Both halves are validated before either is applied. A false return
+      // discards applyAction's whole clone anyway, but keeping the order
+      // revive-then-sacrifice means a hull is never spent for nothing.
+      if (!reviveEntry(game, actor, target, zoneId)) return false
+      if (!sacrificeEntry(game, actor, card.instanceId, zoneId)) return false
+      game.state.log.push(`${card.name} is sacrificed to save ${target.name}`)
+      return true
+    },
+  })
 }

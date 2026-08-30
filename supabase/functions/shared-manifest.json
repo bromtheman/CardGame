@@ -20,6 +20,7 @@
     "engine/pendingEffect.ts",
     "engine/baseAttack.ts",
     "engine/battleDeclare.ts",
+    "engine/battleTriggers.ts",
     "engine/battleResolve.ts",
     "engine/heroPowers.ts",
     "engine/index.ts",

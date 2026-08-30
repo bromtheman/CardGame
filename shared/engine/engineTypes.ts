@@ -16,12 +16,53 @@ export interface ZoneCardEntry extends CardInstance {
   activatedOnTurn: number | null
 }
 
+// One hull DECIDE_BATTLE_REPORT destroyed, carried on the resolve context
+// because nothing else can hand it back. Summons are excluded: a summon
+// evaporates rather than dies (spec §4.4), so it is not a casualty and cannot
+// be revived.
+export interface BattleCasualty {
+  entry: ZoneCardEntry
+  side: Side
+  hp: number // its reported ending HP
+}
+
+// DP2's payload (spec §4.3, DP2 departure 1). Reaches an effect as
+// EffectPayload.battle, and is the ONLY thing distinguishing a battle trigger
+// from an ordinary play — the same role `continuation` plays for Trebuchet.
+//
+// `isParticipant` and `forced` are wave 4's additions to the shape §4.3's DP2
+// row predicted: a bystander (Terawatt) reacts to a battle it is not in, and
+// only to one an enemy card forced. `phase: 'baseAttack'` is the third
+// addition — ATTACK_ENEMY_BASE dispatches onBattleVictory too, so Plunderer's
+// one clause ("survives a victorious fleet battle OR inflicts damage to the
+// enemy base") stays one implementation.
+export interface BattleContext {
+  phase: 'lock' | 'resolve' | 'baseAttack'
+  zoneId: number
+  isDefender: boolean
+  isParticipant: boolean
+  forced: boolean
+  survived: boolean // resolve/baseAttack only; always false at lock
+  won: boolean      // resolve/baseAttack only; always false at lock
+  // Resolve only; empty at lock and on a bombardment. The ONLY route to "which
+  // hulls died in this battle, and at what HP" — by the time a resolve trigger
+  // runs, activeBattle and pendingReport are both null and state.destroyed
+  // holds bare snapshots with no instanceId, no HP, and no battle of origin.
+  // Iron Cordon and Sacrilego's clause 2 both read it.
+  casualties: BattleCasualty[]
+}
+
 export interface AwaitingResponse {
   zoneId: number
   aggressor: Side
   attackerIds: string[]
   targetIds: string[]      // full defender selection, incl. stealthy
-  stealthyIds: string[]    // subset the defender may opt out
+  stealthyIds: string[]    // subset the defender may opt out, unconditionally
+  // A SECOND opt-out list (spec §4.8): defenders carrying
+  // meta.defensiveOmission whose condition is currently met. Stealthy is
+  // unconditional and lives above; this one is computed per attack from the
+  // attacking selection, which is why it cannot share that list.
+  omissibleIds: string[]
 }
 
 // The suspension for an effect waiting on a battle report, analogous to

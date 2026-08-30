@@ -14,6 +14,13 @@ triggers them. Prereq: skim [architecture.md](architecture.md) for engine basics
 - `noteUnimplemented(game, card)` scans every meta key on the card and logs a
   play-time note for effect names with no implementation. Unimplemented cards play
   vanilla — never reject a card for having an unknown effect name.
+- `registerEffect` takes two opt-in flags, and BOTH derive a set from the
+  registrations so neither can drift from the implementations.
+  `{ battleBystander: true }` puts an effect in DP2's forced-battle bystander
+  pass — the one that reaches a card about a battle it is **not** fighting in
+  (Terawatt alone). It is load-bearing rather than bookkeeping: because the
+  pass dispatches only to members, no other battle trigger needs an
+  `isParticipant` guard it could silently forget.
 - `CATALOG_EFFECTS` — derived from `registerEffect(name, fn, { needsCatalog: true })`,
   so it can never drift from the implementations. If your effect reads
   `ctx.catalog` — directly, via `catalogCard`, or through a `drawFromPool`
@@ -35,18 +42,28 @@ Card rows carry `meta` (jsonb). The full meta-key vocabulary is `TRIGGERS` in
 field/hand targets flow in as `PLAY_CARD_TARGETING_CARD_ON_FIELD` /
 `..._IN_HAND` actions with `targetInstanceId` — a vehicle may carry
 `playOnCardEffect` too, via the hand-target action's optional `zoneId`;
-Excalibur is the only one today). The battle triggers (`onBattleEffect` /
-`onBattleVictory` / `onBattleDefeat`) are dispatched nowhere **and** named on
-no seeded card — wave 4 must add both together, since a key nothing reads and
-nothing names is invisible to the coverage guard below (see
-[architecture.md](architecture.md)'s "Known gaps"). `additionalSpawns: n` on a
+Excalibur is the only one today), and the battle triggers `onBattleEffect` /
+`onBattleVictory` / `onBattleDefeat` (via DP2 — `shared/engine/battleTriggers.ts`,
+built in wave 4; see [architecture.md](architecture.md) for the three lock
+sources and the resolve ordering). A battle trigger is told apart from an
+ordinary play by `payload.battle` being set, and nothing else. `additionalSpawns: n` on a
 vehicle deploys n extra copies (capped at `ADDITIONAL_SPAWNS_CAP` = 10, ids from
 `ctx.newId()`); effects that grant it (Double Up) stack on **printed** values.
 
 Some meta keys are **plain data, not effect names**: `additionalSpawns`,
-`activateCpCost`, `costDelta`, `summonOnly`. They carry no registry name, so
-they are deliberately outside `TRIGGERS` / `ALL_META_KEYS` and the coverage
-guard never looks at them.
+`resourceSurge`, `defensiveOmission`, `activateCpCost`, `costDelta`,
+`summonOnly`. None carries a registry name, so all six sit outside `TRIGGERS` /
+`ALL_META_KEYS` and **G1 and G3 never look at them**.
+
+⚠ **G2 does.** The first three are `DATA_EFFECT_KEYS`, the subset that
+*satisfies a card's text on its own* — which is the whole reason Buzzsaw and
+Veles can close with no effect name at all (spec §4.8). But G2 and
+`noteUnimplemented` both test for the key's **presence**, never its value, so a
+mistyped value (`'unlessShipOrTanks'`) yields a card that is inert AND
+invisible: the guard stays green and no "plays as vanilla" note is logged
+either. **A data key whose VALUE the engine compares needs its own seed-backed
+assertion** — `battleDeclare.test.ts`'s "the two real seeded cards carry
+exactly the value the engine compares" is the worked example.
 
 ⚠ **An activated ability needs two meta keys, and nothing checks that.**
 `ACTIVATE_VEHICLE` requires both `onActivate` (a registered name) and
@@ -153,7 +170,7 @@ name** with `payload.resolution` set, and `resolve` runs. See
 `docs/superpowers/specs/2026-08-27-effect-coverage-design.md` §4.2 for the
 shipped shape.
 
-Four rules, each of which has already cost someone a bug:
+Five rules, each of which has already cost someone a bug:
 
 - **`effect: NAME` is mandatory, and a factory cannot infer it.** `choice`
   returns a plain closure; it never sees the name `registerEffect` files it
@@ -197,6 +214,20 @@ Four rules, each of which has already cost someone a bug:
   the activating hull itself — not a target picked off the board — is what
   `pendingEffect` already carries verbatim across the suspension. Stash what
   the board can't hand back to you for free; don't stash what it can.
+
+- **A second offer in one action is DROPPED, not queued.** There is one slot,
+  and since wave 4 a single action can dispatch several effects that each want
+  it: a battle lock fires a trigger per participant, a resolve fires one per
+  participant plus a continuation. `choice()` checks `state.pendingEffect`
+  itself and, if it is taken, logs "<card>'s offer was not made" and returns
+  true. Two consequences worth knowing. First, **put an unconditional clause
+  BEFORE the choice** — Sacrilego's "gain 1cp. Additionally you may sacrifice
+  it…" grants the CP first, so it still lands when the offer cannot be made.
+  (The rule used to live in the dispatcher, which skipped the whole effect and
+  starved exactly that clause.) Second, an effect that writes
+  `state.pendingEffect` **by hand** rather than through `choice()` — Orbit
+  Flank's second hop does — bypasses the check and can still clobber. Route a
+  new suspension through `choice()`.
 
 Worked example (`shared/effects/dwgEffects.ts`), showing the first three at once:
 
@@ -274,11 +305,11 @@ closes the entry:
 | `PARTIAL` | a card that resolves **at least one** implemented effect but whose text is only partly built | documentation only; asserted to name real cards, to pass G1/G2, and to never intersect `KNOWN_GAPS` |
 
 A partly-built card **cannot** go in `KNOWN_GAPS` — it passes G1/G2, so the
-stale-entry assertion rejects it. That is what `PARTIAL` exists for. It opens
-with Plunderer (its `costModifier` works; clause 2 needs a battle hook) and DWG
-Waters (its zone claim works; clauses 2–3 need battle-declare).
+stale-entry assertion rejects it. That is what `PARTIAL` exists for. It opened
+in wave 2 with Plunderer and DWG Waters, and wave 4 closed both, so it is
+currently empty and waiting for the next partly-built card.
 
-Four guard blind spots remain open and are not going to close on their own:
+Five guard blind spots remain open and are not going to close on their own:
 
 1. A card that has left `KNOWN_GAPS` is no longer checked at all (Garrison's
    trigger key can be reverted today with the suite green).
@@ -291,7 +322,9 @@ Four guard blind spots remain open and are not going to close on their own:
    nothing regenerated the SQL until the wave's own docs task caught it.
    `npm run seed:build`, then grep the output for your names, before every
    commit that touches a card's `meta` — see [supabase.md](supabase.md).
-4. **A registered effect that no card names is invisible to G1/G2/G3.** All
+4. **A data key's VALUE is never checked** — only its presence (see the
+   `DATA_EFFECT_KEYS` warning above). Pin it with a seed-backed assertion.
+5. **A registered effect that no card names is invisible to G1/G2/G3.** All
    three guards iterate seeded cards and ask whether each one's *named*
    effects are implemented; a `registerEffect` call with no card anywhere
    pointing at it is simply never visited. This is how `excaliburOnPlay` sat
@@ -301,8 +334,13 @@ Four guard blind spots remain open and are not going to close on their own:
    ahead of seeding the card that uses it, grep the seed source for the name
    before calling the task done.
 
-A fifth, older blind spot — a partly-built card passing G1/G2 despite
-incomplete text — was closed in wave 2 by the `PARTIAL` map above.
+Two older ones are closed: a partly-built card passing G1/G2 despite
+incomplete text (wave 2's `PARTIAL` map above), and a `seed_data.sql` that had
+drifted from `source/*.js` (wave 3's `seedDataSync.test.ts`).
+
+`PARTIAL` is **empty** as of wave 4 — both of its entries were closed by the
+wave that owned them — and `KNOWN_GAPS` holds only wave 5's five cards. The
+assertion loops waves 1-4 over both maps, so a reopened entry fails the build.
 
 ## Play-time cost modifiers
 

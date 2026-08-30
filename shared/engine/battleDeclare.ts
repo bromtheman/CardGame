@@ -1,7 +1,13 @@
-import { KEYWORDS, SPAWN_DISTANCE_DEFAULT_M } from '../gameSettings.ts'
-import type { BattleContinuation, Side, ZoneCardEntry } from './engineTypes.ts'
+import { KEYWORDS, SPAWN_DISTANCE_DEFAULT_M, VEHICLE_TYPES } from '../gameSettings.ts'
+import type { BattleContinuation, EngineContext, Side, ZoneCardEntry } from './engineTypes.ts'
 import type { EngineGame } from './engineTypes.ts'
 import { err, otherSide, registerHandler, zoneById } from './gameEngine.ts'
+import { dispatchBattleLock } from './battleTriggers.ts'
+
+// The one condition meta.defensiveOmission expresses today (spec §4.8). A
+// string rather than a boolean so a second condition is expressible without a
+// second meta key; Buzzsaw and Veles print identical text and share this one.
+export const OMISSION_UNLESS_SHIP_OR_TANK = 'unlessShipOrTank'
 
 // The only place the activeBattle object literal is constructed (spec §4.3,
 // departure 1) — so the next field added to it is one edit here rather than
@@ -29,13 +35,49 @@ function setBattle(game: EngineGame, spec: {
 // battle IS the zone's one activation for the turn. Kept byte-identical in
 // behaviour across the setBattle/lockBattle/declareForcedBattle split.
 function lockBattle(
-  game: EngineGame, zoneId: number, aggressor: Side, attackerIds: string[], defenderIds: string[],
+  game: EngineGame, ctx: EngineContext,
+  zoneId: number, aggressor: Side, attackerIds: string[], defenderIds: string[],
 ): void {
   setBattle(game, { zoneId, aggressor, attackerIds, defenderIds })
   zoneById(game.state, zoneId)!.lastActivatedTurn = game.turnNumber
   game.state.log.push(
     `Fleet battle declared in zone ${zoneId} — ${attackerIds.length} vs ${defenderIds.length}. Fight it in From The Depths, then report results.`,
   )
+  // DP2 at lock (spec §4.3). After the log line, so the order a player reads
+  // is declare-then-trigger; `forced: false` because this IS the ordinary
+  // fleet attack, which is what Terawatt's bystander rule excludes.
+  dispatchBattleLock(game, ctx, false)
+}
+
+// The only function that appends to a battle already in progress. Every other
+// path builds ActiveBattle whole, at construction (setBattle) — but a DP2 lock
+// trigger runs when the battle already exists, so The Onyx Throne's Parapet
+// and Terawatt's join need a way in that declareForcedBattle cannot give them:
+// it refuses outright while state.activeBattle is non-null, which at lock it
+// always is.
+//
+// `entry` present  → a freshly minted hull: pushed onto summons AND onto the
+//                    joining side's id list, so it is a battle summon in the
+//                    ordinary sense (spec §4.4) and evaporates on approval.
+// `entry` absent   → an id already on the board: only the id list is touched.
+//
+// Membership decides a summon's side (decision 18), so pushing onto the right
+// list is the whole of "which side did it join".
+export function joinBattle(
+  game: EngineGame, side: Side, instanceId: string, entry?: ZoneCardEntry,
+): boolean {
+  const battle = game.state.activeBattle
+  if (!battle) return false
+  if (battle.attackerIds.includes(instanceId) || battle.defenderIds.includes(instanceId)) return false
+  if (!entry) {
+    const zone = zoneById(game.state, battle.zoneId)
+    if (!zone || !zone.cards[side].some((c) => c.instanceId === instanceId)) return false
+  } else {
+    battle.summons.push(entry)
+  }
+  if (side === battle.aggressor) battle.attackerIds.push(instanceId)
+  else battle.defenderIds.push(instanceId)
+  return true
 }
 
 // DP3 (spec §4.3): a card-forced battle. Two rulings distinguish it from an
@@ -56,7 +98,7 @@ function lockBattle(
 // on-field entry on its own side nor one of the listed summons. Membership in
 // `summons` (not a side field) decides which side a summon belongs to, so the
 // same check serves attacker- and defender-side summons alike (decision 18).
-export function declareForcedBattle(game: EngineGame, spec: {
+export function declareForcedBattle(game: EngineGame, ctx: EngineContext, spec: {
   zoneId: number
   aggressor: Side
   attackerIds: string[]
@@ -87,10 +129,17 @@ export function declareForcedBattle(game: EngineGame, spec: {
   game.state.log.push(
     `${spec.cause} forces a battle in zone ${spec.zoneId} — ${spec.attackerIds.length} vs ${spec.defenderIds.length}. Fight it in From The Depths, then report results.`,
   )
+  // DP2 at lock, with forced: true — which is what admits the bystander pass
+  // (Terawatt, spec §4.3 DP2 departure 2). Fires only on the success path, so
+  // a refused declaration triggers nothing. A trigger here MAY leave
+  // state.pendingEffect set alongside the state.activeBattle just built
+  // (departure 3, decision 19); that is deliberate and safe — see
+  // gameEngine.ts's applyAction, and shared/engine/battleFreeze.test.ts.
+  dispatchBattleLock(game, ctx, true)
   return true
 }
 
-registerHandler('ATTACK_ENEMY_FLEET', (game, actor, action) => {
+registerHandler('ATTACK_ENEMY_FLEET', (game, actor, action, ctx) => {
   if (action.type !== 'ATTACK_ENEMY_FLEET') return err(400, 'Bad action')
   if (!Array.isArray(action.attackerIds) || !Array.isArray(action.targetIds)) {
     return err(400, 'attackerIds and targetIds must be arrays')
@@ -117,32 +166,53 @@ registerHandler('ATTACK_ENEMY_FLEET', (game, actor, action) => {
       return err(400, `${card.name} is Inoffensive and cannot attack`)
     }
   }
+  // Spec §4.8: the attacking FORCE is the committed selection, not everything
+  // the aggressor owns in the zone — a hull sitting the battle out is not
+  // attacking. Read off the same ids already validated above.
+  const forceHasShipOrTank = action.attackerIds.some((id) => {
+    const card = mine.find((c) => c.instanceId === id)
+    return card?.vehicleType === VEHICLE_TYPES.SHIP || card?.vehicleType === VEHICLE_TYPES.TANK
+  })
   const stealthyIds: string[] = []
+  const omissibleIds: string[] = []
   for (const id of action.targetIds) {
     const card = theirs.find((c) => c.instanceId === id)
     if (!card) return err(400, 'Target selection includes a vehicle that is not in that zone')
     if (card.keywords.includes(KEYWORDS.STEALTHY)) stealthyIds.push(id)
+    // Plain card data, not a registry name (spec §4.8) — an effect returns a
+    // boolean meaning "resolved" and may mutate, so one cannot serve as a pure
+    // eligibility predicate.
+    if (card.meta.defensiveOmission === OMISSION_UNLESS_SHIP_OR_TANK && !forceHasShipOrTank) {
+      omissibleIds.push(id)
+    }
   }
-  if (stealthyIds.length > 0) {
+  // The window now opens on EITHER list. Before wave 4 only Stealthy could
+  // raise it, and an attack with no stealthy target locked immediately.
+  if (stealthyIds.length > 0 || omissibleIds.length > 0) {
     game.state.awaitingResponse = {
       zoneId: action.zoneId, aggressor: actor,
-      attackerIds: action.attackerIds, targetIds: action.targetIds, stealthyIds,
+      attackerIds: action.attackerIds, targetIds: action.targetIds, stealthyIds, omissibleIds,
     }
-    game.state.log.push(`Fleet attack declared in zone ${action.zoneId} — stealthy defenders may withdraw`)
+    game.state.log.push(`Fleet attack declared in zone ${action.zoneId} — some defenders may withdraw`)
     return { ok: true, game }
   }
-  lockBattle(game, action.zoneId, actor, action.attackerIds, action.targetIds)
+  lockBattle(game, ctx, action.zoneId, actor, action.attackerIds, action.targetIds)
   return { ok: true, game }
 })
 
-registerHandler('RESPOND_TO_ATTACK', (game, actor, action) => {
+registerHandler('RESPOND_TO_ATTACK', (game, actor, action, ctx) => {
   if (action.type !== 'RESPOND_TO_ATTACK') return err(400, 'Bad action')
   if (!Array.isArray(action.optOutIds)) return err(400, 'optOutIds must be an array')
   const pending = game.state.awaitingResponse
   if (!pending) return err(409, 'No attack awaits a response')
   if (actor === pending.aggressor) return err(403, 'Only the defender responds')
+  // Either list is a valid source of an opt-out (spec §4.8): Stealthy's is
+  // unconditional, omissibleIds was computed against this attack's own
+  // attacking selection when the window opened.
   for (const id of action.optOutIds) {
-    if (!pending.stealthyIds.includes(id)) return err(400, 'Only stealthy vehicles may withdraw')
+    if (!pending.stealthyIds.includes(id) && !(pending.omissibleIds ?? []).includes(id)) {
+      return err(400, 'Only stealthy or omissible vehicles may withdraw')
+    }
   }
   const remaining = pending.targetIds.filter((id) => !action.optOutIds.includes(id))
   game.state.awaitingResponse = null
@@ -150,6 +220,6 @@ registerHandler('RESPOND_TO_ATTACK', (game, actor, action) => {
     game.state.log.push('All defenders slipped away — the attack is called off')
     return { ok: true, game }
   }
-  lockBattle(game, pending.zoneId, pending.aggressor, pending.attackerIds, remaining)
+  lockBattle(game, ctx, pending.zoneId, pending.aggressor, pending.attackerIds, remaining)
   return { ok: true, game }
 })

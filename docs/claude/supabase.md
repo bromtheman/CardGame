@@ -29,15 +29,23 @@ Three functions, all deployed with `verify_jwt: false` — each does its own
   | Source | Covers |
   |---|---|
   | the card at `action.instanceId` in the **caller's own hand** | the card being played |
-  | every on-field entry in every zone, **both sides** | `onDeathEffect`s fired inside `DECIDE_BATTLE_REPORT` (which carries no `instanceId`) and on-field activated abilities |
+  | every on-field entry in every zone, **both sides** | `onDeathEffect`s fired inside `DECIDE_BATTLE_REPORT` (which carries no `instanceId`) and on-field activated abilities, plus every DP2 battle trigger — a participant is always on-field |
   | `state.pendingEffect.card` | a **suspended** effect being resolved |
+  | `state.zoneEffects[].effect` **(wave 4)** | a persistent zone claim still firing long after its card was spent |
 
   The third exists because **the probe is blind to a card that has already been
   spent.** An ability is `spendCard`'d into `state.destroyed` when it is played,
   so by the time `RESOLVE_PENDING_EFFECT` arrives it is in neither hand nor
   field — which is why `pendingEffect` stores the card verbatim rather than its
-  name. Any future dispatch point that fires an effect for a card in neither
-  hand nor field must add a fourth source.
+  name.
+
+  The fourth is the same lesson one step further out: DWG Waters' battle riders
+  fire from `state.zoneEffects` for the rest of the game, so its card is in
+  none of the first three until it has already suspended once. That entry
+  stores the **registry name** directly, so this source asks
+  `CATALOG_EFFECTS` about the name rather than looking up a card at all.
+  **Any new dispatch point that fires an effect for a card in neither hand nor
+  field needs its own source here** — that is now twice.
 
   ⚠ **This branch has no unit test.** `game-action/index.ts` is Deno edge code
   with no test harness in this repo, so a probe regression reaches production
@@ -159,6 +167,19 @@ the version number. Deploy `game-action` after any engine/effects change;
   since wave 2 built it — worth confirming deliberately rather than assuming
   it still works by analogy. A probe regression shows up as a 400 on the
   resolving action, not on the play.
+
+  **Wave 4 added a fourth source that needs its own smoke test**, for the same
+  reason: `state.zoneEffects[].effect`. Play DWG Waters to claim a zone, then
+  let the enemy attack you there — the clause-2 rider offers a Corsair or
+  Marauder minted from the catalog, and DWG Waters' own card is in neither
+  hand, field, nor `pendingEffect` when that offer is built. A regression
+  surfaces as an empty option list rather than an error, which is quieter than
+  a 400 and worth looking for deliberately.
+
+  **Wave 4's own pair, beyond the probe:** Catshark in any battle (30k lands at
+  lock, on either side) and Terawatt on a forced 1v1 — the second is the first
+  time a player ever sees the choice dialog **over** the battle overlay, and
+  the battle must still be reportable after the answer.
 
 (That backlog item — "a script that assembles the full-directory payload
 automatically" — is closed by `scripts/deploy-function.mjs` above.)
