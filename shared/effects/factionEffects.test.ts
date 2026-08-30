@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { effectFor, registerEffect } from './registry.ts'
+import { CATALOG_EFFECTS, effectFor, registerEffect } from './registry.ts'
 import { choice } from './primitives.ts'
 import { inst, makeCtx, makeGame, snap, zoneEntry } from '../engine/testFixtures.ts'
 import {
@@ -2658,5 +2658,296 @@ describe('wave 5 — Sub Killer', () => {
     })
     expect(ok).toBe(true)
     expect(JSON.stringify(r.game.state)).toBe(before)
+  })
+})
+
+describe('wave 5 — Recurring Threat', () => {
+  const threatSnap = snap({
+    name: 'Recurring Threat', faction: 'DWG', type: 'ability', vehicleType: null,
+    materialCost: 100_000, cardText: 'Choose a friendly vehicle, destroy it…',
+    meta: { playOnVehicleEffect: 'recurringThreatEffect' },
+  })
+  const threatCtx = () => makeCtx({ catalog: [threatSnap] })
+
+  // alice has `hulls` ships in zone 1, bob has a raider there to attack with.
+  function board(over: { hulls?: number; hullMeta?: Record<string, unknown>; builtIn?: boolean } = {}) {
+    const game = makeGame({ turnNumber: 3, activePlayer: 'alice' })
+    game.state.resources.a.materials = 500_000
+    game.privates.a.deck = [inst({ name: 'Deck Top' }), inst({ name: 'Deck Next' })]
+    game.state.counts.a.deck = 2
+    const mine = Array.from({ length: over.hulls ?? 1 }, (_, i) => zoneEntry({
+      name: `Doomed ${i}`, faction: 'DWG', vehicleType: 'ship', materialCost: 70_000,
+      isBuiltIn: over.builtIn ?? true, keywords: ['scrappy'],
+      meta: over.hullMeta ?? {}, playedOnTurn: 2,
+    }))
+    const raider = zoneEntry({ name: 'Raider', playedOnTurn: 2 })
+    game.state.zones[0].cards.a.push(...mine)
+    game.state.zones[0].cards.b.push(raider)
+    return { game, mine, raider }
+  }
+
+  function cast(game: EngineGame, targetInstanceId: string) {
+    const card = inst({ ...threatSnap })
+    game.privates.a.hand.push(card)
+    game.state.counts.a.hand = game.privates.a.hand.length
+    const r = applyAction(game, 'alice', {
+      type: 'PLAY_CARD_TARGETING_CARD_ON_FIELD', instanceId: card.instanceId, targetInstanceId,
+    }, threatCtx())
+    return r
+  }
+
+  // bob attacks alice's remaining hull in zone 1 — a DEFENSIVE battle for the
+  // claimant, which is the only kind the card reacts to.
+  function attacked(game: EngineGame, raiderId: string, defenderId: string) {
+    const bobsTurn = { ...game, activePlayer: 'bob', turnNumber: 3.5 }
+    return applyAction(bobsTurn, 'bob', {
+      type: 'ATTACK_ENEMY_FLEET', zoneId: 1, attackerIds: [raiderId], targetIds: [defenderId],
+    }, threatCtx())
+  }
+
+  it('is registered as needing the catalog', () => {
+    // Verified at runtime rather than by reading the source: makeCtx hands
+    // every test a catalog, so a missing flag is invisible to unit tests and
+    // shows up only as a dead card in production (handoff trap 4.5).
+    expect(CATALOG_EFFECTS.has('recurringThreatEffect')).toBe(true)
+  })
+
+  it('destroys the target, remembers its snapshot, and rides forever', () => {
+    const { game, mine } = board()
+    const r = cast(game, mine[0].instanceId)
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.zones[0].cards.a).toHaveLength(0)
+    expect(r.game.state.destroyed.a.map((c) => c.name)).toContain('Doomed 0')
+    expect(r.game.state.zoneEffects).toHaveLength(1)
+    const rider = r.game.state.zoneEffects[0]
+    expect(rider).toMatchObject({
+      effect: 'recurringThreatEffect', zoneId: 1, side: 'a', cardName: 'Recurring Threat', setOnTurn: 3,
+    })
+    expect(rider.expiresOnTurn).toBeUndefined()
+    expect((rider.data?.summon as { name: string }).name).toBe('Doomed 0')
+  })
+
+  // Spec §7.3, decision 28: this card says "destroy", and means it.
+  it('fires the destroyed hull’s own death trigger', () => {
+    const { game, mine } = board({ hullMeta: { onDeathEffect: 'javelinOnDeath' } })
+    const r = cast(game, mine[0].instanceId)
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.privates.a.hand.map((c) => c.name)).toEqual(['Deck Top'])
+  })
+
+  it('refuses an enemy target', () => {
+    const { game, raider } = board()
+    expect(cast(game, raider.instanceId)).toMatchObject({ ok: false, status: 400 })
+  })
+
+  it('survives END_TURN — it is for the rest of the game', () => {
+    const { game, mine } = board()
+    const r = cast(game, mine[0].instanceId)
+    if (!r.ok) throw new Error(r.error)
+    const ended = applyAction(r.game, 'alice', { type: 'END_TURN' }, threatCtx())
+    if (!ended.ok) throw new Error(ended.error)
+    expect(ended.game.state.zoneEffects).toHaveLength(1)
+  })
+
+  it('offers a summon in a defensive battle, and the accepted copy fights without landing', () => {
+    const { game, mine, raider } = board({ hulls: 2 })
+    const cast1 = cast(game, mine[0].instanceId)
+    if (!cast1.ok) throw new Error(cast1.error)
+    const locked = attacked(cast1.game, raider.instanceId, mine[1].instanceId)
+    if (!locked.ok) throw new Error(locked.error)
+    expect(locked.game.state.pendingEffect?.side).toBe('a')
+    expect(locked.game.state.pendingEffect?.card.name).toBe('Recurring Threat')
+    const r = applyAction(locked.game, 'alice', {
+      type: 'RESOLVE_PENDING_EFFECT', choiceId: locked.game.state.pendingEffect!.options[0].id,
+    }, threatCtx())
+    if (!r.ok) throw new Error(r.error)
+    const battle = r.game.state.activeBattle!
+    expect(battle.summons.map((s) => s.name)).toEqual(['Doomed 0'])
+    expect(battle.defenderIds).toContain(battle.summons[0].instanceId)
+    // A battle summon never reaches the board (spec §4.4).
+    expect(r.game.state.zones[0].cards.a.map((c) => c.name)).toEqual(['Doomed 1'])
+    // The marker is permanent — it is not spent by being used.
+    expect(r.game.state.zoneEffects).toHaveLength(1)
+  })
+
+  it('declining summons nothing', () => {
+    const { game, mine, raider } = board({ hulls: 2 })
+    const cast1 = cast(game, mine[0].instanceId)
+    if (!cast1.ok) throw new Error(cast1.error)
+    const locked = attacked(cast1.game, raider.instanceId, mine[1].instanceId)
+    if (!locked.ok) throw new Error(locked.error)
+    const r = applyAction(locked.game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', cancel: true }, threatCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.activeBattle!.summons).toEqual([])
+  })
+
+  it('offers nothing when its claimant is the AGGRESSOR in that zone', () => {
+    const { game, mine, raider } = board({ hulls: 2 })
+    const cast1 = cast(game, mine[0].instanceId)
+    if (!cast1.ok) throw new Error(cast1.error)
+    const r = applyAction(cast1.game, 'alice', {
+      type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
+      attackerIds: [mine[1].instanceId], targetIds: [raider.instanceId],
+    }, threatCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.pendingEffect).toBeNull()
+  })
+
+  // The end-to-end case above passes for TWO reasons, and a mutation proved
+  // it: with the isDefender guard deleted, the has-a-fleet guard still refuses
+  // (an aggressor's own hulls are never in defenderIds), so that test alone
+  // cannot tell the two apart. This one isolates the card's own stated
+  // condition — "a DEFENSIVE fleet battle" — by hand-building the one state
+  // where has-a-fleet would say yes and only isDefender says no.
+  it('offers nothing on an offensive battle even when the fleet check would pass', () => {
+    const { game, mine } = board({ hulls: 2 })
+    const cast1 = cast(game, mine[0].instanceId)
+    if (!cast1.ok) throw new Error(cast1.error)
+    const g = cast1.game
+    g.state.activeBattle = {
+      zoneId: 1, aggressor: 'a',
+      attackerIds: [], defenderIds: [mine[1].instanceId], // alice's own hull, listed as a defender
+      distanceM: 1200, distanceModifiedBy: [], summons: [], continuation: null,
+    }
+    const ok = effectFor('recurringThreatEffect')!({
+      game: g, actor: 'a', card: inst({ ...threatSnap }), ctx: threatCtx(),
+      battle: {
+        phase: 'lock', zoneId: 1, isDefender: false, isParticipant: false,
+        forced: false, survived: false, won: false, casualties: [],
+      },
+    })
+    expect(ok).toBe(true)
+    expect(g.state.pendingEffect).toBeNull()
+  })
+
+  // "…to fight ALONGSIDE YOUR FLEET in battle" needs a fleet. DWG Waters'
+  // clause 3 declares a battle whose only defender is a summoned guardian, and
+  // one zone can hold both markers (spec §7.3).
+  it('offers nothing when the defending side has no board hull in the battle', () => {
+    const { game, mine, raider } = board()
+    const cast1 = cast(game, mine[0].instanceId)
+    if (!cast1.ok) throw new Error(cast1.error)
+    // alice's only zone-1 hull was the one she destroyed; her sole defender is
+    // a summon, exactly as a DWG Waters guardian would be.
+    const guardian = zoneEntry({ name: 'Guardian' })
+    const declared = declareForcedBattle(cast1.game, threatCtx(), {
+      zoneId: 1, aggressor: 'b', attackerIds: [raider.instanceId],
+      defenderIds: [guardian.instanceId], summons: [guardian], cause: 'Test',
+    })
+    expect(declared).toBe(true)
+    expect(cast1.game.state.pendingEffect).toBeNull()
+    expect(cast1.game.state.activeBattle!.summons.map((s) => s.name)).toEqual(['Guardian'])
+  })
+
+  // A defensive guard, pinned directly for the reason Ongoing Attrition's is:
+  // riders fire at 'lock' and 'baseAttack' only, so no end-to-end path can
+  // reach a resolve context, and a mutation of the phase check survives every
+  // test above. If a later wave adds a resolve-phase rider pass, a battle must
+  // not be able to gain a summon after it has already been fought.
+  it('ignores a resolve-phase context', () => {
+    const { game, mine, raider } = board({ hulls: 2 })
+    const cast1 = cast(game, mine[0].instanceId)
+    if (!cast1.ok) throw new Error(cast1.error)
+    const locked = attacked(cast1.game, raider.instanceId, mine[1].instanceId)
+    if (!locked.ok) throw new Error(locked.error)
+    const answered = applyAction(locked.game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', cancel: true }, threatCtx())
+    if (!answered.ok) throw new Error(answered.error)
+    const ok = effectFor('recurringThreatEffect')!({
+      game: answered.game, actor: 'a', card: inst({ ...threatSnap }), ctx: threatCtx(),
+      battle: {
+        phase: 'resolve', zoneId: 1, isDefender: true, isParticipant: true,
+        forced: false, survived: true, won: false, casualties: [],
+      },
+    })
+    expect(ok).toBe(true)
+    expect(answered.game.state.pendingEffect).toBeNull()
+    expect(answered.game.state.activeBattle!.summons).toEqual([])
+  })
+
+  // The lock pass dispatches riders on BOTH sides of a battle (spec §4.3, DP2
+  // departure 8), so an enemy marker on the same zone is dispatched in the
+  // same loop. Each must see only its own side's remembered hulls.
+  it('never offers the ENEMY’s remembered hull, even on the same zone', () => {
+    const { game, mine, raider } = board({ hulls: 2 })
+    game.state.zoneEffects.push({
+      effect: 'recurringThreatEffect', zoneId: 1, side: 'b', cardName: 'Recurring Threat',
+      setOnTurn: 2, data: { summon: { ...snap({ name: 'Their Ghost' }) } },
+    })
+    const cast1 = cast(game, mine[0].instanceId)
+    if (!cast1.ok) throw new Error(cast1.error)
+    const locked = attacked(cast1.game, raider.instanceId, mine[1].instanceId)
+    if (!locked.ok) throw new Error(locked.error)
+    expect(locked.game.state.pendingEffect?.side).toBe('a')
+    expect(locked.game.state.pendingEffect?.options.map((o) => o.label)).toEqual(['Doomed 0'])
+  })
+
+  it('offers only the hulls remembered in THIS zone', () => {
+    const { game, mine, raider } = board({ hulls: 2 })
+    // A second marker in zone 2, from a hull that was standing there.
+    game.state.zones[1].cards.a.push(zoneEntry({
+      name: 'Elsewhere', faction: 'DWG', vehicleType: 'ship', materialCost: 70_000, playedOnTurn: 2,
+    }))
+    const far = cast(game, game.state.zones[1].cards.a[0].instanceId)
+    if (!far.ok) throw new Error(far.error)
+    const near = cast(far.game, mine[0].instanceId)
+    if (!near.ok) throw new Error(near.error)
+    expect(near.game.state.zoneEffects).toHaveLength(2)
+    const locked = attacked(near.game, raider.instanceId, mine[1].instanceId)
+    if (!locked.ok) throw new Error(locked.error)
+    expect(locked.game.state.pendingEffect?.options.map((o) => o.label)).toEqual(['Doomed 0'])
+  })
+
+  it('two markers on one zone both fire, and the second offer is dropped rather than lost', () => {
+    const { game, mine, raider } = board({ hulls: 3 })
+    const first = cast(game, mine[0].instanceId)
+    if (!first.ok) throw new Error(first.error)
+    const second = cast(first.game, mine[1].instanceId)
+    if (!second.ok) throw new Error(second.error)
+    expect(second.game.state.zoneEffects).toHaveLength(2)
+    const locked = attacked(second.game, raider.instanceId, mine[2].instanceId)
+    if (!locked.ok) throw new Error(locked.error)
+    expect(locked.game.state.pendingEffect).not.toBeNull()
+    expect(locked.game.state.log.some((l) => l.includes('Recurring Threat') && l.includes('not made'))).toBe(true)
+  })
+
+  it('the summoned copy evaporates on approval, leaving nothing in the discard', () => {
+    const { game, mine, raider } = board({ hulls: 2 })
+    const cast1 = cast(game, mine[0].instanceId)
+    if (!cast1.ok) throw new Error(cast1.error)
+    const locked = attacked(cast1.game, raider.instanceId, mine[1].instanceId)
+    if (!locked.ok) throw new Error(locked.error)
+    const joined = applyAction(locked.game, 'alice', {
+      type: 'RESOLVE_PENDING_EFFECT', choiceId: locked.game.state.pendingEffect!.options[0].id,
+    }, threatCtx())
+    if (!joined.ok) throw new Error(joined.error)
+    const summonId = joined.game.state.activeBattle!.summons[0].instanceId
+    const discardBefore = joined.game.state.destroyed.a.length
+    const submitted = applyAction(joined.game, 'bob', {
+      type: 'SUBMIT_BATTLE_REPORT',
+      results: { [raider.instanceId]: 100, [mine[1].instanceId]: 100, [summonId]: 0 },
+      repairs: [],
+    }, threatCtx())
+    if (!submitted.ok) throw new Error(submitted.error)
+    const decided = applyAction(submitted.game, 'alice', { type: 'DECIDE_BATTLE_REPORT', approve: true }, threatCtx())
+    if (!decided.ok) throw new Error(decided.error)
+    expect(decided.game.state.destroyed.a).toHaveLength(discardBefore)
+    expect(decided.game.state.zones[0].cards.a.map((c) => c.name)).toEqual(['Doomed 1'])
+    expect(decided.game.state.log.some((l) => l.includes('summoned vehicle(s) evaporated'))).toBe(true)
+  })
+
+  // The engine's catalog is is_built_in only, so a name-based lookup would
+  // fail for exactly the hulls a player is likeliest to have designed.
+  it('remembers a PLAYER-MADE vehicle the catalog could never supply', () => {
+    const { game, mine, raider } = board({ hulls: 2, builtIn: false })
+    const cast1 = cast(game, mine[0].instanceId)
+    if (!cast1.ok) throw new Error(cast1.error)
+    const locked = attacked(cast1.game, raider.instanceId, mine[1].instanceId)
+    if (!locked.ok) throw new Error(locked.error)
+    const r = applyAction(locked.game, 'alice', {
+      type: 'RESOLVE_PENDING_EFFECT', choiceId: locked.game.state.pendingEffect!.options[0].id,
+    }, threatCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.activeBattle!.summons.map((s) => s.name)).toEqual(['Doomed 0'])
+    expect(r.game.state.activeBattle!.summons[0].isBuiltIn).toBe(false)
   })
 })

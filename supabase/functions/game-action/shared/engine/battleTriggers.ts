@@ -286,6 +286,28 @@ export function dispatchZoneInterception(
   }
 }
 
+// One hull's onDeathEffect. Extracted in wave 5 so "destroy" means the same
+// thing in both places that destroy: DECIDE_BATTLE_REPORT's resolution loop,
+// and Recurring Threat's "choose a friendly vehicle, destroy it" (spec §7.3,
+// decision 28 — a card that says "remove from play" instead, like Sub Killer,
+// must NOT call this).
+//
+// An unimplemented name is skipped silently: its vanilla note already ran at
+// play time (spec §3.9). A failing effect gets a log note and nothing more —
+// the destruction has already happened and cannot be rolled back over it. A
+// throw is still NOT caught, so death effects must return false on failure.
+export function fireDeathEffect(
+  game: EngineGame, ctx: EngineContext, side: Side, entry: ZoneCardEntry,
+): void {
+  const name = effectName(entry, TRIGGERS.ON_DEATH)
+  if (name === null) return
+  const fn = effectFor(name)
+  if (!fn) return
+  if (!fn({ game, actor: side, card: entry, ctx })) {
+    game.state.log.push(`${entry.name}'s death effect could not resolve`)
+  }
+}
+
 // Undo one death: put the hull back on the board and take its snapshot back
 // out of the discard. Iron Cordon and Sacrilego's clause 2 are the two
 // customers. The snapshot is matched on cardId alone — two copies of one card

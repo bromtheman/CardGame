@@ -3,13 +3,16 @@ import {
   DOUBLE_UP_MAX_COST, DWG_WATERS_GUEST_MAX_COST, FLYING_SQUIRREL_ATTACK_COUNT,
   HERO_POWER_LABELS, KEYWORDS, MARAUDER_DISCOUNT, RESERVES_CARD_COUNT,
 } from '../gameSettings.ts'
-import type { EngineContext, ZoneCardEntry } from '../engine/engineTypes.ts'
+import type { EngineContext, EngineGame, Side, ZoneCardEntry } from '../engine/engineTypes.ts'
 import type { SnapshotCard } from '../engine/gameInit.ts'
-import { checkVictory, copyMeta, drawCard, findVehicle, otherSide, zoneById } from '../engine/gameEngine.ts'
+import {
+  checkVictory, copyMeta, discardCard, discardSnapshotOf, drawCard, findVehicle, otherSide, zoneById,
+} from '../engine/gameEngine.ts'
 import { effectiveMaterialCostOf } from '../engine/placement.ts'
 import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
 import { baseDamageFrom, baseStrikersIn } from '../engine/baseAttack.ts'
-import { choice, grant, summonHulls, takeFromEnemyDeck } from './primitives.ts'
+import { fireDeathEffect } from '../engine/battleTriggers.ts'
+import { choice, grant, mintHull, summonHulls, takeFromEnemyDeck } from './primitives.ts'
 import { registerCostModifier, registerEffect } from './registry.ts'
 import type { EffectPayload } from './registry.ts'
 
@@ -201,6 +204,118 @@ function ongoingAttritionStrike(payload: EffectPayload): boolean {
 registerEffect(ONGOING_ATTRITION, (payload) => (
   payload.battle ? ongoingAttritionStrike(payload) : ongoingAttritionClaim(payload)
 ), { needsCatalog: true })
+
+const RECURRING_THREAT = 'recurringThreatEffect'
+
+// "Choose a friendly vehicle, destroy it. For the rest of the game, whenever
+// you would fight a defensive fleet battle in the zone it was in, you may
+// summon a copy of that vehicle to fight alongside your fleet in battle."
+//
+// Structurally DWG Waters' clause 2 with a different pool — a permanent
+// zoneEffect whose rider offers a battle summon — so it keeps that card's
+// shape: one registry name, occasions told apart by the payload, and the
+// "alongside your fleet needs a fleet" guard.
+//
+// What is new is WHICH hull it summons. `ZoneEffect.data` carries the whole
+// SnapshotCard rather than a name, because the engine's catalog is
+// is_built_in only: a name-based lookup would fail for exactly the custom
+// hulls a DWG player is likeliest to have designed. The stored value is
+// discardSnapshotOf — the one derivation discardCard itself writes — so the
+// remembered hull arrives already stripped of costDelta and of a captor's
+// ownerSide.
+//
+// { needsCatalog: true } is still required, and not for the summon: the rider
+// dispatch mints this card's own payload card from ctx.catalog by name.
+const recurringThreatOffer = choice({
+  effect: RECURRING_THREAT,
+  prompt: 'Call the wreck back to fight alongside your fleet?',
+  options: ({ game, actor, battle }) => {
+    const remembered = recurringThreatHullsIn(game, actor, battle?.zoneId)
+    return remembered.map((hull, i) => ({ id: `${i}`, label: hull.name }))
+  },
+  data: ({ game, actor, battle }) => ({
+    zoneId: battle?.zoneId,
+    // Stashed, never re-derived on the answer: the option ids are positional,
+    // so the list they indexed must be the list that comes back
+    // (docs/claude/card-effects.md, "Suspending for a choice").
+    hulls: recurringThreatHullsIn(game, actor, battle?.zoneId),
+  }),
+  resolve: ({ game, actor, ctx, card, pending }, choiceId) => {
+    if (choiceId === null) return true
+    const zoneId = pending?.data?.zoneId
+    const hulls = pending?.data?.hulls
+    if (typeof zoneId !== 'number' || !Array.isArray(hulls)) return false
+    const snapshot = hulls[Number(choiceId)] as SnapshotCard | undefined
+    if (!snapshot) return false
+    const battle = game.state.activeBattle
+    // The battle may have gone while the choice sat open.
+    if (!battle || battle.zoneId !== zoneId) return false
+    // No copyMeta here, and that is deliberate rather than an omission: the
+    // stored snapshot came from discardSnapshotOf, which already stripped a
+    // captor's ownerSide (and costDelta) on the way in. A second strip would
+    // be unreachable code no test could tell from its absence.
+    const hull = mintHull(game, ctx, snapshot)
+    if (!joinBattle(game, actor, hull.instanceId, hull)) return false
+    game.state.log.push(`${card.name} calls ${hull.name} back to the fight in zone ${zoneId}`)
+    return true
+  },
+})
+
+// Every hull this side has left a Recurring Threat marker for in one zone.
+// A player may plant several markers on the same zone — each remembers its own
+// hull — so this is a list rather than a lookup.
+function recurringThreatHullsIn(
+  game: EngineGame, actor: Side, zoneId: number | undefined,
+): SnapshotCard[] {
+  if (typeof zoneId !== 'number') return []
+  return game.state.zoneEffects
+    .filter((e) => e.effect === RECURRING_THREAT && e.zoneId === zoneId && e.side === actor)
+    .map((e) => e.data?.summon)
+    .filter((s): s is SnapshotCard => s !== undefined && s !== null && typeof s === 'object')
+}
+
+function recurringThreatRider(payload: EffectPayload): boolean {
+  const { game, actor, battle } = payload
+  if (!battle || battle.phase !== 'lock' || !battle.isDefender) return true
+  const active = game.state.activeBattle
+  const zone = zoneById(game.state, battle.zoneId)
+  if (!active || !zone) return true
+  // "Alongside your fleet" needs a fleet: at least one of the defender's own
+  // BOARD hulls in this battle. DWG Waters' clause 3 declares a battle whose
+  // only defender is a summoned guardian, and one zone can hold both markers.
+  const hasFleet = active.defenderIds.some((id) => zone.cards[actor].some((c) => c.instanceId === id))
+  if (!hasFleet) return true
+  return recurringThreatOffer(payload)
+}
+
+function recurringThreatPlay(payload: EffectPayload): boolean {
+  const { game, actor, ctx, card, targetInstanceId } = payload
+  if (typeof targetInstanceId !== 'string') return false
+  const found = findVehicle(game.state, targetInstanceId)
+  if (!found || found.side !== actor) return false
+  const { zone, entry } = found
+  zone.cards[actor] = zone.cards[actor].filter((c) => c.instanceId !== targetInstanceId)
+  game.state.zoneEffects.push({
+    effect: RECURRING_THREAT, zoneId: zone.id, side: actor, cardName: card.name,
+    setOnTurn: game.turnNumber, // no expiresOnTurn: "for the rest of the game"
+    data: { summon: discardSnapshotOf(entry, actor) },
+  })
+  discardCard(game, actor, entry)
+  game.state.log.push(
+    `${entry.name} is destroyed — it will answer defensive battles in zone ${zone.id} for the rest of the game`,
+  )
+  // LAST, deliberately: a death effect may draw, reshuffle the discard, or
+  // suspend on a choice of its own, and none of that may interleave with the
+  // writes above. "Destroy" fires it — spec §7.3, decision 28.
+  fireDeathEffect(game, ctx, actor, entry)
+  return true
+}
+
+registerEffect(RECURRING_THREAT, (payload) => {
+  if (payload.resolution !== undefined) return recurringThreatOffer(payload)
+  if (payload.battle) return recurringThreatRider(payload)
+  return recurringThreatPlay(payload)
+}, { needsCatalog: true })
 
 const DWG_WATERS_EFFECT = 'dwgWatersEffect'
 
