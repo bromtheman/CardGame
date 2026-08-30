@@ -195,6 +195,7 @@ export const lhVehicles = [
         blueprintId: null,
         keywords: [],
         meta: {
+            [TRIGGERS.ON_BATTLE_EFFECT]: 'terawattJoin',
         }
     },
     {

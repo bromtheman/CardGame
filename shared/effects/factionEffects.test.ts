@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { effectFor } from './registry.ts'
 import { inst, makeCtx, makeGame, snap, zoneEntry } from '../engine/testFixtures.ts'
-import { applyAction, effectiveCostInGame, effectiveMaterialCostOf } from '../engine/index.ts'
+import {
+  applyAction, declareForcedBattle, effectiveCostInGame, effectiveMaterialCostOf,
+} from '../engine/index.ts'
 import type { CardInstance } from '../engine/gameInit.ts'
 import type { EngineContext, EngineGame } from '../engine/engineTypes.ts'
 
@@ -1957,5 +1959,136 @@ describe('wave 4 — battle triggers at resolve', () => {
     if (!saved.ok) throw new Error(saved.error)
     expect(saved.game.state.zones[0].cards.b.map((c) => c.name)).toEqual(['Nimbus'])
     expect(saved.game.state.destroyed.b.map((c) => c.name)).toEqual(['Iron Cordon'])
+  })
+})
+
+describe('wave 4 — terawattJoin', () => {
+  // alice (side a) forces the battle; bob (side b) owns the lone defender and
+  // the Terawatt standing beside it. Two enemy vehicles sit in the zone but
+  // only one is dragged into the fight, so a mutated "sole defender" guard
+  // changes WHICH offer appears rather than producing a rejected action
+  // (handoff §3's collision-aware requirement).
+  function forced(over: {
+    terawattZone?: number
+    terawattSide?: 'a' | 'b'
+    defenderCount?: number
+  } = {}) {
+    const game = makeGame({ turnNumber: 3 })
+    const attacker = zoneEntry({ name: 'Aggressor', playedOnTurn: 2 })
+    const lone = zoneEntry({ name: 'Lone', instanceId: 'lone-1' })
+    const spare = zoneEntry({ name: 'Spare', instanceId: 'spare-1' })
+    const terawatt = zoneEntry({
+      name: 'Terawatt', instanceId: 'tera-1', meta: { onBattleEffect: 'terawattJoin' },
+    })
+    game.state.zones[0].cards.a.push(attacker)
+    game.state.zones[0].cards.b.push(lone, spare)
+    const side = over.terawattSide ?? 'b'
+    const zoneIndex = (over.terawattZone ?? 1) - 1
+    game.state.zones[zoneIndex].cards[side].push(terawatt)
+    const defenderIds = over.defenderCount === 2 ? ['lone-1', 'spare-1'] : ['lone-1']
+    const declared = declareForcedBattle(game, makeCtx(), {
+      zoneId: 1, aggressor: 'a', attackerIds: [attacker.instanceId], defenderIds, cause: 'Gang Up',
+    })
+    return { game, terawatt, lone, spare, attacker, declared }
+  }
+
+  it('offers the join when a friendly vehicle is left to fight alone', () => {
+    const { game, declared } = forced()
+    expect(declared).toBe(true)
+    expect(game.state.pendingEffect?.side).toBe('b')
+    expect(game.state.pendingEffect?.card.name).toBe('Terawatt')
+    expect(game.state.pendingEffect?.options).toHaveLength(1)
+  })
+
+  it('accepting puts Terawatt on the defending side of the battle', () => {
+    const { game, terawatt, lone } = forced()
+    const r = applyAction(game, 'bob', {
+      type: 'RESOLVE_PENDING_EFFECT', choiceId: game.state.pendingEffect!.options[0].id,
+    }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.activeBattle?.defenderIds).toEqual([lone.instanceId, terawatt.instanceId])
+    expect(r.game.state.activeBattle?.summons).toEqual([]) // already on the board — not a summon
+    expect(r.game.state.pendingEffect).toBeNull()
+  })
+
+  it('declining leaves the battle 1v1 and still reportable', () => {
+    const { game, attacker, lone } = forced()
+    const r = applyAction(game, 'bob', { type: 'RESOLVE_PENDING_EFFECT', cancel: true }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.activeBattle?.defenderIds).toEqual([lone.instanceId])
+    const s = applyAction(r.game, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT',
+      results: { [attacker.instanceId]: 95, [lone.instanceId]: 95 }, repairs: [],
+    }, makeCtx())
+    expect(s.ok).toBe(true)
+  })
+
+  it('offers nothing when the defending side already has two participants', () => {
+    const { game } = forced({ defenderCount: 2 })
+    expect(game.state.activeBattle?.defenderIds).toHaveLength(2)
+    expect(game.state.pendingEffect).toBeNull()
+  })
+
+  it('offers nothing for a Terawatt in a different zone', () => {
+    const { game } = forced({ terawattZone: 2 })
+    expect(game.state.activeBattle).not.toBeNull()
+    expect(game.state.pendingEffect).toBeNull()
+  })
+
+  it('offers nothing for a Terawatt on the aggressor side', () => {
+    const { game } = forced({ terawattSide: 'a' })
+    expect(game.state.activeBattle).not.toBeNull()
+    expect(game.state.pendingEffect).toBeNull()
+  })
+
+  // "Due to enemy card effect" — an ordinary fleet attack is not that, however
+  // lonely the defender ends up.
+  it('offers nothing on an ordinary fleet attack that leaves one defender', () => {
+    const game = makeGame({ turnNumber: 3 })
+    const attacker = zoneEntry({ playedOnTurn: 2 })
+    const lone = zoneEntry({ name: 'Lone' })
+    const terawatt = zoneEntry({ name: 'Terawatt', meta: { onBattleEffect: 'terawattJoin' } })
+    game.state.zones[0].cards.a.push(attacker)
+    game.state.zones[0].cards.b.push(lone, terawatt)
+    const r = applyAction(game, 'alice', {
+      type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
+      attackerIds: [attacker.instanceId], targetIds: [lone.instanceId],
+    }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.pendingEffect).toBeNull()
+  })
+
+  // Terawatt as the lone defender is already fighting: the bystander pass
+  // excludes combatants, and the participant pass hands it isParticipant true,
+  // which its own guard rejects.
+  it('offers nothing when Terawatt IS the lone defender', () => {
+    const game = makeGame({ turnNumber: 3 })
+    const attacker = zoneEntry({ playedOnTurn: 2 })
+    const terawatt = zoneEntry({
+      name: 'Terawatt', instanceId: 'tera-1', meta: { onBattleEffect: 'terawattJoin' },
+    })
+    game.state.zones[0].cards.a.push(attacker)
+    game.state.zones[0].cards.b.push(terawatt)
+    const declared = declareForcedBattle(game, makeCtx(), {
+      zoneId: 1, aggressor: 'a', attackerIds: [attacker.instanceId], defenderIds: ['tera-1'], cause: 'Gang Up',
+    })
+    expect(declared).toBe(true)
+    expect(game.state.pendingEffect).toBeNull()
+  })
+
+  it('refuses to join twice, and refuses once the battle is gone', () => {
+    const { game } = forced()
+    const optionId = game.state.pendingEffect!.options[0].id
+    const first = applyAction(game, 'bob', { type: 'RESOLVE_PENDING_EFFECT', choiceId: optionId }, makeCtx())
+    if (!first.ok) throw new Error(first.error)
+    // Re-arm the same choice by hand and confirm the second join is refused:
+    // joinBattle rejects an id already on a combatant list.
+    first.game.state.pendingEffect = game.state.pendingEffect
+    expect(applyAction(first.game, 'bob', { type: 'RESOLVE_PENDING_EFFECT', choiceId: optionId }, makeCtx()))
+      .toMatchObject({ ok: false, status: 400 })
+    const noBattle = structuredClone(game)
+    noBattle.state.activeBattle = null
+    expect(applyAction(noBattle, 'bob', { type: 'RESOLVE_PENDING_EFFECT', choiceId: optionId }, makeCtx()))
+      .toMatchObject({ ok: false, status: 400 })
   })
 })
