@@ -1,10 +1,12 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type { BattleContext, EngineGame, Side, ZoneCardEntry } from './engineTypes.ts'
 import {
-  battleOutcome, dispatchBaseAttackVictory, dispatchBattleLock, dispatchBattleResolve, reviveEntry,
+  battleOutcome, canRevive, discardSnapshotOf, dispatchBaseAttackVictory, dispatchBattleLock,
+  dispatchBattleResolve, reviveEntry, sacrificeEntry,
 } from './index.ts'
 import type { BattleParticipant } from './index.ts'
 import { registerEffect } from '../effects/registry.ts'
+import { choice } from '../effects/primitives.ts'
 import { makeCtx, makeGame, zoneEntry } from './testFixtures.ts'
 
 // Every spy records the context it was handed, so a test can assert not just
@@ -31,6 +33,14 @@ beforeAll(() => {
   spy('t_victorySpy')
   spy('t_defeatSpy')
   spy('t_failing', undefined, () => false)
+  // A real choice(), so the one-slot rule is exercised where it actually
+  // lives rather than through a hand-written pendingEffect write.
+  registerEffect('t_chooser', choice({
+    effect: 't_chooser',
+    prompt: 'Pick one',
+    options: () => [{ id: 'x', label: 'X' }],
+    resolve: () => true,
+  }))
   // Occupies the one suspension slot the way a real choice would, so the
   // "skips the rest" case is driven by the same state a card produces.
   registerEffect('t_suspender', ({ game, card, actor, battle }) => {
@@ -200,9 +210,11 @@ describe('dispatchBattleLock', () => {
     expect(names()).toEqual([])
   })
 
-  // Spec §4.3, DP2 departure 4. One slot, fixed order, so the skip is
-  // reproducible rather than racy.
-  it('skips the remaining triggers once the pending slot is occupied, and says so', () => {
+  // Spec §4.3, DP2 departure 4. One slot, fixed order — but the enforcement
+  // lives in choice(), not here: EVERY trigger still runs, so a card whose
+  // text has an unconditional clause as well as an optional one still gets the
+  // unconditional half. Only the second OFFER is dropped.
+  it('keeps dispatching after the pending slot is taken, so unconditional halves still run', () => {
     const g = makeGame()
     const first = trigger('t_suspender', { name: 'Chooser' })
     const second = trigger('t_lockSpy', { name: 'Latecomer' })
@@ -210,8 +222,20 @@ describe('dispatchBattleLock', () => {
     g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'd1' }))
     lock(g, { attackerIds: [first.instanceId, second.instanceId], defenderIds: ['d1'] })
     dispatchBattleLock(g, makeCtx(), false)
-    expect(names()).toEqual(['t_suspender'])
-    expect(g.state.log.join('\n')).toContain('Latecomer')
+    expect(names()).toEqual(['t_suspender', 't_lockSpy'])
+    expect(g.state.pendingEffect?.card.name).toBe('Chooser') // the first offer stands
+  })
+
+  it('drops a second offer rather than overwriting the first', () => {
+    const g = makeGame()
+    const first = trigger('t_chooser', { name: 'First' })
+    const second = trigger('t_chooser', { name: 'Second' })
+    g.state.zones[0].cards.a.push(first, second)
+    g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'd1' }))
+    lock(g, { attackerIds: [first.instanceId, second.instanceId], defenderIds: ['d1'] })
+    dispatchBattleLock(g, makeCtx(), false)
+    expect(g.state.pendingEffect?.card.name).toBe('First')
+    expect(g.state.log.join('\n')).toContain("Second's offer was not made")
   })
 
   it('logs a note when a trigger reports failure, and keeps dispatching', () => {
@@ -248,7 +272,7 @@ describe('dispatchBattleResolve', () => {
 
   it('sends victory only to the winner and defeat only to the loser', () => {
     const { g, participants, outcome } = resolved('a')
-    dispatchBattleResolve(g, makeCtx(), 1, 'a', participants, outcome)
+    dispatchBattleResolve(g, makeCtx(), 1, 'a', participants, outcome, [])
     const byCard = fired.map((f) => `${f.card}:${f.effect}`)
     expect(byCard).toContain('Attacker:t_victorySpy')
     expect(byCard).toContain('Defender:t_defeatSpy')
@@ -258,7 +282,7 @@ describe('dispatchBattleResolve', () => {
 
   it('sends onBattleEffect to both sides, with per-participant survived', () => {
     const { g, participants, outcome } = resolved('a')
-    dispatchBattleResolve(g, makeCtx(), 1, 'a', participants, outcome)
+    dispatchBattleResolve(g, makeCtx(), 1, 'a', participants, outcome, [])
     const atkEffect = fired.find((f) => f.card === 'Attacker' && f.effect === 't_resolveSpy')
     const defEffect = fired.find((f) => f.card === 'Defender' && f.effect === 't_resolveSpy')
     expect(atkEffect?.battle).toMatchObject({ phase: 'resolve', survived: true, won: true, isDefender: false })
@@ -286,9 +310,8 @@ describe('reviveEntry', () => {
   it('returns the hull to the zone and removes exactly one matching snapshot', () => {
     const g = makeGame()
     const dead = zoneEntry({ name: 'Halberd' })
-    const { instanceId: _i, playedOnTurn: _p, movedOnTurn: _m, activatedOnTurn: _a, ...snapshot } = dead
     // Two identical copies died; reviving one must leave the other in place.
-    g.state.destroyed.a.push({ ...snapshot }, { ...snapshot })
+    g.state.destroyed.a.push(discardSnapshotOf(dead, 'a'), discardSnapshotOf(dead, 'a'))
     expect(reviveEntry(g, 'a', dead, 1)).toBe(true)
     expect(g.state.zones[0].cards.a.map((c) => c.instanceId)).toEqual([dead.instanceId])
     expect(g.state.destroyed.a).toHaveLength(1)
@@ -297,8 +320,7 @@ describe('reviveEntry', () => {
   it('files the revival against the zone the entry belongs to', () => {
     const g = makeGame()
     const dead = zoneEntry({ name: 'Halberd' })
-    const { instanceId: _i, playedOnTurn: _p, movedOnTurn: _m, activatedOnTurn: _a, ...snapshot } = dead
-    g.state.destroyed.b.push({ ...snapshot })
+    g.state.destroyed.b.push(discardSnapshotOf(dead, 'b'))
     expect(reviveEntry(g, 'b', dead, 2)).toBe(true)
     expect(g.state.zones[1].cards.b).toHaveLength(1)
     expect(g.state.zones[0].cards.b).toHaveLength(0)
@@ -308,8 +330,7 @@ describe('reviveEntry', () => {
     const g = makeGame()
     const dead = zoneEntry({ name: 'Halberd' })
     const other = zoneEntry({ name: 'Jormangund' })
-    const { instanceId: _i, playedOnTurn: _p, movedOnTurn: _m, activatedOnTurn: _a, ...snapshot } = other
-    g.state.destroyed.a.push({ ...snapshot })
+    g.state.destroyed.a.push(discardSnapshotOf(other, 'a'))
     expect(reviveEntry(g, 'a', dead, 1)).toBe(false)
     expect(g.state.zones[0].cards.a).toHaveLength(0)
     expect(g.state.destroyed.a).toHaveLength(1)
@@ -320,10 +341,84 @@ describe('reviveEntry', () => {
   it('pulls a captured hull back out of its owner pile, not its controller pile', () => {
     const g = makeGame()
     const dead = zoneEntry({ name: 'Loaner', meta: { ownerSide: 'b' } })
-    const { instanceId: _i, playedOnTurn: _p, movedOnTurn: _m, activatedOnTurn: _a, ...snapshot } = dead
-    g.state.destroyed.b.push({ ...snapshot })
+    // discardCard strips ownerSide on the way home, so the pile holds the
+    // stripped form — the revive has to rebuild the same derivation to match.
+    g.state.destroyed.b.push(discardSnapshotOf(dead, 'a'))
     expect(reviveEntry(g, 'a', dead, 1)).toBe(true)
     expect(g.state.destroyed.b).toHaveLength(0)
     expect(g.state.zones[0].cards.a).toHaveLength(1)
+  })
+
+  // Two snapshots of one card are NOT interchangeable: repairmenReadyEffect
+  // grants SCRAPPY to a hull already on the board, so a plain and a Scrappy
+  // copy share a cardId and differ in exactly the field that decides whether
+  // the owner gets a free upgrade back through reshuffleDiscard.
+  it('revives the exact snapshot, not merely one with the same cardId', () => {
+    const g = makeGame()
+    const plain = zoneEntry({ name: 'Cyclone', cardId: 'cyclone' })
+    const scrappy: typeof plain = { ...plain, instanceId: 'scrappy-1', keywords: ['scrappy'] }
+    g.state.destroyed.a.push(discardSnapshotOf(plain, 'a'), discardSnapshotOf(scrappy, 'a'))
+    expect(reviveEntry(g, 'a', scrappy, 1)).toBe(true)
+    expect(g.state.zones[0].cards.a[0].keywords).toEqual(['scrappy'])
+    // The plain copy is what must be left behind.
+    expect(g.state.destroyed.a).toHaveLength(1)
+    expect(g.state.destroyed.a[0].keywords).toEqual([])
+  })
+
+  it('canRevive agrees with reviveEntry, before and after the pile empties', () => {
+    const g = makeGame()
+    const dead = zoneEntry({ name: 'Halberd' })
+    g.state.destroyed.a.push(discardSnapshotOf(dead, 'a'))
+    expect(canRevive(g, 'a', dead)).toBe(true)
+    // What a death trigger's draw does to the pile: reshuffleDiscard empties
+    // the whole discard into the deck, and the casualty becomes unrevivable.
+    g.state.destroyed.a = []
+    expect(canRevive(g, 'a', dead)).toBe(false)
+    expect(reviveEntry(g, 'a', dead, 1)).toBe(false)
+  })
+})
+
+describe('sacrificeEntry', () => {
+  it('takes the hull off the board and into its owner discard', () => {
+    const g = makeGame()
+    const hull = zoneEntry({ name: 'Sacrilego' })
+    g.state.zones[0].cards.a.push(hull)
+    expect(sacrificeEntry(g, 'a', hull.instanceId, 1)).toBe(true)
+    expect(g.state.zones[0].cards.a).toEqual([])
+    expect(g.state.destroyed.a.map((c) => c.name)).toEqual(['Sacrilego'])
+  })
+
+  // It routes through discardCard, so both of that function's rules hold: a
+  // captured hull goes home rather than being confiscated…
+  it('sends a captured hull home to its owner', () => {
+    const g = makeGame()
+    const hull = zoneEntry({ name: 'Loaner', meta: { ownerSide: 'b' } })
+    g.state.zones[0].cards.a.push(hull)
+    expect(sacrificeEntry(g, 'a', hull.instanceId, 1)).toBe(true)
+    expect(g.state.destroyed.a).toEqual([])
+    expect(g.state.destroyed.b.map((c) => c.name)).toEqual(['Loaner'])
+    expect(g.state.destroyed.b[0].meta.ownerSide).toBeUndefined()
+  })
+
+  // …and a summon-only hull never reaches a discard at all, because that is a
+  // deck's back door (spec §7.1).
+  it('never files a summon-only hull into a discard', () => {
+    const g = makeGame()
+    const hull = zoneEntry({ name: 'Martyr', meta: { summonOnly: true } })
+    g.state.zones[0].cards.a.push(hull)
+    expect(sacrificeEntry(g, 'a', hull.instanceId, 1)).toBe(true)
+    expect(g.state.zones[0].cards.a).toEqual([])
+    expect(g.state.destroyed.a).toEqual([])
+  })
+
+  it('refuses and changes nothing when the hull is not where it was expected', () => {
+    const g = makeGame()
+    const hull = zoneEntry({ name: 'Sacrilego' })
+    g.state.zones[0].cards.a.push(hull)
+    expect(sacrificeEntry(g, 'b', hull.instanceId, 1)).toBe(false) // wrong side
+    expect(sacrificeEntry(g, 'a', hull.instanceId, 2)).toBe(false) // wrong zone
+    expect(sacrificeEntry(g, 'a', 'ghost', 1)).toBe(false)
+    expect(g.state.zones[0].cards.a).toHaveLength(1)
+    expect(g.state.destroyed.a).toEqual([])
   })
 })

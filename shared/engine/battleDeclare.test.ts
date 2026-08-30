@@ -1,5 +1,8 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import { applyAction, declareForcedBattle, joinBattle, normalizeState } from './index'
+import {
+  applyAction, declareForcedBattle, joinBattle, normalizeState, OMISSION_UNLESS_SHIP_OR_TANK,
+} from './index'
+import { loadSeedData } from '../../supabase/seed/transform'
 import { registerEffect } from '../effects/registry'
 import type { ZoneCardEntry } from './engineTypes'
 import { inst, makeCtx, makeGame, zoneEntry } from './testFixtures'
@@ -351,8 +354,10 @@ describe('DP2 lock dispatch', () => {
 // has no room for, so awaitingResponse gains a second list.
 // ---------------------------------------------------------------------------
 
+// The constant, not the literal: a rename of its value must break this fixture
+// rather than silently making every case below vacuous.
 const omissible = (over: Partial<ZoneCardEntry> = {}) =>
-  zoneEntry({ name: 'Buzzsaw', meta: { defensiveOmission: 'unlessShipOrTank' }, ...over })
+  zoneEntry({ name: 'Buzzsaw', meta: { defensiveOmission: OMISSION_UNLESS_SHIP_OR_TANK }, ...over })
 
 function attackWith(attackers: ZoneCardEntry[], targets: ZoneCardEntry[]) {
   const g = makeGame({ turnNumber: 3 })
@@ -389,6 +394,34 @@ describe('defender omission', () => {
     const buzz = omissible()
     const out = attackWith([zoneEntry({ vehicleType: 'tank', playedOnTurn: 2 })], [buzz])
     expect(out.state.awaitingResponse).toBeNull()
+  })
+
+  // "Ship or tank", exactly — an airship is not a ship, however the word
+  // reads, and a sub is not either. Both are pinned so a predicate widened to
+  // any of the five vehicle types cannot pass.
+  it('still lists it against an all-airship or all-sub force', () => {
+    for (const vehicleType of ['airship', 'sub', 'plane']) {
+      const buzz = omissible()
+      const out = attackWith([zoneEntry({ vehicleType, playedOnTurn: 2 })], [buzz])
+      expect({ vehicleType, ids: out.state.awaitingResponse?.omissibleIds })
+        .toEqual({ vehicleType, ids: [buzz.instanceId] })
+    }
+  })
+
+  // Without this, seeding 'unlessShipOrTanks' would give a card that is inert
+  // AND invisible: G2's hasData and noteUnimplemented both test for the key's
+  // PRESENCE, not its value, so the guard stays green and no "plays as
+  // vanilla" note is logged either.
+  it('the two real seeded cards carry exactly the value the engine compares', async () => {
+    const { cards } = await loadSeedData()
+    const carriers = cards.filter(
+      (c) => c.isBuiltIn && (c.meta as Record<string, unknown> | undefined)?.defensiveOmission !== undefined,
+    )
+    expect(carriers.map((c) => c.name).sort()).toEqual(['Buzzsaw', 'Veles'])
+    for (const card of carriers) {
+      expect({ name: card.name, value: (card.meta as Record<string, unknown>).defensiveOmission })
+        .toEqual({ name: card.name, value: OMISSION_UNLESS_SHIP_OR_TANK })
+    }
   })
 
   // Spec §4.8: the "force" is the attacker's committed selection, not

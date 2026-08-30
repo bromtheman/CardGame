@@ -19,7 +19,11 @@ export function PendingChoiceDialog({
   const mine = pending.side === mySide
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ocean-950/70 p-4">
+    // z-[60] rather than z-50: BattleOverlay is also fixed inset-0 z-50, and
+    // wave 4 is the first time the two coexist (Terawatt and DWG Waters both
+    // suspend at battle lock). Relying on sibling order in GameBoardPage would
+    // put the defender under a full-viewport backdrop with no way to answer.
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-ocean-950/70 p-4">
       <div className="w-full max-w-md rounded-lg border border-brass-400/60 bg-ocean-900 p-5 shadow-xl">
         <p className="text-xs uppercase tracking-wide text-brass-400">{pending.card.name}</p>
         <h2 className="mt-1 text-lg font-bold text-parchment-100">{pending.prompt}</h2>

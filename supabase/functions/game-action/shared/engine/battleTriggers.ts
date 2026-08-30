@@ -1,9 +1,9 @@
 import { TRIGGERS } from '../gameSettings.ts'
-import type { CardInstance } from './gameInit.ts'
+import type { CardInstance, SnapshotCard } from './gameInit.ts'
 import type {
   BattleCasualty, BattleContext, EngineContext, EngineGame, Side, ZoneCardEntry,
 } from './engineTypes.ts'
-import { discardCard, otherSide, ownerSideOf, zoneById } from './gameEngine.ts'
+import { discardCard, discardSnapshotOf, otherSide, ownerSideOf, zoneById } from './gameEngine.ts'
 import { BYSTANDER_EFFECTS, effectFor, effectName } from '../effects/registry.ts'
 
 // DP2 (spec §4.3, and its seven "DP2 departure" subsections). This module owns
@@ -40,28 +40,28 @@ export function battleOutcome(
   }
 }
 
-// One dispatch. Returns false when the slot was already owed to somebody, so
-// the caller stops rather than letting a second choice overwrite the first
-// (spec §4.3, DP2 departure 4). A trigger that reports failure gets a log note
-// and nothing more: at lock the battle is already declared, and at resolve the
-// report is already approved, so neither can be rolled back over it — the same
-// treatment onDeathEffect has had since wave 3.
+// One dispatch. EVERY trigger runs, even when a choice is already owed: the
+// one-slot rule is enforced inside choice() (primitives.ts), which drops a
+// second OFFER rather than skipping a whole effect (spec §4.3, DP2 departure
+// 4). Enforcing it here instead would starve an unconditional clause sharing a
+// card with an optional one — two surviving Sacrilegos would grant 1 CP
+// between them rather than 1 each.
+//
+// A trigger that reports failure gets a log note and nothing more: at lock the
+// battle is already declared, and at resolve the report is already approved,
+// so neither can be rolled back over it — the same treatment onDeathEffect has
+// had since wave 3.
 function fire(
   game: EngineGame, ctx: EngineContext,
   card: CardInstance, actor: Side, triggerKey: string, battle: BattleContext,
-): boolean {
+): void {
   const name = effectName(card, triggerKey)
-  if (name === null) return true
+  if (name === null) return
   const fn = effectFor(name)
-  if (!fn) return true
-  if (game.state.pendingEffect !== null) {
-    game.state.log.push(`${card.name}'s battle trigger was skipped — another choice is already pending`)
-    return false
-  }
+  if (!fn) return
   if (!fn({ game, actor, card, ctx, battle })) {
     game.state.log.push(`${card.name}'s battle trigger could not resolve`)
   }
-  return true
 }
 
 // The participant roster, in the fixed order every dispatch walks: attackers in
@@ -96,9 +96,12 @@ function lockRoster(game: EngineGame): BattleParticipant[] {
 //      zone whose onBattleEffect is registered { battleBystander: true };
 //   3. state.zoneEffects riders on that zone belonging to the defending side.
 //
-// The roster is snapshotted before anything runs, so an effect that adds a
-// hull to the board (Dryad) or to the battle (The Onyx Throne) cannot trigger
-// itself a second time within the same lock.
+// The PARTICIPANT roster is snapshotted before anything runs, so an effect
+// that adds a hull to the board (Dryad) or to the battle (The Onyx Throne)
+// cannot trigger itself a second time within the same lock. The bystander list
+// is built AFTER that pass, so a hull a participant trigger spawned is already
+// on the board when it is filtered — harmless today, since Terawatt is the only
+// bystander and nothing spawns one, but not the same guarantee.
 export function dispatchBattleLock(game: EngineGame, ctx: EngineContext, forced: boolean): void {
   const battle = game.state.activeBattle
   if (!battle) return
@@ -111,7 +114,7 @@ export function dispatchBattleLock(game: EngineGame, ctx: EngineContext, forced:
   })
 
   for (const { entry, side } of lockRoster(game)) {
-    if (!fire(game, ctx, entry, side, TRIGGERS.ON_BATTLE_EFFECT, context(side !== battle.aggressor, true))) return
+    fire(game, ctx, entry, side, TRIGGERS.ON_BATTLE_EFFECT, context(side !== battle.aggressor, true))
   }
 
   if (forced) {
@@ -124,7 +127,7 @@ export function dispatchBattleLock(game: EngineGame, ctx: EngineContext, forced:
       return name !== null && BYSTANDER_EFFECTS.has(name)
     })
     for (const entry of bystanders) {
-      if (!fire(game, ctx, entry, defenderSide, TRIGGERS.ON_BATTLE_EFFECT, context(true, false))) return
+      fire(game, ctx, entry, defenderSide, TRIGGERS.ON_BATTLE_EFFECT, context(true, false))
     }
   }
 
@@ -140,10 +143,6 @@ export function dispatchBattleLock(game: EngineGame, ctx: EngineContext, forced:
     // A cardName the catalog cannot supply is a data problem, not a
     // game-stopping one: skip the rider rather than failing a locked battle.
     if (!snapshot) continue
-    if (game.state.pendingEffect !== null) {
-      game.state.log.push(`${rider.cardName}'s battle trigger was skipped — another choice is already pending`)
-      return
-    }
     const card: CardInstance = { ...snapshot, instanceId: ctx.newId() }
     if (!fn({ game, actor: defenderSide, card, ctx, battle: context(true, false) })) {
       game.state.log.push(`${rider.cardName}'s battle trigger could not resolve`)
@@ -169,11 +168,11 @@ export function dispatchBattleResolve(
       won: outcome.wonBy[side],
       casualties,
     }
-    if (!fire(game, ctx, entry, side, TRIGGERS.ON_BATTLE_EFFECT, context)) return
+    fire(game, ctx, entry, side, TRIGGERS.ON_BATTLE_EFFECT, context)
     const sugar = outcome.wonBy[side]
       ? TRIGGERS.ON_BATTLE_VICTORY
       : outcome.wonBy[otherSide(side)] ? TRIGGERS.ON_BATTLE_DEFEAT : null
-    if (sugar && !fire(game, ctx, entry, side, sugar, context)) return
+    if (sugar) fire(game, ctx, entry, side, sugar, context)
   }
 }
 
@@ -181,6 +180,28 @@ export function dispatchBattleResolve(
 // clause (spec §4.3, DP2 departure 5), so ATTACK_ENEMY_BASE dispatches the
 // victory key to exactly the hulls that dealt the damage — baseStrikersIn's
 // roster, not everything standing in the zone.
+// The resolve-phase context for one named hull. Exported so
+// DECIDE_BATTLE_REPORT can hand the SAME outcome to a battle continuation that
+// it hands to the resolve triggers — Trebuchet used to re-derive its own win
+// from a roster snapshotted at declare time, which a defender joining
+// afterwards (Terawatt) made stale, handing it a free repeat off a battle it
+// had actually lost.
+export function contextForResolve(spec: {
+  zoneId: number; aggressor: Side; side: Side; instanceId: string
+  participants: Map<string, BattleParticipant>; outcome: BattleOutcome
+  casualties: BattleCasualty[]
+}): BattleContext {
+  return {
+    phase: 'resolve', zoneId: spec.zoneId,
+    isDefender: spec.side !== spec.aggressor,
+    isParticipant: spec.participants.has(spec.instanceId),
+    forced: false,
+    survived: spec.outcome.survived.has(spec.instanceId),
+    won: spec.outcome.wonBy[spec.side],
+    casualties: spec.casualties,
+  }
+}
+
 export function dispatchBaseAttackVictory(
   game: EngineGame, ctx: EngineContext,
   zoneId: number, actor: Side, strikers: ZoneCardEntry[],
@@ -190,7 +211,7 @@ export function dispatchBaseAttackVictory(
     forced: false, survived: true, won: true, casualties: [],
   }
   for (const entry of strikers) {
-    if (!fire(game, ctx, entry, actor, TRIGGERS.ON_BATTLE_VICTORY, context)) return
+    fire(game, ctx, entry, actor, TRIGGERS.ON_BATTLE_VICTORY, context)
   }
 }
 
@@ -239,16 +260,52 @@ export function dispatchZoneInterception(
 // matches, so a caller can refuse rather than half-apply. It does NOT unwind
 // an onDeathEffect that already fired (spec §4.3, DP2 departure 7): both
 // customers resolve a choice in a later action, by which time those have run.
+// Two snapshots of one card are NOT interchangeable, however tempting that
+// looks: keywords and meta are per-instance and diverge on the board.
+// repairmenReadyEffect grants SCRAPPY to a hull already deployed, so a plain
+// and a Scrappy Cyclone share a cardId and differ in exactly the field that
+// matters — revive the wrong snapshot and the owner gets a free Scrappy copy
+// back through reshuffleDiscard. So: an exact match first, falling back to
+// cardId only when nothing matches exactly (a card whose stored snapshot has
+// drifted for some reason still comes back rather than stranding the player).
+//
+// Field-by-field rather than JSON.stringify: jsonb does not preserve key
+// order, so a stored snapshot's keys can come back in a different order than
+// the one just rebuilt in memory.
+function sameSnapshot(a: SnapshotCard, b: SnapshotCard): boolean {
+  if (a.cardId !== b.cardId || a.name !== b.name || a.materialCost !== b.materialCost) return false
+  if ([...a.keywords].sort().join('|') !== [...b.keywords].sort().join('|')) return false
+  const metaOf = (m: Record<string, unknown>) =>
+    Object.keys(m).sort().map((k) => `${k}=${JSON.stringify(m[k])}`).join('&')
+  return metaOf(a.meta) === metaOf(b.meta)
+}
+
+function discardIndexOf(game: EngineGame, side: Side, entry: ZoneCardEntry): number {
+  const pile = game.state.destroyed[ownerSideOf(entry, side)]
+  const wanted = discardSnapshotOf(entry, side)
+  const exact = pile.findIndex((c) => sameSnapshot(c, wanted))
+  return exact >= 0 ? exact : pile.findIndex((c) => c.cardId === entry.cardId)
+}
+
+// Whether reviveEntry would succeed right now. Load-bearing rather than
+// cosmetic: a death trigger dispatched EARLIER in the same
+// DECIDE_BATTLE_REPORT can empty the pile out from under a casualty —
+// ironMaidenOnDeath and friends are grant({ draw: 1 }), and drawCard on an
+// empty deck calls reshuffleDiscard, which moves the WHOLE discard into the
+// deck. Offering a hull that can no longer be revived leaves the player a
+// choice whose only working answer is Decline.
+export function canRevive(game: EngineGame, side: Side, entry: ZoneCardEntry): boolean {
+  return discardIndexOf(game, side, entry) >= 0
+}
+
 export function reviveEntry(
   game: EngineGame, side: Side, entry: ZoneCardEntry, zoneId: number,
 ): boolean {
   const zone = zoneById(game.state, zoneId)
   if (!zone) return false
-  const owner = ownerSideOf(entry, side)
-  const pile = game.state.destroyed[owner]
-  const index = pile.findIndex((c) => c.cardId === entry.cardId)
+  const index = discardIndexOf(game, side, entry)
   if (index < 0) return false
-  pile.splice(index, 1)
+  game.state.destroyed[ownerSideOf(entry, side)].splice(index, 1)
   zone.cards[side].push(entry)
   return true
 }

@@ -1,13 +1,13 @@
 import {
-  choice, drawFromPool, enemyVehicleOptions, grant, grantKeywords, spawnVehicles, whenPlayed, zoneOccupants,
+  choice, drawFromPool, enemyVehicleOptions, grant, grantKeywords, sacrificeToSave,
+  spawnVehicles, summonHulls, whenPlayed, zoneOccupants,
 } from './primitives.ts'
 import { registerEffect } from './registry.ts'
 import { GT_HEAVY_AIRSHIP_MIN_COST, KEYWORDS, VEHICLE_TYPES } from '../gameSettings.ts'
 import type { ZoneCardEntry } from '../engine/engineTypes.ts'
-import { copyMeta, otherSide, zoneById } from '../engine/gameEngine.ts'
+import { copyMeta, zoneById } from '../engine/gameEngine.ts'
 import { moveEntry } from '../engine/heroPowers.ts'
 import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
-import { sacrificeToSave, summonHulls } from './primitives.ts'
 
 // OW built-in card effects. Cards whose faction is GT but whose seed row
 // lives in OW-Built-in.js are registered here too.
@@ -214,11 +214,11 @@ const trebuchetChoice = choice({
       defenderIds: [choiceId],
       cause: card.name,
       // Names itself: DECIDE_BATTLE_REPORT re-enters TREBUCHET with this once
-      // the battle resolves (spec §4.3, departure 3). zoneId and defenderIds
-      // are stashed here, at declare time, because entry (c) below has no
-      // other route back to either — continuation carries no targetZoneId of
-      // its own, and outcome HP is never plumbed onto any payload.
-      continuation: { effect: TREBUCHET, side: actor, card, data: { zoneId, defenderIds: [choiceId] } },
+      // the battle resolves (spec §4.3, departure 3). Only zoneId is stashed:
+      // entry (c) has no other route back to it, but the win/survive test now
+      // comes off the engine's own outcome rather than a declare-time
+      // defenderIds snapshot — see (c) below.
+      continuation: { effect: TREBUCHET, side: actor, card, data: { zoneId } },
     })
   },
 })
@@ -228,25 +228,26 @@ registerEffect(TREBUCHET, (payload) => {
 
   // (c): the battle this card forced has just resolved. activeBattle is
   // already null (DECIDE_BATTLE_REPORT nulls it before firing the
-  // continuation), so the whole win test reads off zone.cards — no outcome
-  // plumbing needed, and nothing to invent for "fully heal it" (spec §7.3):
-  // Trebuchet's own printed SCRAPPY already repairs it free across the whole
-  // 80-89.999% band. "Damaged beyond repair" means destroyed, not merely
-  // damaged, so a Scrappy-repaired survivor still gets the repeat.
-  const { game, continuation } = payload
+  // continuation), so the outcome arrives on `payload.battle` — the SAME
+  // BattleContext the resolve triggers were handed, scoped to this hull.
+  //
+  // Wave 4 replaced the previous test, which asked whether every defender
+  // stashed at DECLARE time was gone from the zone. That was correct while a
+  // battle's roster could not change after it locked; Terawatt's join broke it
+  // — a defender that joined afterwards was invisible to the stash, so
+  // Trebuchet scored a battle it had lost as a clean win and took a free
+  // repeat. `battle.won` is computed over the battle's FINAL roster.
+  //
+  // Nothing to invent for "fully heal it" (spec §7.3): Trebuchet's own printed
+  // SCRAPPY already repairs it free across the whole 80-89.999% band. "Damaged
+  // beyond repair" means destroyed, not merely damaged, so a Scrappy-repaired
+  // survivor still gets the repeat — which `survived` already reflects,
+  // because it is computed after repairs.
+  const { game, continuation, battle } = payload
   const zoneId = continuation.data?.zoneId
-  const defenderIds = continuation.data?.defenderIds
-  if (typeof zoneId !== 'number' || !Array.isArray(defenderIds)) return true
-  const zone = zoneById(game.state, zoneId)
-  if (!zone) return true
-  // Survived: Trebuchet itself is still on its own side of the zone.
-  const survived = zone.cards[continuation.side].some((c) => c.instanceId === continuation.card.instanceId)
-  if (!survived) return true // damaged beyond repair — no repeat
-  // Won: every defender stashed at declare time is gone from the enemy's
-  // side of the same zone.
-  const enemy = otherSide(continuation.side)
-  const won = defenderIds.every((id) => typeof id === 'string' && !zone.cards[enemy].some((c) => c.instanceId === id))
-  if (!won) return true // a defender is still standing — no repeat
+  if (typeof zoneId !== 'number') return true
+  if (!zoneById(game.state, zoneId)) return true
+  if (!battle || !battle.survived || !battle.won) return true
   // A clean win: re-offer (a)'s choice in the same zone. The repeat is
   // unbounded but self-limiting (spec §7.3) — nothing here caps it; an empty
   // zone just lets the choice above's own empty-options rule end it quietly.

@@ -114,16 +114,16 @@ export function normalizeState(state: PublicGameState): void {
       }
     }
   }
-  // Nested defaulting for a live mid-battle row (spec §4.4): summons and
-  // continuation did not exist before this wave, so a battle declared by
-  // older code has neither. Guarded on a truthy activeBattle — a null one
+  // Nested defaulting on live rows, guarded on a truthy parent — a null one
   // (already normalized above) is left alone, never dereferenced.
-  // Same shape of nested defaulting as activeBattle below: omissibleIds did
-  // not exist before wave 4, so an attack declared by older code has none.
+  //
+  // omissibleIds did not exist before wave 4, so an attack declared by older
+  // code has none (spec §4.8).
   if (state.awaitingResponse) {
     const pending = state.awaitingResponse as Partial<NonNullable<PublicGameState['awaitingResponse']>>
     if (pending.omissibleIds === undefined) pending.omissibleIds = []
   }
+  // summons and continuation did not exist before wave 3 (spec §4.4).
   if (state.activeBattle) {
     const battle = state.activeBattle as Partial<NonNullable<PublicGameState['activeBattle']>>
     if (battle.summons === undefined) battle.summons = []
@@ -199,17 +199,19 @@ export function copyMeta(meta: Record<string, unknown>): Record<string, unknown>
 // home to an owner other than its controller; a card that was never captured
 // carries no `ownerSide` to strip. Printed meta (`additionalSpawns` and
 // friends) is card data and stays.
-export function discardCard(game: EngineGame, controller: Side, card: CardInstance): void {
+// The snapshot form a card takes on its way out of play: per-entry stamps
+// removed, captor stamps stripped. Extracted so exactly one derivation exists —
+// discardCard writes it, and reviveEntry (shared/engine/battleTriggers.ts)
+// rebuilds it to find which pile entry belongs to a hull it is bringing back.
+// A second, drifting copy of this logic would let a revive remove the wrong
+// snapshot.
+export function discardSnapshotOf(card: CardInstance, controller: Side): SnapshotCard {
   // Every per-entry stamp must be named here. TypeScript does NOT catch one you
   // forget — extra properties in a rest spread are legal — so it would ride
   // into state.destroyed and, via reshuffleDiscard, into a deck.
   const {
     instanceId: _instanceId, playedOnTurn: _p, movedOnTurn: _m, activatedOnTurn: _a, ...snapshot
   } = card as ZoneCardEntry
-  // Summon-only cards are spawned, never drafted (spec §7.1). They must never
-  // reach a discard, because that is a deck's back door. This is the single
-  // exit out of play, so guarding it here covers every path at once.
-  if (isSummonOnly(card)) return
   const owner = ownerSideOf(card, controller)
   const { costDelta: _costDelta, ...withoutCostDelta } = snapshot.meta
   snapshot.meta = withoutCostDelta
@@ -217,7 +219,15 @@ export function discardCard(game: EngineGame, controller: Side, card: CardInstan
     const { ownerSide: _ownerSide, ...meta } = snapshot.meta
     snapshot.meta = meta
   }
-  game.state.destroyed[owner].push(snapshot as SnapshotCard)
+  return snapshot as SnapshotCard
+}
+
+export function discardCard(game: EngineGame, controller: Side, card: CardInstance): void {
+  // Summon-only cards are spawned, never drafted (spec §7.1). They must never
+  // reach a discard, because that is a deck's back door. This is the single
+  // exit out of play, so guarding it here covers every path at once.
+  if (isSummonOnly(card)) return
+  game.state.destroyed[ownerSideOf(card, controller)].push(discardSnapshotOf(card, controller))
 }
 
 export function checkVictory(game: EngineGame): void {

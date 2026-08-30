@@ -245,6 +245,9 @@ registerEffect(ECLIPSE, choice({
 }))
 
 const TERAWATT = 'terawattJoin'
+// The zone matters to the defender: they may hold vehicles in more than one,
+// and the dialog shows the prompt alone.
+const TERAWATT_PROMPT = 'A friendly vehicle is about to fight alone — send Terawatt in?'
 
 // "Whenever a friendly vehicle would be made to fight in battle alone due to
 // enemy card effect, you may add this vehicle to the combat."
@@ -277,7 +280,7 @@ const TERAWATT = 'terawattJoin'
 // OFF_TURN_ACTION.
 const terawattChoice = choice({
   effect: TERAWATT,
-  prompt: 'Add Terawatt to the battle?',
+  prompt: TERAWATT_PROMPT,
   options: ({ card }) => [{ id: 'join', label: `Send ${card.name} in` }],
   // payload.card IS the Terawatt hull (the dispatch hands the effect its own
   // zone entry, and pendingEffect carries it verbatim across the suspension),
@@ -289,10 +292,13 @@ const terawattChoice = choice({
     const zoneId = pending?.data?.zoneId
     if (typeof zoneId !== 'number') return false
     const battle = game.state.activeBattle
-    // Re-checked server-side rather than trusted from the first entry: the
-    // choice may have sat open while the board moved. "Alone" in particular
-    // must still hold — another joiner between the offer and the answer means
-    // the vehicle is no longer fighting alone.
+    // Re-checked server-side rather than trusted from the first entry.
+    // While pendingEffect stands, applyAction admits only RESOLVE/CONCEDE/
+    // ABANDON, so today nothing CAN move Terawatt or change the battle between
+    // the offer and the answer — these are a guard against that freeze ever
+    // being relaxed, not against a race that exists now. "Alone" is the one
+    // that is genuinely reachable: a second bystander joining in the same lock
+    // would mean the vehicle is no longer fighting alone by the time this runs.
     if (!battle || battle.zoneId !== zoneId || battle.defenderIds.length !== 1) return false
     const self = findVehicle(game.state, card.instanceId)
     if (!self || self.side !== actor || self.zone.id !== zoneId) return false
@@ -308,6 +314,10 @@ registerEffect(TERAWATT, (payload) => {
   if (payload.resolution !== undefined) return terawattChoice(payload)
   const { game, battle } = payload
   if (!battle || battle.phase !== 'lock' || !battle.forced) return true
+  // isDefender is defence in depth alongside  above: the bystander
+  // pass only ever scans the DEFENDING side of the zone, so no reachable
+  // dispatch delivers false here. isParticipant is the live half — the
+  // participant pass reaches this effect when Terawatt is itself in the fight.
   if (battle.isParticipant || !battle.isDefender) return true
   const active = game.state.activeBattle
   if (!active || active.defenderIds.length !== 1) return true

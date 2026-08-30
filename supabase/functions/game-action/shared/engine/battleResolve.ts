@@ -5,7 +5,7 @@ import type { ApplyResult, BattleCasualty, EngineGame, Side, ZoneCardEntry } fro
 import { discardCard, err, registerHandler, zoneById } from './gameEngine.ts'
 import { effectiveMaterialCostOf } from './placement.ts'
 import { effectFor, effectName } from '../effects/registry.ts'
-import { battleOutcome, dispatchBattleResolve } from './battleTriggers.ts'
+import { battleOutcome, contextForResolve, dispatchBattleResolve } from './battleTriggers.ts'
 
 // PublicGameState.activeBattle (gameInit.ts) structurally duplicates
 // ActiveBattle (engineTypes.ts) rather than importing it (spec §4.4), so this
@@ -281,7 +281,18 @@ registerHandler('DECIDE_BATTLE_REPORT', (game, actor, action, ctx) => {
     const fn = effectFor(continuation.effect)
     if (!fn) {
       game.state.log.push(`${continuation.card.name}'s effect is no longer available — the continuation was dropped`)
-    } else if (!fn({ game, actor: continuation.side, card: continuation.card, ctx, continuation })) {
+    } else if (!fn({
+      game, actor: continuation.side, card: continuation.card, ctx, continuation,
+      // The same outcome the resolve triggers just saw, scoped to the
+      // continuation's own hull. Without it a continuation can only re-derive
+      // its result from state it stashed at DECLARE time, which anything that
+      // joined the battle afterwards (Terawatt) makes stale.
+      battle: contextForResolve({
+        zoneId: battleZoneId, aggressor, side: continuation.side,
+        instanceId: continuation.card.instanceId,
+        participants, outcome, casualties: destroyedEntries,
+      }),
+    })) {
       game.state.log.push(`${continuation.card.name}'s effect could not resolve`)
     }
   }

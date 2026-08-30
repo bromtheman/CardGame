@@ -2,10 +2,11 @@ import { describe, expect, it } from 'vitest'
 import { effectFor } from './registry.ts'
 import { inst, makeCtx, makeGame, snap, zoneEntry } from '../engine/testFixtures.ts'
 import {
-  applyAction, declareForcedBattle, effectiveCostInGame, effectiveMaterialCostOf, joinBattle,
+  applyAction, declareForcedBattle, discardSnapshotOf, effectiveCostInGame, effectiveMaterialCostOf,
+  joinBattle,
 } from '../engine/index.ts'
 import type { CardInstance } from '../engine/gameInit.ts'
-import type { EngineContext, EngineGame } from '../engine/engineTypes.ts'
+import type { BattleCasualty, BattleContext, EngineContext, EngineGame } from '../engine/engineTypes.ts'
 
 const DRAW_ONE = [
   'mandrelOnPlay', 'rookOnPlay', 'resoluteOnPlay', 'excruciatorOnPlay',
@@ -1424,7 +1425,7 @@ describe('wave 3 — forced battles', () => {
       expect(cancelled.game.state.zones[0].cards.a.map((c) => c.instanceId)).toEqual(['treb-1'])
     })
 
-    it('4. answering declares a 1v1 whose continuation names trebuchetEffect and carries the zone and defender ids', () => {
+    it('4. answering declares a 1v1 whose continuation names trebuchetEffect and carries the zone', () => {
       const { game } = declareFirstBattle(['foe-1'])
       const battle = game.state.activeBattle
       expect(battle?.zoneId).toBe(1)
@@ -1435,7 +1436,10 @@ describe('wave 3 — forced battles', () => {
       expect(battle?.continuation?.effect).toBe('trebuchetEffect')
       expect(battle?.continuation?.side).toBe('a')
       expect(battle?.continuation?.card.instanceId).toBe('treb-1')
-      expect(battle?.continuation?.data).toEqual({ zoneId: 1, defenderIds: ['foe-1'] })
+      // Only the zone is stashed. The win/survive test comes off the engine's
+      // own outcome (payload.battle), not a declare-time defender snapshot —
+      // Terawatt can join after the declare, which made that snapshot stale.
+      expect(battle?.continuation?.data).toEqual({ zoneId: 1 })
     })
 
     it('5. a clean win with Trebuchet surviving >=90% re-suspends offering the remaining enemy vehicles', () => {
@@ -1489,9 +1493,7 @@ describe('wave 3 — forced battles', () => {
       }, ctx)
       if (!secondBattle.ok) throw new Error(secondBattle.error)
       expect(secondBattle.game.state.activeBattle?.defenderIds).toEqual(['foe-2'])
-      expect(secondBattle.game.state.activeBattle?.continuation?.data).toEqual({
-        zoneId: 1, defenderIds: ['foe-2'],
-      })
+      expect(secondBattle.game.state.activeBattle?.continuation?.data).toEqual({ zoneId: 1 })
 
       const afterSecondWin = approveReport(secondBattle.game, ctx, { 'treb-1': 95, 'foe-2': 30 })
       expect(afterSecondWin.state.pendingEffect?.effect).toBe('trebuchetEffect')
@@ -1505,9 +1507,7 @@ describe('wave 3 — forced battles', () => {
       if (!thirdBattle.ok) throw new Error(thirdBattle.error)
       expect(thirdBattle.game.state.activeBattle?.attackerIds).toEqual(['treb-1'])
       expect(thirdBattle.game.state.activeBattle?.defenderIds).toEqual(['foe-3'])
-      expect(thirdBattle.game.state.activeBattle?.continuation?.data).toEqual({
-        zoneId: 1, defenderIds: ['foe-3'],
-      })
+      expect(thirdBattle.game.state.activeBattle?.continuation?.data).toEqual({ zoneId: 1 })
     })
   })
 })
@@ -1530,9 +1530,9 @@ describe('wave 4 — battle triggers at lock', () => {
     }
   }
 
-  const lockCtx = (isDefender: boolean, over: Partial<Record<string, unknown>> = {}) => ({
-    phase: 'lock' as const, zoneId: 1, isDefender, isParticipant: true,
-    forced: false, survived: false, won: false, ...over,
+  const lockCtx = (isDefender: boolean, over: Partial<BattleContext> = {}): BattleContext => ({
+    phase: 'lock', zoneId: 1, isDefender, isParticipant: true,
+    forced: false, survived: false, won: false, casualties: [], ...over,
   })
 
   describe('catsharkBattle', () => {
@@ -1729,28 +1729,27 @@ describe('wave 4 — battle triggers at resolve', () => {
   // supply the casualty list, which is the only route a resolve trigger has to
   // "who died in this battle, and at what HP" (spec §4.3, DP2 departure 1).
   const resolveCtx = (
-    casualties: { entry: ReturnType<typeof zoneEntry>; side: 'a' | 'b'; hp: number }[],
-    over: Partial<Record<string, unknown>> = {},
-  ) => ({
-    phase: 'resolve' as const, zoneId: 1, isDefender: true, isParticipant: true,
+    casualties: BattleCasualty[],
+    over: Partial<BattleContext> = {},
+  ): BattleContext => ({
+    phase: 'resolve', zoneId: 1, isDefender: true, isParticipant: true,
     forced: false, survived: true, won: false, casualties, ...over,
   })
 
   // Puts `entry` in the discard exactly as DECIDE_BATTLE_REPORT would, so a
   // revive has a real snapshot to pull back out.
   function bury(game: EngineGame, side: 'a' | 'b', entry: ReturnType<typeof zoneEntry>) {
-    const { instanceId: _i, playedOnTurn: _p, movedOnTurn: _m, activatedOnTurn: _a, ...snapshot } = entry
-    game.state.destroyed[side].push({ ...snapshot })
+    game.state.destroyed[side].push(discardSnapshotOf(entry, side))
   }
 
   describe('sacrilegoBattle', () => {
-    function board(casualtyOver: Partial<Parameters<typeof zoneEntry>[0]> = {}, hp = 78) {
+    function board() {
       const game = makeGame()
       const sacrilego = zoneEntry({ name: 'Sacrilego', instanceId: 'sac-1', vehicleType: 'ship' })
       game.state.zones[0].cards.a.push(sacrilego)
-      const dead = zoneEntry({ name: 'Wreck', instanceId: 'wreck-1', vehicleType: 'ship', ...casualtyOver })
+      const dead = zoneEntry({ name: 'Wreck', instanceId: 'wreck-1', vehicleType: 'ship' })
       bury(game, 'a', dead)
-      return { game, sacrilego, dead, casualties: [{ entry: dead, side: 'a' as const, hp }] }
+      return { game, sacrilego, dead, casualties: [{ entry: dead, side: 'a' as const, hp: 78 }] }
     }
 
     it('grants 1 CP for surviving, before any choice is offered', () => {
@@ -1764,7 +1763,7 @@ describe('wave 4 — battle triggers at resolve', () => {
       expect(game.state.pendingEffect?.options.map((o) => o.id)).toEqual(['wreck-1'])
     })
 
-    it('grants the CP and offers nothing when it did not survive', () => {
+    it('grants nothing and offers nothing when it did not survive', () => {
       const { game, sacrilego, casualties } = board()
       const before = game.state.resources.a.cp
       const ok = effectFor('sacrilegoBattle')!({
@@ -1841,6 +1840,81 @@ describe('wave 4 — battle triggers at resolve', () => {
       expect(r.game.state.destroyed.a.map((c) => c.name)).toEqual(['Wreck'])
       expect(r.game.state.resources.a.cp).toBe(4) // the CP landed either way
     })
+
+    // Regression: a death trigger dispatched EARLIER in the same
+    // DECIDE_BATTLE_REPORT can empty the discard — grant({ draw: 1 }) on an
+    // empty deck reshuffles the whole pile into it — leaving the casualty
+    // unrevivable. Offering it anyway gave a choice whose only working answer
+    // was Decline.
+    it('does not offer a casualty whose snapshot has already left the discard', () => {
+      const { game, sacrilego, casualties } = board()
+      game.state.destroyed.a = [] // what reshuffleDiscard leaves behind
+      const ok = effectFor('sacrilegoBattle')!({
+        game, actor: 'a', card: sacrilego, ctx: makeCtx(), battle: resolveCtx(casualties),
+      })
+      expect(ok).toBe(true)
+      expect(game.state.pendingEffect).toBeNull()
+      expect(game.state.resources.a.cp).toBe(4) // clause 1 is unaffected
+    })
+
+    // Regression: the dispatcher used to skip a whole effect once the slot was
+    // taken, so a second Sacrilego lost its unconditional CP as well as its
+    // offer. UNIQUE_COPY_LIMIT is 2, so two on the field is a legal deck.
+    it('grants a CP to EVERY surviving Sacrilego, even when only one can be offered', () => {
+      const game = makeGame({ turnNumber: 3 })
+      const attacker = zoneEntry({ playedOnTurn: 2 })
+      const meta = { onBattleEffect: 'sacrilegoBattle' }
+      const first = zoneEntry({ name: 'Sacrilego', vehicleType: 'ship', meta })
+      const second = zoneEntry({ name: 'Sacrilego', vehicleType: 'ship', meta })
+      const doomed = zoneEntry({ name: 'Wreck', vehicleType: 'ship' })
+      game.state.zones[0].cards.a.push(attacker)
+      game.state.zones[0].cards.b.push(first, second, doomed)
+      game.privates.b.deck.push(inst({ name: 'Spare' })) // so a death draw does not empty the pile
+      const declared = applyAction(game, 'alice', {
+        type: 'ATTACK_ENEMY_FLEET', zoneId: 1, attackerIds: [attacker.instanceId],
+        targetIds: [first.instanceId, second.instanceId, doomed.instanceId],
+      }, makeCtx())
+      if (!declared.ok) throw new Error(declared.error)
+      const before = declared.game.state.resources.b.cp
+      const submitted = applyAction(declared.game, 'alice', {
+        type: 'SUBMIT_BATTLE_REPORT',
+        results: {
+          [attacker.instanceId]: 95, [first.instanceId]: 95,
+          [second.instanceId]: 95, [doomed.instanceId]: 78,
+        },
+        repairs: [],
+      }, makeCtx())
+      if (!submitted.ok) throw new Error(submitted.error)
+      const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, makeCtx())
+      if (!decided.ok) throw new Error(decided.error)
+      expect(decided.game.state.resources.b.cp).toBe(before + 2)
+      // One offer, not two: the second is dropped rather than overwriting.
+      expect(decided.game.state.pendingEffect).not.toBeNull()
+      expect(decided.game.state.log.join('\n')).toContain("Sacrilego's offer was not made")
+    })
+
+    // Two casualties of the SAME card would otherwise render as two identical
+    // buttons — the dialog shows the label alone.
+    it('disambiguates same-named casualties by their ending HP', () => {
+      const game = makeGame()
+      const sacrilego = zoneEntry({ name: 'Sacrilego', instanceId: 'sac-1', vehicleType: 'ship' })
+      game.state.zones[0].cards.a.push(sacrilego)
+      const one = zoneEntry({ name: 'Cyclone', instanceId: 'cy-1', vehicleType: 'ship', cardId: 'cyclone' })
+      const two = zoneEntry({ name: 'Cyclone', instanceId: 'cy-2', vehicleType: 'ship', cardId: 'cyclone' })
+      bury(game, 'a', one)
+      bury(game, 'a', two)
+      effectFor('sacrilegoBattle')!({
+        game, actor: 'a', card: sacrilego, ctx: makeCtx(),
+        battle: resolveCtx([
+          { entry: one, side: 'a', hp: 76 },
+          { entry: two, side: 'a', hp: 88 },
+        ]),
+      })
+      expect(game.state.pendingEffect?.options).toEqual([
+        { id: 'cy-1', label: 'Cyclone (76%)' },
+        { id: 'cy-2', label: 'Cyclone (88%)' },
+      ])
+    })
   })
 
   describe('ironCordonBattle', () => {
@@ -1913,6 +1987,20 @@ describe('wave 4 — battle triggers at resolve', () => {
       if (!r.ok) throw new Error(r.error)
       expect(r.game.state.zones[0].cards.a.map((c) => c.name)).toEqual(['Nimbus'])
       expect(r.game.state.destroyed.a.map((c) => c.name)).toEqual(['Iron Cordon'])
+    })
+
+    it('declining leaves the airship destroyed and Iron Cordon alive', () => {
+      const { game, cordon } = board()
+      const dead = gtAirship({ instanceId: 'nimbus-1' })
+      bury(game, 'a', dead)
+      effectFor('ironCordonBattle')!({
+        game, actor: 'a', card: cordon, ctx: makeCtx(),
+        battle: resolveCtx([{ entry: dead, side: 'a', hp: 10 }]),
+      })
+      const r = applyAction(game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', cancel: true }, makeCtx())
+      if (!r.ok) throw new Error(r.error)
+      expect(r.game.state.zones[0].cards.a.map((c) => c.name)).toEqual(['Iron Cordon'])
+      expect(r.game.state.destroyed.a.map((c) => c.name)).toEqual(['Nimbus'])
     })
 
     it('refuses a choiceId that was never offered, leaving the slot intact', () => {
@@ -2087,19 +2175,112 @@ describe('wave 4 — terawattJoin', () => {
       .toMatchObject({ ok: false, status: 400 })
   })
 
-  it('refuses to join twice, and refuses once the battle is gone', () => {
+  it('refuses once the battle is gone', () => {
     const { game } = forced()
     const optionId = game.state.pendingEffect!.options[0].id
-    const first = applyAction(game, 'bob', { type: 'RESOLVE_PENDING_EFFECT', choiceId: optionId }, makeCtx())
-    if (!first.ok) throw new Error(first.error)
-    // Re-arm the same choice by hand and confirm the second join is refused:
-    // joinBattle rejects an id already on a combatant list.
-    first.game.state.pendingEffect = game.state.pendingEffect
-    expect(applyAction(first.game, 'bob', { type: 'RESOLVE_PENDING_EFFECT', choiceId: optionId }, makeCtx()))
-      .toMatchObject({ ok: false, status: 400 })
     const noBattle = structuredClone(game)
     noBattle.state.activeBattle = null
     expect(applyAction(noBattle, 'bob', { type: 'RESOLVE_PENDING_EFFECT', choiceId: optionId }, makeCtx()))
       .toMatchObject({ ok: false, status: 400 })
+  })
+
+  // joinBattle's own duplicate guard, reached on its own terms. Going through
+  // a real second answer instead hits the "no longer alone" re-check one line
+  // earlier, which proves a different thing.
+  it('refuses to join a battle it is already fighting in', () => {
+    const { game, terawatt } = forced()
+    const optionId = game.state.pendingEffect!.options[0].id
+    const joined = applyAction(game, 'bob', { type: 'RESOLVE_PENDING_EFFECT', choiceId: optionId }, makeCtx())
+    if (!joined.ok) throw new Error(joined.error)
+    // Put the battle back to one defender — Terawatt itself — so the sole-
+    // defender re-check passes and joinBattle is what has to refuse.
+    joined.game.state.activeBattle!.defenderIds = [terawatt.instanceId]
+    joined.game.state.pendingEffect = game.state.pendingEffect
+    expect(applyAction(joined.game, 'bob', { type: 'RESOLVE_PENDING_EFFECT', choiceId: optionId }, makeCtx()))
+      .toMatchObject({ ok: false, status: 400 })
+  })
+
+  // The join has to survive everything a battle does to a combatant, not just
+  // land in defenderIds: report completeness, destruction, and the discard.
+  it('an accepted join is a full combatant through the report', () => {
+    const { game, terawatt, lone, attacker } = forced()
+    const joined = applyAction(game, 'bob', {
+      type: 'RESOLVE_PENDING_EFFECT', choiceId: game.state.pendingEffect!.options[0].id,
+    }, makeCtx())
+    if (!joined.ok) throw new Error(joined.error)
+    // Completeness now demands Terawatt: a report without it is rejected.
+    expect(applyAction(joined.game, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT',
+      results: { [attacker.instanceId]: 95, [lone.instanceId]: 95 }, repairs: [],
+    }, makeCtx())).toMatchObject({ ok: false, status: 400 })
+    const submitted = applyAction(joined.game, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT',
+      results: { [attacker.instanceId]: 95, [lone.instanceId]: 95, [terawatt.instanceId]: 10 },
+      repairs: [],
+    }, makeCtx())
+    if (!submitted.ok) throw new Error(submitted.error)
+    const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, makeCtx())
+    if (!decided.ok) throw new Error(decided.error)
+    expect(decided.game.state.zones[0].cards.b.map((c) => c.name)).toEqual(['Lone', 'Spare'])
+    expect(decided.game.state.destroyed.b.map((c) => c.name)).toEqual(['Terawatt'])
+  })
+
+  // The Onyx Throne's Parapet joins in the participant pass, which runs first,
+  // so by the bystander pass the defending side has two participants. A lone
+  // Onyx Throne is therefore never "alone" — intended, and recorded here so a
+  // future change to the pass order cannot flip it silently.
+  it('makes no offer when a Parapet has already joined the lone defender', () => {
+    const game = makeGame({ turnNumber: 3 })
+    const attacker = zoneEntry({ name: 'Aggressor', playedOnTurn: 2 })
+    const throne = zoneEntry({
+      name: 'The Onyx Throne', instanceId: 'onyx-1', meta: { onBattleEffect: 'onyxThroneBattle' },
+    })
+    const terawatt = zoneEntry({ name: 'Terawatt', meta: { onBattleEffect: 'terawattJoin' } })
+    game.state.zones[0].cards.a.push(attacker)
+    game.state.zones[0].cards.b.push(throne, terawatt)
+    const parapetHull = snap({ name: 'Parapet', faction: 'OW', vehicleType: 'plane', meta: { summonOnly: true } })
+    expect(declareForcedBattle(game, makeCtx({ catalog: [parapetHull] }), {
+      zoneId: 1, aggressor: 'a', attackerIds: [attacker.instanceId],
+      defenderIds: ['onyx-1'], cause: 'Gang Up',
+    })).toBe(true)
+    expect(game.state.activeBattle?.defenderIds).toHaveLength(2) // Throne + Parapet
+    expect(game.state.pendingEffect).toBeNull()
+  })
+
+  // Regression: Trebuchet's repeat used to re-derive its win from a roster
+  // snapshotted at DECLARE time, so a defender that joined afterwards was
+  // invisible and it scored a battle it had lost as a clean win.
+  it('does not hand Trebuchet a repeat off a battle Terawatt survived', () => {
+    const game = makeGame({ turnNumber: 3 })
+    const treb = zoneEntry({ name: 'Trebuchet', instanceId: 'treb-1', playedOnTurn: 2 })
+    const lone = zoneEntry({ name: 'Lone', instanceId: 'lone-1' })
+    const terawatt = zoneEntry({
+      name: 'Terawatt', instanceId: 'tera-1', meta: { onBattleEffect: 'terawattJoin' },
+    })
+    game.state.zones[0].cards.a.push(treb)
+    game.state.zones[0].cards.b.push(lone, terawatt)
+    const ctx = makeCtx()
+    const played = effectFor('trebuchetEffect')!({
+      game, actor: 'a', card: treb, ctx, targetZoneId: 1,
+    })
+    expect(played).toBe(true)
+    const declared = applyAction(game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'lone-1' }, ctx)
+    if (!declared.ok) throw new Error(declared.error)
+    // Terawatt's offer lands on the defender, off-turn.
+    expect(declared.game.state.pendingEffect?.card.name).toBe('Terawatt')
+    const joined = applyAction(declared.game, 'bob', {
+      type: 'RESOLVE_PENDING_EFFECT', choiceId: declared.game.state.pendingEffect!.options[0].id,
+    }, ctx)
+    if (!joined.ok) throw new Error(joined.error)
+    const submitted = applyAction(joined.game, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT',
+      results: { 'treb-1': 95, 'lone-1': 10, 'tera-1': 100 }, repairs: [],
+    }, ctx)
+    if (!submitted.ok) throw new Error(submitted.error)
+    const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, ctx)
+    if (!decided.ok) throw new Error(decided.error)
+    // Terawatt survived, so the aggressor did not win — and Trebuchet gets no
+    // repeat. Before the fix, this was an offered choice.
+    expect(decided.game.state.pendingEffect).toBeNull()
   })
 })
