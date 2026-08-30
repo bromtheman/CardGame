@@ -137,6 +137,28 @@ same investigation as a real one.
 The handoff predicted 661 tests. Believe the run: the wave-4 follow-up added ten
 before this branch opened.
 
+### The diff, measured the way wave 4 measured its own
+
+`git diff main...HEAD --shortstat -- '<glob>'`, 12 commits, 39 files:
+
+| Slice | Lines | vs wave 4 |
+|---|---:|---|
+| hand-written production (`shared/` non-test + `frontend/src`) | **662** | ~1,146 |
+| tests (`**/*.test.ts`) | **1,197** | ~2,322 |
+| docs + spec + plan + close-out | **894** | ~1,312 |
+| — of which the implementation plan | 407 (10% of the diff) | 878 (15%) |
+| — of which the close-out (new this wave) | 210 | — |
+| mechanical `functions:sync` output | **668** | ~1,155 |
+| live smoke harness (`scripts/`) | **508** | — (wave 4's lives in its own file) |
+| seed source + generated SQL | 8 | ~27 |
+
+Tests-to-production is **1.8**, against wave 4's ~2.0 and wave 3's ~1.7. The
+wave is roughly half wave 4's size in every slice, which is what five cards on
+mostly-existing machinery should look like. The plan came in at 10% of the
+diff, continuing the trend wave 4 started (22% → 15% → 10%) with no quality
+cost — the savings went into the close-out and the smoke harness, both of which
+are read after the wave ends rather than during it.
+
 ---
 
 ## 5. What is left
