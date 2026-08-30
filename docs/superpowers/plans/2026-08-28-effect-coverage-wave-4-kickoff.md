@@ -30,7 +30,7 @@ The handoff's §7 ("Before you start") is a checklist. Do it before writing code
 npx vitest run
 ```
 
-Expect **514 passing, 29 files**. Never pass `--root` — it silently runs 0
+Expect **521 passing, 30 files**. Never pass `--root` — it silently runs 0
 tests. If your numbers disagree with the handoff's, believe your own run and
 say so.
 
@@ -41,11 +41,12 @@ each entry in the same commit that closes its card. `PARTIAL` carries two more
 entries also labelled wave 4 (Plunderer, DWG Waters) — different map, same
 rule: delete the entry when the card's remaining clauses are done.
 
-**Regenerate `supabase/seed/seed_data.sql` (`npm run seed:build`) before every
-commit that touches a card's `meta`, and grep the output for your effect
-names.** It is a tracked, generated file that nothing in the suite compares
-against its source — wave 3 nearly shipped nine dead cards to production over
-exactly this gap. See the handoff §1 and §4.1 (blind spot 4).
+**Regenerate `supabase/seed/seed_data.sql` (`npm run seed:build`) after every
+commit that touches a card's `meta`.** It is a tracked, generated file, and the
+whole coverage guard reads `source/*.js` instead — wave 3 nearly shipped nine
+dead cards to production over exactly that gap. Wave 3 closed it at the very
+end: `supabase/seed/seedDataSync.test.ts` now fails the suite when the two
+drift, so forgetting is caught rather than silent. See handoff §4.1.
 
 ## The shape of wave 4
 
@@ -118,12 +119,17 @@ both learned the hard way, all now in it:
 - **Rebase or merge `main` before you deploy.** A deploy ships your whole
   branch state, not just your diff.
 
-Smoke-test with a wave-3 card that mints without suspending (Flying Squirrel
-Attack) and one that suspends and then mints (Air Strafe against a player
-design) before you trust that anything works in production — see handoff §5:
-wave 3's own live deploy and smoke test had not run as of this writing, and
-its final whole-branch review hadn't either. Both are open items you inherit,
-not settled ground.
+**Deploy with `node scripts/deploy-function.mjs game-action`, NOT the
+`deploy_edge_function` MCP tool** — its 23-file, ~161 KB payload gets silently
+truncated, and a partial payload deletes the files it omits. Handoff §4.1b has
+the detail and the Windows syntax.
+
+Wave 3 itself is deployed (`game-action` v10, verified by content and a clean
+boot) and its final review is done. What you inherit unrun is the **in-game
+smoke test**: play Flying Squirrel Attack (mints without suspending) and Air
+Strafe against a player design (suspends, then mints). The second is the only
+exercise anywhere of the `state.pendingEffect.card` catalog probe, which has no
+unit test — see handoff §5.
 
 ## Finishing the wave — not optional
 

@@ -25,14 +25,18 @@ Run this yourself before you touch anything; do not trust the numbers below if
 they disagree with your own run.
 
 ```bash
-npx vitest run                      # 514 passed / 29 files, 0 failed  ← NEVER pass --root
+npx vitest run                      # 521 passed / 30 files, 0 failed  ← NEVER pass --root
 npx tsc -p tsconfig.json --noEmit   # exit 0
 npm --prefix frontend run build     # exit 0
 npm --prefix frontend run lint      # exit 0, with 7 pre-existing warnings across 5 files
 ```
 
-These are my own measured numbers, taken after regenerating `seed_data.sql`
-and before opening the PR. The 7 lint warnings
+These are my own measured numbers, taken at the close of wave 3 — **after** its
+final whole-branch review, the fix wave that followed it, the merge of PR #15
+(`c426eb9`), and the live deploy. An earlier draft of this section said
+514 / 29; that was written before the final review, whose fix wave added 7
+tests and one new file (`supabase/seed/seedDataSync.test.ts`). If your own run
+disagrees with 521 / 30, believe your run and say so. The 7 lint warnings
 (`react(set-state-in-effect)` ×5, `react(only-export-components)` ×2, in
 `auth.tsx`, `ConfirmDialog.tsx`, `CardDetailsModal.tsx`, `CreateCardPage.tsx`,
 `HandBar.tsx`) are the same pre-existing set wave 3 inherited from wave 2 —
@@ -345,7 +349,7 @@ Everything here bit wave 3 or is verified to be waiting for wave 4. Traps
 wave 3 closed are removed below, not carried forward — see §2 instead for the
 machinery that replaced them.
 
-### 4.1 The coverage guard's blind spots — five identified, four still open
+### 4.1 The coverage guard's blind spots — five identified, three still open
 
 1. **A card that has left `KNOWN_GAPS` is no longer checked at all.**
    Garrison's trigger-key correction could be reverted today with the suite
@@ -357,12 +361,19 @@ machinery that replaced them.
    names where its target lives, check the key by hand.
 3. ~~A partly-built card passing G1/G2 despite incomplete text~~ — closed in
    wave 2 by the `PARTIAL` map.
-4. **Nothing asserts `seed_data.sql` matches `source/*.js`.** Found in wave 3
-   (Task 7, mid-task, not at review): the whole guard — G1, G2, G3, the
-   stale-entry assertion — reads `source/*.js` via `loadSeedData()`, so a
-   stale generated SQL passes every check while the deploy applies old
-   trigger keys. Still open; `npm run seed:build` before every commit is the
-   only current mitigation (see §1 above).
+4. ~~Nothing asserts `seed_data.sql` matches `source/*.js`~~ — **closed at the
+   very end of wave 3**, by its final review. Found mid-wave (Task 7, not at
+   any review): the whole guard — G1, G2, G3, the stale-entry assertion —
+   reads `source/*.js` via `loadSeedData()`, so a stale generated SQL passed
+   every check while the deploy applied old trigger keys. Wave 3 nearly
+   shipped nine dead cards over it. `supabase/seed/seedDataSync.test.ts` now
+   renders the seed and compares it to the committed file, so drift fails the
+   suite. Note it normalises CRLF→LF on the committed read only — `git`'s
+   `core.autocrlf=true` smudges that LF-only generated file on Windows, and
+   without the normalisation the test would fail on every checkout regardless
+   of real drift. Genuine content changes still fail, as they should.
+   You still run `npm run seed:build` after editing a card's `meta`; the
+   difference is that forgetting is now caught.
 5. **A registered effect that no card names is invisible to G1/G2/G3.** Found
    in wave 3 (Task 10, controller verification — not even a dedicated review
    dispatch): `excaliburOnPlay` sat registered-but-unreachable for a full
@@ -373,6 +384,36 @@ machinery that replaced them.
    source for the name before you consider the task done, the same way wave 3
    verified all nine of its names were unique before implementing (§4.11's
    older habit, still correct, still yours).
+
+### 4.1b Do NOT deploy `game-action` through the `deploy_edge_function` MCP tool
+
+New in wave 3, and it cost the better part of an hour. `game-action`'s payload
+is **23 files and ~161 KB**. Sending it through the MCP tool means a model
+transcribing every byte into one tool call, and that call gets **silently
+truncated** by response-length limits. Wave 3 attempted it twice; both attempts
+became **5-file** payloads. A partial payload **deletes the files you omit**,
+so either one would have stripped 18 runtime modules and failed the function at
+boot for every player. Both were blocked by a permission classifier before they
+landed — that was luck, not a safeguard.
+
+Use the script wave 3 added instead. It derives the file list from the same
+`shared-manifest.json` that `functions:sync` reads (so the two cannot disagree
+about what a function needs) and POSTs the bytes straight from disk — nothing
+passes through a model:
+
+```bash
+node scripts/deploy-function.mjs game-action --dry-run   # lists the payload, sends nothing
+node scripts/deploy-function.mjs game-action             # deploys
+```
+
+It needs `SUPABASE_ACCESS_TOKEN` in the environment, which it reads from
+`process.env` and never prints. On Windows that is
+`$env:SUPABASE_ACCESS_TOKEN = "sbp_..."` — `export` is bash syntax and fails in
+PowerShell. Call `node` directly rather than `npm run functions:deploy -- <fn>`;
+PowerShell mangles the `--` separator. `verify_jwt` defaults to **false**, which
+is correct for all three functions here.
+
+The MCP tool is still fine for a small function you can genuinely send whole.
 
 ### 4.2 G3's `REACHABLE_TRIGGERS` needs its row *before* a card can leave `KNOWN_GAPS`
 
@@ -475,20 +516,37 @@ running, and it is not a formality.
    are all unit-tested; the UI wiring on top of them is not.** If your
    choice dialogs or the battle overlay misbehave for a real player, suspect
    the wiring first, not the engine underneath it.
-2. **The live deploy and the smoke test had not run as of this writing.**
-   `docs/claude/supabase.md`'s runbook now names Flying Squirrel Attack (mints
-   without suspending) and Air Strafe against a player design (suspends, then
-   mints) as the wave-3-specific smoke-test pair — run both for real before
-   trusting that any wave-3 card works in production, and again after
-   whatever you add for DP2.
-3. **Wave 3's own final whole-branch review had not run as of this writing
-   either.** Unlike the wave-2-era handoff, which was written after its final
-   review had already found two of its five real bugs, this handoff precedes
-   wave 3's final review — it is a separate step in the plan's Definition of
-   Done, still outstanding when this document was committed. Whatever that
-   review finds is not reflected anywhere in this handoff or in §6 below;
-   check the PR and the ledger for it before assuming wave 3's diff is as
-   clean as its per-task reviews made it look.
+2. **The live deploy DID run — the in-game smoke test did not.** Corrected
+   after the fact: an earlier draft of this section said neither had. The
+   seed was applied and `game-action` deployed to **v10**, verified by
+   content — all 19 bundled modules byte-identical to merged `main`, every
+   wave-3 symbol present, the stale `MartyrAttackEffect` gone, and a clean
+   27ms boot. The boot was proved without credentials by POSTing to the
+   function with no auth: a healthy `game-action` answers
+   `401 {"errors":["Not signed in"]}`, its *own* error shape, which means
+   every module resolved and its auth check ran. Keep that probe — it is the
+   cheapest real proof a deploy worked.
+   **What is still unrun is the in-game smoke test.** `docs/claude/supabase.md`
+   names Flying Squirrel Attack (mints without suspending) and Air Strafe
+   against a player design (suspends, then mints) as the wave-3 pair. The
+   second matters most: it is the only exercise anywhere of the
+   `state.pendingEffect.card` catalog-probe source, which has no unit test and
+   which `tsc` does not read. A regression there shows up as a 400 on the
+   *resolving* action, not on the play.
+3. **Wave 3's final whole-branch review DID run**, and this section originally
+   said it had not — it was written before it. It found one real bug that no
+   per-task review could have seen, because the leak and its reachability
+   lived in different tasks: `discardCard` stripped `meta.costDelta` only on
+   the captured-card-going-home path, which was fine while Marauder (which
+   stamps a *captured* card) was the only consumer. **Excalibur is the first
+   effect to stamp a player's own card**, so a discounted hull that died
+   carried its discount into `state.destroyed`, `reshuffleDiscard` returned it
+   to the owner's deck, and the discount became permanent and re-stackable.
+   Fixed by stripping `costDelta` unconditionally; spec §4.5 now records that
+   "per-instance" means the delta dies with the instance. That review also ran
+   44 mutations against production lines and killed all 44. Its other findings
+   were triaged: two are rules questions left for the owner (§3 of PR #15),
+   the rest carried as minors.
 
 ---
 
@@ -587,7 +645,7 @@ wrote them down instead of trusting the next wave to rediscover them.
    rule) and `docs/claude/supabase.md` (the probe and the deploy runbook). All
    four were updated at the close of wave 3 with everything above.
 3. Run the four commands in §1 and record your own baseline. If it is not
-   514 / 29 green, find out why before writing a line.
+   521 / 30 green, find out why before writing a line.
 4. Add `onBattleEffect`/`onBattleVictory`/`onBattleDefeat` to
    `REACHABLE_TRIGGERS`'s `vehicle` row **before** any card work (§3, §4.2
    above) — the same ordering wave 2 and wave 3 both used for their own new
