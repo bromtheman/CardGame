@@ -368,7 +368,10 @@ export const owVehicles = [
         type: 'vehicle',
         faction: FACTIONS.OW,
         blueprintId: null,
-        keywords: []
+        keywords: [],
+        meta: {
+            [TRIGGERS.ON_BATTLE_EFFECT]: 'ironCordonBattle',
+        }
     },
     {
         name: 'Jormangund',

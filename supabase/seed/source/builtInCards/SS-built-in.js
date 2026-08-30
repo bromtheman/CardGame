@@ -205,6 +205,7 @@ export const ssVehicles = [
         blueprintId: null,
         keywords: [KEYWORDS.SCRAPPY, KEYWORDS.STEALTHY, KEYWORDS.MOBILE],
         meta: {
+            [TRIGGERS.ON_BATTLE_EFFECT]: 'sacrilegoBattle',
         }
     }, {
         name: 'Resolute',

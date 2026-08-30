@@ -1,9 +1,9 @@
 import { TRIGGERS } from '../gameSettings.ts'
 import type { CardInstance } from './gameInit.ts'
 import type {
-  BattleContext, EngineContext, EngineGame, Side, ZoneCardEntry,
+  BattleCasualty, BattleContext, EngineContext, EngineGame, Side, ZoneCardEntry,
 } from './engineTypes.ts'
-import { otherSide, ownerSideOf, zoneById } from './gameEngine.ts'
+import { discardCard, otherSide, ownerSideOf, zoneById } from './gameEngine.ts'
 import { BYSTANDER_EFFECTS, effectFor, effectName } from '../effects/registry.ts'
 
 // DP2 (spec §4.3, and its seven "DP2 departure" subsections). This module owns
@@ -107,7 +107,7 @@ export function dispatchBattleLock(game: EngineGame, ctx: EngineContext, forced:
   const defenderSide = otherSide(battle.aggressor)
   const context = (isDefender: boolean, isParticipant: boolean): BattleContext => ({
     phase: 'lock', zoneId: battle.zoneId, isDefender, isParticipant, forced,
-    survived: false, won: false,
+    survived: false, won: false, casualties: [],
   })
 
   for (const { entry, side } of lockRoster(game)) {
@@ -159,6 +159,7 @@ export function dispatchBattleResolve(
   game: EngineGame, ctx: EngineContext,
   zoneId: number, aggressor: Side,
   participants: Map<string, BattleParticipant>, outcome: BattleOutcome,
+  casualties: BattleCasualty[],
 ): void {
   for (const { entry, side } of participants.values()) {
     const context: BattleContext = {
@@ -166,6 +167,7 @@ export function dispatchBattleResolve(
       forced: false,
       survived: outcome.survived.has(entry.instanceId),
       won: outcome.wonBy[side],
+      casualties,
     }
     if (!fire(game, ctx, entry, side, TRIGGERS.ON_BATTLE_EFFECT, context)) return
     const sugar = outcome.wonBy[side]
@@ -185,7 +187,7 @@ export function dispatchBaseAttackVictory(
 ): void {
   const context: BattleContext = {
     phase: 'baseAttack', zoneId, isDefender: false, isParticipant: true,
-    forced: false, survived: true, won: true,
+    forced: false, survived: true, won: true, casualties: [],
   }
   for (const entry of strikers) {
     if (!fire(game, ctx, entry, actor, TRIGGERS.ON_BATTLE_VICTORY, context)) return
@@ -214,5 +216,22 @@ export function reviveEntry(
   if (index < 0) return false
   pile.splice(index, 1)
   zone.cards[side].push(entry)
+  return true
+}
+
+// The price both reviving cards pay: take the sacrificing hull off the board
+// and out of play through discardCard, the single exit every card leaving play
+// uses — so a captured hull still goes home and a summonOnly one still never
+// reaches a discard. Returns false without touching anything when the hull is
+// not where the caller thinks it is.
+export function sacrificeEntry(
+  game: EngineGame, side: Side, instanceId: string, zoneId: number,
+): boolean {
+  const zone = zoneById(game.state, zoneId)
+  if (!zone) return false
+  const index = zone.cards[side].findIndex((c) => c.instanceId === instanceId)
+  if (index < 0) return false
+  const [entry] = zone.cards[side].splice(index, 1)
+  discardCard(game, side, entry)
   return true
 }

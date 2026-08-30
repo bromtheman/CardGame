@@ -26,6 +26,16 @@ export interface ZoneCardEntry extends CardInstance {
 // addition — ATTACK_ENEMY_BASE dispatches onBattleVictory too, so Plunderer's
 // one clause ("survives a victorious fleet battle OR inflicts damage to the
 // enemy base") stays one implementation.
+// One hull DECIDE_BATTLE_REPORT destroyed, carried on the resolve context
+// because nothing else can hand it back. Summons are excluded: a summon
+// evaporates rather than dies (spec §4.4), so it is not a casualty and cannot
+// be revived.
+export interface BattleCasualty {
+  entry: ZoneCardEntry
+  side: Side
+  hp: number // its reported ending HP
+}
+
 export interface BattleContext {
   phase: 'lock' | 'resolve' | 'baseAttack'
   zoneId: number
@@ -34,6 +44,12 @@ export interface BattleContext {
   forced: boolean
   survived: boolean // resolve/baseAttack only; always false at lock
   won: boolean      // resolve/baseAttack only; always false at lock
+  // Resolve only; empty at lock and on a bombardment. The ONLY route to "which
+  // hulls died in this battle, and at what HP" — by the time a resolve trigger
+  // runs, activeBattle and pendingReport are both null and state.destroyed
+  // holds bare snapshots with no instanceId, no HP, and no battle of origin.
+  // Iron Cordon and Sacrilego's clause 2 both read it.
+  casualties: BattleCasualty[]
 }
 
 export interface AwaitingResponse {

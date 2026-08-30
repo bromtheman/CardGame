@@ -1,7 +1,7 @@
 import {
   KEYWORDS, REPAIR_COST_RATE, REPAIR_WINDOW_MIN_PERCENT, SURVIVE_HP_PERCENT,
 } from '../gameSettings.ts'
-import type { ApplyResult, EngineGame, Side, ZoneCardEntry } from './engineTypes.ts'
+import type { ApplyResult, BattleCasualty, EngineGame, Side, ZoneCardEntry } from './engineTypes.ts'
 import { discardCard, err, registerHandler, zoneById } from './gameEngine.ts'
 import { effectiveMaterialCostOf } from './placement.ts'
 import { effectFor, effectName } from '../effects/registry.ts'
@@ -191,7 +191,13 @@ registerHandler('DECIDE_BATTLE_REPORT', (game, actor, action, ctx) => {
   const zone = zoneById(game.state, battle.zoneId)!
   let destroyedCount = 0
   let summonCount = 0
-  const destroyedEntries: { entry: ZoneCardEntry; side: Side }[] = []
+  // Doubles as DP2's casualty list (spec §4.3, DP2 departure 1): the death
+  // triggers below iterate it, and dispatchBattleResolve carries it to Iron
+  // Cordon and Sacrilego, which have no other route to "who died here, at what
+  // HP". Summons never reach it — the branch that pushes is guarded on
+  // !summon — which is right twice over: a summon evaporates rather than dies,
+  // and there is nothing to revive.
+  const destroyedEntries: BattleCasualty[] = []
   // DP2's win test reads the same `survives` predicate this loop already
   // computes — repairs included, so a Scrappy hull patched back over the line
   // is a survivor — and summons count (spec §4.3, DP2 departure 6).
@@ -215,7 +221,7 @@ registerHandler('DECIDE_BATTLE_REPORT', (game, actor, action, ctx) => {
       discardCard(game, side, entry)
       destroyedCount++
       game.state.log.push(`${entry.name} was destroyed (${hp}%)`)
-      destroyedEntries.push({ entry, side })
+      destroyedEntries.push({ entry, side, hp })
     } else if (repairIds.has(id)) {
       game.state.log.push(`${entry.name} was repaired (${hp}%)`)
     }
@@ -262,7 +268,7 @@ registerHandler('DECIDE_BATTLE_REPORT', (game, actor, action, ctx) => {
   //
   // participants still holds a destroyed hull's entry even though zone.cards
   // no longer does, which is what makes the revive possible at all.
-  dispatchBattleResolve(game, ctx, battleZoneId, aggressor, participants, outcome)
+  dispatchBattleResolve(game, ctx, battleZoneId, aggressor, participants, outcome, destroyedEntries)
 
   // The continuation (spec §4.3, departure 3): an effect that forced this
   // battle and wants to run again now that it has resolved (Trebuchet's

@@ -1721,3 +1721,241 @@ describe('wave 4 — battle triggers at lock', () => {
     })
   })
 })
+
+describe('wave 4 — battle triggers at resolve', () => {
+  // A resolve-phase context for a surviving participant on side a. Callers
+  // supply the casualty list, which is the only route a resolve trigger has to
+  // "who died in this battle, and at what HP" (spec §4.3, DP2 departure 1).
+  const resolveCtx = (
+    casualties: { entry: ReturnType<typeof zoneEntry>; side: 'a' | 'b'; hp: number }[],
+    over: Partial<Record<string, unknown>> = {},
+  ) => ({
+    phase: 'resolve' as const, zoneId: 1, isDefender: true, isParticipant: true,
+    forced: false, survived: true, won: false, casualties, ...over,
+  })
+
+  // Puts `entry` in the discard exactly as DECIDE_BATTLE_REPORT would, so a
+  // revive has a real snapshot to pull back out.
+  function bury(game: EngineGame, side: 'a' | 'b', entry: ReturnType<typeof zoneEntry>) {
+    const { instanceId: _i, playedOnTurn: _p, movedOnTurn: _m, activatedOnTurn: _a, ...snapshot } = entry
+    game.state.destroyed[side].push({ ...snapshot })
+  }
+
+  describe('sacrilegoBattle', () => {
+    function board(casualtyOver: Partial<Parameters<typeof zoneEntry>[0]> = {}, hp = 78) {
+      const game = makeGame()
+      const sacrilego = zoneEntry({ name: 'Sacrilego', instanceId: 'sac-1', vehicleType: 'ship' })
+      game.state.zones[0].cards.a.push(sacrilego)
+      const dead = zoneEntry({ name: 'Wreck', instanceId: 'wreck-1', vehicleType: 'ship', ...casualtyOver })
+      bury(game, 'a', dead)
+      return { game, sacrilego, dead, casualties: [{ entry: dead, side: 'a' as const, hp }] }
+    }
+
+    it('grants 1 CP for surviving, before any choice is offered', () => {
+      const { game, sacrilego, casualties } = board()
+      const before = game.state.resources.a.cp
+      const ok = effectFor('sacrilegoBattle')!({
+        game, actor: 'a', card: sacrilego, ctx: makeCtx(), battle: resolveCtx(casualties),
+      })
+      expect(ok).toBe(true)
+      expect(game.state.resources.a.cp).toBe(before + 1)
+      expect(game.state.pendingEffect?.options.map((o) => o.id)).toEqual(['wreck-1'])
+    })
+
+    it('grants the CP and offers nothing when it did not survive', () => {
+      const { game, sacrilego, casualties } = board()
+      const before = game.state.resources.a.cp
+      const ok = effectFor('sacrilegoBattle')!({
+        game, actor: 'a', card: sacrilego, ctx: makeCtx(),
+        battle: resolveCtx(casualties, { survived: false }),
+      })
+      expect(ok).toBe(true)
+      expect(game.state.resources.a.cp).toBe(before) // "whenever this vehicle survives"
+      expect(game.state.pendingEffect).toBeNull()
+    })
+
+    // Two friendly ships die — one inside the +15 band, one below it — so a
+    // mutated boundary changes WHICH option is offered rather than producing a
+    // rejected action that never reaches the assertion (handoff §3).
+    it('offers only the ship the +15 would actually have saved', () => {
+      const game = makeGame()
+      const sacrilego = zoneEntry({ name: 'Sacrilego', instanceId: 'sac-1', vehicleType: 'ship' })
+      game.state.zones[0].cards.a.push(sacrilego)
+      const inBand = zoneEntry({ name: 'Nearly', instanceId: 'near-1', vehicleType: 'ship' })
+      const tooFar = zoneEntry({ name: 'Gone', instanceId: 'gone-1', vehicleType: 'ship' })
+      bury(game, 'a', inBand)
+      bury(game, 'a', tooFar)
+      const ok = effectFor('sacrilegoBattle')!({
+        game, actor: 'a', card: sacrilego, ctx: makeCtx(),
+        battle: resolveCtx([
+          { entry: inBand, side: 'a', hp: 78 }, // 78 + 15 = 93 >= 90, saved
+          { entry: tooFar, side: 'a', hp: 70 }, // 70 + 15 = 85 < 90, beyond reach
+        ]),
+      })
+      expect(ok).toBe(true)
+      expect(game.state.pendingEffect?.options.map((o) => o.id)).toEqual(['near-1'])
+    })
+
+    it('ignores an enemy casualty and a friendly non-ship', () => {
+      const game = makeGame()
+      const sacrilego = zoneEntry({ name: 'Sacrilego', instanceId: 'sac-1', vehicleType: 'ship' })
+      game.state.zones[0].cards.a.push(sacrilego)
+      const enemyShip = zoneEntry({ name: 'Foe', instanceId: 'foe-1', vehicleType: 'ship' })
+      const friendlyPlane = zoneEntry({ name: 'Flyer', instanceId: 'fly-1', vehicleType: 'plane' })
+      bury(game, 'b', enemyShip)
+      bury(game, 'a', friendlyPlane)
+      const ok = effectFor('sacrilegoBattle')!({
+        game, actor: 'a', card: sacrilego, ctx: makeCtx(),
+        battle: resolveCtx([
+          { entry: enemyShip, side: 'b', hp: 78 },
+          { entry: friendlyPlane, side: 'a', hp: 78 },
+        ]),
+      })
+      expect(ok).toBe(true)
+      expect(game.state.pendingEffect).toBeNull() // no options — no suspension
+      expect(game.state.resources.a.cp).toBe(4)
+    })
+
+    it('accepting revives the ship, removes one snapshot, and sacrifices Sacrilego', () => {
+      const { game, sacrilego, casualties } = board()
+      effectFor('sacrilegoBattle')!({
+        game, actor: 'a', card: sacrilego, ctx: makeCtx(), battle: resolveCtx(casualties),
+      })
+      const r = applyAction(game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'wreck-1' }, makeCtx())
+      if (!r.ok) throw new Error(r.error)
+      const zone = r.game.state.zones[0]
+      expect(zone.cards.a.map((c) => c.name)).toEqual(['Wreck'])
+      expect(r.game.state.destroyed.a.map((c) => c.name)).toEqual(['Sacrilego'])
+    })
+
+    it('declining leaves both the wreck destroyed and Sacrilego alive', () => {
+      const { game, sacrilego, casualties } = board()
+      effectFor('sacrilegoBattle')!({
+        game, actor: 'a', card: sacrilego, ctx: makeCtx(), battle: resolveCtx(casualties),
+      })
+      const r = applyAction(game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', cancel: true }, makeCtx())
+      if (!r.ok) throw new Error(r.error)
+      expect(r.game.state.zones[0].cards.a.map((c) => c.name)).toEqual(['Sacrilego'])
+      expect(r.game.state.destroyed.a.map((c) => c.name)).toEqual(['Wreck'])
+      expect(r.game.state.resources.a.cp).toBe(4) // the CP landed either way
+    })
+  })
+
+  describe('ironCordonBattle', () => {
+    const gtAirship = (over: Partial<Parameters<typeof zoneEntry>[0]> = {}) =>
+      zoneEntry({ name: 'Nimbus', faction: 'GT', vehicleType: 'airship', ...over })
+
+    function board() {
+      const game = makeGame()
+      const cordon = zoneEntry({ name: 'Iron Cordon', instanceId: 'cordon-1', faction: 'OW' })
+      game.state.zones[0].cards.a.push(cordon)
+      return { game, cordon }
+    }
+
+    it('offers to save an allied GT airship destroyed in the battle', () => {
+      const { game, cordon } = board()
+      const dead = gtAirship({ instanceId: 'nimbus-1' })
+      bury(game, 'a', dead)
+      const ok = effectFor('ironCordonBattle')!({
+        game, actor: 'a', card: cordon, ctx: makeCtx(),
+        battle: resolveCtx([{ entry: dead, side: 'a', hp: 10 }]),
+      })
+      expect(ok).toBe(true)
+      expect(game.state.pendingEffect?.options.map((o) => o.id)).toEqual(['nimbus-1'])
+    })
+
+    // Two allied casualties, only one of them a GT airship: a mutated filter
+    // changes which option is offered rather than emptying the list.
+    it('ignores an OW airship, a GT ship, and an enemy GT airship', () => {
+      const { game, cordon } = board()
+      const real = gtAirship({ instanceId: 'nimbus-1' })
+      const owAirship = zoneEntry({ name: 'Eyrie', instanceId: 'eyrie-1', faction: 'OW', vehicleType: 'airship' })
+      const gtShip = zoneEntry({ name: 'Tug', instanceId: 'tug-1', faction: 'GT', vehicleType: 'ship' })
+      const enemyAirship = gtAirship({ instanceId: 'enemy-1' })
+      for (const e of [real, owAirship, gtShip]) bury(game, 'a', e)
+      bury(game, 'b', enemyAirship)
+      const ok = effectFor('ironCordonBattle')!({
+        game, actor: 'a', card: cordon, ctx: makeCtx(),
+        battle: resolveCtx([
+          { entry: real, side: 'a', hp: 0 },
+          { entry: owAirship, side: 'a', hp: 0 },
+          { entry: gtShip, side: 'a', hp: 0 },
+          { entry: enemyAirship, side: 'b', hp: 0 },
+        ]),
+      })
+      expect(ok).toBe(true)
+      expect(game.state.pendingEffect?.options.map((o) => o.id)).toEqual(['nimbus-1'])
+    })
+
+    it('offers nothing when Iron Cordon did not survive', () => {
+      const { game, cordon } = board()
+      const dead = gtAirship({ instanceId: 'nimbus-1' })
+      bury(game, 'a', dead)
+      const ok = effectFor('ironCordonBattle')!({
+        game, actor: 'a', card: cordon, ctx: makeCtx(),
+        battle: resolveCtx([{ entry: dead, side: 'a', hp: 10 }], { survived: false }),
+      })
+      expect(ok).toBe(true)
+      expect(game.state.pendingEffect).toBeNull()
+    })
+
+    it('accepting revives the airship and sacrifices Iron Cordon', () => {
+      const { game, cordon } = board()
+      const dead = gtAirship({ instanceId: 'nimbus-1' })
+      bury(game, 'a', dead)
+      effectFor('ironCordonBattle')!({
+        game, actor: 'a', card: cordon, ctx: makeCtx(),
+        battle: resolveCtx([{ entry: dead, side: 'a', hp: 10 }]),
+      })
+      const r = applyAction(game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'nimbus-1' }, makeCtx())
+      if (!r.ok) throw new Error(r.error)
+      expect(r.game.state.zones[0].cards.a.map((c) => c.name)).toEqual(['Nimbus'])
+      expect(r.game.state.destroyed.a.map((c) => c.name)).toEqual(['Iron Cordon'])
+    })
+
+    it('refuses a choiceId that was never offered, leaving the slot intact', () => {
+      const { game, cordon } = board()
+      const dead = gtAirship({ instanceId: 'nimbus-1' })
+      bury(game, 'a', dead)
+      effectFor('ironCordonBattle')!({
+        game, actor: 'a', card: cordon, ctx: makeCtx(),
+        battle: resolveCtx([{ entry: dead, side: 'a', hp: 10 }]),
+      })
+      expect(applyAction(game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'ghost' }, makeCtx()))
+        .toMatchObject({ ok: false, status: 400 })
+      expect(game.state.pendingEffect).not.toBeNull()
+    })
+  })
+
+  it('end to end: a destroyed GT airship reaches Iron Cordon through a real report', () => {
+    const game = makeGame({ turnNumber: 3 })
+    const attacker = zoneEntry({ playedOnTurn: 2 })
+    const cordon = zoneEntry({
+      name: 'Iron Cordon', faction: 'OW', meta: { onBattleEffect: 'ironCordonBattle' },
+    })
+    const airship = zoneEntry({ name: 'Nimbus', faction: 'GT', vehicleType: 'airship' })
+    game.state.zones[0].cards.a.push(attacker)
+    game.state.zones[0].cards.b.push(cordon, airship)
+    const declared = applyAction(game, 'alice', {
+      type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
+      attackerIds: [attacker.instanceId], targetIds: [cordon.instanceId, airship.instanceId],
+    }, makeCtx())
+    if (!declared.ok) throw new Error(declared.error)
+    const submitted = applyAction(declared.game, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT',
+      results: { [attacker.instanceId]: 95, [cordon.instanceId]: 95, [airship.instanceId]: 5 },
+      repairs: [],
+    }, makeCtx())
+    if (!submitted.ok) throw new Error(submitted.error)
+    const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, makeCtx())
+    if (!decided.ok) throw new Error(decided.error)
+    expect(decided.game.state.pendingEffect?.side).toBe('b')
+    expect(decided.game.state.pendingEffect?.options.map((o) => o.id)).toEqual([airship.instanceId])
+    const saved = applyAction(decided.game, 'bob', {
+      type: 'RESOLVE_PENDING_EFFECT', choiceId: airship.instanceId,
+    }, makeCtx())
+    if (!saved.ok) throw new Error(saved.error)
+    expect(saved.game.state.zones[0].cards.b.map((c) => c.name)).toEqual(['Nimbus'])
+    expect(saved.game.state.destroyed.b.map((c) => c.name)).toEqual(['Iron Cordon'])
+  })
+})

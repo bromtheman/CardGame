@@ -1,10 +1,11 @@
 import {
   AIR_STRAFE_PREDATOR_COUNT, CATSHARK_MATERIALS, EXCALIBUR_COST_DELTA, KEYWORDS,
-  REPAIRMEN_READY_DRAW_MAX_COST, RHEA_MAX_PLANE_COST, VEHICLE_TYPES,
+  REPAIRMEN_READY_DRAW_MAX_COST, RHEA_MAX_PLANE_COST, SACRILEGO_HP_BOOST,
+  SURVIVE_HP_PERCENT, VEHICLE_TYPES,
 } from '../gameSettings.ts'
 import {
   catalogCard, costDelta, choice, drawFromPool, enemyVehicleOptions, grant, grantKeywords,
-  sequence, spawnInto, summonHulls,
+  sacrificeToSave, sequence, spawnInto, summonHulls,
 } from './primitives.ts'
 import { registerEffect } from './registry.ts'
 import type { EngineGame, Side } from '../engine/engineTypes.ts'
@@ -239,3 +240,38 @@ registerEffect('dryadBattle', ({ game, actor, ctx, battle }) => {
   game.state.log.push(`Another Dryad takes root in zone ${battle.zoneId}`)
   return true
 }, { needsCatalog: true })
+
+const SACRILEGO = 'sacrilegoBattle'
+
+// Clause 2. "Increase the remaining hp percent of a friendly ship by 15" is
+// implemented where the boost is observable and nowhere else (spec §7.3, the
+// same reasoning applied to Trebuchet's "fully heal it"): the board tracks no
+// HP, so the only difference +15 can make is turning a destroyed ship into a
+// surviving one. Eligible = a friendly SHIP destroyed at SURVIVE_HP_PERCENT −
+// SACRILEGO_HP_BOOST or better, where the boost would have carried it over the
+// line. The band is derived, never written as a literal.
+const sacrilegoSave = sacrificeToSave({
+  effect: SACRILEGO,
+  prompt: 'Sacrifice Sacrilego to save a friendly ship?',
+  eligible: (battle, actor) => battle.casualties.filter((c) =>
+    c.side === actor &&
+    c.entry.vehicleType === VEHICLE_TYPES.SHIP &&
+    c.hp >= SURVIVE_HP_PERCENT - SACRILEGO_HP_BOOST),
+})
+
+// "Whenever this vehicle survives a fleet battle, gain 1cp. Additionally you
+// may sacrifice it to increase the remaining hp percent of a friendly ship by
+// 15." Two clauses, one registry name, told apart by the payload: a DP2
+// resolve trigger carries `battle`, and RESOLVE_PENDING_EFFECT's re-entry
+// carries `resolution` and no battle at all.
+//
+// Clause 1 does not depend on clause 2 and runs first, so the CP lands even
+// when nothing is eligible — `choice`'s empty-options rule then resolves in
+// the same action without suspending.
+registerEffect(SACRILEGO, (payload) => {
+  if (payload.resolution !== undefined) return sacrilegoSave(payload)
+  const { battle } = payload
+  if (!battle || battle.phase !== 'resolve' || !battle.isParticipant || !battle.survived) return true
+  grant({ cp: 1 })(payload)
+  return sacrilegoSave(payload)
+})

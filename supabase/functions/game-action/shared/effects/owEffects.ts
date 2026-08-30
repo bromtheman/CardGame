@@ -2,12 +2,12 @@ import {
   choice, drawFromPool, enemyVehicleOptions, grant, grantKeywords, spawnVehicles, whenPlayed, zoneOccupants,
 } from './primitives.ts'
 import { registerEffect } from './registry.ts'
-import { GT_HEAVY_AIRSHIP_MIN_COST, KEYWORDS } from '../gameSettings.ts'
+import { GT_HEAVY_AIRSHIP_MIN_COST, KEYWORDS, VEHICLE_TYPES } from '../gameSettings.ts'
 import type { ZoneCardEntry } from '../engine/engineTypes.ts'
 import { copyMeta, otherSide, zoneById } from '../engine/gameEngine.ts'
 import { moveEntry } from '../engine/heroPowers.ts'
 import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
-import { summonHulls } from './primitives.ts'
+import { sacrificeToSave, summonHulls } from './primitives.ts'
 
 // OW built-in card effects. Cards whose faction is GT but whose seed row
 // lives in OW-Built-in.js are registered here too.
@@ -122,6 +122,35 @@ registerEffect('onyxThroneBattle', ({ game, actor, ctx, card, battle }) => {
   game.state.log.push(`A Parapet stands alongside ${card.name} in zone ${battle.zoneId}`)
   return true
 }, { needsCatalog: true })
+
+const IRON_CORDON = 'ironCordonBattle'
+
+// "Whenever this vehicle survives a battle in which an allied GT airship is
+// destroyed, you may sacrifice this vehicle to save that airship."
+//
+// "GT airship" unqualified is the whole fourteen-card pool — faction GT,
+// vehicleType airship — not the eight heavy ones (spec §7.3). The Onyx
+// Throne's own second clause says "GT heavy airship" and means the eight,
+// which is what makes the distinction deliberate rather than sloppy.
+//
+// Saving it does NOT unwind the airship's onDeathEffect: that fired earlier in
+// the same DECIDE_BATTLE_REPORT, before this trigger could run, and stands
+// (spec §4.3, DP2 departure 7).
+const ironCordonSave = sacrificeToSave({
+  effect: IRON_CORDON,
+  prompt: 'Sacrifice Iron Cordon to save a destroyed GT airship?',
+  eligible: (battle, actor) => battle.casualties.filter((c) =>
+    c.side === actor &&
+    c.entry.faction === 'GT' &&
+    c.entry.vehicleType === VEHICLE_TYPES.AIRSHIP),
+})
+
+registerEffect(IRON_CORDON, (payload) => {
+  if (payload.resolution !== undefined) return ironCordonSave(payload)
+  const { battle } = payload
+  if (!battle || battle.phase !== 'resolve' || !battle.isParticipant || !battle.survived) return true
+  return ironCordonSave(payload)
+})
 
 // "Spawn two parapets into a zone. They gain Inoffensive, Scrappy, and blocker
 // keywords." Keywords come from the summoning card, not the Parapet row —

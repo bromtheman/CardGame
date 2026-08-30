@@ -91,6 +91,11 @@ export const AIR_STRAFE_PREDATOR_COUNT = 2    // Air Strafe: PredatorX summons (
 // outright, so the grant lasts exactly until that side's next turn begins.
 export const CATSHARK_MATERIALS = 30_000
 
+// Sacrilego clause 2: "increase the remaining hp percent of a friendly ship by
+// 15". The rescue band is SURVIVE_HP_PERCENT minus this — derive it, never
+// write the number.
+export const SACRILEGO_HP_BOOST = 15
+
 // Human-readable names for the seven hero powers, used wherever a power id
 // is shown to a player (Kraken's refresh choice).
 export const HERO_POWER_LABELS: Record<string, string> = {

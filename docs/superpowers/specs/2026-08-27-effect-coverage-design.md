@@ -362,22 +362,41 @@ The dispatch lives in `shared/engine/battleTriggers.ts`. Unlike every dispatch
 point before it, DP2's three keys were named on **zero** seeded cards when wave 4
 opened, so the wave authored the seed `meta` and the dispatch together.
 
-**`BattleContext` carries two more fields and a third phase (DP2 departure 1).**
+**`BattleContext` carries three more fields, a casualty list, and a third phase
+(DP2 departure 1).**
 
 ```ts
+interface BattleCasualty {
+  entry: ZoneCardEntry         // the hull as it stood, instanceId included
+  side: Side
+  hp: number                   // its reported ending HP
+}
+
 interface BattleContext {
   phase: 'lock' | 'resolve' | 'baseAttack'
   zoneId: number
   isDefender: boolean
   isParticipant: boolean
-  forced: boolean            // declared by a card effect, not ATTACK_ENEMY_FLEET
-  survived: boolean          // resolve/baseAttack only; false at lock
-  won: boolean               // resolve/baseAttack only; false at lock
+  forced: boolean              // declared by a card effect, not ATTACK_ENEMY_FLEET
+  survived: boolean            // resolve/baseAttack only; false at lock
+  won: boolean                 // resolve/baseAttack only; false at lock
+  casualties: BattleCasualty[] // resolve only; empty at lock and baseAttack
 }
 ```
 
 It reaches effects as `EffectPayload.battle`. `isParticipant` and `forced` exist
 for Terawatt (DP2 departure 2); `'baseAttack'` exists for Plunderer (DP2 departure 4).
+
+**`casualties` is not a convenience — it is the only route to what it carries.**
+Iron Cordon needs "an allied GT airship destroyed **in this battle**", and
+Sacrilego's clause 2 needs a friendly ship's reported ending HP. Neither is
+recoverable by the time a resolve trigger fires: `activeBattle` and
+`pendingReport` are both already null, and `state.destroyed` holds bare
+`SnapshotCard`s — no `instanceId`, no HP, and no way to tell this battle's dead
+from any earlier turn's. The list carries exactly the hulls
+`DECIDE_BATTLE_REPORT` destroyed, **summons excluded**: a summon evaporates
+rather than dies (§4.4), so there is nothing to bring back and nothing that
+belongs in a "was destroyed" list.
 
 **Lock dispatch has three sources, not one (DP2 departure 2).** Terawatt reads
 "whenever a friendly vehicle would be made to fight in battle **alone** due to

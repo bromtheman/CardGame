@@ -1,6 +1,9 @@
 import type { CardInstance, SnapshotCard } from '../engine/gameInit.ts'
-import type { EngineContext, EngineGame, Side, ZoneCardEntry } from '../engine/engineTypes.ts'
+import type {
+  BattleCasualty, BattleContext, EngineContext, EngineGame, Side, ZoneCardEntry,
+} from '../engine/engineTypes.ts'
 import { drawCard, findVehicle, otherSide } from '../engine/gameEngine.ts'
+import { reviveEntry, sacrificeEntry } from '../engine/battleTriggers.ts'
 import type { EffectFn, EffectPayload } from './registry.ts'
 
 // Move one card from the enemy's deck into the actor's hand. The log line
@@ -346,4 +349,49 @@ export function choice(spec: {
     if (typeof chosen !== 'string' || !known.some((o) => o.id === chosen)) return false
     return spec.resolve(payload, chosen)
   }
+}
+
+// "You may sacrifice this vehicle to save one of the hulls that just died."
+// Iron Cordon and Sacrilego's clause 2 are the same shape with different
+// eligibility rules, so the whole two-phase dance lives here once.
+//
+// First entry (a DP2 resolve trigger, so `battle` is set) offers the choice
+// and STASHES the eligible casualties. That stash is not an optimisation: by
+// re-entry, activeBattle and pendingReport are null and state.destroyed holds
+// bare snapshots with no instanceId, so `battle.casualties` is unrecoverable.
+// It is also why nothing here reads payload.resolution's own
+// targetInstanceId/zoneId, which are client-supplied and unvalidated
+// (docs/claude/card-effects.md, "Suspending for a choice").
+//
+// Options carry the dead hulls' names, which were public on the board a moment
+// ago, so this leaks nothing (spec §4.2, departure 5).
+export function sacrificeToSave(spec: {
+  effect: string
+  prompt: string
+  eligible: (battle: BattleContext, actor: Side) => BattleCasualty[]
+}): EffectFn {
+  const eligibleFor = (p: EffectPayload) => (p.battle ? spec.eligible(p.battle, p.actor) : [])
+  return choice({
+    effect: spec.effect,
+    prompt: spec.prompt,
+    options: (p) => eligibleFor(p).map((c) => ({ id: c.entry.instanceId, label: c.entry.name })),
+    data: (p) => ({ zoneId: p.battle?.zoneId, entries: eligibleFor(p).map((c) => c.entry) }),
+    resolve: ({ game, actor, card, pending }, choiceId) => {
+      // Empty options resolve straight through with null — nothing was
+      // eligible, so there is nothing to do and nothing to fail.
+      if (choiceId === null) return true
+      const zoneId = pending?.data?.zoneId
+      const entries = pending?.data?.entries
+      if (typeof zoneId !== 'number' || !Array.isArray(entries)) return false
+      const target = (entries as ZoneCardEntry[]).find((e) => e.instanceId === choiceId)
+      if (!target) return false
+      // Both halves are validated before either is applied. A false return
+      // discards applyAction's whole clone anyway, but keeping the order
+      // revive-then-sacrifice means a hull is never spent for nothing.
+      if (!reviveEntry(game, actor, target, zoneId)) return false
+      if (!sacrificeEntry(game, actor, card.instanceId, zoneId)) return false
+      game.state.log.push(`${card.name} is sacrificed to save ${target.name}`)
+      return true
+    },
+  })
 }
