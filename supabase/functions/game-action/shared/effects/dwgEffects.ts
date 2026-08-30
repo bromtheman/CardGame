@@ -1,4 +1,5 @@
 import {
+  BASE_DAMAGE_DIVISOR, ONGOING_ATTRITION_DAMAGE_PER_VEHICLE,
   DOUBLE_UP_MAX_COST, DWG_WATERS_GUEST_MAX_COST, FLYING_SQUIRREL_ATTACK_COUNT,
   HERO_POWER_LABELS, KEYWORDS, MARAUDER_DISCOUNT, RESERVES_CARD_COUNT,
 } from '../gameSettings.ts'
@@ -124,6 +125,82 @@ registerEffect('doubleUpEffect', ({ game, actor, card, targetInstanceId }) => {
   target.meta = { ...target.meta, additionalSpawns: current + 1 }
   return true
 })
+
+const ONGOING_ATTRITION = 'ongoingAttritionEffect'
+
+// "Choose a zone. For the rest of the turn, if that zone is activated, and you
+// are attacking with more vehicles than your opponent, deal 40k damage to the
+// enemy base in that zone for each vehicle you have in the zone more than your
+// opponent. If this card leaves play without dealing damage, draw a card."
+//
+// DP5's zone half (spec §4.3, "DP5 as wave 5 built it"). One registry name,
+// two occasions: the claim, and the strike — which fires on BOTH kinds of
+// activation, because the card's trigger is "if that zone is activated" and
+// `ATTACK_ENEMY_BASE` is one (spec §4.3, DP2 departure 9).
+//
+// The count is ZONE POPULATION on both halves of the sentence (spec §7.3):
+// the damage clause names the zone explicitly, and a bombardment has no
+// committed selection to read, so condition and formula collapse to
+// `surplus > 0`.
+//
+// { needsCatalog: true } for the reason Ambush carries it: the rider dispatch
+// mints its payload card from ctx.catalog by name.
+function ongoingAttritionClaim({ game, actor, card, targetZoneId }: EffectPayload): boolean {
+  if (typeof targetZoneId !== 'number') return false
+  const zone = zoneById(game.state, targetZoneId)
+  if (!zone) return false
+  const held = game.state.zoneEffects.some(
+    (e) => e.effect === ONGOING_ATTRITION && e.zoneId === targetZoneId && e.side === actor,
+  )
+  if (held) return false
+  game.state.zoneEffects.push({
+    effect: ONGOING_ATTRITION, zoneId: targetZoneId, side: actor, cardName: card.name,
+    setOnTurn: game.turnNumber, expiresOnTurn: game.turnNumber,
+    data: { drawOnExpiry: true },
+  })
+  game.state.log.push(
+    `Player ${actor.toUpperCase()} sets up ongoing attrition in zone ${targetZoneId} — for the rest of the turn`,
+  )
+  return true
+}
+
+function ongoingAttritionStrike(payload: EffectPayload): boolean {
+  const { game, actor, card, battle } = payload
+  if (!battle || battle.isDefender) return true
+  if (battle.phase !== 'lock' && battle.phase !== 'baseAttack') return true
+  const zone = zoneById(game.state, battle.zoneId)
+  if (!zone) return true
+  const enemy = otherSide(actor)
+  const surplus = zone.cards[actor].length - zone.cards[enemy].length
+  if (surplus <= 0) return true
+  // Every guard ATTACK_ENEMY_BASE itself applies (spec §7.3). Neither
+  // consumes the rider: "if this card leaves play WITHOUT DEALING DAMAGE,
+  // draw a card" makes damage — not the activation — what spends it.
+  if (zone.baseHp[enemy] <= 0) return true
+  if (zone.cards[enemy].some((c) => c.keywords.includes(KEYWORDS.BLOCKER))) {
+    game.state.log.push(`Zone ${zone.id}: a Blocker shields the base — ${card.name} deals nothing`)
+    return true
+  }
+  // "40k damage" is materials, like every base-damage figure in this game
+  // (design spec §3.4: floor(materialCost / 1000)). Derived, never written as
+  // the HP number — a hard-coded 40 would silently break if either constant
+  // moved.
+  const damage = surplus * Math.floor(ONGOING_ATTRITION_DAMAGE_PER_VEHICLE / BASE_DAMAGE_DIVISOR)
+  zone.baseHp[enemy] = Math.max(0, zone.baseHp[enemy] - damage)
+  game.state.zoneEffects = game.state.zoneEffects.filter(
+    (e) => !(e.effect === ONGOING_ATTRITION && e.zoneId === zone.id && e.side === actor),
+  )
+  game.state.log.push(
+    `Zone ${zone.id}: ${card.name} grinds the base for ${damage} (${zone.baseHp[enemy]} HP remains)`,
+  )
+  if (zone.baseHp[enemy] === 0) game.state.log.push(`Zone ${zone.id} has fallen`)
+  checkVictory(game)
+  return true
+}
+
+registerEffect(ONGOING_ATTRITION, (payload) => (
+  payload.battle ? ongoingAttritionStrike(payload) : ongoingAttritionClaim(payload)
+), { needsCatalog: true })
 
 const DWG_WATERS_EFFECT = 'dwgWatersEffect'
 
