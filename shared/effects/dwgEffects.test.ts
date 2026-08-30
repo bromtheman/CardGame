@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { costModifierFor, effectFor } from './registry.ts'
 import { DOUBLE_UP_MAX_COST, KEYWORDS, RESERVES_CARD_COUNT } from '../gameSettings.ts'
 import { inst, makeCtx, makeGame, snap, zoneEntry } from '../engine/testFixtures.ts'
-import './dwgEffects.ts'
+import { applyAction } from '../engine/index.ts'
 
 describe('marauderOnPlay', () => {
   it('takes a vehicle from the enemy deck and discounts it by 50k', () => {
@@ -367,6 +367,133 @@ describe('dwgWatersEffect', () => {
     expect(effectFor('dwgWatersEffect')!({ game, actor: 'a', card: watersCard(), ctx, targetZoneId: 99 })).toBe(false)
     expect(effectFor('dwgWatersEffect')!({ game, actor: 'a', card: watersCard(), ctx })).toBe(false)
     expect(game.state.zoneEffects).toEqual([])
+  })
+})
+
+describe('plundererRaid', () => {
+  // One implementation, two occasions (spec §4.3, DP2 departure 5): at resolve
+  // onBattleVictory only reaches the winning side, and at a bombardment
+  // dispatchBaseAttackVictory sets survived and won both true. So the whole
+  // guard is `survived && won`.
+  const raidCtx = (over: Partial<Record<string, unknown>> = {}) => ({
+    phase: 'resolve' as const, zoneId: 1, isDefender: false, isParticipant: true,
+    forced: false, survived: true, won: true, casualties: [], ...over,
+  })
+
+  function armed() {
+    const game = makeGame()
+    game.privates.a.deck.push(inst({ name: 'Own Top' }))
+    game.privates.b.deck.push(inst({ name: 'Enemy Top' }))
+    return game
+  }
+
+  it('draws from the enemy deck on a victorious battle it survived', () => {
+    const game = armed()
+    const ok = effectFor('plundererRaid')!({
+      game, actor: 'a', card: zoneEntry({ name: 'Plunderer' }), ctx: makeCtx(), battle: raidCtx(),
+    })
+    expect(ok).toBe(true)
+    expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Enemy Top'])
+    expect(game.privates.a.deck.map((c) => c.name)).toEqual(['Own Top']) // its own deck untouched
+    // Both sides resync — one card left b's deck and entered a's hand.
+    expect(game.state.counts.a.hand).toBe(1)
+    expect(game.state.counts.b.deck).toBe(0)
+    // Public log must not name a card entering a hidden hand.
+    expect(game.state.log.join(' ')).not.toContain('Enemy Top')
+  })
+
+  it('draws nothing when it won but did not survive, or survived but did not win', () => {
+    for (const over of [{ survived: false }, { won: false }]) {
+      const game = armed()
+      const ok = effectFor('plundererRaid')!({
+        game, actor: 'a', card: zoneEntry({ name: 'Plunderer' }), ctx: makeCtx(), battle: raidCtx(over),
+      })
+      expect(ok).toBe(true)
+      expect(game.privates.a.hand).toHaveLength(0)
+    }
+  })
+
+  it('draws nothing with no battle context at all', () => {
+    const game = armed()
+    const ok = effectFor('plundererRaid')!({
+      game, actor: 'a', card: zoneEntry({ name: 'Plunderer' }), ctx: makeCtx(),
+    })
+    expect(ok).toBe(true)
+    expect(game.privates.a.hand).toHaveLength(0)
+  })
+
+  it('reports cleanly when the enemy deck is empty', () => {
+    const game = makeGame()
+    const ok = effectFor('plundererRaid')!({
+      game, actor: 'a', card: zoneEntry({ name: 'Plunderer' }), ctx: makeCtx(), battle: raidCtx(),
+    })
+    expect(ok).toBe(true)
+    expect(game.privates.a.hand).toHaveLength(0)
+    expect(game.state.log.join(' ')).toContain('finds nothing to take')
+  })
+
+  it('draws end to end when it bombards the enemy base', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.privates.b.deck.push(inst({ name: 'Enemy Top' }))
+    game.state.zones[0].cards.a.push(zoneEntry({
+      name: 'Plunderer', materialCost: 180_000, playedOnTurn: 2,
+      meta: { onBattleVictory: 'plundererRaid' },
+    }))
+    const r = applyAction(game, 'alice', { type: 'ATTACK_ENEMY_BASE', zoneId: 1 }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.privates.a.hand.map((c) => c.name)).toEqual(['Enemy Top'])
+    expect(r.game.state.zones[0].baseHp.b).toBe(1000 - 180)
+  })
+
+  it('draws end to end when it survives a battle that wipes the enemy', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.privates.b.deck.push(inst({ name: 'Enemy Top' }))
+    const plunderer = zoneEntry({
+      name: 'Plunderer', playedOnTurn: 2, meta: { onBattleVictory: 'plundererRaid' },
+    })
+    const foe = zoneEntry({ name: 'Foe' })
+    game.state.zones[0].cards.a.push(plunderer)
+    game.state.zones[0].cards.b.push(foe)
+    const declared = applyAction(game, 'alice', {
+      type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
+      attackerIds: [plunderer.instanceId], targetIds: [foe.instanceId],
+    }, makeCtx())
+    if (!declared.ok) throw new Error(declared.error)
+    const submitted = applyAction(declared.game, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT',
+      results: { [plunderer.instanceId]: 95, [foe.instanceId]: 5 }, repairs: [],
+    }, makeCtx())
+    if (!submitted.ok) throw new Error(submitted.error)
+    const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, makeCtx())
+    if (!decided.ok) throw new Error(decided.error)
+    expect(decided.game.privates.a.hand.map((c) => c.name)).toEqual(['Enemy Top'])
+  })
+
+  // baseStrikersIn's roster, not everything in the zone: a Plunderer that
+  // could not strike did not "inflict damage to the enemy base".
+  it('draws nothing on a bombardment it could not contribute to', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.privates.b.deck.push(inst({ name: 'Enemy Top' }))
+    game.state.zones[0].cards.a.push(
+      zoneEntry({ name: 'Gunboat', materialCost: 40_000, playedOnTurn: 2 }),
+      zoneEntry({
+        name: 'Plunderer', materialCost: 180_000, playedOnTurn: 2,
+        vehicleType: 'sub', meta: { onBattleVictory: 'plundererRaid' },
+      }),
+    )
+    const r = applyAction(game, 'alice', { type: 'ATTACK_ENEMY_BASE', zoneId: 1 }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.privates.a.hand).toHaveLength(0)
+    expect(r.game.state.zones[0].baseHp.b).toBe(1000 - 40) // the Gunboat struck; the sub did not
+  })
+
+  it('keeps its costModifier working alongside the new trigger', () => {
+    const game = makeGame()
+    game.state.zones[0].cards.a.push(
+      zoneEntry({ type: 'vehicle', faction: 'DWG' }),
+      zoneEntry({ type: 'vehicle', faction: 'DWG' }),
+    )
+    expect(costModifierFor('plundererCostModifier')!(game.state, 'a', inst())).toBe(-40_000)
   })
 })
 

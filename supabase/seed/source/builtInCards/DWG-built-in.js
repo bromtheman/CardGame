@@ -69,6 +69,7 @@ export const dwgVehicles = [
         keywords: [KEYWORDS.BLOCKER, KEYWORDS.SCRAPPY],
         meta: {
             costModifier: 'plundererCostModifier',
+            [TRIGGERS.ON_BATTLE_VICTORY]: 'plundererRaid',
         }
     },
     {

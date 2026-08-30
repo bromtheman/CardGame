@@ -28,8 +28,6 @@ const KNOWN_GAPS: Record<string, string> = {
 // go in KNOWN_GAPS without tripping the stale-entry assertion. Delete an
 // entry when its wave finishes the card.
 const PARTIAL: Record<string, string> = {
-  'DWG:Plunderer':
-    'wave 4 — clause 2 (survive a victorious fleet battle, or damage the enemy base, then draw from the enemy deck) needs a battle-resolve and base-attack hook. Its costModifier is implemented.',
   'DWG:DWG Waters':
     'wave 4 — clauses 2-3 need a battle-declare dispatch point. Its persistent zone claim is implemented.',
 }

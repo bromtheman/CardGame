@@ -35,6 +35,23 @@ registerEffect('marauderOnPlay', ({ game, actor, ctx }) => {
 registerEffect('ransackOnPlay', grant({ draw: 1, cp: 1 }))
 registerEffect('paddlegunEffect', grant({ draw: 1, from: 'enemy' }))
 
+// Plunderer clause 2: "When this vehicle survives a victorious fleet battle or
+// inflicts damage to the enemy base, draw one card from the enemy deck."
+//
+// One clause, two occasions, one implementation (spec §4.3, DP2 departure 5).
+// `onBattleVictory` at resolve only reaches a participant on the winning side,
+// and `survived` is per-participant; ATTACK_ENEMY_BASE dispatches the same key
+// with both set true, for exactly the hulls that dealt damage (baseStrikersIn
+// — a sub or an Inoffensive hull did not inflict anything). So `survived &&
+// won` is the whole condition, and it reads true on both occasions.
+//
+// takeFromEnemyDeck resyncs both sides' counts and never names the card: it is
+// entering a hidden hand.
+registerEffect('plundererRaid', ({ game, actor, ctx, battle }) => {
+  if (!battle || !battle.survived || !battle.won) return true
+  return takeFromEnemyDeck(game, actor, ctx)
+})
+
 // cost -20k per friendly DWG vehicle on the field (Plunderer)
 registerCostModifier('plundererCostModifier', (state, side) => {
   let count = 0
