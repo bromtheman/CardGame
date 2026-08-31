@@ -30,6 +30,10 @@ const DRAW_ONE = [
   // keywords at all, so the standing prohibition on SCRAPPY + onDeathEffect
   // (docs/claude/card-effects.md) is clear.
   'basherOnDeath',
+  // Wave 7. TG Jealousy: "When this vehicle is destroyed, draw a card".
+  // It prints BLOCKER and nothing else, so the SCRAPPY + onDeathEffect
+  // prohibition is clear here too.
+  'jealousyOnDeath',
 ]
 const CP_ONLY: [string, number][] = [
   ['bulwarkOnPlay', 2], ['maelstromOnPlay', 1], ['maceEffect', 1],

@@ -16,6 +16,7 @@ export const tgVehicles = [
         blueprintId: null,
         keywords: [KEYWORDS.BLOCKER],
         meta: {
+            [TRIGGERS.ON_DEATH]: 'jealousyOnDeath',
         }
     },
     {
