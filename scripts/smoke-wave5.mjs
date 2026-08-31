@@ -27,274 +27,15 @@
 // Credentials come from scripts/qa-accounts.local (gitignored). Passwords are
 // read into memory, sent only to /auth/v1/token, and never printed or stored.
 
-import { existsSync, readFileSync } from 'node:fs'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+// Plumbing lives in smoke-lib.mjs since wave 6 — this file is now just
+// wave 5's scenarios. Re-running it after that extraction is what proved
+// the extraction behaviour-preserving.
+import {
+  keep, die, step, results,
+  rest, fn, signIn,
+  builtIns, startGame, report,
+} from './smoke-lib.mjs'
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const keep = process.argv.includes('--keep')
-
-// ------------------------------------------------------------------ config
-
-function readEnvFile(file) {
-  if (!existsSync(file)) return {}
-  const out = {}
-  for (const raw of readFileSync(file, 'utf8').split(/\r?\n/)) {
-    const line = raw.trim()
-    if (!line || line.startsWith('#')) continue
-    const eq = line.indexOf('=')
-    if (eq < 1) continue
-    let v = line.slice(eq + 1).trim()
-    if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1)
-    out[line.slice(0, eq).replace(/^export\s+/, '').trim()] = v
-  }
-  return out
-}
-
-const feEnv = readEnvFile(path.join(ROOT, 'frontend/.env.local'))
-const accounts = readEnvFile(path.join(ROOT, 'scripts/qa-accounts.local'))
-const BASE = feEnv.VITE_SUPABASE_URL
-const ANON = feEnv.VITE_SUPABASE_PUBLISHABLE_KEY
-
-function die(msg) { console.error(`\n  x ${msg}\n`); process.exitCode = 1; throw new Error(msg) }
-if (!BASE || !ANON) die('frontend/.env.local must define VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY')
-if (!accounts.P1_EMAIL || !accounts.P2_EMAIL) die('scripts/qa-accounts.local must define P1_* and P2_*')
-
-// ------------------------------------------------------------------- steps
-
-const results = []
-function step(name, ok, detail = '') {
-  results.push({ name, ok })
-  console.log(`  ${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? ` — ${detail}` : ''}`)
-  if (!ok) process.exitCode = 1
-}
-
-// ------------------------------------------------------------------ client
-
-async function api(pathname, { method = 'GET', token, body, prefer } = {}) {
-  const headers = { apikey: ANON, Authorization: `Bearer ${token ?? ANON}` }
-  if (body !== undefined) headers['Content-Type'] = 'application/json'
-  if (prefer) headers.Prefer = prefer
-  const res = await fetch(`${BASE}${pathname}`, {
-    method, headers, body: body === undefined ? undefined : JSON.stringify(body),
-  })
-  const text = await res.text()
-  let parsed
-  try { parsed = text ? JSON.parse(text) : null } catch { parsed = text }
-  return { status: res.status, body: parsed }
-}
-
-async function signIn(prefix) {
-  const res = await api('/auth/v1/token?grant_type=password', {
-    method: 'POST',
-    body: { email: accounts[`${prefix}_EMAIL`], password: accounts[`${prefix}_PASSWORD`] },
-  })
-  if (res.status !== 200 || !res.body?.access_token) {
-    die(`${prefix} sign-in failed (HTTP ${res.status}) — check scripts/qa-accounts.local`)
-  }
-  return { token: res.body.access_token, userId: res.body.user.id, email: res.body.user.email }
-}
-
-const rest = (p, opts) => api(`/rest/v1${p}`, opts)
-const fn = (name, token, body) => api(`/functions/v1/${name}`, { method: 'POST', token, body })
-
-// ------------------------------------------------------------------- cards
-
-async function builtIns(token) {
-  const res = await rest(
-    '/cards?is_built_in=eq.true&select=id,name,faction,type,vehicle_type,material_cost,cp_cost,meta',
-    { token },
-  )
-  if (res.status !== 200 || !Array.isArray(res.body)) die(`catalog fetch failed (HTTP ${res.status})`)
-  return res.body
-}
-
-// A legal 20-card deck: `required` first, then filler from the same faction,
-// two copies each, never a summonOnly card and never more than 6 fliers.
-function buildDeck(cards, faction, required) {
-  const pool = cards.filter((c) => c.faction === faction && c.meta?.summonOnly !== true)
-  const byName = new Map(pool.map((c) => [c.name, c]))
-  const deck = {}
-  let count = 0
-  let fliers = 0
-  const add = (card, qty) => {
-    const flier = card.vehicle_type === 'plane' || card.vehicle_type === 'airship'
-    if (flier && fliers + qty > 6) return false
-    if (count + qty > 20) return false
-    deck[card.id] = (deck[card.id] ?? 0) + qty
-    count += qty
-    if (flier) fliers += qty
-    return true
-  }
-  for (const name of required) {
-    const card = byName.get(name)
-    if (!card) die(`${faction} deck needs "${name}" but the catalog has no such built-in`)
-    if (!add(card, 2)) die(`could not fit 2x ${name} into the ${faction} deck`)
-  }
-  for (const card of pool) {
-    if (count === 20) break
-    if (deck[card.id]) continue
-    add(card, Math.min(2, 20 - count))
-  }
-  if (count !== 20) die(`${faction} deck came to ${count} cards, not 20`)
-  return deck
-}
-
-// ------------------------------------------------------------------ a game
-
-// One staged game between the two QA accounts, with helpers bound to it. All
-// the turn-shuffling a live test needs lives here so each scenario below reads
-// as the card's own story rather than as bookkeeping.
-async function startGame(p1, p2, spec, cards) {
-  const p1Deck = buildDeck(cards, spec.p1Faction, spec.p1Required)
-  const p2Deck = buildDeck(cards, spec.p2Faction, spec.p2Required)
-
-  async function makeDeck(who, faction, deckCards) {
-    const res = await rest('/decks', {
-      method: 'POST', token: who.token, prefer: 'return=representation',
-      body: { owner_id: who.userId, name: `wave5-smoke-${Date.now()}`, faction, cards: deckCards },
-    })
-    if (res.status >= 300 || !res.body?.[0]?.id) {
-      die(`deck create failed for ${faction} (HTTP ${res.status}): ${JSON.stringify(res.body).slice(0, 300)}`)
-    }
-    return res.body[0].id
-  }
-
-  const p1DeckId = await makeDeck(p1, spec.p1Faction, p1Deck)
-  const p2DeckId = await makeDeck(p2, spec.p2Faction, p2Deck)
-
-  const lobbyRes = await rest('/lobbies', {
-    method: 'POST', token: p1.token, prefer: 'return=representation',
-    body: {
-      host_id: p1.userId, name: `wave5-smoke-${Date.now()}`, status: 'open', host_deck_id: p1DeckId,
-      // All three zones water, and a big base so a stray bombardment cannot
-      // end the game mid-test.
-      settings: { zones: [1, 2, 3].map(() => ({ biome: 'water', baseHp: 5000 })) },
-    },
-  })
-  if (lobbyRes.status >= 300 || !lobbyRes.body?.[0]?.id) {
-    die(`lobby create failed (HTTP ${lobbyRes.status}): ${JSON.stringify(lobbyRes.body).slice(0, 300)}`)
-  }
-  const lobbyId = lobbyRes.body[0].id
-
-  const joined = await fn('lobby-action', p2.token, { action: 'JOIN', lobbyId, deckId: p2DeckId })
-  if (joined.status !== 200) die(`guest join failed (HTTP ${joined.status})`)
-  const started = await fn('lobby-action', p1.token, { action: 'START', lobbyId })
-  if (started.status !== 200) die(`START failed (HTTP ${started.status}): ${JSON.stringify(started.body).slice(0, 300)}`)
-
-  const lobbyNow = await rest(`/lobbies?id=eq.${lobbyId}&select=game_id`, { token: p1.token })
-  const gameId = lobbyNow.body?.[0]?.game_id
-  if (!gameId) die('lobby has no game_id after START')
-
-  const g = {
-    gameId, lobbyId,
-    async load(who = p1) {
-      const res = await rest(`/games?id=eq.${gameId}&select=*`, { token: who.token })
-      if (res.status !== 200 || !res.body?.[0]) die(`game fetch failed (HTTP ${res.status})`)
-      return res.body[0]
-    },
-    async hand(who) {
-      const res = await rest(
-        `/game_players?game_id=eq.${gameId}&player_id=eq.${who.userId}&select=hand`, { token: who.token },
-      )
-      return res.body?.[0]?.hand ?? []
-    },
-    async act(who, action) {
-      const game = await g.load(who)
-      return fn('game-action', who.token, { gameId, expectedVersion: game.version, action })
-    },
-    async sideOf(who) {
-      const game = await g.load(who)
-      return game.player_a === who.userId ? 'a' : 'b'
-    },
-    async activeIs(who) {
-      const game = await g.load(who)
-      return game.active_player === who.userId
-    },
-    // END_TURN until it is `who`'s move.
-    async passTo(who) {
-      const other = who === p1 ? p2 : p1
-      for (let i = 0; i < 8; i++) {
-        if (await g.activeIs(who)) return
-        const res = await g.act(other, { type: 'END_TURN' })
-        if (res.status !== 200) die(`END_TURN failed (HTTP ${res.status}): ${JSON.stringify(res.body).slice(0, 200)}`)
-      }
-      die('could not hand the turn over')
-    },
-    // Play turns until `name` is in `who`'s hand, then hand them the turn.
-    async drawUntil(who, name) {
-      for (let i = 0; i < 30; i++) {
-        const found = (await g.hand(who)).find((c) => c.name === name)
-        if (found) { await g.passTo(who); return (await g.hand(who)).find((c) => c.name === name) }
-        const game = await g.load(who)
-        const active = game.active_player === who.userId ? who : (who === p1 ? p2 : p1)
-        const res = await g.act(active, { type: 'END_TURN' })
-        if (res.status !== 200) die(`END_TURN failed (HTTP ${res.status})`)
-      }
-      die(`${name} never reached the hand in 30 turns`)
-    },
-    // ATTACK_ENEMY_FLEET does not always lock the battle: a Stealthy or
-    // omissible defender raises the response window instead, and the lock —
-    // with it DP2's whole dispatch — happens on RESPOND_TO_ATTACK. Which
-    // branch you get depends on which hulls the deal handed out (Abactor is
-    // Stealthy, Corsair is not), so a harness that skips this passes or fails
-    // by luck. The defender opts nobody out, so every listed hull fights.
-    async lockIfPending(defender) {
-      const game = await g.load(defender)
-      if (!game.state.awaitingResponse) return
-      const res = await g.act(defender, { type: 'RESPOND_TO_ATTACK', optOutIds: [] })
-      if (res.status !== 200) die(`RESPOND_TO_ATTACK failed (HTTP ${res.status}): ${JSON.stringify(res.body).slice(0, 300)}`)
-    },
-    // Run `action` on `who`'s turn, ending turns and retrying while it fails
-    // for want of materials — income is SET to floor(turnNumber) * 75k each
-    // turn, so waiting is how a player affords anything. Any OTHER failure is
-    // returned immediately so the caller's step reports the real error rather
-    // than a timeout.
-    async attempt(who, action, rounds = 8) {
-      let last
-      for (let i = 0; i < rounds; i++) {
-        await g.passTo(who)
-        last = await g.act(who, action)
-        if (last.status === 200) return last
-        if (!JSON.stringify(last.body ?? '').includes('afford')) return last
-        const res = await g.act(who, { type: 'END_TURN' })
-        if (res.status !== 200) die(`END_TURN failed while waiting for materials (HTTP ${res.status})`)
-      }
-      return last
-    },
-    // Deploy the cheapest affordable ship from `who`'s hand into `zoneId`.
-    //
-    // Spans turns on purpose. Income is SET to floor(turnNumber) * 75k at each
-    // turn start, so a player who cannot afford a hull now can afford one two
-    // turns later — and a caller staging three hulls would otherwise blow the
-    // first turn's budget on the first one and then fail. Each pass also draws
-    // a card, so an empty hand fills up too.
-    async deployShip(who, zoneId, rounds = 8) {
-      for (let i = 0; i < rounds; i++) {
-        await g.passTo(who)
-        const game = await g.load(who)
-        const side = game.player_a === who.userId ? 'a' : 'b'
-        const affordable = (await g.hand(who))
-          .filter((c) => c.type === 'vehicle' && c.vehicleType === 'ship' &&
-            c.materialCost <= game.state.resources[side].materials && c.cpCost <= game.state.resources[side].cp)
-          .sort((x, y) => x.materialCost - y.materialCost)
-        for (const card of affordable) {
-          const res = await g.act(who, { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId })
-          if (res.status === 200) return card
-        }
-        const res = await g.act(who, { type: 'END_TURN' })
-        if (res.status !== 200) die(`END_TURN failed while staging (HTTP ${res.status})`)
-      }
-      return null
-    },
-  }
-  return g
-}
-
-async function cleanUp(games, p1) {
-  if (keep) return
-  for (const g of games) await rest(`/lobbies?id=eq.${g.lobbyId}`, { method: 'DELETE', token: p1.token })
-}
 
 // --------------------------------------------------------------------- run
 
@@ -314,6 +55,7 @@ const games = []
 // (guest, OW). Loggerhead is the DWG airship Sub Killer needs as a target.
 {
   const g = await startGame(p1, p2, {
+    label: 'wave5-smoke',
     p1Faction: 'DWG', p1Required: ['Recurring Threat', 'Ongoing Attrition', 'Loggerhead'],
     p2Faction: 'OW', p2Required: ['Sub Killer', 'Sabotage'],
   }, cards)
@@ -498,6 +240,7 @@ const games = []
 // Ambush is a WF card, and no other wave-5 card is, so it needs its own game.
 {
   const g = await startGame(p1, p2, {
+    label: 'wave5-smoke',
     p1Faction: 'WF', p1Required: ['Ambush'],
     p2Faction: 'SS', p2Required: [],
   }, cards)
@@ -556,8 +299,4 @@ const games = []
 
 // ------------------------------------------------------------------ report
 
-await cleanUp(games, p1)
-const passed = results.filter((r) => r.ok).length
-console.log(`\n  ${passed}/${results.length} steps passed`)
-for (const g of games) console.log(`  game ${g.gameId}${keep ? `  (kept — open it at /game/${g.gameId})` : ''}`)
-console.log('')
+await report(games, p1)

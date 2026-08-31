@@ -6,9 +6,10 @@ and `KNOWN_GAPS` is empty for the first time since that pass opened it.
 Everything below is **measured on this branch**, not remembered. Where a number
 here disagrees with an earlier document, believe the number.
 
-⚠ **The live pass has NOT been run.** This wave stops at the PR, by the owner's
-decision, so nothing here has touched production. §6 says exactly what that
-leaves unproven and what the post-merge run must do.
+**Shipped and verified live on 2026-08-31.** PR #25 merged (`874d87c`),
+`game-action` deployed by CI at **v18**, the seed applied by hand, and
+`scripts/smoke-wave6.mjs` green at **56/56** against the deployed backend. §6
+records what the live run proved, and the shorter list of what it did not.
 
 ---
 
@@ -55,7 +56,7 @@ Only one needed a new dispatch point, exactly as the handoff predicted.
 | — of which the implementation plan | ~380 (7% of the diff) | 407 (10%) |
 | mechanical `functions:sync` output | **784** | 668 |
 | seed source + generated SQL | 218 | 8 |
-| `scripts/` | 87 | 508 |
+| `scripts/` — mutation harness, smoke lib, live wave-6 suite | 606 | 508 |
 
 Tests-to-production is **2.8**, against wave 5's 1.8 and wave 4's ~2.0. The
 rise is not padding: 11 of those tests exist only because a mutation survived
@@ -73,7 +74,7 @@ Four places. Each is recorded in the spec or in the code itself.
 | Chrysaor needs "a `resourceSurge` that **raises** the price" | It needs that **and** `extraSpawns` — its text is "costs 100k more **and spawns in a second Chrysaor**". `extraSpawns` already existed, so only half the card was new, but the summary named only half | spec §4.6, departure 1 |
 | "**Five** of the twelve carry `meta: {}`", implying five seed edits | **Seven** cards' `meta` changed: the five empty ones plus Victoria and Judgement, which each gained a price key. `npm run seed:build` was mandatory for all seven | plan §7.4 |
 | Blind spot 5 "was swept clean at close — every one of the 69 registry names is named by a seeded card" (wave 5 close-out) | **Three orphans**, created by the balance pass one day later: `purifierEffect`, `victoriaOnDeath`, `rheaOnPlay`. Deleting a card's meta key orphans its implementation in total silence | G4 (§3) |
-| `smoke-wave5.mjs` is "a **reusable harness** — point its `required` deck lists at your cards rather than writing a third one" | Half true. `startGame` *is* parameterised by `{ p1Faction, p1Required, … }`, but the file **exports nothing** and runs wave 5's scenarios at top level, so importing it runs wave 5's whole suite. Pointing it at wave 6's cards needs the plumbing extracted into a module first — work this wave did not do, because the live pass was deferred | §6 |
+| `smoke-wave5.mjs` is "a **reusable harness** — point its `required` deck lists at your cards rather than writing a third one" | Half true. `startGame` *is* parameterised by `{ p1Faction, p1Required, … }`, but the file **exports nothing** and runs wave 5's scenarios at top level, so importing it runs wave 5's whole suite. Pointing it at wave 6's cards needed the plumbing extracted into a module first, which this wave then did: `scripts/smoke-lib.mjs` | §6 |
 
 The spec itself gained two departures and sixteen §7.3 rulings, all recorded in
 commit `7b4b4b0` **before** any code was written.
@@ -182,97 +183,125 @@ two.
 
 ---
 
-## 6. What is left unverified
+## 6. The live run
 
-### ⚠ The entire live pass
+Deployed and verified on 2026-08-31. `scripts/smoke-wave6.mjs`, three staged
+games against the real backend: **56/56 steps passed**.
 
-**Nothing in this wave has run against the deployed backend.** By the owner's
-decision the branch stops at the PR, so merging is what deploys it (the
-Supabase GitHub integration deploys on merge to `main`, and functions are
-deployed only if declared in `supabase/config.toml` — a failed migrate step
-silently skips the deploy).
+| Step | How it landed |
+|---|---|
+| PR #25 merged | `874d87c` |
+| `game-action` deployed | **v18**, ACTIVE, CI entrypoint (`file:///app/...`) |
+| verified by CONTENT | all 18 wave-6 symbols present in the deployed bundle |
+| seed applied | `supabase/seed/seed_data.sql` by hand — 133 cards + 7 hero powers |
+| `scripts/smoke-wave6.mjs` | **56/56** |
+| `scripts/smoke-wave5.mjs` | **27/27**, re-run on top of wave 6 |
 
-Three things follow, and the first is a real ordering risk:
+### The seed warning was not hypothetical
 
-1. ⚠ **The seed will NOT be applied by merging, and this wave needs it applied.**
-   Merging to `main` runs migrate + deploy — it **never reseeds card data**.
-   The CLI seeds from `[db.seed].sql_paths` (default `supabase/seed.sql`); this
-   repo has no such file and `config.toml` deliberately carries no `[db.seed]`
-   block, so applying card data is a **manual `execute_sql` of
-   `supabase/seed/seed_data.sql`**.
+Production was queried **before** the seed went in, and it looked exactly as
+this section predicted: Albacore, Tarpon, Chrysaor, Paladin and Purifier all
+carried `meta: {}` — **inert, with no error and no log line** — while Victoria
+and Judgement had an `onActivate` and no price key, an ability with no way to
+press it. The four cards whose behaviour lives in a registry name worked fine.
+The merge had already deployed the code; only the seed was missing.
 
-   Seven cards' `meta` changed this wave, which makes that step load-bearing
-   rather than a formality. Merge without it and the deployed code finds
-   Albacore with no `aircraftLock`, Victoria with no `activateMaterialCost`,
-   and Purifier with neither key — **every one of them silently inert**, with
-   no error and no log line, because the guards read the repo rather than the
-   live table (blind spot 6). The four cards whose behaviour lives in a
-   registry name (Basher, Nothung, Balmung, Harbringer) would work; the ones
-   whose behaviour is seeded data would not, and the failure would look like
-   nothing at all.
+### What the live run proved that no unit test could
 
-   There is precedent for exactly this being forgotten: commit `8e124b3`
-   ("Loggerhead drops Scrappy", 2026-08-27) sat on `main` for days while
-   production still carried the old keywords.
-2. **The catalog probe is unproven for four new names.** `nothungOnPlay`,
-   `balmungOnPlay`, `harbringerBattle`, `victoriaActivate` and `blockadeEffect`
-   all carry `{ needsCatalog: true }`, asserted at runtime by unit tests — but
-   the probe itself is edge-function code, outside the root tsconfig, with no
-   test harness. A name the probe cannot supply is a card that never fires, in
-   production only.
-3. **Blockade has never run anywhere but in unit tests.** A battle declared for
-   the player who is **not acting**, out of a play handler, is a shape
-   production has never executed.
+| Proved live | Why a unit test could not |
+|---|---|
+| **The catalog probe for four new names** — Nothung minted a Sacrilego, Balmung a Hydra, Victoria a second Victoria, and the Blockade rider fired | `makeCtx` hands every unit test a catalog, so a missing `{ needsCatalog: true }` or an unreached probe source is invisible until production |
+| **DP7 end to end** — a fleet battle declared on the *deployer's own turn*, with the blockader as aggressor | a battle declared for the player who is not acting, out of a play handler, is a shape production had never executed |
+| **`ZoneState.lostBattleOnTurn` through jsonb** — `{"a":12.5,"b":null}` after the losing side was stamped, and only in the zone that fought | a new `PublicGameState` field has to survive Postgres, which no in-memory test exercises |
+| **`ActiveBattle.continuation` through jsonb** — it rode along and correctly removed nothing, because the blockader held the zone | same |
+| **Seeded data actually driving behaviour** — `aircraftLock`, both `resourceSurge` variants, `activateMaterialCost`, `activateCpCost`, Purifier's two keys | a unit test asserts the CODE reads a key; only this asserts the SEED carries it |
+| **Ruling C-1, in production** — the owner's own aircraft was refused from the locked zone and the **enemy's was not** | the ruling most likely to be wrong, and the one assertion that would have said so |
+| **Ruling B-7** — a surged Paladin landed carrying `["halfCost","temporary"]` and was **culled at the next turn start** | a price-only implementation passes every other assertion; only the cull separates them |
+| **Judgement's live discount** — charged 440,000 against a printed 540,000, off an enemy airship in another zone | the `costModifier` reads the whole enemy board, which needs a real board |
 
-### The post-merge run, in the order it should happen
+### Three harness bugs, and why they are worth recording
 
-1. **Apply `supabase/seed/seed_data.sql` by hand** (`execute_sql`) — merging
-   does not do it (see above) — then confirm `game-action` incremented past
-   **v14**, and verify **by content**, not file count: type-only imports are
-   erased in transpilation, so a correct deploy legitimately reads back with
-   fewer modules. A quick seed check that does not need the whole file:
-   `select name, meta from cards where name in ('Albacore','Victoria','Purifier')`
-   should show `aircraftLock`, `activateMaterialCost` and both Purifier keys.
-2. Grep the deployed bundle for `dispatchDeployWatchers`, `blockadeEffect`,
-   `aircraftLock`, `lostBattleOnTurn`, `activateMaterialCost`.
-3. Drive one game per faction pair. **Blockade deserves its own pass**: prove
-   the rider survives jsonb, that the spring names the **blockader** as
-   aggressor, that the overlay renders for both players, and that the aftermath
-   removes the rider only on a wipe.
-4. Browser-verify in a **fresh tab** — `read_console_messages` returns a
-   cumulative buffer that survives reloads, so pre-fix errors otherwise read as
-   a fix that did not work. Check the Blockade badge renders, Victoria's board
-   button appears with a material-only price, and a locked zone refuses an
-   aircraft.
-5. ⚠ Before any of that, the harness needs extracting: `smoke-wave5.mjs`
-   exports nothing and runs its own scenarios on import (§2). Pull `signIn` /
-   `buildDeck` / `startGame` / `step` into `scripts/smoke-lib.mjs` first, then
-   write the wave-6 spec against it. Three things that harness already knows
-   and a fresh one would have to relearn: `ATTACK_ENEMY_FLEET` does not always
-   lock (a Stealthy or omissible defender raises the response window instead,
-   and the lock — with it DP2's whole dispatch — happens on
-   `RESPOND_TO_ATTACK`); staging spans turns, because income is *set* to
-   `floor(turnNumber) × 75k` rather than accumulated; and **a live test whose
-   result depends on the shuffle is not a test yet**.
+The suite failed twice before it passed, and **not once because of engine
+code** — the same score wave 5's harness got, for the same reason.
 
-### Smaller gaps
+1. **Paladin's "under 240k" clause was tested at 250k.** The Chrysaor step
+   before it had spent down from 450k, leaving the balance on the wrong side of
+   the threshold. Four steps failed and the engine was right every time. The
+   fix is structural: the two threshold cards now have their **own game at a
+   deliberately slow 20k/turn**, where the natural ramp lands inside the window
+   rather than racing past it.
+2. **The cull assertion passed vacuously.** With Paladin never landed, `hull`
+   was `undefined` and `.some(c => c.instanceId === undefined)` is false — so
+   "the Temporary hull was culled" reported **green for a card that was never
+   there**. Wave 5's lesson was that a green test written for a bug you have
+   not yet fixed is a finding; this is its twin, a green test for a card that
+   never played.
+3. **The assertion pinning ruling C-1 could not run**, because no SS aircraft
+   happened to be in hand. It reported a failure rather than a pass, which is
+   the right way round — but the ruling went unverified for a run. Falcon
+   Squadron is `required` now rather than hoped for, and an AIR_SCREEN
+   precondition makes any future failure attributable rather than ambiguous.
 
-- **Victoria's activation chain is unit-tested only.** The ruling (per-hull,
-  per-turn, bounded by materials) is asserted through `applyAction`, but a real
-  three-link chain across one turn's income has never been played.
-- **Purifier has never been deployed for real.** Its prerequisite needs a lost
-  battle in a zone within the last full round — a two-turn setup no unit test
-  fixture has to earn.
-- **Paladin's base damage is unverified in a battle report.** Ruling B-7 makes
-  a surged Paladin deal 120 rather than 240, which only a real report shows.
-- **The `deploy` phase reaches exactly one effect.** If a second card ever
-  wants DP7, the opt-in set is what keeps it from meeting a phase it was not
-  written for — proven by test, never by a second customer.
+The deeper point is the one wave 5 already wrote down and wave 6 re-earned: **a
+live test whose result depends on the shuffle is not a test yet.** Two of these
+three were exactly that.
+
+### The harness is now actually reusable
+
+`scripts/smoke-lib.mjs` holds the plumbing; `smoke-wave5.mjs` and
+`smoke-wave6.mjs` are scenarios only. Re-running wave 5 against the extracted
+lib is what proved the extraction behaviour-preserving — and, incidentally,
+re-verified wave 5's five cards on top of wave 6's changes.
+
+Three capabilities wave 7 inherits rather than rebuilds: `spec.materialsPerTurn`
+(per-lobby income, so an expensive card is reachable in two turns instead of
+nine), and `waitForMaterials` / `spendInto` — the two halves of putting a player
+on a chosen side of a materials threshold. They are two functions rather than
+one because income is **set** at each turn start rather than accumulated, so it
+only ever rises: a low threshold has to be spent into, and a high one waited
+for.
+
+## 6b. What is still unverified
+
+Much shorter than it was, and none of it blocking.
+
+- **Harbringer and Basher never fired.** Both were dealt into game A's WF deck
+  and neither reached a battle before the scenarios needing one had finished.
+  Harbringer's offer is the one that matters: it is the fifth
+  `{ needsCatalog: true }` name and the only one the live run did not exercise.
+  Its four siblings all fired, so the probe *source* they share is proven; what
+  is unproven is that name specifically.
+- **Purifier was only ever refused, never deployed.** The run proved the
+  prerequisite REJECTS a zone with no recorded loss, and proved the loss record
+  is written and survives jsonb — but the accepting path needs the same side to
+  lose a battle and then deploy there, which the scenario ordering did not
+  reach.
+- **Blockade's removal path never ran.** The live battle resolved with the
+  blockader surviving, so the rider remained — the "otherwise it remains" half.
+  "If you lose with no surviving vehicles, the blockade goes away" is
+  unit-tested only.
+- **Victoria's activation chain is unit-tested only.** One activation ran live;
+  a real three-link chain across one turn's income has not.
+- **No browser pass.** The Blockade badge, Victoria's material-priced board
+  button and the locked-zone refusal have never been looked at in the UI. The
+  three smoke games can be kept for exactly that (`--keep`), and
+  `read_console_messages` returns a cumulative buffer that survives reloads, so
+  a fresh tab is the only honest way to read it.
+
+### Two in-flight games hold stale snapshots
+
+Games `6bee3210` (turn 1) and `15b949a5` (turn 6.5) were dealt **before** the
+seed, so their frozen card snapshots carry the old empty `meta` and those
+instances will play vanilla for the rest of those games. That is spec §9.2
+working as designed — code retrofits live games immediately, data never does —
+and it is the same rule that makes reusing a registry name dangerous. Left
+untouched: rewriting live player hands is a decision, not a cleanup.
 
 ### Not built, deliberately
 
-- **Blind spot 6** (generated SQL vs the live `cards` table) — still open, see
-  §5.
+- **Blind spot 6** (generated SQL vs the live `cards` table) — still open, and
+  this wave is its best illustration yet: nothing but a human noticing stood
+  between the merge and six silently inert cards.
 - **`HandBar.tsx`'s `ALL_TRIGGER_KEYS`** still duplicates the registry's
   private list. Wave 6 added no key to `TRIGGERS`, so it did not bite.
 - **SS/WF/GT hero powers** remain unbuilt (spec §10, out of scope throughout).
