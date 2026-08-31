@@ -29,12 +29,9 @@ const KNOWN_GAPS: Record<string, string> = {
   //
   //   new mechanics
   //     DWG:Albacore / DWG:Tarpon  a per-player, per-zone aircraft deploy lock
-  //     SS:Chrysaor                a resourceSurge that RAISES the price
-  //     SS:Paladin                 a resourceSurge that GRANTS halfCost+temporary
   //     SS:Blockade                a rider that fires when the ENEMY deploys
   //     WF:Purifier                a zone deploy prerequisite + "no base damage"
   'DWG:Albacore': 'balance 2026-08-30', 'DWG:Tarpon': 'balance 2026-08-30',
-  'SS:Chrysaor': 'balance 2026-08-30', 'SS:Paladin': 'balance 2026-08-30',
   'SS:Blockade': 'balance 2026-08-30',
   'WF:Purifier': 'balance 2026-08-30',
 }
@@ -184,7 +181,7 @@ describe('built-in card effect coverage', () => {
       expect(Object.values(KNOWN_GAPS).filter((w) => w.startsWith(wave))).toEqual([])
       expect(Object.values(PARTIAL).filter((w) => w.startsWith(wave))).toEqual([])
     }
-    expect(Object.keys(KNOWN_GAPS)).toHaveLength(6)
+    expect(Object.keys(KNOWN_GAPS)).toHaveLength(4)
   })
 
   it('PARTIAL names real cards that currently pass G1 and G2, and never overlaps KNOWN_GAPS', async () => {

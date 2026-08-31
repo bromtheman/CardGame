@@ -838,3 +838,165 @@ describe('captured cards spawn hulls for their captor', () => {
     expect(hulls.map((c) => c.meta.ownerSide)).toEqual(['b', undefined])
   })
 })
+
+// ===========================================================================
+// Wave 6 — resourceSurge's two departures from spec §4.6 (see "4.6 as wave 6
+// extended it"). Chrysaor needs a surge that RAISES the price; Paladin needs
+// one that GRANTS keywords onto the hull, which §4.6 originally ruled out.
+// ===========================================================================
+
+const CHRYSAOR_META = {
+  resourceSurge: { materialsOver: 200_000, extraSpawns: 1, costDelta: 100_000 },
+}
+const PALADIN_META = {
+  resourceSurge: { materialsUnder: 240_000, grantKeywords: [KEYWORDS.HALF_COST, KEYWORDS.TEMPORARY] },
+}
+
+describe('resourceSurge — Chrysaor raises its own price', () => {
+  const chrysaor = () => inst({
+    name: 'Chrysaor', vehicleType: 'ship', materialCost: 100_000,
+    keywords: [KEYWORDS.STEALTHY], meta: CHRYSAOR_META,
+  })
+  const priced = (materials: number) => {
+    const game = makeGame()
+    game.state.resources.a.materials = materials
+    return effectiveCostInGame(game.state, 'a', chrysaor())
+  }
+  const deploy = (materials: number) => {
+    const card = chrysaor()
+    const game = makeGame({ privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } } })
+    game.state.resources.a.materials = materials
+    const r = applyAction(
+      game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx(),
+    )
+    if (!r.ok) throw new Error(r.error)
+    return r.game
+  }
+
+  it('charges the printed price at exactly the threshold — the text says "more than"', () => {
+    expect(priced(200_000)).toBe(100_000)
+  })
+
+  it('charges 100k more strictly above the threshold', () => {
+    expect(priced(200_001)).toBe(200_000)
+  })
+
+  it('lands one hull unsurged and two when surged', () => {
+    expect(deploy(200_000).state.zones[0].cards.a).toHaveLength(1)
+    expect(deploy(200_001).state.zones[0].cards.a).toHaveLength(2)
+  })
+
+  // Ruling B-10, and the exact regression the handoff warned about: pay()
+  // reduces the materials the condition reads, so a post-payment re-read
+  // would flip Chrysaor's own condition off between pricing and spawning.
+  // 200_001 - 200_000 = 1, which is emphatically NOT "more than 200k".
+  it('does not flip its own condition off by paying for itself', () => {
+    const game = deploy(200_001)
+    expect(game.state.resources.a.materials).toBe(1)
+    expect(game.state.zones[0].cards.a).toHaveLength(2)
+  })
+
+  // Ruling B-6. A purchase-price mechanic like every other, so base damage,
+  // repairs and in-battle resources still read the printed 100k.
+  it('leaves effectiveMaterialCostOf and the landed keywords alone', () => {
+    expect(effectiveMaterialCostOf(chrysaor())).toBe(100_000)
+    for (const entry of deploy(200_001).state.zones[0].cards.a) {
+      expect(entry.keywords).toEqual([KEYWORDS.STEALTHY])
+    }
+  })
+})
+
+describe('resourceSurge — Paladin grants keywords onto the hull', () => {
+  const paladin = () => inst({
+    name: 'Paladin', vehicleType: 'ship', materialCost: 240_000, keywords: [], meta: PALADIN_META,
+  })
+  const priced = (materials: number) => {
+    const game = makeGame()
+    game.state.resources.a.materials = materials
+    return effectiveCostInGame(game.state, 'a', paladin())
+  }
+  const deploy = (materials: number, over: Record<string, unknown> = {}) => {
+    const card = inst({ ...paladin(), ...over })
+    const game = makeGame({ privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } } })
+    game.state.resources.a.materials = materials
+    const r = applyAction(
+      game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx(),
+    )
+    if (!r.ok) throw new Error(r.error)
+    return r.game
+  }
+
+  it('charges full price at exactly the threshold — the text says "less than"', () => {
+    expect(priced(240_000)).toBe(240_000)
+  })
+
+  it('halves the price below the threshold', () => {
+    expect(priced(239_999)).toBe(120_000)
+  })
+
+  // Ruling B-7 (spec §4.6, departure 2). BOTH keywords land on the hull,
+  // following the LH flyby hero power, which stamps exactly this pair.
+  it('lands the hull carrying both halfCost and temporary when surged', () => {
+    const entry = deploy(239_999).state.zones[0].cards.a[0]
+    expect([...entry.keywords].sort()).toEqual([KEYWORDS.HALF_COST, KEYWORDS.TEMPORARY].sort())
+  })
+
+  it('lands a plain hull when not surged', () => {
+    expect(deploy(240_000).state.zones[0].cards.a[0].keywords).toEqual([])
+  })
+
+  // The proof that `temporary` really reached the BOARD rather than only the
+  // price: endTurn's cull reads the hull's keyword array, so a Paladin priced
+  // as temporary but not stamped would never despawn.
+  it('a surged Paladin is culled at the next turn start; an unsurged one is not', () => {
+    for (const [materials, survivors] of [[239_999, 0], [240_000, 1]] as const) {
+      const game = deploy(materials)
+      const ended = applyAction(game, 'alice', { type: 'END_TURN' }, makeCtx())
+      if (!ended.ok) throw new Error(ended.error)
+      expect(ended.game.state.zones[0].cards.a).toHaveLength(survivors)
+    }
+  })
+
+  it('stamps the granted keywords onto additionalSpawns copies too', () => {
+    const game = deploy(239_999, { meta: { ...PALADIN_META, additionalSpawns: 1 } })
+    const hulls = game.state.zones[0].cards.a
+    expect(hulls).toHaveLength(2)
+    for (const entry of hulls) expect(entry.keywords).toContain(KEYWORDS.TEMPORARY)
+  })
+
+  it('merges idempotently with a keyword the card already prints', () => {
+    const game = deploy(239_999, { keywords: [KEYWORDS.TEMPORARY] })
+    expect(game.state.zones[0].cards.a[0].keywords.filter((k) => k === KEYWORDS.TEMPORARY)).toHaveLength(1)
+  })
+
+  // Ruling B-8. "CAN be played with" describes the legality the condition
+  // unlocks, not a per-play election — an offer would freeze the game on
+  // every Paladin.
+  it('never suspends on a choice', () => {
+    expect(deploy(239_999).state.pendingEffect).toBeNull()
+  })
+})
+
+// Ruling B-9's other arm. A surge with no grantKeywords of its own is still a
+// Half-Cost SUPPRESSION, so the two older cards must be byte-for-byte
+// unchanged by the extension above. Deliberately a separate test rather than
+// trusting the block near PREDATOR_META to notice.
+describe('resourceSurge — PredatorX and Orbit still lose Half-Cost', () => {
+  const priced = (materials: number, meta: Record<string, unknown>, cost: number) => {
+    const game = makeGame()
+    game.state.resources.a.materials = materials
+    return effectiveCostInGame(
+      game.state, 'a', inst({ materialCost: cost, keywords: [KEYWORDS.HALF_COST], meta }),
+    )
+  }
+
+  it('PredatorX pays full price when surged and half when not', () => {
+    expect(priced(120_001, PREDATOR_META, 120_000)).toBe(120_000)
+    expect(priced(120_000, PREDATOR_META, 120_000)).toBe(60_000)
+  })
+
+  it('Orbit pays full price when surged and half when not', () => {
+    expect(priced(140_000, ORBIT_META, 140_000)).toBe(140_000)
+    expect(priced(139_999, ORBIT_META, 140_000)).toBe(70_000)
+  })
+})

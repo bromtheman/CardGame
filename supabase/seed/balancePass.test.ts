@@ -159,6 +159,24 @@ describe('2026-08-30 balance pass', () => {
   // The Repentance is the sharp one: a WF PLANE at exactly 100_000. It is
   // excluded by the vehicleType filter alone, so this assertion is what
   // proves that filter is doing work.
+  // Both surges are compared FIELD BY FIELD rather than for mere presence:
+  // resourceSurge is a DATA_EFFECT_KEY, so G2 closes both cards on the key
+  // existing and never looks at what is in it. A mistyped comparator
+  // (materialsOver where the card says "less than") would leave a card that
+  // is inert AND invisible — no guard failure, and no "plays as vanilla" note
+  // either.
+  it('Chrysaor surges over 200k for +100k and a second hull', async () => {
+    expect((await bySeedKey()).get('SS:Chrysaor')!.meta?.resourceSurge).toEqual({
+      materialsOver: 200_000, extraSpawns: 1, costDelta: 100_000,
+    })
+  })
+
+  it('Paladin surges UNDER 240k, granting halfCost and temporary', async () => {
+    expect((await bySeedKey()).get('SS:Paladin')!.meta?.resourceSurge).toEqual({
+      materialsUnder: 240_000, grantKeywords: ['halfCost', 'temporary'],
+    })
+  })
+
   // Victoria's text says "spend 200k resources" — a MATERIAL price, the first
   // in the game. Same silent-pair trap as Judgement below: without the key the
   // card has a registered ability and no way to press it.
