@@ -1,7 +1,7 @@
 import type { Side } from '@shared/engine/engineTypes'
 import type { ZoneEffect } from '@shared/engine/gameInit'
 
-export type ZoneEffectIcon = 'anchor'
+export type ZoneEffectIcon = 'anchor' | 'crosshair' | 'torpedo' | 'noSubs' | 'ghostShip'
 
 export interface ZoneEffectBadge {
   key: string
@@ -21,6 +21,29 @@ const ZONE_EFFECT_DISPLAY: Record<string, { icon: ZoneEffectIcon; label: string;
     label: 'DWG Waters',
     text: 'Claimed as DWG Waters for the rest of the game.',
   },
+  // Wave 5's riders. Ambush's badge is not decoration: "deploy after the
+  // defending player" is a rule the DEFENDER has to follow in From The
+  // Depths, so both players must be able to see it before the fight.
+  ambushEffect: {
+    icon: 'crosshair',
+    label: 'Ambush',
+    text: 'This turn, their next attack here deploys last and starts 600m closer.',
+  },
+  ongoingAttritionEffect: {
+    icon: 'torpedo',
+    label: 'Ongoing Attrition',
+    text: 'This turn, activating this zone while out-numbering also grinds the enemy base.',
+  },
+  subKillerEffect: {
+    icon: 'noSubs',
+    label: 'Sub Killer',
+    text: 'This turn, they may not play a GT vehicle into this zone.',
+  },
+  recurringThreatEffect: {
+    icon: 'ghostShip',
+    label: 'Recurring Threat',
+    text: 'A destroyed vehicle may be summoned back into their defensive battles here.',
+  },
 }
 
 // Badges to draw on one zone panel. `zoneEffects` may be undefined on game
@@ -32,12 +55,16 @@ export function zoneEffectBadges(
   mySide: Side,
 ): ZoneEffectBadge[] {
   const badges: ZoneEffectBadge[] = []
-  for (const effect of zoneEffects ?? []) {
+  for (const [index, effect] of (zoneEffects ?? []).entries()) {
     if (effect.zoneId !== zoneId) continue
     const display = ZONE_EFFECT_DISPLAY[effect.effect]
     if (!display) continue
     badges.push({
-      key: `${effect.effect}-${effect.side}-${effect.zoneId}`,
+      // The array index is in the key because effect+side+zone is NOT unique:
+      // one side may plant several Recurring Threats on one zone, each
+      // remembering a different hull, and two duplicate React keys would make
+      // the second badge disappear.
+      key: `${effect.effect}-${effect.side}-${effect.zoneId}-${index}`,
       icon: display.icon,
       label: display.label,
       detail: `Player ${effect.side.toUpperCase()} — ${display.text}`,

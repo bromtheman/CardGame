@@ -39,15 +39,28 @@ export interface ZoneState {
   lastActivatedTurn: number | null
 }
 
-// A persistent, board-visible marker a card leaves on one zone for one side
-// (e.g. DWG Waters). Keyed by the registry effect name so the next persistent
-// zone card reuses the same array and the same UI badge slot.
+// A board-visible marker a card leaves on one zone for one side (DWG Waters,
+// and wave 5's four riders). Keyed by the registry effect name so the next
+// zone card reuses the same array, the same lock dispatch and the same UI
+// badge slot.
+//
+// The two optional fields are wave 5's (spec §4.3, "DP5 as wave 5 built it").
+// Neither needs a normalizeState default: ABSENT already means what every row
+// written before them means — permanent, and carrying no state.
 export interface ZoneEffect {
   effect: string
   zoneId: number
   side: 'a' | 'b'
   cardName: string
   setOnTurn: number
+  // Expire at the end of this half-turn, in endTurn's ending-side pass.
+  // Absent = permanent (DWG Waters, Recurring Threat).
+  expiresOnTurn?: number
+  // Effect-owned rider state, the same bag PendingEffect.data and
+  // BattleContinuation.data already are. `drawOnExpiry: true` is read by
+  // endTurn itself (Ambush, Ongoing Attrition); everything else is read only
+  // by the effect that wrote it (Recurring Threat's remembered hull).
+  data?: Record<string, unknown>
 }
 
 // One suspension slot (spec §4.2). An effect needing a decision writes this
@@ -99,7 +112,14 @@ export interface PublicGameState {
   log: string[]
   factions: { a: string; b: string }
   alertCard: { side: 'a' | 'b'; instanceId: string; name: string; setOnTurn: number } | null
-  scheduled: { type: 'changeOrderDraw'; side: 'a' | 'b'; dueTurn: number }[]
+  // Deferred work, processed in endTurn. A real discriminated union since
+  // wave 5: changeOrderDraw is delivered to the INCOMING side (a full round
+  // later), sabotageWatch resolves for the ENDING side at the close of the
+  // turn that scheduled it (spec §4.3, "DP5 as wave 5 built it").
+  scheduled: (
+    | { type: 'changeOrderDraw'; side: 'a' | 'b'; dueTurn: number }
+    | { type: 'sabotageWatch'; side: 'a' | 'b'; dueTurn: number; instanceId: string }
+  )[]
   zoneEffects: ZoneEffect[]
   pendingEffect: PendingEffect | null
 }

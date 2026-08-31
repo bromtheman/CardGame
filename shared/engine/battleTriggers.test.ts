@@ -2,7 +2,7 @@ import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type { BattleContext, EngineGame, Side, ZoneCardEntry } from './engineTypes.ts'
 import {
   battleOutcome, canRevive, discardSnapshotOf, dispatchBaseAttackVictory, dispatchBattleLock,
-  dispatchBattleResolve, reviveEntry, sacrificeEntry,
+  dispatchBattleResolve, dispatchZoneActivation, reviveEntry, sacrificeEntry,
 } from './index.ts'
 import type { BattleParticipant } from './index.ts'
 import { registerEffect } from '../effects/registry.ts'
@@ -184,20 +184,32 @@ describe('dispatchBattleLock', () => {
     expect(names()).toEqual([])
   })
 
-  it('fires a zoneEffects rider for the defending side only', () => {
+  // Spec §4.3, DP2 departure 8. Wave 4 built this source defender-only,
+  // because DWG Waters was its only customer; wave 5's Ambush and Ongoing
+  // Attrition are ATTACKER-side riders, so both sides are dispatched and each
+  // rider reads its own isDefender rather than a hard-coded true.
+  it('fires zoneEffects riders on BOTH sides of the battle, each with its own isDefender', () => {
     const g = makeGame()
     const atk = zoneEntry({}); const def = zoneEntry({})
     g.state.zones[0].cards.a.push(atk); g.state.zones[0].cards.b.push(def)
     g.state.zoneEffects.push(
-      { effect: 't_riderSpy', zoneId: 1, side: 'b', cardName: 'Rider', setOnTurn: 1 },
+      { effect: 't_riderSpy', zoneId: 1, side: 'b', cardName: 'DefenderRider', setOnTurn: 1 },
       { effect: 't_riderSpy', zoneId: 1, side: 'a', cardName: 'AggressorRider', setOnTurn: 1 },
       { effect: 't_riderSpy', zoneId: 2, side: 'b', cardName: 'OtherZoneRider', setOnTurn: 1 },
     )
     lock(g, { attackerIds: [atk.instanceId], defenderIds: [def.instanceId] })
-    dispatchBattleLock(g, makeCtx({ catalog: [{ ...zoneEntry({ name: 'Rider' }) }] }), false)
-    expect(fired.map((f) => f.card)).toEqual(['Rider'])
+    dispatchBattleLock(g, makeCtx({
+      catalog: [
+        { ...zoneEntry({ name: 'DefenderRider' }) }, { ...zoneEntry({ name: 'AggressorRider' }) },
+        { ...zoneEntry({ name: 'OtherZoneRider' }) },
+      ],
+    }), false)
+    // Zone 2's rider is still out of scope; order follows the zoneEffects array.
+    expect(fired.map((f) => f.card)).toEqual(['DefenderRider', 'AggressorRider'])
     expect(fired[0].actor).toBe('b')
     expect(fired[0].battle).toMatchObject({ phase: 'lock', isDefender: true, isParticipant: false })
+    expect(fired[1].actor).toBe('a')
+    expect(fired[1].battle).toMatchObject({ phase: 'lock', isDefender: false, isParticipant: false })
   })
 
   it('skips a rider whose cardName is missing from the catalog, without failing', () => {
@@ -303,6 +315,39 @@ describe('dispatchBaseAttackVictory', () => {
       phase: 'baseAttack', zoneId: 1, isDefender: false, isParticipant: true,
       forced: false, survived: true, won: true,
     })
+  })
+})
+
+// Spec §4.3, DP2 departure 9. dispatchZoneInterception serves the DEFENDER's
+// riders; this is its mirror for the side actually bombarding, which is the
+// only way an attacker-side rider (Ongoing Attrition) can see a bombardment.
+describe('dispatchZoneActivation', () => {
+  const riders = (g: EngineGame) => {
+    g.state.zoneEffects.push(
+      { effect: 't_riderSpy', zoneId: 1, side: 'a', cardName: 'MyRider', setOnTurn: 1 },
+      { effect: 't_riderSpy', zoneId: 1, side: 'b', cardName: 'TheirRider', setOnTurn: 1 },
+      { effect: 't_riderSpy', zoneId: 3, side: 'a', cardName: 'ElsewhereRider', setOnTurn: 1 },
+    )
+  }
+  const catalog = ['MyRider', 'TheirRider', 'ElsewhereRider'].map((name) => ({ ...zoneEntry({ name }) }))
+
+  it('fires only the acting side’s riders on that zone, as a non-defender', () => {
+    const g = makeGame()
+    riders(g)
+    dispatchZoneActivation(g, makeCtx({ catalog }), 1, 'a')
+    expect(fired.map((f) => f.card)).toEqual(['MyRider'])
+    expect(fired[0].actor).toBe('a')
+    expect(fired[0].battle).toMatchObject({
+      phase: 'baseAttack', zoneId: 1, isDefender: false, isParticipant: false,
+      forced: false, survived: false, won: false,
+    })
+  })
+
+  it('logs, rather than throwing, when a rider reports failure', () => {
+    const g = makeGame()
+    g.state.zoneEffects.push({ effect: 't_failing', zoneId: 1, side: 'a', cardName: 'Broken', setOnTurn: 1 })
+    dispatchZoneActivation(g, makeCtx({ catalog: [{ ...zoneEntry({ name: 'Broken' }) }] }), 1, 'a')
+    expect(g.state.log.some((l) => l.includes('Broken'))).toBe(true)
   })
 })
 

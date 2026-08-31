@@ -28,7 +28,17 @@ triggers them. Prereq: skim [architecture.md](architecture.md) for engine basics
   names in this set; without it the effect runs against an empty catalog and
   400s on every real play. ⚠ **Unit tests cannot catch a missing flag**, because
   they hand-build `ctx.catalog` via `makeCtx`. This is a production-only failure:
-  green suite, dead card. The probe's three sources are in [supabase.md](supabase.md).
+  green suite, dead card. The probe's four sources are in [supabase.md](supabase.md).
+- ⚠ **A `state.zoneEffects` rider needs the flag even when it reads no
+  catalog.** `fireRider` (`battleTriggers.ts`) mints the rider's payload card
+  from `ctx.catalog` by `cardName`, because the card that planted the marker
+  was spent turns ago. Without the flag the probe never loads a catalog, the
+  lookup misses, and the rider is skipped — in production only. Four effects
+  carry it for this reason (`dwgWatersEffect`, `ambushEffect`,
+  `ongoingAttritionEffect`, `recurringThreatEffect`); Sub Killer's rider is
+  pure data that never needs to *run*, so being skipped costs it nothing.
+  `factionEffects.test.ts` asserts all five at runtime, which is the only way
+  to check a flag rather than a comment.
 - Implemented DWG effects live in `shared/effects/dwgEffects.ts`; its import in
   `shared/engine/index.ts` is what registers them.
 
@@ -64,6 +74,15 @@ invisible: the guard stays green and no "plays as vanilla" note is logged
 either. **A data key whose VALUE the engine compares needs its own seed-backed
 assertion** — `battleDeclare.test.ts`'s "the two real seeded cards carry
 exactly the value the engine compares" is the worked example.
+
+**A second, separate vocabulary of plain data lives in `ZoneEffect.data`** —
+written by an effect at play time rather than seeded on a card, so no guard
+inspects it and the warning above does not apply. Two of its keys are read by
+the **engine**: `drawOnExpiry` (`endTurn`) and `blocksFaction`
+(`legalZonesFor`). Both are deliberately rules rather than effect-name checks,
+so the next card wanting the same rule needs no engine edit — the same
+reasoning that made `defensiveOmission` a data key. Everything else in `data`
+is private to the effect that wrote it (Recurring Threat's remembered hull).
 
 ⚠ **An activated ability needs two meta keys, and nothing checks that.**
 `ACTIVATE_VEHICLE` requires both `onActivate` (a registered name) and
@@ -292,7 +311,10 @@ actually dispatches for that type. Implementing a new dispatch point without
 adding its key there means the first card you close immediately fails G3 — and
 the failure reads as "this card is mis-wired", not "the table is out of date".
 Wave 2 added `onActivate` to the `vehicle` row for exactly this reason;
-`onBattleEffect` and the rest are not there yet.
+`onBattleEffect`, `onBattleVictory` and `onBattleDefeat` were added in wave 4
+for the same reason. Wave 5 needed no new row: DP5's riders are dispatched from
+`state.zoneEffects` under the `playOn*` key their card already carried, so they
+introduce no trigger key at all — the same reason DWG Waters added nothing.
 
 ### `KNOWN_GAPS` vs `PARTIAL` — pick the right one
 
@@ -309,7 +331,12 @@ stale-entry assertion rejects it. That is what `PARTIAL` exists for. It opened
 in wave 2 with Plunderer and DWG Waters, and wave 4 closed both, so it is
 currently empty and waiting for the next partly-built card.
 
-Five guard blind spots remain open and are not going to close on their own:
+**Both maps are empty as of wave 5**, and both stay asserted over — the
+`toHaveLength(0)` on `KNOWN_GAPS` is what stops a newly-seeded card with an
+unimplemented effect name being added quietly. Adding a card to either map is
+now a deliberate act with a visible diff, which is exactly what it should be.
+
+Six guard blind spots remain open and are not going to close on their own:
 
 1. A card that has left `KNOWN_GAPS` is no longer checked at all (Garrison's
    trigger key can be reverted today with the suite green).
@@ -334,15 +361,35 @@ Five guard blind spots remain open and are not going to close on their own:
    ahead of seeding the card that uses it, grep the seed source for the name
    before calling the task done.
 
+6. ⚠ **Nothing compares the generated SQL to the LIVE `cards` table** — the
+   widest of the six, found in wave 5 by asking production what it actually
+   holds. G1/G2/G3 read `loadSeedData()`, and `seedDataSync.test.ts` compares
+   the source to `seed_data.sql`; the chain stops there. Production currently
+   serves **133** built-in cards where the seed produces **123**, and seven of
+   them name eight effects that do not exist (`balmungOnPlay`,
+   `blockadeEffect`, `nothungOnPlay`, `victoriaActivate`, `basherOnDeath`,
+   `harbringerBattle`, `judgementActivate`, `judgementCostModifier`). Six of
+   those cards appear in no commit in this repo at all. They play vanilla and
+   log the note, so nothing is broken — but they are the §1 audit's original
+   complaint, alive and invisible to every check. The seed is an idempotent
+   upsert on `id`, so applying it corrects a *drifted* row (Victoria); it
+   cannot remove an orphan the source never had.
+
 Two older ones are closed: a partly-built card passing G1/G2 despite
 incomplete text (wave 2's `PARTIAL` map above), and a `seed_data.sql` that had
 drifted from `source/*.js` (wave 3's `seedDataSync.test.ts`).
 
-`PARTIAL` is **empty** as of wave 4 — both of its entries were closed by the
-wave that owned them. `KNOWN_GAPS` holds 17: wave 5's original five, plus the
-twelve the 2026-08-30 balance pass added (labelled `balance 2026-08-30`, and
-enumerated with the mechanic each one needs in a comment above the map). The
-assertion loops waves 1-4 over both maps, so a reopened entry fails the build.
+**`PARTIAL` is empty as of wave 5**, and so is every wave's share of
+`KNOWN_GAPS` — all 65 of the spec's cards are built. The wave assertion loops
+all five waves over both maps, so a reopened entry fails the build.
+
+`KNOWN_GAPS` itself is **not** empty: the 2026-08-30 balance pass added twelve
+cards (labelled `balance 2026-08-30`, each with the mechanic it needs named in
+a comment above the map), and `expect(Object.keys(KNOWN_GAPS)).toHaveLength(12)`
+is what stops a thirteenth being added quietly. Four are one-liners over
+primitives that already exist (`SS:Nothung`, `SS:Balmung`, `WF:Basher`,
+`WF:Harbringer`); the other eight need engine work first. Whoever closes one
+deletes its entry and decrements that literal in the same commit.
 
 Four of those twelve are one-liners over primitives that already exist
 (`SS:Nothung`, `SS:Balmung`, `WF:Basher`, `WF:Harbringer`); the other eight

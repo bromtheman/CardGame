@@ -33,6 +33,28 @@ describe('zoneEffectBadges', () => {
     expect(new Set(badges.map((b) => b.key)).size).toBe(2)
   })
 
+  // Wave 5: effect + side + zone is no longer unique. One player may plant
+  // several Recurring Threats on one zone, each remembering a different hull.
+  it('gives two identical markers on one zone distinct keys', () => {
+    const threat = (): ZoneEffect => ({
+      effect: 'recurringThreatEffect', zoneId: 1, side: 'a', cardName: 'Recurring Threat', setOnTurn: 2,
+    })
+    const badges = zoneEffectBadges([threat(), threat()], 1, 'a')
+    expect(badges).toHaveLength(2)
+    expect(new Set(badges.map((b) => b.key)).size).toBe(2)
+  })
+
+  it.each([
+    ['ambushEffect', 'Ambush'],
+    ['ongoingAttritionEffect', 'Ongoing Attrition'],
+    ['subKillerEffect', 'Sub Killer'],
+    ['recurringThreatEffect', 'Recurring Threat'],
+  ])('renders a badge for %s', (effect, label) => {
+    const [badge] = zoneEffectBadges([waters({ effect, cardName: label })], 1, 'a')
+    expect(badge.label).toBe(label)
+    expect(badge.detail).toContain('Player A')
+  })
+
   it('tolerates state written before zoneEffects existed', () => {
     expect(zoneEffectBadges(undefined, 1, 'a')).toEqual([])
   })

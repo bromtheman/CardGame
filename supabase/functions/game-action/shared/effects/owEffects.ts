@@ -1,11 +1,12 @@
 import {
-  choice, drawFromPool, enemyVehicleOptions, grant, grantKeywords, sacrificeToSave,
+  choice, drawFromPool, enemyVehicleOptions, grant, grantKeywords, sacrificeToSave, sequence,
   spawnVehicles, summonHulls, whenPlayed, zoneOccupants,
 } from './primitives.ts'
 import { registerEffect } from './registry.ts'
-import { GT_HEAVY_AIRSHIP_MIN_COST, KEYWORDS, VEHICLE_TYPES } from '../gameSettings.ts'
-import type { ZoneCardEntry } from '../engine/engineTypes.ts'
-import { copyMeta, zoneById } from '../engine/gameEngine.ts'
+import type { EffectFn } from './registry.ts'
+import { FACTIONS, GT_HEAVY_AIRSHIP_MIN_COST, KEYWORDS, VEHICLE_TYPES } from '../gameSettings.ts'
+import type { Side, ZoneCardEntry } from '../engine/engineTypes.ts'
+import { copyMeta, discardCard, findVehicle, otherSide, zoneById } from '../engine/gameEngine.ts'
 import { moveEntry } from '../engine/heroPowers.ts'
 import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
 
@@ -18,6 +19,85 @@ registerEffect('palisadeEffect', grant({ draw: 1 }))
 registerEffect('javelinOnDeath', grant({ draw: 1 }))
 registerEffect('bulwarkOnPlay', grant({ cp: 2 }))
 registerEffect('maceEffect', grant({ cp: 1 }))
+
+// "Target an enemy submarine, plane, or airship vehicle in a zone that you do
+// not have a GT vehicle in. Remove it from play but you cannot play a GT
+// vehicle into that zone for the rest of the turn."
+//
+// DP5's zone half (spec §4.3, "DP5 as wave 5 built it"), and the one rider
+// this wave that is never dispatched: its marker is plain data, read by
+// legalZonesFor off `data.blocksFaction`. It still LIVES in state.zoneEffects
+// and so is still handed a battle payload at every lock in that zone, which is
+// what the `battle` guard below is for.
+//
+// "Remove it from play" is deliberately not "destroy" — Recurring Threat, one
+// wave-mate away, says destroy and means it (spec §7.3, decision 28). So the
+// hull leaves through discardCard, the single exit every card takes (a
+// captured hull still goes home, a summonOnly one still never reaches a
+// discard), and NO onDeathEffect fires.
+//
+// No { needsCatalog: true }: nothing here reads the catalog, and a lock
+// dispatch that cannot mint its payload card simply skips a rider that had
+// nothing to do anyway.
+const SUB_KILLER_TARGETS: readonly string[] = [
+  VEHICLE_TYPES.SUB, VEHICLE_TYPES.PLANE, VEHICLE_TYPES.AIRSHIP,
+]
+
+registerEffect('subKillerEffect', ({ game, actor, card, targetInstanceId, battle }) => {
+  if (battle) return true
+  if (typeof targetInstanceId !== 'string') return false
+  const found = findVehicle(game.state, targetInstanceId)
+  if (!found || found.side !== otherSide(actor)) return false
+  if (!SUB_KILLER_TARGETS.includes(found.entry.vehicleType ?? '')) return false
+  // "…in a zone that you do not have a GT vehicle in" — the actor's own hulls,
+  // by faction. Read before anything is removed, so a refusal costs nothing.
+  if (found.zone.cards[actor].some((c) => c.faction === FACTIONS.GT)) return false
+
+  const enemy = found.side
+  found.zone.cards[enemy] = found.zone.cards[enemy].filter((c) => c.instanceId !== targetInstanceId)
+  discardCard(game, enemy, found.entry)
+  game.state.zoneEffects.push({
+    effect: 'subKillerEffect', zoneId: found.zone.id, side: actor, cardName: card.name,
+    setOnTurn: game.turnNumber, expiresOnTurn: game.turnNumber,
+    // Generic rather than keyed off this effect's own name: placement.ts reads
+    // the rule, not the card, so the next blocking rider needs no engine edit
+    // — the same reasoning that made defensiveOmission a data key (spec §4.8).
+    data: { blocksFaction: FACTIONS.GT },
+  })
+  game.state.log.push(
+    `${found.entry.name} is removed from play — player ${actor.toUpperCase()} may deploy no GT vehicle to zone ${found.zone.id} this turn`,
+  )
+  return true
+})
+
+// "Target a vehicle and give it FRAGILE. If it survives the turn, draw a
+// card." Unrestricted as to side — the text says only "a vehicle" — and
+// Fragile's own rule (never repairable, at any HP) is what makes the target
+// likelier to die than to pay off.
+//
+// DP5's vehicle half, and the only wave-5 rider that fits §4.3's original
+// prediction exactly: it watches an instance rather than a zone, so it has
+// nothing to badge and nothing to dispatch at lock. endTurn's ending-side
+// pass resolves it while the board still stands as it did when the turn
+// ended — which is also what makes a Temporary hull count as having survived,
+// since the cull runs at the NEXT turn's start.
+const sabotageWatch: EffectFn = ({ game, actor, targetInstanceId }) => {
+  if (typeof targetInstanceId !== 'string') return false
+  const found = findVehicle(game.state, targetInstanceId)
+  if (!found) return false
+  game.state.scheduled.push({
+    type: 'sabotageWatch', side: actor, dueTurn: game.turnNumber, instanceId: targetInstanceId,
+  })
+  // The hull is on the board and its keywords render there, so naming it
+  // leaks nothing.
+  game.state.log.push(`${found.entry.name} is sabotaged — Fragile, and watched until the turn ends`)
+  return true
+}
+
+registerEffect('sabotageEffect', sequence(
+  grantKeywords({ keywords: [KEYWORDS.FRAGILE], target: 'field' }),
+  sabotageWatch,
+))
 
 const gtAirship = drawFromPool({
   source: 'catalog', filter: { faction: 'GT', vehicleType: 'airship' }, count: 1,
@@ -185,46 +265,95 @@ const TREBUCHET = 'trebuchetEffect'
 // payload built from the zoneId stashed at declare time reaches this exact
 // options()/resolve() pair, so "you may repeat this effect" IS (a) asked
 // again — not a second mechanism.
-const trebuchetChoice = choice({
-  effect: TREBUCHET,
-  prompt: 'Have Trebuchet battle an enemy vehicle from this zone in a 1v1?',
-  options: ({ game, actor, targetZoneId }) => (
-    typeof targetZoneId === 'number' ? enemyVehicleOptions(game, actor, targetZoneId) : []
-  ),
-  data: ({ targetZoneId }) => ({ zoneId: targetZoneId }),
-  resolve: (payload, choiceId) => {
-    // Empty options (no enemy vehicle in the zone) land here too — do
-    // nothing and return true, so Trebuchet still deploys (or, on a repeat,
-    // still ends quietly) without a suspension. This IS "you may": declining
-    // via `cancel` on a non-empty offer is the other half.
-    if (choiceId === null) return true
-    const { game, actor, card, ctx } = payload
-    const zoneId = payload.pending?.data?.zoneId
-    if (typeof zoneId !== 'number') return false
-    // Re-confirm the target is still legal — RESOLVE_PENDING_EFFECT's own
-    // zoneId/targetInstanceId fields are client-supplied and unvalidated;
-    // only choiceId (checked against pending.options by choice() itself) and
-    // this server-side re-check are trusted, the same guard Braveheart and
-    // Eclipse both carry (docs/claude/card-effects.md).
-    if (!enemyVehicleOptions(game, actor, zoneId).some((o) => o.id === choiceId)) return false
-    return declareForcedBattle(game, ctx, {
-      zoneId,
-      aggressor: actor,
-      attackerIds: [card.instanceId],
-      defenderIds: [choiceId],
-      cause: card.name,
-      // Names itself: DECIDE_BATTLE_REPORT re-enters TREBUCHET with this once
-      // the battle resolves (spec §4.3, departure 3). Only zoneId is stashed:
-      // entry (c) has no other route back to it, but the win/survive test now
-      // comes off the engine's own outcome rather than a declare-time
-      // defenderIds snapshot — see (c) below.
-      continuation: { effect: TREBUCHET, side: actor, card, data: { zoneId } },
-    })
-  },
-})
+// The repeat is bounded by the hulls that were in the zone when the CHAIN
+// began, not by whatever is in it now. Spec §7.3 always claimed the repeat
+// "terminates on the zone's population"; that was true only while a zone's
+// population could not grow mid-chain, and Dryad — which board-spawns a
+// replacement whenever it is dragged into a defensive battle, forced ones
+// included — made it false. A Trebuchet fighting a Dryad destroys it, the
+// Dryad's own lock trigger has already replaced it, and the offer comes round
+// again forever.
+//
+// Fixing Trebuchet rather than Dryad keeps both cards' printed text intact:
+// Dryad still triggers on every defensive battle (and §7.3's Catshark ruling
+// already says a forced battle IS a battle), while Trebuchet's chain now
+// terminates provably — `chainIds` is fixed at chain start, every iteration
+// requires destroying one of them, so the eligible list strictly shrinks.
+//
+// `chainIds === null` means "this IS the chain start": take the zone as it
+// stands and freeze it.
+function trebuchetChoiceFor(chainIds: string[] | null) {
+  const eligible = (game: Parameters<typeof enemyVehicleOptions>[0], actor: Side, zoneId: number) => {
+    const inZone = enemyVehicleOptions(game, actor, zoneId)
+    return chainIds === null ? inZone : inZone.filter((o) => chainIds.includes(o.id))
+  }
+  return choice({
+    effect: TREBUCHET,
+    prompt: 'Have Trebuchet battle an enemy vehicle from this zone in a 1v1?',
+    options: ({ game, actor, targetZoneId }) => (
+      typeof targetZoneId === 'number' ? eligible(game, actor, targetZoneId) : []
+    ),
+    data: ({ game, actor, targetZoneId }) => ({
+      zoneId: targetZoneId,
+      // Re-derived at every entry as (still in the zone) ∩ (already in the
+      // chain), so it only ever NARROWS: a hull destroyed by the last battle
+      // drops out, and one spawned mid-chain was never in it to begin with.
+      // That monotone shrink is the termination argument.
+      chainIds: typeof targetZoneId === 'number'
+        ? eligible(game, actor, targetZoneId).map((o) => o.id)
+        : [],
+    }),
+    resolve: (payload, choiceId) => {
+      // Empty options (no eligible enemy left) land here too — do nothing and
+      // return true, so Trebuchet still deploys (or, on a repeat, still ends
+      // quietly) without a suspension. This IS "you may": declining via
+      // `cancel` on a non-empty offer is the other half.
+      if (choiceId === null) return true
+      const { game, actor, card, ctx } = payload
+      const zoneId = payload.pending?.data?.zoneId
+      const stashedChain = payload.pending?.data?.chainIds
+      if (typeof zoneId !== 'number' || !Array.isArray(stashedChain)) return false
+      const chain = stashedChain.filter((id): id is string => typeof id === 'string')
+      // Re-confirm the target is still legal AND still in the chain's frozen
+      // set — RESOLVE_PENDING_EFFECT's own zoneId/targetInstanceId fields are
+      // client-supplied and unvalidated; only choiceId (checked against
+      // pending.options by choice() itself) and this server-side re-check are
+      // trusted, the same guard Braveheart and Eclipse both carry
+      // (docs/claude/card-effects.md).
+      // Defence in depth only: choice() has already checked choiceId against
+      // pending.options, which were built from this same filtered set, so no
+      // test can kill this line. It exists so options and the chain cannot
+      // silently diverge if either is ever computed differently.
+      if (!chain.includes(choiceId)) return false
+      if (!enemyVehicleOptions(game, actor, zoneId).some((o) => o.id === choiceId)) return false
+      return declareForcedBattle(game, ctx, {
+        zoneId,
+        aggressor: actor,
+        attackerIds: [card.instanceId],
+        defenderIds: [choiceId],
+        cause: card.name,
+        // Names itself: DECIDE_BATTLE_REPORT re-enters TREBUCHET with this once
+        // the battle resolves (spec §4.3, departure 3). zoneId and chainIds are
+        // stashed because entry (c) has no other route back to either; the
+        // win/survive test comes off the engine's own outcome rather than a
+        // declare-time defenderIds snapshot — see (c) below.
+        continuation: { effect: TREBUCHET, side: actor, card, data: { zoneId, chainIds: chain } },
+      })
+    },
+  })
+}
 
 registerEffect(TREBUCHET, (payload) => {
-  if (payload.continuation === undefined) return trebuchetChoice(payload)
+  if (payload.continuation === undefined) {
+    // (a) on play: no chain yet, so the zone as it stands becomes the chain.
+    // (b) re-entry after an answer: the chain was frozen on (a) and lives in
+    //     pending.data, which resolve() reads back directly.
+    const stashed = payload.pending?.data?.chainIds
+    const chain = Array.isArray(stashed)
+      ? stashed.filter((id): id is string => typeof id === 'string')
+      : null
+    return trebuchetChoiceFor(chain)(payload)
+  }
 
   // (c): the battle this card forced has just resolved. activeBattle is
   // already null (DECIDE_BATTLE_REPORT nulls it before firing the
@@ -245,13 +374,16 @@ registerEffect(TREBUCHET, (payload) => {
   // because it is computed after repairs.
   const { game, continuation, battle } = payload
   const zoneId = continuation.data?.zoneId
-  if (typeof zoneId !== 'number') return true
+  const stashedChain = continuation.data?.chainIds
+  if (typeof zoneId !== 'number' || !Array.isArray(stashedChain)) return true
   if (!zoneById(game.state, zoneId)) return true
   if (!battle || !battle.survived || !battle.won) return true
-  // A clean win: re-offer (a)'s choice in the same zone. The repeat is
-  // unbounded but self-limiting (spec §7.3) — nothing here caps it; an empty
-  // zone just lets the choice above's own empty-options rule end it quietly.
-  return trebuchetChoice({
+  // A clean win: re-offer (a)'s choice, over the SAME frozen set. The win
+  // destroyed one of them, so the eligible list is strictly smaller than it
+  // was — which is what makes the repeat terminate rather than merely tend to
+  // (spec §7.3). An emptied list falls through choice()'s own empty-options
+  // rule and ends the chain quietly.
+  return trebuchetChoiceFor(stashedChain.filter((id): id is string => typeof id === 'string'))({
     game, actor: continuation.side, card: continuation.card, ctx: payload.ctx, targetZoneId: zoneId,
   })
 })

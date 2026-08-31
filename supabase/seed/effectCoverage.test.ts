@@ -13,13 +13,13 @@ const EXEMPT: Record<string, string> = {
   'SS:Falcon Squadron': 'Robotic-shaped conduct text: players apply it when reporting results',
 }
 
-// The gaps not yet closed (Falcon Squadron is permanently EXEMPT above),
-// baselined so the guard is green from day one. Delete entries as their wave
-// lands — the "KNOWN_GAPS contains no stale entries" test below rejects
-// stale ones, so this list only shrinks.
+// The gaps not yet closed (Falcon Squadron is permanently EXEMPT above).
+// Delete entries as their wave lands — the "KNOWN_GAPS contains no stale
+// entries" test below rejects stale ones, so this list only shrinks.
+//
+// The five effect-coverage waves emptied it: all 65 of the spec's cards are
+// built. Everything left arrived AFTER them, from the 2026-08-30 balance pass.
 const KNOWN_GAPS: Record<string, string> = {
-  'WF:Ambush': 'wave 5', 'DWG:Ongoing Attrition': 'wave 5', 'OW:Sub Killer': 'wave 5',
-  'DWG:Recurring Threat': 'wave 5', 'OW:Sabotage': 'wave 5',
   // The 2026-08-30 balance pass seeded twelve cards whose text needs behaviour
   // the engine does not have yet. Every one plays vanilla and logs a note at
   // play time (spec §3.9); none of them silently half-works.
@@ -181,12 +181,16 @@ describe('built-in card effect coverage', () => {
     expect(stale).toEqual([])
   })
 
-  it('waves 1-4 are complete — only wave-5 entries remain', () => {
-    for (const wave of ['wave 1', 'wave 2', 'wave 3', 'wave 4']) {
+  // All five effect-coverage waves are done, so nothing labelled for one may
+  // reappear. The count is deliberately exact rather than `toHaveLength(0)`:
+  // it is what stops a thirteenth gap being added quietly, and it must be
+  // decremented by whoever closes one.
+  it('all five waves are complete — only the 2026-08-30 balance pass remains', () => {
+    for (const wave of ['wave 1', 'wave 2', 'wave 3', 'wave 4', 'wave 5']) {
       expect(Object.values(KNOWN_GAPS).filter((w) => w.startsWith(wave))).toEqual([])
       expect(Object.values(PARTIAL).filter((w) => w.startsWith(wave))).toEqual([])
     }
-    expect(Object.keys(KNOWN_GAPS)).toHaveLength(17)
+    expect(Object.keys(KNOWN_GAPS)).toHaveLength(12)
   })
 
   it('PARTIAL names real cards that currently pass G1 and G2, and never overlaps KNOWN_GAPS', async () => {

@@ -6,9 +6,17 @@ import { shortHandNumber } from '@shared/format'
 import { MiniVehicle } from './MiniVehicle'
 import type { ZoneEffectBadge, ZoneEffectIcon } from './zoneEffectBadges'
 import anchorIcon from '../../assets/icons/anchorSVG.svg'
+import crosshairIcon from '../../assets/icons/crosshairSVG.svg'
+import torpedoIcon from '../../assets/icons/torpedoSVG.svg'
+import noSubsIcon from '../../assets/icons/noSubsSVG.svg'
+import ship2Icon from '../../assets/icons/ship2SVG.svg'
 
 const ZONE_EFFECT_ICONS: Record<ZoneEffectIcon, string> = {
   anchor: anchorIcon,
+  crosshair: crosshairIcon,
+  torpedo: torpedoIcon,
+  noSubs: noSubsIcon,
+  ghostShip: ship2Icon,
 }
 
 const BIOME_TINT: Record<string, string> = {

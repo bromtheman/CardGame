@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { LOG_MAX_ENTRIES } from '../gameSettings'
 import { applyAction, effectiveCostInGame, normalizeState } from './index'
 import { takeFromEnemyDeck } from '../effects/primitives.ts'
+import type { PublicGameState } from './gameInit.ts'
 import { inst, makeCtx, makeGame, snap, zoneEntry } from './testFixtures'
 
 describe('guards', () => {
@@ -571,5 +572,149 @@ describe('battle-freeze admits what the pending check already allowed (wave 3 fi
     game.state.activeBattle = battle()
     const res = applyAction(game, 'alice', { type: 'END_TURN' }, makeCtx())
     expect(res).toMatchObject({ ok: false, status: 409 })
+  })
+})
+
+// DP5's turn-end pass (spec §4.3, "DP5 as wave 5 built it"). It runs for the
+// side whose turn is ENDING, before the turn number moves, which is the whole
+// reason it exists: the older scheduled loop below it runs after the flip and
+// serves the INCOMING side, so the earliest it can fire for the acting player
+// is a full round later — and every wave-5 tail reads "…the turn", meaning the
+// actor's own (spec §7.3).
+describe('END_TURN — rest-of-turn riders expire for the ending side', () => {
+  const rider = (over: Partial<PublicGameState['zoneEffects'][number]> = {}) => ({
+    effect: 't_riderEffect', zoneId: 1, side: 'a' as const,
+    cardName: 'Test Rider', setOnTurn: 2, ...over,
+  })
+
+  it('a permanent rider (no expiresOnTurn) survives both sides ending their turns', () => {
+    const g = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+    g.state.zoneEffects = [rider()]
+    const first = applyAction(g, 'alice', { type: 'END_TURN' }, makeCtx())
+    if (!first.ok) throw new Error(first.error)
+    const second = applyAction(first.game, 'bob', { type: 'END_TURN' }, makeCtx())
+    if (!second.ok) throw new Error(second.error)
+    expect(second.game.state.zoneEffects).toHaveLength(1)
+  })
+
+  it('a rest-of-turn rider is removed at its OWN side\u2019s END_TURN', () => {
+    const g = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+    g.state.zoneEffects = [rider({ expiresOnTurn: 2 })]
+    const r = applyAction(g, 'alice', { type: 'END_TURN' }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.zoneEffects).toEqual([])
+  })
+
+  it('the opponent ending their turn does not expire it', () => {
+    const g = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+    // b's rider, set on b's own turn 1.5; alice is the one ending turn 2.
+    g.state.zoneEffects = [rider({ side: 'b', setOnTurn: 1.5, expiresOnTurn: 1.5 })]
+    const r = applyAction(g, 'alice', { type: 'END_TURN' }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.zoneEffects).toHaveLength(1)
+  })
+
+  it('data.drawOnExpiry draws exactly one card for the ending side and logs it', () => {
+    const g = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+    g.privates.a.deck = [inst(), inst()]
+    g.state.counts.a.deck = 2
+    g.state.zoneEffects = [rider({ expiresOnTurn: 2, data: { drawOnExpiry: true } })]
+    const r = applyAction(g, 'alice', { type: 'END_TURN' }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.privates.a.hand).toHaveLength(1)
+    expect(r.game.state.counts.a).toEqual({ hand: 1, deck: 1 })
+    expect(r.game.state.log.some((l) => l.includes('Test Rider') && l.includes('unused'))).toBe(true)
+  })
+
+  it('a rider without drawOnExpiry draws nothing', () => {
+    const g = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+    g.privates.a.deck = [inst(), inst()]
+    g.state.counts.a.deck = 2
+    g.state.zoneEffects = [rider({ expiresOnTurn: 2 })]
+    const r = applyAction(g, 'alice', { type: 'END_TURN' }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.privates.a.hand).toHaveLength(0)
+  })
+
+  it('leaves changeOrderDraw to the incoming-side loop that owns it', () => {
+    const g = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+    // Due NOW for the ending side by number — the new pass must still not
+    // touch it, because it switches on type.
+    g.state.scheduled = [{ type: 'changeOrderDraw', side: 'a', dueTurn: 2 }]
+    const r = applyAction(g, 'alice', { type: 'END_TURN' }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.scheduled).toEqual([{ type: 'changeOrderDraw', side: 'a', dueTurn: 2 }])
+  })
+
+  it('a sabotageWatch draws when its hull is still on the board, and is dropped', () => {
+    const g = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+    const target = zoneEntry({ name: 'Doomed', keywords: ['fragile'] })
+    g.state.zones[0].cards.b.push(target)
+    g.privates.a.deck = [inst(), inst()]
+    g.state.counts.a.deck = 2
+    g.state.scheduled = [
+      { type: 'sabotageWatch', side: 'a', dueTurn: 2, instanceId: target.instanceId },
+    ]
+    const r = applyAction(g, 'alice', { type: 'END_TURN' }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.privates.a.hand).toHaveLength(1)
+    expect(r.game.state.scheduled).toEqual([])
+  })
+
+  it('a sabotageWatch belonging to the OTHER side is carried forward, not resolved', () => {
+    const g = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+    const target = zoneEntry({ name: 'Doomed' })
+    g.state.zones[0].cards.a.push(target)
+    g.privates.b.deck = [inst(), inst()]
+    g.state.counts.b.deck = 2
+    const watch = {
+      type: 'sabotageWatch' as const, side: 'b' as const, dueTurn: 2, instanceId: target.instanceId,
+    }
+    g.state.scheduled = [watch]
+    const r = applyAction(g, 'alice', { type: 'END_TURN' }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.scheduled).toEqual([watch])
+    // b drew exactly one card — its ordinary turn draw, not a second from the watch.
+    expect(r.game.privates.b.hand).toHaveLength(1)
+  })
+
+  it('a sabotageWatch that is not yet due is carried forward', () => {
+    const g = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+    const target = zoneEntry({ name: 'Doomed' })
+    g.state.zones[0].cards.b.push(target)
+    g.privates.a.deck = [inst(), inst()]
+    g.state.counts.a.deck = 2
+    const watch = {
+      type: 'sabotageWatch' as const, side: 'a' as const, dueTurn: 4, instanceId: target.instanceId,
+    }
+    g.state.scheduled = [watch]
+    const r = applyAction(g, 'alice', { type: 'END_TURN' }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.scheduled).toEqual([watch])
+    expect(r.game.privates.a.hand).toHaveLength(0)
+  })
+
+  it('a rider whose expiresOnTurn is still ahead survives', () => {
+    const g = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+    g.privates.a.deck = [inst(), inst()]
+    g.state.counts.a.deck = 2
+    g.state.zoneEffects = [rider({ expiresOnTurn: 4, data: { drawOnExpiry: true } })]
+    const r = applyAction(g, 'alice', { type: 'END_TURN' }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.zoneEffects).toHaveLength(1)
+    expect(r.game.privates.a.hand).toHaveLength(0)
+  })
+
+  it('a sabotageWatch whose hull has gone draws nothing, and is still dropped', () => {
+    const g = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+    g.privates.a.deck = [inst(), inst()]
+    g.state.counts.a.deck = 2
+    g.state.scheduled = [
+      { type: 'sabotageWatch', side: 'a', dueTurn: 2, instanceId: 'gone-in-battle' },
+    ]
+    const r = applyAction(g, 'alice', { type: 'END_TURN' }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.privates.a.hand).toHaveLength(0)
+    expect(r.game.state.scheduled).toEqual([])
   })
 })
