@@ -5,7 +5,7 @@ import {
 } from '../gameSettings.ts'
 import {
   catalogCard, costDelta, choice, drawFromPool, enemyVehicleOptions, grant, grantKeywords,
-  sacrificeToSave, sequence, spawnInto, summonHulls,
+  sacrificeToSave, sequence, spawnInto, spawnVehicles, summonHulls,
 } from './primitives.ts'
 import { registerEffect } from './registry.ts'
 import type { EngineGame, Side } from '../engine/engineTypes.ts'
@@ -19,6 +19,21 @@ registerEffect('victoriaOnDeath', grant({ draw: 1 }))
 registerEffect('trondheimOnDeath', grant({ draw: 1 }))
 registerEffect('maelstromOnPlay', grant({ cp: 1 }))
 
+// "Whenever this vehicle is played into a zone, also create a friendly
+// Sacrilego in that zone." Spawning is not playing (spec §7.4), which skips
+// the spawned hull's onPlayEffect and NOTHING else — so the Sacrilego keeps
+// its printed onBattleEffect and will fire it when it fights (spec §7.3,
+// wave 6). That is the point of naming Sacrilego rather than a vanilla hull.
+registerEffect('nothungOnPlay', spawnVehicles({
+  cardName: 'Sacrilego', count: 1, zones: 'target',
+}), { needsCatalog: true })
+
+// Orphaned by the 2026-08-30 balance pass, which replaced Victoria's
+// draw-on-death text with an activated ability and dropped the key. Kept
+// registered rather than deleted: a game dealt before that pass carries a
+// frozen snapshot still naming it, and the name must never be reused for
+// anything else (spec §9.2). Rhea, below, is the same story — the pass
+// retired the card outright.
 registerEffect('rheaOnPlay', drawFromPool({
   source: 'catalog',
   filter: { faction: 'SS', vehicleType: 'plane', maxCost: RHEA_MAX_PLANE_COST - 1 },

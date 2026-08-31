@@ -3095,3 +3095,78 @@ describe('wave 5 — Sabotage', () => {
     expect(ended.game.privates.a.hand).toHaveLength(0)
   })
 })
+
+// ===========================================================================
+// Wave 6 — the twelve cards of the 2026-08-30 balance pass.
+//
+// Driven through applyAction wherever a handler is part of what is being
+// proved. A direct effectFor() call would pass even if the seeded meta key or
+// the handler wiring were wrong.
+// ===========================================================================
+
+describe('wave 6 — SS Nothung', () => {
+  const sacrilegoSnap = snap({
+    name: 'Sacrilego', faction: 'SS', vehicleType: 'ship', materialCost: 80_000,
+    keywords: ['scrappy', 'stealthy', 'mobile'],
+    meta: { onBattleEffect: 'sacrilegoBattle' },
+  })
+  const nothung = () => inst({
+    name: 'Nothung', faction: 'SS', vehicleType: 'ship', materialCost: 0,
+    keywords: ['blocker'], meta: { onPlayEffect: 'nothungOnPlay' },
+  })
+  const nothungCtx = () => makeCtx({ catalog: [sacrilegoSnap] })
+
+  function play(zoneId: number) {
+    const card = nothung()
+    const game = makeGame({ privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } } })
+    const r = applyAction(
+      game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId }, nothungCtx(),
+    )
+    if (!r.ok) throw new Error(r.error)
+    return r.game
+  }
+
+  it('puts a friendly Sacrilego into the zone Nothung was played into', () => {
+    const game = play(1)
+    expect(game.state.zones[0].cards.a.map((c) => c.name)).toEqual(['Nothung', 'Sacrilego'])
+    // …and nowhere else, on neither side.
+    expect(game.state.zones[1].cards.a).toEqual([])
+    expect(game.state.zones[0].cards.b).toEqual([])
+  })
+
+  it('follows Nothung into whichever zone it was played into', () => {
+    const game = play(2)
+    expect(game.state.zones[1].cards.a.map((c) => c.name)).toEqual(['Nothung', 'Sacrilego'])
+    expect(game.state.zones[0].cards.a).toEqual([])
+  })
+
+  // Ruling A-1 (spec §7.3, wave 6). Spawning is not playing skips
+  // onPlayEffect and NOTHING else, so the spawned hull's own battle trigger
+  // survives — which is why the card names Sacrilego rather than a vanilla
+  // hull. Asserted rather than assumed: the alternative is discovering it in
+  // a battle report.
+  it('the spawned Sacrilego keeps its printed battle trigger', () => {
+    const spawned = play(1).state.zones[0].cards.a.find((c) => c.name === 'Sacrilego')!
+    expect(spawned.meta.onBattleEffect).toBe('sacrilegoBattle')
+    expect(spawned.keywords).toEqual(['scrappy', 'stealthy', 'mobile'])
+  })
+
+  it('fails the play when the catalog has no Sacrilego — a data bug, not an empty pool', () => {
+    const card = nothung()
+    const game = makeGame({ privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } } })
+    const r = applyAction(
+      game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx(),
+    )
+    expect(r.ok).toBe(false)
+  })
+})
+
+// The wave-6 half of the needsCatalog check (handoff trap 4). Same reasoning
+// as the rider block above: makeCtx hands every test a catalog, so a missing
+// flag is invisible to unit tests and shows up only as a dead card in
+// production. Asserted at runtime rather than by reading the source.
+describe('wave 6 — effects that must carry needsCatalog', () => {
+  it.each(['nothungOnPlay'])(
+    '%s', (name) => { expect(CATALOG_EFFECTS.has(name)).toBe(true) },
+  )
+})
