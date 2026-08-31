@@ -100,6 +100,13 @@ export const GT_HEAVY_AIRSHIP_MIN_COST = 400_000 // spec §7.3: the GT airship c
 // (spec §7.3, wave 6).
 export const JUDGEMENT_DISCOUNT = 100_000
 
+// Purifier: "a zone in which you have lost a fleet battle the previous turn".
+// Turn numbers advance in HALF steps, so this window (1.0) is one full round —
+// the actor's own previous turn plus the opponent's half-turn between, current
+// turn included. Reading it as the strictly-previous half-step would admit only
+// a defensive loss, which the card does not say (spec §7.3, wave 6).
+export const PURIFIER_LOSS_WINDOW_TURNS = 1
+
 export const MARAUDER_DISCOUNT = 50_000  // Marauder: enemy vehicle costs 50k less
 export const EXCALIBUR_COST_DELTA = -200_000 // Excalibur: AI ship in hand costs 200k less
 export const REPAIRMEN_READY_DRAW_MAX_COST = 400_000 // Repairmen Ready draws below this

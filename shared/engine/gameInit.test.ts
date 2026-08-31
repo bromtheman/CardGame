@@ -139,3 +139,15 @@ describe('snapshotCard', () => {
     }).keywords).toEqual([])
   })
 })
+
+// Wave 6 — the second half of the normalizeState pair (the first is in
+// gameEngine.test.ts). A new PublicGameState field needs BOTH, always:
+// a default for rows already in the DB, and an initial value for new games.
+describe('buildInitialGame — lostBattleOnTurn', () => {
+  it('starts every zone with no recorded loss on either side', () => {
+    const { game } = build([0.1])
+    for (const zone of game.state.zones) {
+      expect(zone.lostBattleOnTurn).toEqual({ a: null, b: null })
+    }
+  })
+})

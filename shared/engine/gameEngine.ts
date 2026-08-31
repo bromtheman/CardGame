@@ -107,6 +107,18 @@ export function normalizeState(state: PublicGameState): void {
   if (s.zoneEffects === undefined) s.zoneEffects = []
   if (s.pendingEffect === undefined) s.pendingEffect = null
   for (const zone of state.zones) {
+    // Wave 6's per-zone battle-loss record. Repaired half-written rather than
+    // replaced wholesale: an older row has no key at all, but a partially
+    // written one must keep the side it does carry.
+    const z = zone as unknown as Record<string, unknown>
+    if (z.lostBattleOnTurn === undefined || z.lostBattleOnTurn === null) {
+      z.lostBattleOnTurn = { a: null, b: null }
+    } else {
+      const record = z.lostBattleOnTurn as Partial<Record<Side, number | null>>
+      for (const side of ['a', 'b'] as Side[]) {
+        if (record[side] === undefined) record[side] = null
+      }
+    }
     for (const side of ['a', 'b'] as Side[]) {
       for (const entry of zone.cards[side] as Partial<ZoneCardEntry>[]) {
         if (entry.playedOnTurn === undefined) entry.playedOnTurn = 0

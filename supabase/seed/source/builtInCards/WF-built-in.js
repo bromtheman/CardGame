@@ -71,6 +71,14 @@ export const wfVehicles = [
         blueprintId: null,
         keywords: [KEYWORDS.HALF_COST, KEYWORDS.FRAGILE],
         meta: {
+            // "Can only be played into a zone in which you have lost a fleet
+            // battle the previous turn" — read by legalZonesFor against the
+            // per-zone lostBattleOnTurn record (spec §7.3, wave 6).
+            deployRequiresBattleLoss: true,
+            // "This vehicle does no damage to the enemy base." A
+            // baseStrikersIn exclusion, NOT the INOFFENSIVE keyword, which
+            // would also stop it attacking a fleet.
+            noBaseDamage: true,
         }
     },
     {

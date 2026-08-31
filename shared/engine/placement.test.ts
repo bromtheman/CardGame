@@ -1102,3 +1102,85 @@ describe('aircraftLock — Albacore and Tarpon', () => {
     }
   })
 })
+
+// ===========================================================================
+// Wave 6 — WF Purifier: "This ship can only be played into a zone in which you
+// have lost a fleet battle the previous turn."
+//
+// Ruling C-5 (spec §7.3, wave 6): "the previous turn" is the last FULL round,
+// current turn included — lostBattleOnTurn >= turnNumber - 1. The counter moves
+// in half steps, so the strictly-previous half-turn is the OPPONENT'S, and
+// reading it that way would admit only a defensive loss.
+// ===========================================================================
+
+describe('deployRequiresBattleLoss — Purifier', () => {
+  const purifier = () => inst({
+    name: 'Purifier', faction: 'WF', vehicleType: 'ship', materialCost: 760_000,
+    keywords: [KEYWORDS.HALF_COST, KEYWORDS.FRAGILE],
+    meta: { deployRequiresBattleLoss: true, noBaseDamage: true },
+  })
+  // turnNumber 4: the window opens at 3 and takes everything at or above it.
+  const zones = (place: (g: ReturnType<typeof makeGame>) => void, turnNumber = 4) => {
+    const g = makeGame({ turnNumber })
+    place(g)
+    return legalZonesFor(g.state, 'a', purifier(), turnNumber)
+  }
+
+  it('offers no zone at all with no recorded loss', () => {
+    expect(zones(() => {})).toEqual([])
+  })
+
+  it('offers exactly the zone the actor lost in', () => {
+    expect(zones((g) => { g.state.zones[1].lostBattleOnTurn.a = 4 })).toEqual([2])
+  })
+
+  it('reads a loss on THIS turn — fresher wreckage is still wreckage', () => {
+    expect(zones((g) => { g.state.zones[0].lostBattleOnTurn.a = 4 })).toEqual([1])
+  })
+
+  // The two sides of the ruling C-5 boundary. 4 - 1 = 3 is the actor's own
+  // previous turn; 2.5 was a full round and a half ago.
+  it('admits a loss one full turn back and refuses one older', () => {
+    expect(zones((g) => { g.state.zones[0].lostBattleOnTurn.a = 3 })).toEqual([1])
+    expect(zones((g) => { g.state.zones[0].lostBattleOnTurn.a = 3.5 })).toEqual([1])
+    expect(zones((g) => { g.state.zones[0].lostBattleOnTurn.a = 2.5 })).toEqual([])
+    expect(zones((g) => { g.state.zones[0].lostBattleOnTurn.a = 2 })).toEqual([])
+  })
+
+  it('ignores a loss the ENEMY suffered in that zone', () => {
+    expect(zones((g) => { g.state.zones[0].lostBattleOnTurn.b = 4 })).toEqual([])
+  })
+
+  it('still obeys biome legality on top of the prerequisite', () => {
+    // Zone 3 is land, and Purifier is a ship — a loss there earns nothing.
+    expect(zones((g) => { g.state.zones[2].lostBattleOnTurn.a = 4 })).toEqual([])
+  })
+
+  it('PLAY_CARD_TO_ZONE refuses a zone with no loss and allows one with', () => {
+    for (const [record, ok] of [[null, false], [4, true]] as const) {
+      const g = makeGame({ turnNumber: 4 })
+      const card = purifier()
+      g.privates.a.hand = [card]
+      g.state.counts.a.hand = 1
+      g.state.resources.a.materials = 1_000_000
+      g.state.zones[0].lostBattleOnTurn.a = record
+      const r = applyAction(
+        g, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx(),
+      )
+      expect(r.ok).toBe(ok)
+    }
+  })
+
+  it('leaves every other card untouched by the prerequisite', () => {
+    const g = makeGame({ turnNumber: 4 })
+    expect(legalZonesFor(g.state, 'a', inst({ vehicleType: 'ship' }), 4)).toEqual([1, 2])
+  })
+
+  it('only a truthy deployRequiresBattleLoss gates — a mistyped value does not', () => {
+    for (const value of [false, null, 0, 'true']) {
+      const g = makeGame({ turnNumber: 4 })
+      const card = inst({ ...purifier(), meta: { deployRequiresBattleLoss: value } })
+      expect(legalZonesFor(g.state, 'a', card, 4)).toEqual([1, 2])
+    }
+  })
+})

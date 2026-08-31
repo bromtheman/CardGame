@@ -159,6 +159,14 @@ describe('2026-08-30 balance pass', () => {
   // The Repentance is the sharp one: a WF PLANE at exactly 100_000. It is
   // excluded by the vehicleType filter alone, so this assertion is what
   // proves that filter is doing work.
+  // Purifier's WHOLE card text is these two keys, and it names no effect
+  // either. Two rules, two values, both compared rather than merely present.
+  it('Purifier carries both of its data rules', async () => {
+    expect((await bySeedKey()).get('WF:Purifier')!.meta).toMatchObject({
+      deployRequiresBattleLoss: true, noBaseDamage: true,
+    })
+  })
+
   // Albacore and Tarpon carry NO registry name at all — their one sentence is
   // a placement rule read straight off this key, so this assertion is the only
   // thing standing between a typo and two inert cards that no guard notices.

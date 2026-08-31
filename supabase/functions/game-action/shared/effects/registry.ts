@@ -82,8 +82,11 @@ const ALL_META_KEYS = [...Object.values(TRIGGERS), 'costModifier']
 // `aircraftLock` (wave 6) joins them for the same reason: Albacore and Tarpon
 // print one sentence, that sentence IS a placement rule read by
 // legalZonesFor, and neither card carries a registry name at all.
+// Purifier's two (wave 6) are both here for the same reason: its whole card
+// text is those two rules, and it names no effect at all.
 export const DATA_EFFECT_KEYS = [
   'additionalSpawns', 'resourceSurge', 'defensiveOmission', 'aircraftLock',
+  'deployRequiresBattleLoss', 'noBaseDamage',
 ] as const
 
 // Spec §3.9: cards referencing unimplemented effects play as vanilla, with a

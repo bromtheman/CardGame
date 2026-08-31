@@ -29,9 +29,7 @@ const KNOWN_GAPS: Record<string, string> = {
   //
   //   new mechanics
   //     SS:Blockade                a rider that fires when the ENEMY deploys
-  //     WF:Purifier                a zone deploy prerequisite + "no base damage"
   'SS:Blockade': 'balance 2026-08-30',
-  'WF:Purifier': 'balance 2026-08-30',
 }
 
 // Cards that pass G2 — they resolve at least one implemented effect — but
@@ -179,7 +177,7 @@ describe('built-in card effect coverage', () => {
       expect(Object.values(KNOWN_GAPS).filter((w) => w.startsWith(wave))).toEqual([])
       expect(Object.values(PARTIAL).filter((w) => w.startsWith(wave))).toEqual([])
     }
-    expect(Object.keys(KNOWN_GAPS)).toHaveLength(2)
+    expect(Object.keys(KNOWN_GAPS)).toHaveLength(1)
   })
 
   it('PARTIAL names real cards that currently pass G1 and G2, and never overlaps KNOWN_GAPS', async () => {

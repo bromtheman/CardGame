@@ -1,4 +1,6 @@
-import { ADDITIONAL_SPAWNS_CAP, KEYWORDS, VEHICLE_TYPES, ZONE_TYPES } from '../gameSettings.ts'
+import {
+  ADDITIONAL_SPAWNS_CAP, KEYWORDS, PURIFIER_LOSS_WINDOW_TURNS, VEHICLE_TYPES, ZONE_TYPES,
+} from '../gameSettings.ts'
 import type { CardInstance, PublicGameState } from './gameInit.ts'
 import type { ApplyResult, EngineContext, EngineGame, Side, ZoneCardEntry } from './engineTypes.ts'
 import {
@@ -68,14 +70,42 @@ function riderBlocks(state: PublicGameState, side: Side, zoneId: number, faction
   )
 }
 
-export function legalZonesFor(state: PublicGameState, side: Side, card: CardInstance): number[] {
+// WF Purifier: "This ship can only be played into a zone in which you have
+// lost a fleet battle the previous turn" (spec §7.3, wave 6).
+//
+// A PREREQUISITE rather than a block — it narrows the legal set to the zones
+// that satisfy it, where every other rule here removes zones from it. Read off
+// `deployRequiresBattleLoss`, another data key, so the rule outlives the card.
+//
+// "The previous turn" is the last full ROUND, current turn included:
+// turnNumber moves in half steps, so the strictly-previous half-turn is the
+// opponent's, and reading it that way would admit only a defensive loss —
+// a restriction the card does not print. `turnNumber - 1` is the start of the
+// actor's own previous turn, which is what wave 5's "the turn is the actor's
+// own frame" ruling already points at.
+function battleLossMissing(
+  state: PublicGameState, side: Side, zoneId: number, card: CardInstance, turnNumber: number,
+): boolean {
+  if (card.meta.deployRequiresBattleLoss !== true) return false
+  const zone = state.zones.find((z) => z.id === zoneId)
+  const lost = zone?.lostBattleOnTurn?.[side]
+  return typeof lost !== 'number' || lost < turnNumber - PURIFIER_LOSS_WINDOW_TURNS
+}
+
+// `turnNumber` is REQUIRED rather than optional, for the reason
+// ZoneCardEntry's stamps are: tsc then finds every call site, including the
+// three in the frontend, instead of silently defaulting one of them.
+export function legalZonesFor(
+  state: PublicGameState, side: Side, card: CardInstance, turnNumber: number,
+): number[] {
   if (card.type !== 'vehicle' || card.vehicleType === null) return []
   return state.zones
     .filter((z) => (
       biomeAllows(card.vehicleType, z.biome) &&
       !screenBlocks(state, side, z.id, card.vehicleType!) &&
       !aircraftLocked(state, side, z.id, card.vehicleType!) &&
-      !riderBlocks(state, side, z.id, card.faction)
+      !riderBlocks(state, side, z.id, card.faction) &&
+      !battleLossMissing(state, side, z.id, card, turnNumber)
     ))
     .map((z) => z.id)
 }
@@ -288,7 +318,7 @@ registerHandler('PLAY_CARD_TO_ZONE', (game, actor, action, ctx) => {
     return err(400, 'Ability cards are played without a zone')
   }
   if (!canAffordInGame(game, actor, card)) return err(400, 'You cannot afford that card')
-  if (card.type === 'vehicle' && !legalZonesFor(game.state, actor, card).includes(action.zoneId)) {
+  if (card.type === 'vehicle' && !legalZonesFor(game.state, actor, card, game.turnNumber).includes(action.zoneId)) {
     return err(400, 'That vehicle cannot deploy to that zone')
   }
   if (card.type !== 'vehicle' && !zoneById(game.state, action.zoneId)) {
@@ -423,7 +453,7 @@ registerHandler('PLAY_CARD_TARGETING_CARD_IN_HAND', (game, actor, action, ctx) =
   // or not, exactly as before.
   if (
     card.type === 'vehicle'
-    && (typeof action.zoneId !== 'number' || !legalZonesFor(game.state, actor, card).includes(action.zoneId))
+    && (typeof action.zoneId !== 'number' || !legalZonesFor(game.state, actor, card, game.turnNumber).includes(action.zoneId))
   ) {
     return err(400, 'That vehicle cannot deploy to that zone')
   }

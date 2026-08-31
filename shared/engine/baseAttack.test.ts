@@ -144,3 +144,58 @@ describe('DP2 on a base bombardment', () => {
     expect(baseDamageFrom(entries, 3)).toBe(40)
   })
 })
+
+// Wave 6 — WF Purifier: "this vehicle does no damage to the enemy base."
+//
+// A baseStrikersIn exclusion, NOT the INOFFENSIVE keyword, which also means
+// "cannot attack a fleet" — something Purifier can do (spec §7.3, wave 6).
+describe('noBaseDamage', () => {
+  const purifier = (over: Record<string, unknown> = {}) => zoneEntry({
+    name: 'Purifier', vehicleType: 'ship', materialCost: 760_000,
+    playedOnTurn: 1, meta: { noBaseDamage: true }, ...over,
+  })
+
+  it('contributes nothing to a bombardment its allies still land', () => {
+    const g = makeGame({ turnNumber: 3 })
+    g.state.zones[0].cards.a.push(zoneEntry({ name: 'Gunship', materialCost: 100_000, playedOnTurn: 1 }))
+    g.state.zones[0].cards.a.push(purifier())
+    const before = g.state.zones[0].baseHp.b
+    const r = applyAction(g, 'alice', { type: 'ATTACK_ENEMY_BASE', zoneId: 1 }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    // 100k / BASE_DAMAGE_DIVISOR = 100, and not a point more.
+    expect(r.game.state.zones[0].baseHp.b).toBe(before - 100)
+  })
+
+  it('a zone holding only Purifiers cannot bombard at all', () => {
+    const g = makeGame({ turnNumber: 3 })
+    g.state.zones[0].cards.a.push(purifier())
+    expect(applyAction(g, 'alice', { type: 'ATTACK_ENEMY_BASE', zoneId: 1 }, makeCtx()))
+      .toMatchObject({ ok: false, status: 400 })
+  })
+
+  // The reason INOFFENSIVE was rejected: it also forbids attacking a fleet.
+  it('can still be committed as an attacker in a fleet battle', () => {
+    const g = makeGame({ turnNumber: 3 })
+    const p = purifier()
+    const victim = zoneEntry({ name: 'Victim' })
+    g.state.zones[0].cards.a.push(p)
+    g.state.zones[0].cards.b.push(victim)
+    const r = applyAction(g, 'alice', {
+      type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
+      attackerIds: [p.instanceId], targetIds: [victim.instanceId],
+    }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.activeBattle?.attackerIds).toEqual([p.instanceId])
+  })
+
+  it('only a truthy noBaseDamage excludes — a mistyped value is not an exclusion', () => {
+    for (const value of [false, null, 0, 'true']) {
+      const g = makeGame({ turnNumber: 3 })
+      g.state.zones[0].cards.a.push(purifier({ materialCost: 100_000, meta: { noBaseDamage: value } }))
+      const before = g.state.zones[0].baseHp.b
+      const r = applyAction(g, 'alice', { type: 'ATTACK_ENEMY_BASE', zoneId: 1 }, makeCtx())
+      if (!r.ok) throw new Error(r.error)
+      expect(r.game.state.zones[0].baseHp.b).toBe(before - 100)
+    }
+  })
+})

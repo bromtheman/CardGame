@@ -718,3 +718,28 @@ describe('END_TURN — rest-of-turn riders expire for the ending side', () => {
     expect(r.game.state.scheduled).toEqual([])
   })
 })
+
+// Wave 6 — the first half of the normalizeState pair for the loss record (the
+// second is buildInitialGame, pinned in gameInit.test.ts). Every game row
+// written before wave 6 has zones with no such field at all.
+describe('normalizeState — lostBattleOnTurn', () => {
+  it('defaults it on every zone of a pre-wave-6 row', () => {
+    const g = makeGame()
+    for (const zone of g.state.zones) {
+      delete (zone as unknown as Record<string, unknown>).lostBattleOnTurn
+    }
+    normalizeState(g.state)
+    for (const zone of g.state.zones) {
+      expect(zone.lostBattleOnTurn).toEqual({ a: null, b: null })
+    }
+  })
+
+  it('repairs a half-written record rather than replacing a real one', () => {
+    const g = makeGame()
+    ;(g.state.zones[0] as unknown as Record<string, unknown>).lostBattleOnTurn = { a: 2 }
+    g.state.zones[1].lostBattleOnTurn = { a: null, b: 3 }
+    normalizeState(g.state)
+    expect(g.state.zones[0].lostBattleOnTurn).toEqual({ a: 2, b: null })
+    expect(g.state.zones[1].lostBattleOnTurn).toEqual({ a: null, b: 3 })
+  })
+})

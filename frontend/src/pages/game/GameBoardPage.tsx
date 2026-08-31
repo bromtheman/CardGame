@@ -59,7 +59,7 @@ export function GameBoardPage() {
   // (playOnZoneEffect) may target any zone, so every zone highlights for it.
   const legalForPlacing = placingCard
     ? placingCard.type === 'vehicle'
-      ? legalZonesFor(state, mySide, placingCard)
+      ? legalZonesFor(state, mySide, placingCard, game.turn_number)
       : state.zones.map((z) => z.id)
     : []
   const canActivateZones = isMyTurn && isActive && !battleFrozen(state)
@@ -85,7 +85,9 @@ export function GameBoardPage() {
   const handTargetCard = moveMode?.phase === 'pickZone' && moveMode.kind === 'handTarget'
     ? (hand.find((c) => c.instanceId === moveMode.instanceId) ?? null)
     : null
-  const legalForHandTarget = handTargetCard ? legalZonesFor(state, mySide, handTargetCard) : []
+  const legalForHandTarget = handTargetCard
+    ? legalZonesFor(state, mySide, handTargetCard, game.turn_number)
+    : []
   const interactiveZoneIds = placingCard
     ? legalForPlacing
     : moveMode?.phase === 'pickZone'
@@ -368,6 +370,7 @@ export function GameBoardPage() {
         hand={hand}
         state={state}
         mySide={mySide}
+        turnNumber={game.turn_number}
         send={send}
         busy={busy}
         placingCard={placingCard}

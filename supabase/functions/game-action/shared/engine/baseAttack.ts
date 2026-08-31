@@ -5,15 +5,25 @@ import { effectiveMaterialCostOf } from './placement.ts'
 import { dispatchBaseAttackVictory, dispatchZoneActivation, dispatchZoneInterception } from './battleTriggers.ts'
 
 // Which hulls in a zone actually strike its enemy base: not subs, not
-// Inoffensive, not deployed this turn. The single definition of that roster —
-// baseDamageFrom sums over it, and DP2's bombardment dispatch (spec §4.3, DP2
-// departure 5) fires for exactly these and no other hull standing in the zone,
-// because "inflicts damage to the enemy base" is what Plunderer's text asks.
+// Inoffensive, not carrying meta.noBaseDamage, not deployed this turn. The
+// single definition of that roster — baseDamageFrom sums over it, and DP2's
+// bombardment dispatch (spec §4.3, DP2 departure 5) fires for exactly these
+// and no other hull standing in the zone, because "inflicts damage to the
+// enemy base" is what Plunderer's text asks.
+//
+// `noBaseDamage` is wave 6's, for WF Purifier ("this vehicle does no damage to
+// the enemy base"). Deliberately NOT the INOFFENSIVE keyword, which also means
+// "cannot attack a fleet" — something Purifier can do (spec §7.3, wave 6). A
+// data key rather than an effect name, like defensiveOmission, so the next
+// card wanting the rule needs no engine edit. Excluding it here also excludes
+// it from dispatchBaseAttackVictory, which is right: a hull that dealt no
+// damage did not inflict any.
 export function baseStrikersIn(entries: ZoneCardEntry[], turnNumber: number): ZoneCardEntry[] {
   return entries.filter(
     (c) =>
       c.vehicleType !== VEHICLE_TYPES.SUB &&
       !c.keywords.includes(KEYWORDS.INOFFENSIVE) &&
+      c.meta.noBaseDamage !== true &&
       c.playedOnTurn < turnNumber,
   )
 }
