@@ -18,7 +18,10 @@ const EXEMPT: Record<string, string> = {
 // entries" test below rejects stale ones, so this list only shrinks.
 //
 // The five effect-coverage waves emptied it: all 65 of the spec's cards are
-// built. Everything left arrived AFTER them, from the 2026-08-30 balance pass.
+// built. Everything left arrived AFTER them, from the 2026-08-30 balance pass,
+// and wave 6 is the wave closing those twelve. Group A (Basher, Nothung,
+// Balmung, Harbringer) is done: four one-liners over primitives that already
+// existed.
 const KNOWN_GAPS: Record<string, string> = {
   // The 2026-08-30 balance pass seeded twelve cards whose text needs behaviour
   // the engine does not have yet. Every one plays vanilla and logs a note at
@@ -32,13 +35,10 @@ const KNOWN_GAPS: Record<string, string> = {
   //     SS:Victoria                an activated ability paid in materials, not CP
   //     WF:Judgement               the same, plus a costModifier off enemy hull types
   //     WF:Purifier                a zone deploy prerequisite + "no base damage"
-  //   existing primitives, not yet registered under their own name
-  //     WF:Harbringer              DWG Waters' clause-2 guest, WF ships <=100k
   'DWG:Albacore': 'balance 2026-08-30', 'DWG:Tarpon': 'balance 2026-08-30',
   'SS:Chrysaor': 'balance 2026-08-30', 'SS:Paladin': 'balance 2026-08-30',
   'SS:Blockade': 'balance 2026-08-30', 'SS:Victoria': 'balance 2026-08-30',
   'WF:Purifier': 'balance 2026-08-30', 'WF:Judgement': 'balance 2026-08-30',
-  'WF:Harbringer': 'balance 2026-08-30',
 }
 
 // Cards that pass G2 — they resolve at least one implemented effect — but
@@ -186,7 +186,7 @@ describe('built-in card effect coverage', () => {
       expect(Object.values(KNOWN_GAPS).filter((w) => w.startsWith(wave))).toEqual([])
       expect(Object.values(PARTIAL).filter((w) => w.startsWith(wave))).toEqual([])
     }
-    expect(Object.keys(KNOWN_GAPS)).toHaveLength(9)
+    expect(Object.keys(KNOWN_GAPS)).toHaveLength(8)
   })
 
   it('PARTIAL names real cards that currently pass G1 and G2, and never overlaps KNOWN_GAPS', async () => {

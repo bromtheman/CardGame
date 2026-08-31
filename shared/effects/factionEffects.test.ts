@@ -3166,7 +3166,7 @@ describe('wave 6 — SS Nothung', () => {
 // flag is invisible to unit tests and shows up only as a dead card in
 // production. Asserted at runtime rather than by reading the source.
 describe('wave 6 — effects that must carry needsCatalog', () => {
-  it.each(['nothungOnPlay', 'balmungOnPlay'])(
+  it.each(['nothungOnPlay', 'balmungOnPlay', 'harbringerBattle'])(
     '%s', (name) => { expect(CATALOG_EFFECTS.has(name)).toBe(true) },
   )
 })
@@ -3251,5 +3251,125 @@ describe('wave 6 — SS Balmung', () => {
       makeCtx({ catalog: [snap({ ...hydraSnap, meta: { summonOnly: true } })] }),
     )
     expect(r.ok).toBe(false)
+  })
+})
+
+describe('wave 6 — WF Harbringer', () => {
+  const wfShip = (name: string, materialCost: number) =>
+    snap({ name, faction: 'WF', type: 'vehicle', vehicleType: 'ship', materialCost })
+  // Boundary cards on purpose: the card says "<=100k", and The Repentance is a
+  // real WF PLANE at exactly 100k, so the type filter is load-bearing rather
+  // than decorative.
+  const pool = [
+    wfShip('Buzzsaw', 80_000),
+    wfShip('Earth Raker', 50_000),
+    wfShip('On The Line', 100_000),
+    wfShip('Over The Line', 100_001),
+    snap({ name: 'The Repentance', faction: 'WF', type: 'vehicle', vehicleType: 'plane', materialCost: 100_000 }),
+    snap({ name: 'Sacrilego', faction: 'SS', type: 'vehicle', vehicleType: 'ship', materialCost: 80_000 }),
+    snap({
+      name: 'Summon Only', faction: 'WF', type: 'vehicle', vehicleType: 'ship',
+      materialCost: 10_000, meta: { summonOnly: true },
+    }),
+  ]
+  const harbCtx = () => makeCtx({ catalog: pool })
+  const lockCtx = (over: Partial<BattleContext> = {}): BattleContext => ({
+    phase: 'lock', zoneId: 1, isDefender: false, isParticipant: true,
+    forced: false, survived: false, won: false, casualties: [], ...over,
+  })
+  const fire = (game: EngineGame, battle: BattleContext) => effectFor('harbringerBattle')!({
+    game, actor: 'a', card: inst({ name: 'Harbringer', faction: 'WF' }), ctx: harbCtx(), battle,
+  })
+
+  // Ruling A-6. The pool is WF SHIPS at <= 100k, inclusive, on printed cost.
+  it('offers exactly the WF ships at or under 100k, and nothing else', () => {
+    const game = makeGame()
+    expect(fire(game, lockCtx())).toBe(true)
+    expect(game.state.pendingEffect?.options.map((o) => o.id).sort()).toEqual(
+      ['Buzzsaw', 'Earth Raker', 'On The Line'],
+    )
+  })
+
+  // Ruling A-4 (spec §7.3, wave 6). "Whenever this ship is in fleet combat"
+  // reads to both directions — so BOTH of these must offer, and neither may
+  // be guarded away by an isDefender check.
+  it.each([false, true])('offers whether it is attacking or defending (isDefender=%s)', (isDefender) => {
+    const game = makeGame()
+    expect(fire(game, lockCtx({ isDefender }))).toBe(true)
+    expect(game.state.pendingEffect).not.toBeNull()
+  })
+
+  it('offers nothing at resolve — the guest joins a fight, it does not arrive after one', () => {
+    const game = makeGame()
+    expect(fire(game, lockCtx({ phase: 'resolve' }))).toBe(true)
+    expect(game.state.pendingEffect).toBeNull()
+  })
+
+  it('offers nothing to a non-participant', () => {
+    const game = makeGame()
+    expect(fire(game, lockCtx({ isParticipant: false }))).toBe(true)
+    expect(game.state.pendingEffect).toBeNull()
+  })
+
+  it('joins the chosen hull to the battle as a summon on Harbringer own side', () => {
+    const game = makeGame({ turnNumber: 3 })
+    const harbringer = zoneEntry({
+      name: 'Harbringer', faction: 'WF', vehicleType: 'ship', playedOnTurn: 2,
+      meta: { onBattleEffect: 'harbringerBattle' },
+    })
+    const victim = zoneEntry({ name: 'Victim' })
+    game.state.zones[0].cards.a.push(harbringer)
+    game.state.zones[0].cards.b.push(victim)
+    const declared = applyAction(game, 'alice', {
+      type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
+      attackerIds: [harbringer.instanceId], targetIds: [victim.instanceId],
+    }, harbCtx())
+    if (!declared.ok) throw new Error(declared.error)
+    expect(declared.game.state.pendingEffect?.side).toBe('a')
+    const r = applyAction(
+      declared.game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'Buzzsaw' }, harbCtx(),
+    )
+    if (!r.ok) throw new Error(r.error)
+    const battle = r.game.state.activeBattle!
+    expect(battle.summons.map((s) => s.name)).toEqual(['Buzzsaw'])
+    // A summon's SIDE is decided by which id list it is in (spec §4.4).
+    expect(battle.attackerIds).toContain(battle.summons[0].instanceId)
+    expect(battle.defenderIds).not.toContain(battle.summons[0].instanceId)
+    // Never pushed onto the board — it evaporates with the battle.
+    expect(r.game.state.zones[0].cards.a.map((c) => c.name)).toEqual(['Harbringer'])
+  })
+
+  it('declining leaves the battle exactly as it was', () => {
+    const game = makeGame({ turnNumber: 3 })
+    const harbringer = zoneEntry({
+      name: 'Harbringer', faction: 'WF', vehicleType: 'ship', playedOnTurn: 2,
+      meta: { onBattleEffect: 'harbringerBattle' },
+    })
+    const victim = zoneEntry({ name: 'Victim' })
+    game.state.zones[0].cards.a.push(harbringer)
+    game.state.zones[0].cards.b.push(victim)
+    const declared = applyAction(game, 'alice', {
+      type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
+      attackerIds: [harbringer.instanceId], targetIds: [victim.instanceId],
+    }, harbCtx())
+    if (!declared.ok) throw new Error(declared.error)
+    const r = applyAction(
+      declared.game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', cancel: true }, harbCtx(),
+    )
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.activeBattle!.summons).toEqual([])
+    expect(r.game.state.activeBattle!.attackerIds).toEqual([harbringer.instanceId])
+  })
+
+  it('resolves without an offer when the pool is empty', () => {
+    const game = makeGame()
+    expect(fire(game, lockCtx())).toBe(true)
+    const empty = makeGame()
+    const ok = effectFor('harbringerBattle')!({
+      game: empty, actor: 'a', card: inst({ name: 'Harbringer' }),
+      ctx: makeCtx({ catalog: [] }), battle: lockCtx(),
+    })
+    expect(ok).toBe(true)
+    expect(empty.state.pendingEffect).toBeNull()
   })
 })

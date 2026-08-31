@@ -118,6 +118,13 @@ export const SACRILEGO_HP_BOOST = 15
 // filter reads.
 export const DWG_WATERS_GUEST_MAX_COST = 60_000
 
+// Harbringer: "you may spawn in one WF ship that costs <=100k to join the
+// battle". INCLUSIVE, unlike DWG Waters' exclusive <60k — the two cards print
+// different comparators and each keeps its own. Printed materialCost, WF
+// ships only: The Repentance is a WF PLANE at exactly 100k, so the type
+// filter is what excludes it rather than the cost.
+export const HARBRINGER_GUEST_MAX_COST = 100_000
+
 // Human-readable names for the seven hero powers, used wherever a power id
 // is shown to a player (Kraken's refresh choice).
 export const HERO_POWER_LABELS: Record<string, string> = {

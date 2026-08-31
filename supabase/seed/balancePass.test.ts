@@ -147,4 +147,31 @@ describe('2026-08-30 balance pass', () => {
       onActivate: 'braveheartActivate', activateCpCost: 1,
     })
   })
+
+  // ------------------------------------------------------------- wave 6
+  //
+  // Harbringer's pool ("one WF ship that costs <=100k") is exactly two cards
+  // today, so its empty-pool path is unreachable and a filter typo would be
+  // INVISIBLE — every unit test would still pass against a hand-built
+  // catalog. Pinning the real membership off the seed is the only thing that
+  // would notice the pool silently changing shape.
+  //
+  // The Repentance is the sharp one: a WF PLANE at exactly 100_000. It is
+  // excluded by the vehicleType filter alone, so this assertion is what
+  // proves that filter is doing work.
+  it('Harbringer draws from exactly the WF ships at or under 100k', async () => {
+    const { cards } = await loadSeedData()
+    const pool = cards
+      .filter((c) => (
+        c.isBuiltIn && c.faction === 'WF' && c.type === 'vehicle' &&
+        c.vehicleType === 'ship' && c.materialCost <= 100_000 &&
+        c.meta?.summonOnly !== true
+      ))
+      .map((c) => c.name)
+      .sort()
+    expect(pool).toEqual(['Buzzsaw', 'Earth Raker'])
+    const repentance = cards.find((c) => c.faction === 'WF' && c.name === 'The Repentance')!
+    expect({ vt: repentance.vehicleType, cost: repentance.materialCost })
+      .toEqual({ vt: 'plane', cost: 100_000 })
+  })
 })

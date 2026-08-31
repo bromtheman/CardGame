@@ -1,11 +1,13 @@
 import {
   AMBUSH_DISTANCE_M, SPAWN_DISTANCE_MIN_M,
-  ALL_FOR_THE_CAUSE_DOUBLE_COST, KEYWORDS, MARTYR_ATTACK_BOOST_MIN_COST,
+  ALL_FOR_THE_CAUSE_DOUBLE_COST, HARBRINGER_GUEST_MAX_COST, KEYWORDS,
+  MARTYR_ATTACK_BOOST_MIN_COST,
   MARTYR_ATTACK_BOOSTED_COUNT, MARTYR_ATTACK_COUNT, VEHICLE_TYPES,
 } from '../gameSettings.ts'
-import type { ZoneCardEntry } from '../engine/engineTypes.ts'
+import type { EngineContext, ZoneCardEntry } from '../engine/engineTypes.ts'
+import type { SnapshotCard } from '../engine/gameInit.ts'
 import { findVehicle, otherSide, zoneById } from '../engine/gameEngine.ts'
-import { declareForcedBattle } from '../engine/battleDeclare.ts'
+import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
 import { catalogCard, choice, grant, spawnInto, summonHulls } from './primitives.ts'
 import { registerEffect } from './registry.ts'
 import type { EffectPayload } from './registry.ts'
@@ -184,4 +186,72 @@ registerEffect('martyrAttackEffect', ({ game, actor, ctx, targetInstanceId, card
     summons,
     cause: card.name,
   })
+}, { needsCatalog: true })
+
+const HARBRINGER = 'harbringerBattle'
+
+// "Whenever this ship is in fleet combat, you may spawn in one WF ship that
+// costs <=100k to join the battle."
+//
+// DWG Waters' clause 2 on a PARTICIPANT rather than a rider (spec §7.3,
+// wave 6). DP2's lock pass already reaches participants on both sides, so
+// this needs no zoneEffects entry and no rider dispatch — but it still needs
+// { needsCatalog: true }, because unlike a rider it genuinely reads the
+// catalog for its own pool.
+//
+// "In fleet combat" reads to every battle it fights: offensive, defensive and
+// forced alike (§7.3's Catshark ruling — a battle it participates in is a
+// battle whatever declared it). So there is deliberately NO isDefender guard.
+// The isParticipant guard is not redundant with it: a DP2 effect can also be
+// reached as a forced-battle bystander, and this card's text describes only a
+// battle it is in.
+
+// The summonOnly exclusion is repeated by hand because this filters
+// ctx.catalog directly rather than going through drawFromPool, which is the
+// one place that guard comes for free.
+function harbringerPool(ctx: EngineContext): SnapshotCard[] {
+  return ctx.catalog.filter((c) =>
+    c.isBuiltIn &&
+    c.faction === 'WF' &&
+    c.type === 'vehicle' &&
+    c.vehicleType === VEHICLE_TYPES.SHIP &&
+    c.materialCost <= HARBRINGER_GUEST_MAX_COST &&
+    c.meta.summonOnly !== true)
+}
+
+// Options are catalog card NAMES — public, like Special Foundries' pools and
+// DWG Waters' guest list, so offering them leaks nothing (spec §4.2,
+// departure 5).
+const harbringerOffer = choice({
+  effect: HARBRINGER,
+  prompt: 'Spawn in a WF ship to join this battle?',
+  options: ({ ctx }) => harbringerPool(ctx).map((c) => ({ id: c.name, label: c.name })),
+  data: ({ battle }) => ({ zoneId: battle?.zoneId }),
+  resolve: ({ game, actor, ctx, card, pending }, choiceId) => {
+    // Empty pool: nothing to spawn, and nothing to fail.
+    if (choiceId === null) return true
+    const zoneId = pending?.data?.zoneId
+    if (typeof zoneId !== 'number') return false
+    const battle = game.state.activeBattle
+    // The battle may have gone while the choice sat open; and the pool is
+    // re-derived rather than trusted, so a stale option cannot spawn
+    // something that is no longer eligible.
+    if (!battle || battle.zoneId !== zoneId) return false
+    if (!harbringerPool(ctx).some((c) => c.name === choiceId)) return false
+    const hulls = summonHulls(game, ctx, choiceId, 1)
+    if (!hulls) return false
+    // Membership in attackerIds/defenderIds is what decides a summon's side
+    // (spec §4.4, decision 18), and joinBattle picks the list off `actor` —
+    // so Harbringer's guest always fights on Harbringer's own side.
+    if (!joinBattle(game, actor, hulls[0].instanceId, hulls[0])) return false
+    game.state.log.push(`${card.name} spawns in a ${choiceId} to fight in zone ${zoneId}`)
+    return true
+  },
+})
+
+registerEffect(HARBRINGER, (payload) => {
+  if (payload.resolution !== undefined) return harbringerOffer(payload)
+  const { battle } = payload
+  if (!battle || battle.phase !== 'lock' || !battle.isParticipant) return true
+  return harbringerOffer(payload)
 }, { needsCatalog: true })
