@@ -26,6 +26,10 @@ const DRAW_ONE = [
   'claymoreEffect', 'palisadeEffect', 'purifierEffect',
   'javelinOnDeath', 'ironMaidenOnDeath', 'victoriaOnDeath',
   'trondheimOnDeath', 'coulombEffect',
+  // Wave 6. Basher: "When this is destroyed, draw a card". It prints no
+  // keywords at all, so the standing prohibition on SCRAPPY + onDeathEffect
+  // (docs/claude/card-effects.md) is clear.
+  'basherOnDeath',
 ]
 const CP_ONLY: [string, number][] = [
   ['bulwarkOnPlay', 2], ['maelstromOnPlay', 1], ['maceEffect', 1],

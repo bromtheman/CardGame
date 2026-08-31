@@ -12,7 +12,15 @@ import type { EffectPayload } from './registry.ts'
 
 // WF built-in card effects.
 registerEffect('excruciatorOnPlay', grant({ draw: 1 }))
+// Orphaned by the 2026-08-30 balance pass, which rewrote Purifier's text and
+// cleared its meta. Kept registered rather than deleted: a game dealt before
+// that pass carries a frozen snapshot still naming it, and the name must never
+// be reused for anything else (spec §9.2, the Kraken/Paddlegun collision).
 registerEffect('purifierEffect', grant({ draw: 1 }))
+// "When this is destroyed, draw a card." Basher prints no keywords, so it
+// cannot hit the SCRAPPY-plus-onDeathEffect prohibition that cost Loggerhead
+// its keyword (docs/claude/card-effects.md).
+registerEffect('basherOnDeath', grant({ draw: 1 }))
 
 const AMBUSH = 'ambushEffect'
 

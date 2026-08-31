@@ -35,14 +35,13 @@ const KNOWN_GAPS: Record<string, string> = {
   //   existing primitives, not yet registered under their own name
   //     SS:Nothung                 spawnVehicles('Sacrilego')
   //     SS:Balmung                 a catalog mint into hand at costDelta -cost
-  //     WF:Basher                  grant({ draw: 1 }) on death
   //     WF:Harbringer              DWG Waters' clause-2 guest, WF ships <=100k
   'DWG:Albacore': 'balance 2026-08-30', 'DWG:Tarpon': 'balance 2026-08-30',
   'SS:Chrysaor': 'balance 2026-08-30', 'SS:Paladin': 'balance 2026-08-30',
   'SS:Blockade': 'balance 2026-08-30', 'SS:Victoria': 'balance 2026-08-30',
   'SS:Nothung': 'balance 2026-08-30', 'SS:Balmung': 'balance 2026-08-30',
   'WF:Purifier': 'balance 2026-08-30', 'WF:Judgement': 'balance 2026-08-30',
-  'WF:Basher': 'balance 2026-08-30', 'WF:Harbringer': 'balance 2026-08-30',
+  'WF:Harbringer': 'balance 2026-08-30',
 }
 
 // Cards that pass G2 — they resolve at least one implemented effect — but
@@ -190,7 +189,7 @@ describe('built-in card effect coverage', () => {
       expect(Object.values(KNOWN_GAPS).filter((w) => w.startsWith(wave))).toEqual([])
       expect(Object.values(PARTIAL).filter((w) => w.startsWith(wave))).toEqual([])
     }
-    expect(Object.keys(KNOWN_GAPS)).toHaveLength(12)
+    expect(Object.keys(KNOWN_GAPS)).toHaveLength(11)
   })
 
   it('PARTIAL names real cards that currently pass G1 and G2, and never overlaps KNOWN_GAPS', async () => {
