@@ -111,7 +111,7 @@ const ALL_META_KEYS = [...Object.values(TRIGGERS), 'costModifier']
 // text is those two rules, and it names no effect at all.
 export const DATA_EFFECT_KEYS = [
   'additionalSpawns', 'resourceSurge', 'defensiveOmission', 'aircraftLock',
-  'deployRequiresBattleLoss', 'noBaseDamage',
+  'deployRequiresBattleLoss', 'noBaseDamage', 'deployRequiresAiVehicle',
 ] as const
 
 // Spec §3.9: cards referencing unimplemented effects play as vanilla, with a

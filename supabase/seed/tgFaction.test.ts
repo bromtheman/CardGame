@@ -331,3 +331,13 @@ describe('group B data keys carry the exact values the engine compares', () => {
     }
   })
 })
+
+// ---------------------------------------------------------------------------
+// Group D data keys. Value, not presence (blind spot 4).
+describe('group D data keys', () => {
+  it('Alarmed carries the deploy prerequisite the engine compares', async () => {
+    const card = (await bySeedKey()).get('TG:Alarmed')!
+    expect(card.meta.deployRequiresAiVehicle).toBe(true)
+    expect(card.meta.onPlayEffect).toBe('alarmedOnPlay')
+  })
+})

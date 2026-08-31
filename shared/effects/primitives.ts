@@ -327,6 +327,30 @@ export function enemyVehicleOptions(
   return options
 }
 
+// The mirror of enemyVehicleOptions, for a card that targets its OWN side
+// (wave 7 — TG Alarmed's sacrifice is the first). Own-board vehicles are
+// already public, so surfacing them as pendingEffect.options leaks nothing,
+// exactly as for the enemy's.
+//
+// ⚠ It has no notion of `placedInstanceIds`, deliberately — a caller firing
+// from a PLAY handler must exclude what that play just placed via `filter`,
+// because PLAY_CARD_TO_ZONE deploys the hull BEFORE effects run and the card
+// would otherwise offer itself.
+export function friendlyVehicleOptions(
+  game: EngineGame, actor: Side, zoneId: number | null,
+  filter?: (e: ZoneCardEntry) => boolean,
+): ChoiceOption[] {
+  const zones = zoneId === null ? game.state.zones : game.state.zones.filter((z) => z.id === zoneId)
+  const options: ChoiceOption[] = []
+  for (const zone of zones) {
+    for (const entry of zone.cards[actor] as ZoneCardEntry[]) {
+      if (filter && !filter(entry)) continue
+      options.push({ id: entry.instanceId, label: entry.name })
+    }
+  }
+  return options
+}
+
 // Suspend for a player decision (spec §4.2, DP4). First entry writes
 // state.pendingEffect and returns true; RESOLVE_PENDING_EFFECT re-enters the
 // same registry name with `resolution` set and runs `resolve`.

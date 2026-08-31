@@ -1321,3 +1321,69 @@ describe('TG Acceptance — resourceSurge, the suppressing arm (wave 7)', () => 
     }
   })
 })
+
+// ---------------------------------------------------------------------------
+// Wave 7 — TG Alarmed's clause 1: "Can only play this into a zone in which you
+// control a AI vehicle."
+//
+// Purifier's shape exactly: a seeded data key read by a predicate that NARROWS
+// the legal set rather than removing zones from it.
+//
+// ⚠ Ruling D-1: "an AI vehicle" is `isBuiltIn === true`. This is spec §7.3's
+// FIRST ruling, reaffirmed rather than reopened — OW:Garrison prints the
+// identical phrase ("Target an AI vehicle in hand") and is implemented that
+// way, as are Air Strafe, Excalibur, Repairmen Ready and Martyr Attack. Wave
+// 7's handoff recommended the ROBOTIC keyword instead, on the grounds that the
+// engine has no AI concept; it has had one since wave 1.
+describe('deployRequiresAiVehicle — TG Alarmed (wave 7)', () => {
+  const alarmed = () => inst({
+    name: 'Alarmed', faction: 'TG', vehicleType: 'airship', materialCost: 230_000,
+    keywords: [KEYWORDS.ROBOTIC, KEYWORDS.UPKEEP_REQUIRED],
+    meta: { deployRequiresAiVehicle: true, onPlayEffect: 'alarmedOnPlay' },
+  })
+
+  it('admits only zones where the actor controls a built-in vehicle', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zones[1].cards.a.push(zoneEntry({ isBuiltIn: true, playedOnTurn: 1 }))
+    expect(legalZonesFor(game.state, 'a', alarmed(), 3)).toEqual([2])
+  })
+
+  // "AI" is isBuiltIn, so a player's own custom design does NOT satisfy it.
+  // This is the assertion that separates ruling D-1 from the alternative.
+  it('a player-made vehicle does not qualify', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zones[0].cards.a.push(zoneEntry({ isBuiltIn: false, playedOnTurn: 1 }))
+    expect(legalZonesFor(game.state, 'a', alarmed(), 3)).toEqual([])
+  })
+
+  // "YOU control" — the enemy's hulls are not yours, however AI they are.
+  it('an enemy built-in does not qualify', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zones[0].cards.b.push(zoneEntry({ isBuiltIn: true, playedOnTurn: 1 }))
+    expect(legalZonesFor(game.state, 'a', alarmed(), 3)).toEqual([])
+  })
+
+  it('admits several zones at once when several qualify', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zones[0].cards.a.push(zoneEntry({ isBuiltIn: true, playedOnTurn: 1 }))
+    game.state.zones[2].cards.a.push(zoneEntry({ isBuiltIn: true, playedOnTurn: 1 }))
+    expect(legalZonesFor(game.state, 'a', alarmed(), 3)).toEqual([1, 3])
+  })
+
+  it('leaves a card without the key completely unrestricted', () => {
+    const game = makeGame({ turnNumber: 3 })
+    const plain = inst({ vehicleType: 'airship' })
+    expect(legalZonesFor(game.state, 'a', plain, 3)).toEqual([1, 2, 3])
+  })
+
+  it('refuses the play outright when no zone qualifies', () => {
+    const card = alarmed()
+    const game = makeGame({
+      turnNumber: 3, activePlayer: 'alice',
+      privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } },
+    })
+    game.state.resources.a.materials = 500_000
+    const r = applyAction(game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx())
+    expect(r).toMatchObject({ ok: false, status: 400 })
+  })
+})

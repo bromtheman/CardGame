@@ -4642,3 +4642,127 @@ describe('TG Hysteria — INOFFENSIVE onto any enemy vehicle (wave 7)', () => {
     expect(after.state.pendingEffect?.options?.map((o) => o.id)).not.toContain('mine1')
   })
 })
+
+// ---------------------------------------------------------------------------
+// Wave 7 — TG Alarmed's clause 2: "When this vehicle is played, sacrifice a
+// target friendly AI vehicle in this zone."
+//
+// A death trigger that would be observable IF a sacrifice fired one. It does
+// not (ruling D-2), and this stand-in is how that is asserted rather than
+// assumed. t_-prefixed so G4 skips it (docs/claude/testing.md).
+registerEffect('t_deathWatch', ({ game }) => {
+  game.state.log.push('t_deathWatch fired')
+  return true
+})
+
+describe('TG Alarmed — sacrifice a friendly AI vehicle (wave 7)', () => {
+  const alarmedCard = () => inst({
+    instanceId: 'al1', name: 'Alarmed', faction: 'TG', vehicleType: 'airship',
+    materialCost: 230_000, keywords: [KEYWORDS.ROBOTIC, KEYWORDS.UPKEEP_REQUIRED],
+    meta: { deployRequiresAiVehicle: true, onPlayEffect: 'alarmedOnPlay' },
+  })
+
+  // Zone 1 holds two of the actor's built-ins, zone 2 one more — the card says
+  // "in this zone", so zone 2's must never be offered.
+  const armed = () => {
+    const card = alarmedCard()
+    const game = makeGame({
+      turnNumber: 3, activePlayer: 'alice',
+      privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } },
+    })
+    game.state.resources.a.materials = 500_000
+    game.state.zones[0].cards.a.push(
+      zoneEntry({ instanceId: 'ai1', name: 'Ally One', isBuiltIn: true, playedOnTurn: 1 }),
+      zoneEntry({ instanceId: 'ai2', name: 'Ally Two', isBuiltIn: true, playedOnTurn: 1 }),
+    )
+    game.state.zones[1].cards.a.push(
+      zoneEntry({ instanceId: 'far1', name: 'Far Ally', isBuiltIn: true, playedOnTurn: 1 }),
+    )
+    return { game, card }
+  }
+
+  const play = (game: EngineGame, card: CardInstance) => {
+    const r = applyAction(game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    return r.game
+  }
+
+  it('offers the actor’s own AI vehicles in the played zone', () => {
+    const { game, card } = armed()
+    const after = play(game, card)
+    expect(after.state.pendingEffect?.options?.map((o) => o.id).sort()).toEqual(['ai1', 'ai2'])
+  })
+
+  // ⚠ The card's most likely bug. PLAY_CARD_TO_ZONE places the hull BEFORE
+  // effects fire, so Alarmed is already in zone.cards[actor] — and it is
+  // itself built-in, so a naive read would offer it as its own sacrifice.
+  it('never offers Alarmed itself', () => {
+    const { game, card } = armed()
+    expect(play(game, card).state.pendingEffect?.options?.map((o) => o.id)).not.toContain('al1')
+  })
+
+  it('never offers a vehicle in another zone', () => {
+    const { game, card } = armed()
+    expect(play(game, card).state.pendingEffect?.options?.map((o) => o.id)).not.toContain('far1')
+  })
+
+  it('never offers an enemy vehicle, or the actor’s own player-made design', () => {
+    const { game, card } = armed()
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe1', isBuiltIn: true, playedOnTurn: 1 }))
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'mine-custom', isBuiltIn: false, playedOnTurn: 1 }))
+    const ids = play(game, card).state.pendingEffect?.options?.map((o) => o.id) ?? []
+    expect(ids).not.toContain('foe1')
+    expect(ids).not.toContain('mine-custom')
+  })
+
+  it('takes the chosen hull off the board and into its owner’s discard', () => {
+    const { game, card } = armed()
+    const done = applyAction(play(game, card), 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'ai2' }, makeCtx())
+    if (!done.ok) throw new Error(done.error)
+    expect(done.game.state.zones[0].cards.a.map((c) => c.instanceId)).not.toContain('ai2')
+    expect(done.game.state.destroyed.a.map((c) => c.name)).toContain('Ally Two')
+    // Alarmed itself stays on the board — it was played, not spent.
+    expect(done.game.state.zones[0].cards.a.map((c) => c.instanceId)).toContain('al1')
+  })
+
+  // ⚠ Ruling D-2. sacrificeEntry calls discardCard directly and never
+  // fireDeathEffect — the deliberate split behind decision 28 ("destroy"
+  // fires, "remove from play" does not). Jealousy is a TG card whose entire
+  // text is a death draw, so a TG player meets this within one game.
+  it('D-2: does NOT fire the sacrificed hull’s onDeathEffect', () => {
+    const { game, card } = armed()
+    findVehicle(game.state, 'ai2')!.entry.meta = { onDeathEffect: 't_deathWatch' }
+    const done = applyAction(play(game, card), 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'ai2' }, makeCtx())
+    if (!done.ok) throw new Error(done.error)
+    expect(done.game.state.log.join(' ')).not.toContain('t_deathWatch fired')
+  })
+
+  // ✅ sacrificeEntry routes through discardCard, the single exit out of play,
+  // so a captured hull still goes home to the deck it came from.
+  it('sends a captured hull home to its owner’s discard', () => {
+    const { game, card } = armed()
+    findVehicle(game.state, 'ai2')!.entry.meta = { ownerSide: 'b' }
+    const done = applyAction(play(game, card), 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'ai2' }, makeCtx())
+    if (!done.ok) throw new Error(done.error)
+    expect(done.game.state.destroyed.b.map((c) => c.name)).toContain('Ally Two')
+    expect(done.game.state.destroyed.a.map((c) => c.name)).not.toContain('Ally Two')
+  })
+
+  // A Curiosity-style additionalSpawns copy is placed by the same call, so it
+  // must be excluded for the same reason Alarmed itself is.
+  it('never offers an additionalSpawns copy this play just placed', () => {
+    const card = inst({
+      instanceId: 'al2', name: 'Alarmed', faction: 'TG', vehicleType: 'airship',
+      materialCost: 230_000,
+      meta: { deployRequiresAiVehicle: true, onPlayEffect: 'alarmedOnPlay', additionalSpawns: 1 },
+    })
+    const game = makeGame({
+      turnNumber: 3, activePlayer: 'alice',
+      privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } },
+    })
+    game.state.resources.a.materials = 500_000
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'ai1', isBuiltIn: true, playedOnTurn: 1 }))
+    const after = play(game, card)
+    expect(after.state.pendingEffect?.options?.map((o) => o.id)).toEqual(['ai1'])
+  })
+})

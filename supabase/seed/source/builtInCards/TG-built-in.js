@@ -170,6 +170,8 @@ export const tgVehicles = [
         blueprintId: null,
         keywords: [KEYWORDS.UPKEEP_REQUIRED, KEYWORDS.ROBOTIC],
         meta: {
+            deployRequiresAiVehicle: true,
+            [TRIGGERS.ON_PLAY]: 'alarmedOnPlay',
         }
     },
     {

@@ -1,6 +1,9 @@
-import { choice, enemyVehicleOptions, grant, spawnVehicles, summonHulls } from './primitives.ts'
+import {
+  choice, enemyVehicleOptions, friendlyVehicleOptions, grant, spawnVehicles, summonHulls,
+} from './primitives.ts'
 import { joinBattle } from '../engine/battleDeclare.ts'
 import { findVehicle } from '../engine/gameEngine.ts'
+import { sacrificeEntry } from '../engine/battleTriggers.ts'
 import { KEYWORDS } from '../gameSettings.ts'
 import { registerEffect } from './registry.ts'
 
@@ -117,6 +120,56 @@ registerEffect(HYSTERIA, choice({
       found.entry.keywords = [...found.entry.keywords, KEYWORDS.INOFFENSIVE]
     }
     game.state.log.push(`${found.entry.name} is made Inoffensive`)
+    return true
+  },
+}))
+
+// "When this vehicle is played, sacrifice a target friendly AI vehicle in this
+// zone." Clause 1 (the deploy prerequisite) is a data key read by
+// legalZonesFor; this is clause 2.
+//
+// ⚠ THE CARD'S MOST LIKELY BUG, and why the filter is not just `isBuiltIn`:
+// PLAY_CARD_TO_ZONE places the hull BEFORE effects fire, so Alarmed is already
+// in zone.cards[actor] when this runs — and Alarmed is itself built-in, so a
+// naive read offers it as its own sacrifice. `placedInstanceIds` is on the
+// payload for exactly this, and it covers the additionalSpawns copies of the
+// same play too.
+//
+// ⚠ Ruling D-2: this fires NO onDeathEffect. sacrificeEntry calls discardCard
+// directly and never fireDeathEffect — the deliberate split behind decision 28
+// ("destroy" fires, "remove from play" does not). Jealousy is a TG card whose
+// entire text is a death draw, so a TG player meets this within one game.
+//
+// ✅ sacrificeEntry routes through discardCard, the single exit out of play, so
+// a captured hull still goes home and a summonOnly one never reaches a discard.
+const ALARMED = 'alarmedOnPlay'
+registerEffect(ALARMED, choice({
+  effect: ALARMED,
+  prompt: 'Choose a friendly AI vehicle in this zone to sacrifice',
+  options: ({ game, actor, targetZoneId, placedInstanceIds }) => {
+    if (typeof targetZoneId !== 'number') return []
+    const placed = new Set(placedInstanceIds ?? [])
+    // isBuiltIn is ruling D-1's "AI vehicle"; the placed-id exclusion is what
+    // keeps Alarmed from eating itself.
+    return friendlyVehicleOptions(
+      game, actor, targetZoneId, (e) => e.isBuiltIn && !placed.has(e.instanceId),
+    )
+  },
+  // The zone is stashed because resolve cannot re-derive it: payload.card is
+  // Alarmed and pendingEffect carries it verbatim, but targetZoneId is a
+  // first-entry-only field and RESOLVE_PENDING_EFFECT never sets it.
+  data: ({ targetZoneId }) => ({ zoneId: targetZoneId }),
+  resolve: ({ game, actor, card, pending }, choiceId) => {
+    // No eligible hull is not a failure: clause 1 guarantees an AI vehicle in
+    // the zone, but it may be Alarmed's own additionalSpawns copy.
+    if (choiceId === null) return true
+    const zoneId = pending?.data?.zoneId
+    if (typeof zoneId !== 'number') return false
+    // Re-checked against the board rather than trusted from the first entry.
+    const found = findVehicle(game.state, choiceId)
+    if (!found || found.side !== actor || found.zone.id !== zoneId) return false
+    if (!sacrificeEntry(game, actor, choiceId, zoneId)) return false
+    game.state.log.push(`${card.name} sacrifices ${found.entry.name}`)
     return true
   },
 }))
