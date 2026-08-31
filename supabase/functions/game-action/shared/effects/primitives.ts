@@ -69,6 +69,16 @@ export interface PoolFilter {
   isBuiltIn?: boolean
   maxCost?: number
   minCost?: number
+  // A seeded marker key that must be exactly `true` on the card's meta
+  // (wave 7). The same "the rule reads off seeded data, so the next card needs
+  // no engine edit" pattern as `blocksFaction`, `aircraftLock` and
+  // `defensiveOmission`.
+  //
+  // It exists because a pool defined by FACTION is a query over the whole
+  // cards table rather than a card list: LH's four borrowed "[TG] …" ships
+  // were `faction === 'TG'`, so seeding the 26-card TG faction would have
+  // silently taken that pool from 4 rows to 30 (spec §7.3, ruling L-1).
+  metaFlag?: string
 }
 
 export interface PoolSpec {
@@ -85,13 +95,17 @@ export interface PoolSpec {
 
 // Cost filters read the printed materialCost — "base cost" in card text —
 // never effectiveMaterialCostOf.
-function matches(card: { faction: string; vehicleType: string | null; type: string; isBuiltIn: boolean; materialCost: number }, f: PoolFilter): boolean {
+function matches(card: { faction: string; vehicleType: string | null; type: string; isBuiltIn: boolean; materialCost: number; meta: Record<string, unknown> }, f: PoolFilter): boolean {
   if (f.faction !== undefined && card.faction !== f.faction) return false
   if (f.vehicleType !== undefined && card.vehicleType !== f.vehicleType) return false
   if (f.type !== undefined && card.type !== f.type) return false
   if (f.isBuiltIn !== undefined && card.isBuiltIn !== f.isBuiltIn) return false
   if (f.maxCost !== undefined && card.materialCost > f.maxCost) return false
   if (f.minCost !== undefined && card.materialCost < f.minCost) return false
+  // Strict `=== true`, never truthiness: a data key's VALUE is what the engine
+  // compares, and a mistyped one must leave the card OUT of the pool rather
+  // than in it (docs/claude/card-effects.md, guard blind spot 4).
+  if (f.metaFlag !== undefined && card.meta[f.metaFlag] !== true) return false
   return true
 }
 

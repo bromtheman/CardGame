@@ -74,7 +74,7 @@ describe('grant-backed cards', () => {
 
 describe('drawFromPool-backed cards', () => {
   const catalog = [
-    snap({ name: 'TG Obsession', faction: 'TG', type: 'vehicle', materialCost: 330_000 }),
+    snap({ name: '[TG] Obsession', faction: 'TG', type: 'vehicle', materialCost: 330_000, meta: { lhRoboticsPool: true } }),
     snap({ name: 'Warbird', faction: 'GT', vehicleType: 'airship', materialCost: 190_000 }),
     snap({ name: 'Nimbus', faction: 'GT', vehicleType: 'airship', materialCost: 530_000 }),
     snap({ name: 'PredatorX', faction: 'SS', vehicleType: 'plane', materialCost: 120_000, keywords: ['halfCost', 'temporary'] }),
@@ -452,7 +452,7 @@ describe('wave 2 — activated abilities', () => {
       name: 'Spectrum', vehicleType: 'plane',
       meta: { onActivate: 'spectrumEffect', activateCpCost: 1 },
     })
-    const ctx = makeCtx({ catalog: [snap({ name: '[TG] Widget', faction: 'TG', vehicleType: 'tank' })] })
+    const ctx = makeCtx({ catalog: [snap({ name: '[TG] Widget', faction: 'TG', vehicleType: 'tank', meta: { lhRoboticsPool: true } })] })
     const res = applyAction(game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: 'v1' }, ctx)
     if (!res.ok) throw new Error(res.error)
     expect(res.game.privates.a.hand).toHaveLength(1)
@@ -529,8 +529,8 @@ describe('wave 2 — choices', () => {
     const game = makeGame({ turnNumber: 2, activePlayer: 'alice' })
     const ctx = makeCtx({
       catalog: [
-        snap({ cardId: 'tg-1', name: '[TG] Alpha', faction: 'TG', vehicleType: 'tank' }),
-        snap({ cardId: 'tg-2', name: '[TG] Beta', faction: 'TG', vehicleType: 'tank' }),
+        snap({ cardId: 'tg-1', name: '[TG] Alpha', faction: 'TG', vehicleType: 'tank', meta: { lhRoboticsPool: true } }),
+        snap({ cardId: 'tg-2', name: '[TG] Beta', faction: 'TG', vehicleType: 'tank', meta: { lhRoboticsPool: true } }),
       ],
     })
     const res = playAbility(game, inst({
@@ -4235,5 +4235,102 @@ describe('wave 6 — mutation survivors', () => {
         makeCtx({ catalog: [wfShip('Buzzsaw', 80_000)] }),
       ).ok).toBe(false)
     })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Wave 7 — the LH "[TG] Robotics" pool is narrowed to a marker (spec §7.3).
+//
+// The pool was `faction === 'TG'`, which is a QUERY over the whole cards
+// table, not a card list. Seeding the 26-card TG faction would have taken it
+// from 4 rows to 30 — five LH cards changing behaviour with no diff to any LH
+// file at all. The four borrowed rows now carry meta.lhRoboticsPool, and BOTH
+// filters read it: drawFromPool's (Ampere/Candela/Quadrupole/Spectrum) and
+// roboticAssemblersEffect's own inline one.
+describe('wave 7 — the LH [TG] Robotics pool reads a marker, not the faction', () => {
+  const marked = (over: Parameters<typeof snap>[0] = {}) =>
+    snap({ faction: 'TG', vehicleType: 'ship', meta: { lhRoboticsPool: true }, ...over })
+  const unmarked = (over: Parameters<typeof snap>[0] = {}) =>
+    snap({ faction: 'TG', vehicleType: 'ship', ...over })
+
+  // The crisp, rng-free assertion: a catalog pool that comes up empty is a
+  // data bug rather than an empty deck, so drawFromPool returns FALSE instead
+  // of drawing. Before the marker these four TG cards were the pool.
+  it.each(['ampereOnPlay', 'candelaOnPlay', 'quadrupoleOnPlay', 'spectrumEffect'])(
+    '%s finds nothing when every TG card in the catalog is unmarked',
+    (name) => {
+      const game = makeGame()
+      const ctx = makeCtx({
+        catalog: [
+          unmarked({ name: 'Fear', materialCost: 800_000 }),
+          unmarked({ name: 'Hysteria', materialCost: 730_000 }),
+          unmarked({ name: 'Obelisk', materialCost: 40_000 }),
+        ],
+      })
+      expect(effectFor(name)!({ game, actor: 'a', card: inst(), ctx })).toBe(false)
+      expect(game.privates.a.hand).toHaveLength(0)
+    },
+  )
+
+  it.each(['ampereOnPlay', 'candelaOnPlay', 'quadrupoleOnPlay', 'spectrumEffect'])(
+    '%s draws only from the marked four, never a same-faction neighbour',
+    (name) => {
+      const game = makeGame()
+      const ctx = makeCtx({
+        catalog: [
+          unmarked({ name: 'Fear', materialCost: 800_000 }),
+          unmarked({ name: 'Hysteria', materialCost: 730_000 }),
+          marked({ name: '[TG] Fear', materialCost: 600_000 }),
+          unmarked({ name: 'Obelisk', materialCost: 40_000 }),
+        ],
+      })
+      expect(effectFor(name)!({ game, actor: 'a', card: inst(), ctx })).toBe(true)
+      expect(game.privates.a.hand.map((c) => c.name)).toEqual(['[TG] Fear'])
+    },
+  )
+
+  // ⚠ Two filters, not one. A fix applied only to drawFromPool leaves Robotic
+  // Assemblers offering every TG card in the game — and pendingEffect.options
+  // is public, so both players would scroll a 28-button dialog.
+  it('Robotic Assemblers offers exactly the marked cards', () => {
+    const game = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+    const ctx = makeCtx({
+      catalog: [
+        unmarked({ cardId: 'tg-new', name: 'Fear', materialCost: 800_000 }),
+        marked({ cardId: 'tg-b', name: '[TG] Obsession', materialCost: 330_000 }),
+        marked({ cardId: 'tg-a', name: '[TG] Amusement', materialCost: 400_000 }),
+        unmarked({ cardId: 'tg-duel', name: 'Duel', type: 'ability', vehicleType: null }),
+      ],
+    })
+    game.privates.a.hand.push(inst({
+      instanceId: 'ra1', name: 'Robotic Assemblers', type: 'ability',
+      meta: { onPlayEffect: 'roboticAssemblersEffect' },
+    }))
+    const res = applyAction(game, 'alice', { type: 'PLAY_ABILITY_CARD', instanceId: 'ra1' }, ctx)
+    if (!res.ok) throw new Error(res.error)
+    expect(res.game.state.pendingEffect?.options).toEqual([
+      { id: 'tg-a', label: '[TG] Amusement' },
+      { id: 'tg-b', label: '[TG] Obsession' },
+    ])
+  })
+
+  // The marker's VALUE, not merely its presence (guard blind spot 4). A
+  // truthy-but-wrong value would leave the pool empty and every LH pool card
+  // silently dead.
+  it('a truthy-but-wrong marker value does not join the pool', () => {
+    const game = makeGame()
+    const ctx = makeCtx({
+      catalog: [snap({ name: 'Impostor', faction: 'TG', meta: { lhRoboticsPool: 'yes' } })],
+    })
+    expect(effectFor('ampereOnPlay')!({ game, actor: 'a', card: inst(), ctx })).toBe(false)
+  })
+
+  // The marker is faction-agnostic on purpose — it is the whole rule, so the
+  // `faction: 'TG'` filter is gone rather than merely narrowed.
+  it('is the whole rule: a marked card is drawn whatever faction it prints', () => {
+    const game = makeGame()
+    const ctx = makeCtx({ catalog: [marked({ name: 'Borrowed', faction: 'LH' })] })
+    expect(effectFor('ampereOnPlay')!({ game, actor: 'a', card: inst(), ctx })).toBe(true)
+    expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Borrowed'])
   })
 })

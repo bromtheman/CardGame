@@ -17,6 +17,7 @@ export const TG_ROBOTICS = [
         blueprintId: null,
         keywords: [KEYWORDS.ROBOTIC, KEYWORDS.MOBILE],
         meta: {
+            lhRoboticsPool: true,
         }
     },
     {
@@ -34,6 +35,7 @@ export const TG_ROBOTICS = [
         blueprintId: null,
         keywords: [KEYWORDS.ROBOTIC],
         meta: {
+            lhRoboticsPool: true,
         }
     },
     {
@@ -51,6 +53,7 @@ export const TG_ROBOTICS = [
         blueprintId: null,
         keywords: [KEYWORDS.ROBOTIC],
         meta: {
+            lhRoboticsPool: true,
         }
     },
     {
@@ -68,6 +71,7 @@ export const TG_ROBOTICS = [
         blueprintId: null,
         keywords: [KEYWORDS.ROBOTIC],
         meta: {
+            lhRoboticsPool: true,
         }
     },
 ];
