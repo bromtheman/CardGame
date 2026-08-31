@@ -8,6 +8,7 @@ import {
   legalZonesFor,
   joinBattle,
   findVehicle,
+  sacrificeEntry,
 } from '../engine/index.ts'
 import type { CardInstance } from '../engine/gameInit.ts'
 import type { BattleCasualty, BattleContext, EngineContext, EngineGame } from '../engine/engineTypes.ts'
@@ -4927,5 +4928,131 @@ describe('TG Horror — a self-copy on surviving a battle (wave 7)', () => {
     const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, ctx)
     if (!decided.ok) throw new Error(decided.error)
     expect(decided.game.state.zones[0].cards.a.filter((c) => c.name === 'Horror')).toHaveLength(2)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Wave 7, group E — TG Nostalgia.
+//
+// "Whenever this would be destroyed, put it back into your hand."
+//
+// The engine has never had a replacement effect. DECIDE_BATTLE_REPORT's
+// resolution loop removes from zone.cards, calls discardCard and pushes to
+// destroyedEntries, and only AFTERWARDS runs fireDeathEffect — nothing in the
+// engine can say "instead of". So this is route (a): an onDeathEffect that
+// UNDOES the discard, built on the discardIndexOf/sameSnapshot machinery
+// reviveEntry already uses. Route (b), a real pre-destruction hook, would have
+// touched the single most load-bearing loop in the engine.
+//
+// ⚠ The divergences from a true replacement are real, and are pinned below
+// rather than left to be discovered.
+describe('TG Nostalgia — back to hand instead of the discard (wave 7)', () => {
+  const nostalgia = (over = {}) => zoneEntry({
+    instanceId: 'nos1', name: 'Nostalgia', faction: 'TG', vehicleType: 'ship',
+    materialCost: 90_000, keywords: [KEYWORDS.ROBOTIC, KEYWORDS.UPKEEP_REQUIRED],
+    meta: { onDeathEffect: 'nostalgiaOnDeath' }, playedOnTurn: 1, ...over,
+  })
+
+  // A real battle, lost: Nostalgia at 0%, the enemy at 100%.
+  const loseBattle = (entry = nostalgia()) => {
+    const game = makeGame({ turnNumber: 3, activePlayer: 'alice' })
+    game.state.zones[0].cards.a.push(entry)
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe1', name: 'Foe', playedOnTurn: 1 }))
+    const ctx = makeCtx()
+    if (!declareForcedBattle(game, ctx, {
+      zoneId: 1, aggressor: 'a', attackerIds: [entry.instanceId], defenderIds: ['foe1'], cause: 'Test',
+    })) throw new Error('battle not declared')
+    const submitted = applyAction(game, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT', results: { [entry.instanceId]: 0, foe1: 100 }, repairs: [],
+    }, ctx)
+    if (!submitted.ok) throw new Error(submitted.error)
+    const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, ctx)
+    if (!decided.ok) throw new Error(decided.error)
+    return decided.game
+  }
+
+  it('ends up in its controller’s hand rather than the discard', () => {
+    const game = loseBattle()
+    expect(game.privates.a.hand.map((c) => c.name)).toContain('Nostalgia')
+    expect(game.state.destroyed.a.map((c) => c.name)).not.toContain('Nostalgia')
+    expect(game.state.zones[0].cards.a).toHaveLength(0)
+  })
+
+  // Checklist item 5: a direct push into a private hand must resync the public
+  // count by hand — drawCard does it for you, this does not.
+  it('resyncs state.counts', () => {
+    const game = loseBattle()
+    expect(game.state.counts.a.hand).toBe(game.privates.a.hand.length)
+  })
+
+  it('comes back with a fresh instanceId and no per-entry stamps', () => {
+    const game = loseBattle()
+    const returned = game.privates.a.hand.find((c) => c.name === 'Nostalgia')!
+    expect(returned.instanceId).not.toBe('nos1')
+    // Rebuilt from the discard snapshot, which already has the stamps stripped.
+    expect((returned as Record<string, unknown>).playedOnTurn).toBeUndefined()
+    expect((returned as Record<string, unknown>).movedOnTurn).toBeUndefined()
+  })
+
+  it('a captured Nostalgia keeps its ownerSide, so it still goes home later', () => {
+    const game = loseBattle(nostalgia({ meta: { onDeathEffect: 'nostalgiaOnDeath', ownerSide: 'b' } }))
+    const returned = game.privates.a.hand.find((c) => c.name === 'Nostalgia')
+    expect(returned?.meta.ownerSide).toBe('b')
+    expect(game.state.destroyed.b.map((c) => c.name)).not.toContain('Nostalgia')
+  })
+
+  // ⚠ THE THREE DIVERGENCES. Route (a) undoes the discard and nothing else, so
+  // everything the resolution loop had already decided still stands.
+  it('divergence 1: the death is still logged', () => {
+    expect(loseBattle().state.log.join(' ')).toContain('Nostalgia was destroyed')
+  })
+
+  it('divergence 2: it still counts toward destroyedCount', () => {
+    expect(loseBattle().state.log.join(' ')).toContain('Battle resolved — 1 vehicle(s) lost')
+  })
+
+  // The load-bearing one: survivingIds is computed BEFORE any trigger runs, so
+  // a lone Nostalgia losing a battle still hands the enemy the win and still
+  // writes zone.lostBattleOnTurn — which WF Purifier deploys off.
+  it('divergence 3: it still counts as a LOSS for battleOutcome', () => {
+    const game = loseBattle()
+    expect(game.state.zones[0].lostBattleOnTurn.a).toBe(3)
+    expect(game.state.zones[0].lostBattleOnTurn.b).toBeNull()
+  })
+
+  // ⚠ Ruling E-1: battle death only. "Whenever this WOULD be destroyed" is
+  // broader on its face, but sacrificeEntry calls discardCard directly and
+  // never fireDeathEffect, so route (a) could not save a sacrificed Nostalgia
+  // in any case. Scoped and stated rather than left ambiguous.
+  it('E-1: a SACRIFICED Nostalgia is not saved', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zones[0].cards.a.push(nostalgia())
+    expect(sacrificeEntry(game, 'a', 'nos1', 1)).toBe(true)
+    expect(game.state.destroyed.a.map((c) => c.name)).toContain('Nostalgia')
+    expect(game.privates.a.hand).toHaveLength(0)
+  })
+
+  // ✅ Nostalgia prints no SCRAPPY, so checklist item 10 is satisfied — and
+  // that rule exists for exactly this shape. Its owner still CHOOSES whether
+  // to pay the 80-90% repair; repairing means it survives and no trigger
+  // fires, which is correct.
+  it('does not fire when the hull survives on a repair', () => {
+    const entry = nostalgia()
+    const game = makeGame({ turnNumber: 3, activePlayer: 'alice' })
+    game.state.resources.a.materials = 500_000
+    game.state.zones[0].cards.a.push(entry)
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe1', name: 'Foe', playedOnTurn: 1 }))
+    const ctx = makeCtx()
+    declareForcedBattle(game, ctx, {
+      zoneId: 1, aggressor: 'a', attackerIds: ['nos1'], defenderIds: ['foe1'], cause: 'Test',
+    })
+    const submitted = applyAction(game, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT', results: { nos1: 85, foe1: 100 }, repairs: ['nos1'],
+    }, ctx)
+    if (!submitted.ok) throw new Error(submitted.error)
+    const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, ctx)
+    if (!decided.ok) throw new Error(decided.error)
+    expect(decided.game.state.zones[0].cards.a.map((c) => c.name)).toContain('Nostalgia')
+    expect(decided.game.privates.a.hand).toHaveLength(0)
   })
 })

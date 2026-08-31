@@ -3,7 +3,7 @@ import {
 } from './primitives.ts'
 import { joinBattle } from '../engine/battleDeclare.ts'
 import { copyMeta, findVehicle } from '../engine/gameEngine.ts'
-import { sacrificeEntry } from '../engine/battleTriggers.ts'
+import { returnToHand, sacrificeEntry } from '../engine/battleTriggers.ts'
 import { KEYWORDS } from '../gameSettings.ts'
 import type { ZoneCardEntry } from '../engine/engineTypes.ts'
 import { registerEffect } from './registry.ts'
@@ -221,3 +221,22 @@ registerEffect('horrorBattle', ({ game, actor, ctx, card, battle }) => {
   game.state.log.push(`${card.name} splits in zone ${found.zone.id}`)
   return true
 })
+
+// "Whenever this would be destroyed, put it back into your hand."
+//
+// ⚠ Ruling E-1 — BATTLE DEATH ONLY. "Would be destroyed" is broader on its
+// face, but this is an onDeathEffect and sacrificeEntry never fires one (that
+// is decision 28's split: "destroy" fires, "remove from play" does not), so a
+// sacrificed Nostalgia is not saved. Scoped deliberately rather than by
+// accident.
+//
+// ✅ Nostalgia prints no SCRAPPY, so checklist item 10 holds — and that rule
+// exists for exactly this shape. Its owner still CHOOSES whether to pay the
+// 80-90% repair; repairing means it survives and no trigger fires, which is
+// correct.
+//
+// Balance note, not a defect: under this route it never reaches the discard,
+// so it never reshuffles into the deck — it goes straight back to hand,
+// indefinitely, for 13.5k of upkeep a turn.
+registerEffect('nostalgiaOnDeath', ({ game, actor, ctx, card }) =>
+  returnToHand(game, actor, card as ZoneCardEntry, ctx))

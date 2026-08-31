@@ -405,6 +405,50 @@ export function reviveEntry(
   return true
 }
 
+// reviveEntry's sibling, and wave 7's answer to TG Nostalgia: "whenever this
+// would be destroyed, put it back into your hand."
+//
+// The engine has no replacement effects. DECIDE_BATTLE_REPORT's resolution
+// loop removes from zone.cards, calls discardCard and pushes to
+// destroyedEntries, and only AFTERWARDS runs fireDeathEffect — so nothing can
+// say "instead of". This UNDOES the discard rather than preventing it, which
+// is why three consequences survive and are recorded in spec §7.3:
+//
+//   * the death is still logged;
+//   * it still counts toward destroyedCount;
+//   * it still counts as a LOSS for battleOutcome, because survivingIds is
+//     computed before any trigger runs. So a lone Nostalgia losing a battle
+//     still hands the enemy the win and still writes zone.lostBattleOnTurn,
+//     which WF Purifier deploys off.
+//
+// The card goes to the CONTROLLER's hand (that is whose hand "your hand" is),
+// while the snapshot is pulled from its OWNER's discard — so a captured hull
+// keeps its ownerSide stamp and still goes home the next time it leaves play.
+// A fresh instanceId is minted because SnapshotCard carries none, exactly as
+// reshuffleDiscard does.
+//
+// Returns false without touching anything when the snapshot is not there,
+// matching reviveEntry's contract.
+export function returnToHand(
+  game: EngineGame, side: Side, entry: ZoneCardEntry, ctx: EngineContext,
+): boolean {
+  const owner = ownerSideOf(entry, side)
+  const index = discardIndexOf(game, side, entry)
+  if (index < 0) return false
+  const [snapshot] = game.state.destroyed[owner].splice(index, 1)
+  // ⚠ discardSnapshotOf STRIPS meta.ownerSide when it files a captured card
+  // into its owner's pile — correct there, because a card sitting in its
+  // owner's discard is home and no longer on loan. Here it is not home: it is
+  // going back to the CAPTOR's hand, still borrowed. Re-stamping is what keeps
+  // a capture a loan; without it the card would later be filed under the
+  // captor and permanently leave the deck it was built into.
+  const meta = owner !== side ? { ...snapshot.meta, ownerSide: owner } : snapshot.meta
+  game.privates[side].hand.push({ ...snapshot, meta, instanceId: ctx.newId() })
+  // Checklist item 5: a direct push must resync the public count by hand.
+  game.state.counts[side].hand = game.privates[side].hand.length
+  return true
+}
+
 // The price both reviving cards pay: take the sacrificing hull off the board
 // and out of play through discardCard, the single exit every card leaving play
 // uses — so a captured hull still goes home and a summonOnly one still never

@@ -103,6 +103,7 @@ export const tgVehicles = [
         blueprintId: null,
         keywords: [KEYWORDS.UPKEEP_REQUIRED, KEYWORDS.ROBOTIC],
         meta: {
+            [TRIGGERS.ON_DEATH]: 'nostalgiaOnDeath',
         }
     },
     {
