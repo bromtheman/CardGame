@@ -73,7 +73,24 @@ export const KEYWORDS = {
   SCRAPPY: 'scrappy', TEMPORARY: 'temporary', INOFFENSIVE: 'inoffensive',
   HALF_COST: 'halfCost', FRAGILE: 'fragile', STEALTHY: 'stealthy',
   MOBILE: 'mobile', ROBOTIC: 'robotic',
+  // Wave 7 (TG): "at turn start, reduce your resources this turn by 15% of
+  // this card's cost". Ten TG cards carry it.
+  UPKEEP_REQUIRED: 'upkeepRequired',
 } as const
+
+// UPKEEP_REQUIRED's rate. Charged in endTurn against the income that was just
+// SET for the incoming side, off effectiveMaterialCostOf — never
+// effectiveCostInGame, which is play-time-only and must not reach a recurring
+// charge (spec §7.3, ruling U-1).
+//
+// The rate needs no per-card tuning because it is scale-invariant (U-8):
+// income is set to floor(turnNumber) × materialsPerTurn rather than
+// accumulated, so a card is unplayable until income reaches its cost, and its
+// upkeep is therefore always ~15% of the income available on the turn it first
+// becomes playable — at any cost and at any lobby rate. Horror (70k) lands at
+// turn 1 and pays 14% of 75k; Fear (800k) lands at turn 11 and pays 14.5% of
+// 825k.
+export const UPKEEP_RATE = 0.15
 
 export const TRIGGERS = {
   ON_PLAY: 'onPlayEffect', PLAY_ON_ZONE: 'playOnZoneEffect',

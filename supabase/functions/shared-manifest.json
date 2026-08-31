@@ -15,6 +15,7 @@
     "engine/gameInit.ts",
     "engine/engineTypes.ts",
     "engine/gameEngine.ts",
+    "engine/costs.ts",
     "engine/placement.ts",
     "engine/activate.ts",
     "engine/pendingEffect.ts",

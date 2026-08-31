@@ -8,6 +8,7 @@ import {
 } from './gameEngine.ts'
 import { costModifierFor, effectFor, effectName, noteUnimplemented } from '../effects/registry.ts'
 import { dispatchDeployWatchers } from './battleTriggers.ts'
+import { effectiveMaterialCostOf } from './costs.ts'
 
 const BIOMES_BY_TYPE: Record<string, string[]> = {
   [VEHICLE_TYPES.SHIP]: [ZONE_TYPES.WATER, ZONE_TYPES.BEACH],
@@ -111,13 +112,11 @@ export function legalZonesFor(
     .map((z) => z.id)
 }
 
-// Spec §3.7 Half-Cost: the discount is applied at usage time, never baked
-// into stored material_cost (seed data and create-card both store full cost).
-export function effectiveMaterialCostOf(card: { materialCost: number; keywords: string[] }): number {
-  return card.keywords.includes(KEYWORDS.HALF_COST)
-    ? Math.floor(card.materialCost / 2)
-    : card.materialCost
-}
+// Spec §3.7 Half-Cost. The definition moved to the leaf module `costs.ts` in
+// wave 7 so endTurn could reach it without closing a gameEngine ↔ placement
+// import cycle; it is re-exported here so every existing importer is
+// unchanged and there is still exactly one definition.
+export { effectiveMaterialCostOf } from './costs.ts'
 
 export function canAfford(state: PublicGameState, side: Side, card: CardInstance): boolean {
   return (

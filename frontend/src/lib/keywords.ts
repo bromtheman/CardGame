@@ -8,6 +8,7 @@ import noSubs from '../assets/icons/noSubsSVG.svg'
 import spark from '../assets/icons/sparkSVG.svg'
 import tire from '../assets/icons/tireSVG.svg'
 import tire2 from '../assets/icons/tire2SVG.svg'
+import iron from '../assets/icons/ironSVG.svg'
 import crosshair from '../assets/icons/crosshairSVG.svg'
 import torpedo from '../assets/icons/torpedoSVG.svg'
 import airport from '../assets/icons/airportSVG.svg'
@@ -98,6 +99,12 @@ export const KEYWORD_INFO: Record<string, Attribute> = {
     label: 'Robotic',
     icon: tire2,
     description: 'A battle-conduct rule for the spawn sheet: unlimited in-battle repair resources, but treat it as destroyed if any of its sub-objects are destroyed.',
+  },
+  [KEYWORDS.UPKEEP_REQUIRED]: {
+    key: KEYWORDS.UPKEEP_REQUIRED,
+    label: 'Upkeep Required',
+    icon: iron,
+    description: 'At the start of each of your turns, this vehicle takes 15% of its material cost out of that turn’s income before you spend anything. A Half-Cost vehicle pays 15% of its halved cost. It costs nothing on the turn you deploy it, and nothing at all once it leaves the board.',
   },
 }
 

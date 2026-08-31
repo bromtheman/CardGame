@@ -1,6 +1,7 @@
 import { KEYWORDS, LOG_MAX_ENTRIES, VEHICLE_TYPES } from '../gameSettings.ts'
 import { materialsPerTurnOf } from '../lobbySettings.ts'
 import { secureRng } from './gameInit.ts'
+import { upkeepOwedBy } from './costs.ts'
 import type { CardInstance, PublicGameState, SnapshotCard, ZoneEffect } from './gameInit.ts'
 import type {
   ApplyResult, EngineContext, EngineGame, GameAction, Side, ZoneCardEntry,
@@ -345,6 +346,33 @@ function endTurn(game: EngineGame, ctx: EngineContext): ApplyResult {
   }
   game.state.resources[side].materials =
     Math.floor(game.turnNumber) * materialsPerTurnOf(game.settings)
+
+  // Wave 7's UPKEEP_REQUIRED (spec §7.3, rulings U-0 … U-7). Its position is
+  // three rulings at once, so it must stay exactly here:
+  //
+  //   * AFTER the Temporary cull above, so a hull that despawned this turn
+  //     start pays nothing (U-6). No card carries both keywords today; the
+  //     ordering is free and it is the honest one.
+  //   * AFTER income is SET rather than accumulated, which is what makes a
+  //     shortfall impossible to carry forward as debt, and what makes the 15%
+  //     rate scale-invariant (U-8).
+  //   * Billed to the side whose turn is STARTING, which is the whole of why a
+  //     hull deployed this turn pays nothing until its owner's next turn (U-5).
+  //
+  // The clamp is U-3, and it is a choice rather than a formality: income is
+  // reset every turn so a negative could never persist, but canAffordInGame
+  // compares `materials >= cost`, so an unclamped negative would behave
+  // plausibly and silently.
+  const upkeep = upkeepOwedBy(game.state, side)
+  if (upkeep > 0) {
+    game.state.resources[side].materials = Math.max(0, game.state.resources[side].materials - upkeep)
+    // ONE line carrying the total, never one per hull — the same call §4.4
+    // makes for "N summoned vehicle(s) evaporated" rather than six lines for
+    // six Martyrs (U-7). Board hulls are public, so naming them would leak
+    // nothing; a total simply reads better.
+    game.state.log.push(`Player ${side.toUpperCase()} pays ${upkeep} upkeep`)
+  }
+
   drawCard(game, side, ctx)
 
   // Change Order redeliveries (Task 7): process every scheduled item due for
