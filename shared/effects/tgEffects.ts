@@ -113,9 +113,21 @@ registerEffect(HYSTERIA, choice({
     // "You may": choice() resolves straight through with null when the board
     // holds no enemy vehicle, and that is a success, not a fizzle.
     if (choiceId === null) return true
-    if (!enemyVehicleOptions(game, actor, null).some((o) => o.id === choiceId)) return false
+    // Re-checked against the board rather than trusted from the first entry.
+    //
+    // ⚠ The side half is UNREACHABLE today and a surviving mutation proved it,
+    // so do not go looking for the test that pins it — there cannot be one.
+    // While pendingEffect stands, applyAction admits only RESOLVE/CONCEDE/
+    // ABANDON, and USE_HERO_POWER is excluded, so nothing can trade the target
+    // to the other side (Boarding Party) between the offer and the answer. It
+    // is a guard against that freeze ever being relaxed, exactly as Terawatt's
+    // own re-checks are. The `!found` half IS live: the hull can be gone.
+    //
+    // This replaced a full enemyVehicleOptions() re-scan, which was strictly
+    // redundant — findVehicle already covers "the hull left the board", which
+    // is why the mutation survived — and hid what the check was really for.
     const found = findVehicle(game.state, choiceId)
-    if (!found) return false
+    if (!found || found.side !== otherSide(actor)) return false
     // Idempotent, matching grantKeywords: a keyword already carried is not
     // duplicated.
     if (!found.entry.keywords.includes(KEYWORDS.INOFFENSIVE)) {
@@ -292,6 +304,16 @@ registerEffect('vengefulBattle', ({ game, actor, card, battle }) => {
   const lost = battle.casualties.filter((c) => c.side === actor).length
   if (lost === 0) return true
   const found = findVehicle(game.state, card.instanceId)
+  // ⚠ The `!found` half is E-2b and is LIVE: `participants` still holds a
+  // destroyed hull's entry at resolve, so the participant pass does reach a
+  // Vengeful that just died, and only this stops it firing.
+  //
+  // The side half is UNREACHABLE, and a surviving mutation proved it rather
+  // than a comment claiming it: every dispatch hands `fire` the side the entry
+  // was found on, and instanceIds are unique, so found.side always equals
+  // actor. Kept as defence in depth against a future dispatch that is less
+  // careful — the same latitude Terawatt's isDefender guard documents — but
+  // there is no test that can pin it, and none should be invented.
   if (!found || found.side !== actor) return true // E-2b
   const enemy = otherSide(actor)
   const damage = Math.floor((lost * VENGEFUL_BASE_DAMAGE) / BASE_DAMAGE_DIVISOR)
