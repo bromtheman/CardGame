@@ -1,15 +1,17 @@
 import {
   AMBUSH_DISTANCE_M, SPAWN_DISTANCE_MIN_M,
-  ALL_FOR_THE_CAUSE_DOUBLE_COST, HARBRINGER_GUEST_MAX_COST, KEYWORDS,
+  ALL_FOR_THE_CAUSE_DOUBLE_COST, HARBRINGER_GUEST_MAX_COST, JUDGEMENT_DISCOUNT, KEYWORDS,
   MARTYR_ATTACK_BOOST_MIN_COST,
   MARTYR_ATTACK_BOOSTED_COUNT, MARTYR_ATTACK_COUNT, VEHICLE_TYPES,
 } from '../gameSettings.ts'
-import type { EngineContext, ZoneCardEntry } from '../engine/engineTypes.ts'
+import type { EngineContext, EngineGame, Side, ZoneCardEntry } from '../engine/engineTypes.ts'
 import type { SnapshotCard } from '../engine/gameInit.ts'
 import { findVehicle, otherSide, zoneById } from '../engine/gameEngine.ts'
 import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
-import { catalogCard, choice, grant, spawnInto, summonHulls } from './primitives.ts'
-import { registerEffect } from './registry.ts'
+import {
+  catalogCard, choice, enemyVehicleOptions, grant, spawnInto, summonHulls,
+} from './primitives.ts'
+import { registerCostModifier, registerEffect } from './registry.ts'
 import type { EffectPayload } from './registry.ts'
 
 // WF built-in card effects.
@@ -255,3 +257,70 @@ registerEffect(HARBRINGER, (payload) => {
   if (!battle || battle.phase !== 'lock' || !battle.isParticipant) return true
   return harbringerOffer(payload)
 }, { needsCatalog: true })
+
+// "While your opponent has a submarine or airship, this card costs 100k less.
+// Each turn, you may pay 1cp to have this vehicle 1v1 an enemy submarine or
+// airship in this zone."
+//
+// Two clauses, two mechanisms, and the SCOPE of each is what tells them apart
+// (spec §7.3, wave 6): the discount names no zone and reads the whole enemy
+// board; the duel says "in this zone" and reads one. The contrast inside a
+// single card is the evidence for both halves.
+const JUDGEMENT_PREY = [VEHICLE_TYPES.SUB, VEHICLE_TYPES.AIRSHIP] as readonly string[]
+
+// A flat discount, never per-hull: the text says "a submarine or airship", and
+// one is as much a reason as three. CostModifierFn already receives the whole
+// state and the pricing side, so scanning the other side costs nothing.
+registerCostModifier('judgementCostModifier', (state, side) => {
+  const enemy = otherSide(side)
+  const found = state.zones.some(
+    (z) => z.cards[enemy].some((c) => JUDGEMENT_PREY.includes(c.vehicleType ?? '')),
+  )
+  return found ? -JUDGEMENT_DISCOUNT : 0
+})
+
+const JUDGEMENT = 'judgementActivate'
+
+// Braveheart's shape with a vehicleType filter (DP1 + DP4 + DP3). "Each turn"
+// needs no code: ACTIVATE_VEHICLE pays the CP and stamps activatedOnTurn
+// BEFORE this ever runs, so once-per-turn is already enforced.
+//
+// Like Braveheart, no `data` stash is needed and none is trusted from the
+// client: payload.card on BOTH entries IS the activating hull, so its zone is
+// re-derived identically in options() and resolve() rather than read off
+// RESOLVE_PENDING_EFFECT's unvalidated fields. ACTIVATE_VEHICLE passes
+// action.zoneId straight through as targetZoneId, which is exactly why this
+// must not read it.
+function judgementSelf(game: EngineGame, actor: Side, card: { instanceId: string }) {
+  const found = findVehicle(game.state, card.instanceId)
+  return found && found.side === actor ? found : null
+}
+
+registerEffect(JUDGEMENT, choice({
+  effect: JUDGEMENT,
+  prompt: 'Choose an enemy submarine or airship for Judgement to fight',
+  options: ({ game, actor, card }) => {
+    const self = judgementSelf(game, actor, card)
+    return self
+      ? enemyVehicleOptions(game, actor, self.zone.id, (e) => JUDGEMENT_PREY.includes(e.vehicleType ?? ''))
+      : []
+  },
+  resolve: (payload, choiceId) => {
+    const { game, actor, card, ctx } = payload
+    if (choiceId === null) return false // nothing eligible in the zone — nothing to fight
+    const self = judgementSelf(game, actor, card)
+    if (!self) return false
+    const stillLegal = enemyVehicleOptions(
+      game, actor, self.zone.id, (e) => JUDGEMENT_PREY.includes(e.vehicleType ?? ''),
+    ).some((o) => o.id === choiceId)
+    if (!stillLegal) return false
+    // No activatesZone: a forced battle is not a zone activation (spec §4.3).
+    return declareForcedBattle(game, ctx, {
+      zoneId: self.zone.id,
+      aggressor: actor,
+      attackerIds: [card.instanceId],
+      defenderIds: [choiceId],
+      cause: card.name,
+    })
+  },
+}))

@@ -333,6 +333,10 @@ export const wfVehicles = [
         meta: {
             costModifier: 'judgementCostModifier',
             [TRIGGERS.ON_ACTIVATE]: 'judgementActivate',
+            // "Each turn, you may pay 1cp". An activated ability needs BOTH
+            // onActivate and a price, or ACTIVATE_VEHICLE refuses it and
+            // BoardZone renders no button.
+            activateCpCost: 1,
         }
     },
     {

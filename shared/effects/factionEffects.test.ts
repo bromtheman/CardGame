@@ -3373,3 +3373,126 @@ describe('wave 6 — WF Harbringer', () => {
     expect(empty.state.pendingEffect).toBeNull()
   })
 })
+
+describe('wave 6 — WF Judgement', () => {
+  const judgementCard = () => inst({
+    name: 'Judgement', faction: 'WF', vehicleType: 'ship', materialCost: 540_000,
+    meta: { costModifier: 'judgementCostModifier', onActivate: 'judgementActivate', activateCpCost: 1 },
+  })
+
+  // Ruling B-1 (spec §7.3, wave 6). "While your opponent HAS a submarine or
+  // airship" names no zone; the card's own second sentence says "in this
+  // zone" explicitly. The contrast inside one card is the evidence.
+  describe('judgementCostModifier — the whole enemy board', () => {
+    const priced = (place?: (g: EngineGame) => void) => {
+      const game = makeGame()
+      place?.(game)
+      return effectiveCostInGame(game.state, 'a', judgementCard())
+    }
+
+    it('costs full price when the enemy has neither', () => {
+      expect(priced()).toBe(540_000)
+      expect(priced((g) => { g.state.zones[0].cards.b.push(zoneEntry({ vehicleType: 'ship' })) })).toBe(540_000)
+      expect(priced((g) => { g.state.zones[0].cards.b.push(zoneEntry({ vehicleType: 'tank' })) })).toBe(540_000)
+    })
+
+    it.each(['sub', 'airship'])('costs 100k less against an enemy %s', (vehicleType) => {
+      expect(priced((g) => { g.state.zones[0].cards.b.push(zoneEntry({ vehicleType })) })).toBe(440_000)
+    })
+
+    // The zone Judgement itself would land in is irrelevant — this is the
+    // assertion that pins the ruling rather than an accident of fixtures.
+    it('reads every zone, not just one', () => {
+      expect(priced((g) => { g.state.zones[2].cards.b.push(zoneEntry({ vehicleType: 'airship' })) })).toBe(440_000)
+    })
+
+    it('ignores the actor own subs and airships', () => {
+      expect(priced((g) => {
+        g.state.zones[0].cards.a.push(zoneEntry({ vehicleType: 'sub' }))
+        g.state.zones[1].cards.a.push(zoneEntry({ vehicleType: 'airship' }))
+      })).toBe(540_000)
+    })
+
+    it('does not stack — the text is a flat discount, not a per-hull one', () => {
+      expect(priced((g) => {
+        g.state.zones[0].cards.b.push(zoneEntry({ vehicleType: 'sub' }))
+        g.state.zones[0].cards.b.push(zoneEntry({ vehicleType: 'airship' }))
+        g.state.zones[1].cards.b.push(zoneEntry({ vehicleType: 'sub' }))
+      })).toBe(440_000)
+    })
+
+    it('prices for side b symmetrically, reading side a as the enemy', () => {
+      const game = makeGame()
+      game.state.zones[0].cards.a.push(zoneEntry({ vehicleType: 'sub' }))
+      expect(effectiveCostInGame(game.state, 'b', judgementCard())).toBe(440_000)
+      expect(effectiveCostInGame(game.state, 'a', judgementCard())).toBe(540_000)
+    })
+  })
+
+  describe('judgementActivate — a 1v1 against a sub or airship in this zone', () => {
+    function armed(place?: (g: EngineGame) => void) {
+      const game = makeGame({ turnNumber: 3 })
+      const judgement = zoneEntry({
+        name: 'Judgement', faction: 'WF', vehicleType: 'ship', playedOnTurn: 2,
+        meta: { onActivate: 'judgementActivate', activateCpCost: 1 },
+      })
+      game.state.zones[0].cards.a.push(judgement)
+      place?.(game)
+      return { game, judgement }
+    }
+    const activate = (game: EngineGame, instanceId: string) =>
+      applyAction(game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId }, makeCtx())
+
+    it('offers only enemy subs and airships in its own zone', () => {
+      const { game, judgement } = armed((g) => {
+        g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'sub-here', name: 'Diver', vehicleType: 'sub' }))
+        g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'air-here', name: 'Blimp', vehicleType: 'airship' }))
+        g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'ship-here', name: 'Hull', vehicleType: 'ship' }))
+        g.state.zones[1].cards.b.push(zoneEntry({ instanceId: 'sub-away', name: 'Far', vehicleType: 'sub' }))
+        g.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'own-sub', name: 'Mine', vehicleType: 'sub' }))
+      })
+      const r = activate(game, judgement.instanceId)
+      if (!r.ok) throw new Error(r.error)
+      expect(r.game.state.pendingEffect?.options.map((o) => o.id).sort()).toEqual(['air-here', 'sub-here'])
+    })
+
+    it('declares a 1v1 forced battle against the chosen hull', () => {
+      const { game, judgement } = armed((g) => {
+        g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'sub-here', name: 'Diver', vehicleType: 'sub' }))
+        g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'air-here', name: 'Blimp', vehicleType: 'airship' }))
+      })
+      const offered = activate(game, judgement.instanceId)
+      if (!offered.ok) throw new Error(offered.error)
+      const r = applyAction(
+        offered.game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'air-here' }, makeCtx(),
+      )
+      if (!r.ok) throw new Error(r.error)
+      const battle = r.game.state.activeBattle!
+      expect(battle.aggressor).toBe('a')
+      expect(battle.attackerIds).toEqual([judgement.instanceId])
+      expect(battle.defenderIds).toEqual(['air-here'])
+      // A forced battle is not a zone activation (spec §4.3) — Eclipse alone
+      // is the exception and says so in its own text.
+      expect(r.game.state.zones[0].lastActivatedTurn).toBeNull()
+    })
+
+    it('charges the printed 1cp and stamps once-per-turn', () => {
+      const { game, judgement } = armed((g) => {
+        g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'sub-here', name: 'Diver', vehicleType: 'sub' }))
+      })
+      const before = game.state.resources.a.cp
+      const r = activate(game, judgement.instanceId)
+      if (!r.ok) throw new Error(r.error)
+      expect(r.game.state.resources.a.cp).toBe(before - 1)
+      const again = activate(r.game, judgement.instanceId)
+      expect(again.ok).toBe(false)
+    })
+
+    it('fails when the zone holds no eligible target', () => {
+      const { game, judgement } = armed((g) => {
+        g.state.zones[0].cards.b.push(zoneEntry({ name: 'Hull', vehicleType: 'ship' }))
+      })
+      expect(activate(game, judgement.instanceId).ok).toBe(false)
+    })
+  })
+})

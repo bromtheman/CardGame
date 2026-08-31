@@ -159,6 +159,18 @@ describe('2026-08-30 balance pass', () => {
   // The Repentance is the sharp one: a WF PLANE at exactly 100_000. It is
   // excluded by the vehicleType filter alone, so this assertion is what
   // proves that filter is doing work.
+  // Judgement's text says "pay 1cp", and ACTIVATE_VEHICLE refuses a card with
+  // no price key at all — so without this, the card would have a registered
+  // ability, a card text promising it, and no way to press it. The same
+  // silent-pair trap Braveheart's assertion above exists for.
+  it('Judgement carries the 1cp price its text prints', async () => {
+    expect((await bySeedKey()).get('WF:Judgement')!.meta).toMatchObject({
+      costModifier: 'judgementCostModifier',
+      onActivate: 'judgementActivate',
+      activateCpCost: 1,
+    })
+  })
+
   it('Harbringer draws from exactly the WF ships at or under 100k', async () => {
     const { cards } = await loadSeedData()
     const pool = cards
