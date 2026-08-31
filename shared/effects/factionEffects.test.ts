@@ -3166,7 +3166,90 @@ describe('wave 6 — SS Nothung', () => {
 // flag is invisible to unit tests and shows up only as a dead card in
 // production. Asserted at runtime rather than by reading the source.
 describe('wave 6 — effects that must carry needsCatalog', () => {
-  it.each(['nothungOnPlay'])(
+  it.each(['nothungOnPlay', 'balmungOnPlay'])(
     '%s', (name) => { expect(CATALOG_EFFECTS.has(name)).toBe(true) },
   )
+})
+
+describe('wave 6 — SS Balmung', () => {
+  const hydraSnap = snap({
+    name: 'Hydra', faction: 'SS', vehicleType: 'airship', materialCost: 230_000,
+    blueprintCost: 231_000, keywords: ['mobile'], meta: {},
+  })
+  const balmung = () => inst({
+    name: 'Balmung', faction: 'SS', vehicleType: 'ship', materialCost: 0,
+    keywords: ['blocker'], meta: { onPlayEffect: 'balmungOnPlay' },
+  })
+  const balmungCtx = () => makeCtx({ catalog: [hydraSnap] })
+
+  function play() {
+    const card = balmung()
+    const game = makeGame({ privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } } })
+    const r = applyAction(
+      game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, balmungCtx(),
+    )
+    if (!r.ok) throw new Error(r.error)
+    return r.game
+  }
+
+  it('mints exactly one Hydra into the actor own hand and nowhere else', () => {
+    const game = play()
+    expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Hydra'])
+    expect(game.privates.b.hand).toEqual([])
+    // A card in hand, never a hull on the board — the text says "in hand".
+    expect(game.state.zones[0].cards.a.map((c) => c.name)).toEqual(['Balmung'])
+  })
+
+  // Ruling A-2 (spec §7.3, wave 6). "Reduce its COST to zero" is a price, not
+  // a rewrite. A minted materialCost: 0 would silently make the Hydra
+  // harmless as well as free — this is the assertion that catches it.
+  it('reduces the price with costDelta and leaves the printed materialCost alone', () => {
+    const hydra = play().privates.a.hand[0]
+    expect(hydra.meta.costDelta).toBe(-230_000)
+    expect(hydra.materialCost).toBe(230_000)
+  })
+
+  it('costs nothing to play but still does its printed damage and repair', () => {
+    const game = play()
+    const hydra = game.privates.a.hand[0]
+    expect(effectiveCostInGame(game.state, 'a', hydra)).toBe(0)
+    // The figure base damage, repairs and in-battle resources all read.
+    expect(effectiveMaterialCostOf(hydra)).toBe(230_000)
+  })
+
+  it('resyncs the public hand count, which a direct push does not do for you', () => {
+    const game = play()
+    expect(game.state.counts.a.hand).toBe(game.privates.a.hand.length)
+    expect(game.state.counts.a.hand).toBe(1)
+  })
+
+  // Ruling A-3. state.log is public and the Hydra is going into a hidden
+  // hand. Balmung's own text already reveals it, so this leaks nothing — but
+  // the rule is absolute and drawFromPool sets the precedent.
+  it('never names the minted card in the public log', () => {
+    expect(play().state.log.join('\n')).not.toContain('Hydra')
+  })
+
+  it('fails the play when the catalog has no Hydra — a data bug, not an empty pool', () => {
+    const card = balmung()
+    const game = makeGame({ privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } } })
+    const r = applyAction(
+      game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx(),
+    )
+    expect(r.ok).toBe(false)
+  })
+
+  // summonOnly cards are spawned, never drafted (docs/claude/architecture.md).
+  // This effect filters ctx.catalog by name directly rather than going through
+  // drawFromPool, so it does not get that guard for free — reservesEffect
+  // missed exactly this and could mint a Flying Squirrel into a hand.
+  it('refuses to mint a summonOnly card even if one is named Hydra', () => {
+    const card = balmung()
+    const game = makeGame({ privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } } })
+    const r = applyAction(
+      game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 },
+      makeCtx({ catalog: [snap({ ...hydraSnap, meta: { summonOnly: true } })] }),
+    )
+    expect(r.ok).toBe(false)
+  })
 })

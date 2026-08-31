@@ -33,12 +33,10 @@ const KNOWN_GAPS: Record<string, string> = {
   //     WF:Judgement               the same, plus a costModifier off enemy hull types
   //     WF:Purifier                a zone deploy prerequisite + "no base damage"
   //   existing primitives, not yet registered under their own name
-  //     SS:Balmung                 a catalog mint into hand at costDelta -cost
   //     WF:Harbringer              DWG Waters' clause-2 guest, WF ships <=100k
   'DWG:Albacore': 'balance 2026-08-30', 'DWG:Tarpon': 'balance 2026-08-30',
   'SS:Chrysaor': 'balance 2026-08-30', 'SS:Paladin': 'balance 2026-08-30',
   'SS:Blockade': 'balance 2026-08-30', 'SS:Victoria': 'balance 2026-08-30',
-  'SS:Balmung': 'balance 2026-08-30',
   'WF:Purifier': 'balance 2026-08-30', 'WF:Judgement': 'balance 2026-08-30',
   'WF:Harbringer': 'balance 2026-08-30',
 }
@@ -188,7 +186,7 @@ describe('built-in card effect coverage', () => {
       expect(Object.values(KNOWN_GAPS).filter((w) => w.startsWith(wave))).toEqual([])
       expect(Object.values(PARTIAL).filter((w) => w.startsWith(wave))).toEqual([])
     }
-    expect(Object.keys(KNOWN_GAPS)).toHaveLength(10)
+    expect(Object.keys(KNOWN_GAPS)).toHaveLength(9)
   })
 
   it('PARTIAL names real cards that currently pass G1 and G2, and never overlaps KNOWN_GAPS', async () => {

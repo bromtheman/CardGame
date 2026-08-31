@@ -28,6 +28,40 @@ registerEffect('nothungOnPlay', spawnVehicles({
   cardName: 'Sacrilego', count: 1, zones: 'target',
 }), { needsCatalog: true })
 
+// "When this is played into a zone, create a hydra card in hand and reduce its
+// cost to zero."
+//
+// The reduction is a PRICE, not a rewrite (spec §7.3, wave 6): costDelta is
+// summed into effectiveCostInGame and never reaches effectiveMaterialCostOf,
+// so the free Hydra still deals its printed base damage and still costs its
+// printed repair — which is what "reduce its COST" says. Minting at
+// materialCost: 0 would silently make it harmless as well as free.
+// loggerheadOnDeath does mint at zero and is NOT the precedent: its copy goes
+// into a DECK, where nothing but the price ever reads that number.
+//
+// The summonOnly exclusion is repeated by hand because this filters the
+// catalog by name directly rather than going through drawFromPool, which is
+// the one place that guard comes for free (docs/claude/architecture.md —
+// reservesEffect missed exactly this).
+registerEffect('balmungOnPlay', ({ game, actor, ctx }) => {
+  const hydra = catalogCard(ctx, 'Hydra')
+  // A named card the catalog cannot supply is a data bug, not an empty pool,
+  // so this fails the play rather than fizzling — the same contract
+  // spawnVehicles uses for the same reason.
+  if (!hydra || hydra.meta.summonOnly === true) return false
+  const hand = game.privates[actor].hand
+  hand.push({
+    ...hydra,
+    instanceId: ctx.newId(),
+    meta: { ...hydra.meta, costDelta: -hydra.materialCost },
+  })
+  // A direct push does not resync the public counts for you (drawCard does).
+  game.state.counts[actor].hand = hand.length
+  // Never named: state.log is public and this card is entering a hidden hand.
+  game.state.log.push(`Balmung forges a hull into player ${actor.toUpperCase()}'s hand, free of charge`)
+  return true
+}, { needsCatalog: true })
+
 // Orphaned by the 2026-08-30 balance pass, which replaced Victoria's
 // draw-on-death text with an activated ability and dropped the key. Kept
 // registered rather than deleted: a game dealt before that pass carries a
