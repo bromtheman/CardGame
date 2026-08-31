@@ -1,8 +1,13 @@
 # Effect coverage — close-out
 
-Wave 5 was the last wave, so there is no wave-6 handoff. This is what the spec
-is owed instead: which cards are built, which of its own rulings reality
+Wave 5 was the last wave **of the effect-coverage spec**. This is what that
+spec is owed: which of its cards are built, which of its own rulings reality
 contradicted, and what is left.
+
+It is not the last wave of the project. The 2026-08-30 balance pass added
+twelve cards whose behaviour was deliberately left out of scope, and
+`docs/superpowers/plans/2026-08-30-effect-coverage-wave-6-handoff.md` is the
+wave that closes them.
 
 Everything below is **measured on this branch**, not remembered. Where a number
 here disagrees with an earlier document, believe the number.
@@ -102,7 +107,7 @@ Wave 4 measured this honestly and it is worth continuing.
 | Nothing stopped an **enemy** Recurring Threat marker on the same zone being offered to the defender | a **surviving mutation** |
 | A redundant `copyMeta` no test could distinguish from its absence | a **surviving mutation** |
 | The plan's own claim that only Recurring Threat needed `{ needsCatalog: true }` | implementation — the flag is about what the **dispatcher** reads, not the effect |
-| Seven live built-in cards the repo has never seen, naming eight unimplemented effects | **checking the live catalog** during the smoke run — 133 rows where the seed makes 123 |
+| ~~Seven live built-in cards the repo has never seen~~ — **a false finding**, see §5 | checking the live catalog during the smoke run. The divergence was real; the conclusion drawn from it was not |
 | A React duplicate-key error on every idle board, since the overlay was built | **browser verification** — `StealthyResponseBar` and `BattleOverlay` are siblings and both fell back to the bare key `'none'` |
 
 Mutation testing paid for itself three times, and every one of those three was
@@ -209,43 +214,46 @@ are read after the wave ends rather than during it.
 
 ## 5. What is left
 
-### A finding this wave did not cause and cannot close
+### ⚠ A finding this wave reported, and got WRONG
 
-**Production carries seven built-in cards this repo has never seen, naming
-eight effects that do not exist.** Found while checking the live catalog during
-the smoke run: it returns **133** built-ins where the seed source produces 123.
+**Corrected after the fact.** This section originally read
+"Production carries seven built-in cards this repo has never seen, naming eight
+effects that do not exist", called it a sixth guard blind spot and "the widest
+one", and speculated that something predating the seed pipeline had inserted
+them. **That was wrong, and it is worth leaving the correction in rather than
+quietly deleting the claim.**
 
-| Card | Key | Effect named live |
-|---|---|---|
-| SS Balmung | `onPlayEffect` | `balmungOnPlay` |
-| SS Blockade | `playOnZoneEffect` | `blockadeEffect` |
-| SS Nothung | `onPlayEffect` | `nothungOnPlay` |
-| SS Victoria | `onActivate` | `victoriaActivate` |
-| WF Basher | `onDeathEffect` | `basherOnDeath` |
-| WF Harbringer | `onBattleEffect` | `harbringerBattle` |
-| WF Judgement | `onActivate` + `costModifier` | `judgementActivate`, `judgementCostModifier` |
+What was actually true: while wave 5 was in flight, a separate **2026-08-30
+balance pass** (PR #22) added eleven new cards, retired Rhea and reworked nine
+more. Its seed had been applied to production; its branch had not yet merged.
+So the live table legitimately held cards wave 5's branch could not see — a
+branch-vs-production **timing** difference, not orphan data. The effects are
+unimplemented **on purpose**: that pass was told to seed the cards and leave
+their behaviour out of scope, and it recorded all twelve in `KNOWN_GAPS` under
+`balance 2026-08-30`, each annotated with the mechanic it needs. Exactly the
+process this guard exists to support.
 
-Six of the seven appear in **no commit in this repository** (`git log -S` finds
-nothing), so they were inserted by something predating this seed pipeline. The
-seventh, Victoria, *is* in the source — with a different trigger entirely
-(`onDeathEffect: victoriaOnDeath`), so the live row is stale.
+Both halves of the original claim fail:
 
-This is a **sixth guard blind spot**, and the widest one: G1/G2/G3 all read
-`loadSeedData()`, and `seedDataSync.test.ts` compares the source to the
-generated SQL — but **nothing compares the generated SQL to the live table**.
-The guard's promise is "no built-in card silently does nothing", and production
-has seven that do. They are not broken (they play vanilla and log the note),
-but they are exactly the §1 audit's original complaint, alive and invisible.
+- "*Cards the repo has never seen*" — they were in a branch, in review. `git
+  log -S` on **my** branch found nothing because the commit was not an ancestor
+  of it. Searching one branch and concluding something about the repository is
+  the error.
+- "*The widest blind spot*" — the guard saw these cards the moment their branch
+  merged, and had them listed with reasons before I ever looked. Nothing was
+  invisible; I was looking at a stale tree.
 
-Two of them — Basher and Harbringer — were dealt into a hand during this wave's
-own smoke run, so they are reachable in real games, not dormant rows.
+What survives is much narrower, and worth keeping: **nothing compares the
+generated SQL to the live `cards` table**, so a seed applied from one branch
+while another is in flight is indistinguishable, from inside the repo, from
+data nobody owns. That is a real gap in the chain — it just was not evidence of
+one here.
 
-**Wave 5 did not fix this**, and should not have: adding six cards to the seed
-and implementing eight effects is another wave's work, and the decision of
-whether those cards should exist at all is the owner's. The cheap first step is
-to apply the current seed (`supabase/seed/seed_data.sql` is an idempotent
-upsert on `id`, so it would at least correct Victoria), then decide what to do
-about the six orphans.
+The lesson is the mirror of §6's, and sharper for being self-inflicted: reading
+the primary source is not enough if you read it **on the wrong branch**. A
+divergence between your checkout and production is a question, not a finding,
+until you have checked `origin` for a branch that explains it — which is one
+`git fetch` and one `git log --all -S`.
 
 ### Unverified
 
@@ -303,10 +311,17 @@ wave's most consequential findings — the forced-battle ruling and the
 `needsCatalog` correction — came from doing that once, late, when the code was
 already green.
 
-The live run extends the same rule past the repository. Every check in this
-wave was green — 753 tests, an empty `KNOWN_GAPS`, a guard that reads the seed
-source and swears every built-in card works — while production served seven
-cards that source has never contained. **A guard can only promise things about
-the world it can see**, and this one's world ends at `loadSeedData()`. The
-cheapest way to find that out was to ask production what it actually had, which
-took one query and had not been done in five waves.
+And the rule has a second half this wave learned the hard way, one paragraph
+after congratulating itself on the first. Asking production what it actually
+held was right; **concluding what that meant without asking `origin` the same
+question was not.** Twelve cards were sitting in a branch under review, seeded
+deliberately, already listed in `KNOWN_GAPS` with the mechanic each needed —
+and the write-up called them orphans that nobody owned. The check that would
+have caught it costs one command:
+
+```bash
+git fetch --all && git log --all --oneline -S'<the name you cannot explain>'
+```
+
+Read the primary source, then — before you write down what it means — make sure
+you are reading **all** of it.
