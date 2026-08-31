@@ -23,6 +23,16 @@ export const SPAWN_DISTANCE_DEFAULT_M = 1200
 export const SPAWN_DISTANCE_MIN_M = 50
 export const SPAWN_DISTANCE_MAX_M = 2000
 export const HERO_POWER_DISTANCE_MOD_M = 600
+// Ongoing Attrition: "deal 40k damage to the enemy base ... for each vehicle
+// you have in the zone more than your opponent". Materials, like every other
+// base-damage figure — it converts through BASE_DAMAGE_DIVISOR (design spec
+// §3.4), so one surplus vehicle costs 40 of a default 1000 HP base.
+export const ONGOING_ATTRITION_DAMAGE_PER_VEHICLE = 40_000
+
+// Ambush: "position your ships 600m closer to the enemy". Its own constant
+// rather than a reuse of the hero power's: the two are equal by coincidence,
+// and Ambush deliberately does NOT spend distanceModifiedBy (spec §7.3).
+export const AMBUSH_DISTANCE_M = 600
 export const IN_BATTLE_RESOURCE_RATE = 0.1
 
 export const SURVIVE_HP_PERCENT = 90

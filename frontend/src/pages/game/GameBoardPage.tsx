@@ -215,10 +215,14 @@ export function GameBoardPage() {
     <main className="mx-auto max-w-6xl p-6">
       {isActive && (
         <StealthyResponseBar
+          // The idle fallback is namespaced. These two are SIBLINGS, and both
+          // used to fall back to the bare string 'none' — so with no response
+          // window and no battle (the ordinary state of a board) React saw two
+          // children with the same key and logged an error on every render.
           key={
             state.awaitingResponse
-              ? `${state.awaitingResponse.zoneId}-${state.awaitingResponse.attackerIds.join(',')}-${state.awaitingResponse.targetIds.join(',')}`
-              : 'none'
+              ? `response-${state.awaitingResponse.zoneId}-${state.awaitingResponse.attackerIds.join(',')}-${state.awaitingResponse.targetIds.join(',')}`
+              : 'response-none'
           }
           state={state}
           mySide={mySide}
@@ -230,8 +234,8 @@ export function GameBoardPage() {
         <BattleOverlay
           key={
             state.activeBattle
-              ? `${state.activeBattle.zoneId}-${state.activeBattle.attackerIds.join(',')}-${state.activeBattle.defenderIds.join(',')}`
-              : 'none'
+              ? `battle-${state.activeBattle.zoneId}-${state.activeBattle.attackerIds.join(',')}-${state.activeBattle.defenderIds.join(',')}`
+              : 'battle-none'
           }
           state={state}
           mySide={mySide}

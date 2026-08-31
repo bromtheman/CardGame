@@ -4,8 +4,11 @@ import {
 import type { ApplyResult, BattleCasualty, EngineGame, Side, ZoneCardEntry } from './engineTypes.ts'
 import { discardCard, err, registerHandler, zoneById } from './gameEngine.ts'
 import { effectiveMaterialCostOf } from './placement.ts'
-import { effectFor, effectName } from '../effects/registry.ts'
-import { battleOutcome, contextForResolve, dispatchBattleResolve } from './battleTriggers.ts'
+import { effectFor } from '../effects/registry.ts'
+
+import {
+  battleOutcome, contextForResolve, dispatchBattleResolve, fireDeathEffect,
+} from './battleTriggers.ts'
 
 // PublicGameState.activeBattle (gameInit.ts) structurally duplicates
 // ActiveBattle (engineTypes.ts) rather than importing it (spec §4.4), so this
@@ -248,13 +251,7 @@ registerHandler('DECIDE_BATTLE_REPORT', (game, actor, action, ctx) => {
   // rejects the (already-approved) report. Unimplemented names are skipped
   // silently; their vanilla note already ran at play time (spec §3.9).
   for (const { entry, side } of destroyedEntries) {
-    const name = effectName(entry, 'onDeathEffect')
-    if (name === null) continue
-    const fn = effectFor(name)
-    if (!fn) continue
-    if (!fn({ game, actor: side, card: entry, ctx })) {
-      game.state.log.push(`${entry.name}'s death effect could not resolve`)
-    }
+    fireDeathEffect(game, ctx, side, entry)
   }
 
   // DP2 at resolve (spec §4.3). Deliberately placed AFTER the death triggers
