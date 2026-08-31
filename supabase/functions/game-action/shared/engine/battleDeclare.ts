@@ -1,7 +1,7 @@
 import { KEYWORDS, SPAWN_DISTANCE_DEFAULT_M, VEHICLE_TYPES } from '../gameSettings.ts'
 import type { BattleContinuation, EngineContext, Side, ZoneCardEntry } from './engineTypes.ts'
 import type { EngineGame } from './engineTypes.ts'
-import { err, otherSide, registerHandler, zoneById } from './gameEngine.ts'
+import { err, findVehicle, otherSide, registerHandler, zoneById } from './gameEngine.ts'
 import { dispatchBattleLock } from './battleTriggers.ts'
 
 // The one condition meta.defensiveOmission expresses today (spec §4.8). A
@@ -107,6 +107,12 @@ export function declareForcedBattle(game: EngineGame, ctx: EngineContext, spec: 
   continuation?: BattleContinuation | null
   cause: string            // card name, for the log line
   activatesZone?: boolean  // stamps lastActivatedTurn; Eclipse alone passes true
+  // Wave 7 — TG Duel: "target a friendly and enemy vehicle. They can be in
+  // different zones." OPT-IN, mirroring activatesZone above, so every existing
+  // caller keeps the same-zone guard it has always had rather than having it
+  // quietly widened underneath. `zoneId` remains the battle's home zone (the
+  // aggressor's own hull's); the away hull is resolved by id.
+  crossZone?: boolean
 }): boolean {
   const zone = zoneById(game.state, spec.zoneId)
   if (!zone) return false
@@ -114,7 +120,13 @@ export function declareForcedBattle(game: EngineGame, ctx: EngineContext, spec: 
   if (spec.attackerIds.length === 0 || spec.defenderIds.length === 0) return false
   const defenderSide = otherSide(spec.aggressor)
   const summonIds = new Set((spec.summons ?? []).map((s) => s.instanceId))
-  const onField = (side: Side, id: string) => zone.cards[side].some((c) => c.instanceId === id)
+  // Find-by-ID rather than skip-the-check: a cross-zone declaration still
+  // refuses an unknown id and still refuses a hull listed on the wrong side.
+  const onField = (side: Side, id: string) => (
+    spec.crossZone
+      ? findVehicle(game.state, id)?.side === side
+      : zone.cards[side].some((c) => c.instanceId === id)
+  )
   for (const id of spec.attackerIds) {
     if (!onField(spec.aggressor, id) && !summonIds.has(id)) return false
   }

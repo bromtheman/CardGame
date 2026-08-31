@@ -5453,3 +5453,309 @@ describe('TG Havoc/Mirth Factory — a rider on a hull (wave 7)', () => {
     expect(wantsCatalog).toBe(true)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Wave 7 — the cross-zone battle TG Duel needs.
+//
+// ActiveBattle carries ONE zoneId, and four load-bearing sites assumed a
+// battle happens in exactly one zone. Each becomes a find-by-ID instead of a
+// find-by-ZONE; findVehicle already does board-wide lookup, so the change is
+// bounded. `crossZone` is OPT-IN, mirroring `activatesZone` which Eclipse
+// alone passes, so every existing caller keeps the guard it had.
+//
+// Every case below is written twice: the cross-zone behaviour, and a
+// single-zone regression asserting the old behaviour is byte-identical.
+describe('cross-zone forced battles (wave 7)', () => {
+  // alice's hull in zone 1, bob's in zone 2.
+  const split = () => {
+    const game = makeGame({ turnNumber: 3, activePlayer: 'alice' })
+    game.state.zones[0].cards.a.push(zoneEntry({
+      instanceId: 'mine', name: 'Mine', materialCost: 100_000, playedOnTurn: 1,
+    }))
+    game.state.zones[1].cards.b.push(zoneEntry({
+      instanceId: 'theirs', name: 'Theirs', materialCost: 100_000, playedOnTurn: 1,
+    }))
+    return game
+  }
+
+  const declare = (game: EngineGame, crossZone: boolean) => declareForcedBattle(game, makeCtx(), {
+    zoneId: 1, aggressor: 'a', attackerIds: ['mine'], defenderIds: ['theirs'],
+    cause: 'Duel', crossZone,
+  })
+
+  // SITE 1 — declareForcedBattle's onField check.
+  it('site 1: refuses an away-zone defender WITHOUT the opt-in', () => {
+    const game = split()
+    expect(declare(game, false)).toBe(false)
+    expect(game.state.activeBattle).toBeNull()
+  })
+
+  it('site 1: accepts it WITH the opt-in', () => {
+    const game = split()
+    expect(declare(game, true)).toBe(true)
+    expect(game.state.activeBattle?.defenderIds).toEqual(['theirs'])
+  })
+
+  it('site 1 regression: an id on NEITHER side is still refused, opt-in or not', () => {
+    const game = split()
+    expect(declareForcedBattle(game, makeCtx(), {
+      zoneId: 1, aggressor: 'a', attackerIds: ['mine'], defenderIds: ['ghost'],
+      cause: 'Duel', crossZone: true,
+    })).toBe(false)
+  })
+
+  it('site 1 regression: a hull on the WRONG side is still refused', () => {
+    const game = split()
+    // 'mine' belongs to a, so listing it as b's defender must fail even
+    // cross-zone: the check is find-by-id, not skip-the-check.
+    expect(declareForcedBattle(game, makeCtx(), {
+      zoneId: 1, aggressor: 'a', attackerIds: ['mine'], defenderIds: ['mine'],
+      cause: 'Duel', crossZone: true,
+    })).toBe(false)
+  })
+
+  // SITE 2 — lockRoster. Without the fallback the away hull's DP2 lock
+  // triggers never fire.
+  it('site 2: the away hull’s lock trigger fires', () => {
+    const game = split()
+    findVehicle(game.state, 'theirs')!.entry.meta = { onBattleEffect: 't_deathWatch' }
+    declare(game, true)
+    expect(game.state.log.join(' ')).toContain('t_deathWatch fired')
+  })
+
+  // SITE 3 — participantsOf. Without the fallback the away hull misses the
+  // roster, falls through to the summon map, and is SILENTLY DROPPED from the
+  // report — the report would then reject as not covering every vehicle.
+  it('site 3: the report covers both hulls', () => {
+    const game = split()
+    declare(game, true)
+    const r = applyAction(game, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT', results: { mine: 100, theirs: 0 }, repairs: [],
+    }, makeCtx())
+    expect(r.ok).toBe(true)
+  })
+
+  // SITE 4 — the destruction branch. Removing from the BATTLE's zone would
+  // leave a destroyed away hull standing on the board.
+  it('site 4: a destroyed away hull leaves its OWN zone', () => {
+    const game = split()
+    declare(game, true)
+    const submitted = applyAction(game, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT', results: { mine: 100, theirs: 0 }, repairs: [],
+    }, makeCtx())
+    if (!submitted.ok) throw new Error(submitted.error)
+    const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, makeCtx())
+    if (!decided.ok) throw new Error(decided.error)
+    expect(decided.game.state.zones[1].cards.b).toHaveLength(0)
+    expect(decided.game.state.destroyed.b.map((c) => c.name)).toContain('Theirs')
+  })
+
+  it('site 4 regression: a single-zone battle still removes from that zone', () => {
+    const game = makeGame({ turnNumber: 3, activePlayer: 'alice' })
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'mine', name: 'Mine', playedOnTurn: 1 }))
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'theirs', name: 'Theirs', playedOnTurn: 1 }))
+    declareForcedBattle(game, makeCtx(), {
+      zoneId: 1, aggressor: 'a', attackerIds: ['mine'], defenderIds: ['theirs'], cause: 'Test',
+    })
+    const submitted = applyAction(game, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT', results: { mine: 100, theirs: 0 }, repairs: [],
+    }, makeCtx())
+    if (!submitted.ok) throw new Error(submitted.error)
+    const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, makeCtx())
+    if (!decided.ok) throw new Error(decided.error)
+    expect(decided.game.state.zones[0].cards.b).toHaveLength(0)
+    expect(decided.game.state.destroyed.b.map((c) => c.name)).toContain('Theirs')
+  })
+
+  // SITE 5 / ruling E-9 — lostBattleOnTurn is recorded per side in that SIDE's
+  // own participant's zone. WF Purifier deploys off it, and the loser's
+  // wreckage is in their own zone, not their opponent's.
+  it('E-9: the loss is recorded in the loser’s own zone', () => {
+    const game = split()
+    declare(game, true)
+    const submitted = applyAction(game, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT', results: { mine: 100, theirs: 0 }, repairs: [],
+    }, makeCtx())
+    if (!submitted.ok) throw new Error(submitted.error)
+    const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, makeCtx())
+    if (!decided.ok) throw new Error(decided.error)
+    // bob lost, and bob's hull was in zone 2.
+    expect(decided.game.state.zones[1].lostBattleOnTurn.b).toBe(3)
+    expect(decided.game.state.zones[0].lostBattleOnTurn.b).toBeNull()
+    expect(decided.game.state.zones[1].lostBattleOnTurn.a).toBeNull()
+  })
+
+  it('E-9 regression: a single-zone battle records exactly what it always did', () => {
+    const game = makeGame({ turnNumber: 3, activePlayer: 'alice' })
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'mine', name: 'Mine', playedOnTurn: 1 }))
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'theirs', name: 'Theirs', playedOnTurn: 1 }))
+    declareForcedBattle(game, makeCtx(), {
+      zoneId: 1, aggressor: 'a', attackerIds: ['mine'], defenderIds: ['theirs'], cause: 'Test',
+    })
+    const submitted = applyAction(game, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT', results: { mine: 100, theirs: 0 }, repairs: [],
+    }, makeCtx())
+    if (!submitted.ok) throw new Error(submitted.error)
+    const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, makeCtx())
+    if (!decided.ok) throw new Error(decided.error)
+    expect(decided.game.state.zones[0].lostBattleOnTurn).toEqual({ a: null, b: 3 })
+    expect(decided.game.state.zones[1].lostBattleOnTurn).toEqual({ a: null, b: null })
+  })
+
+  it('neither zone is activated by a duel (E-8)', () => {
+    const game = split()
+    declare(game, true)
+    expect(game.state.zones[0].lastActivatedTurn).toBeNull()
+    expect(game.state.zones[1].lastActivatedTurn).toBeNull()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Wave 7, group E — TG Duel, the card the cross-zone battle exists for.
+describe('TG Duel — a cross-zone 1v1 (wave 7)', () => {
+  const duelCard = () => inst({
+    instanceId: 'duel1', name: 'Duel', faction: 'TG', type: 'ability',
+    vehicleType: null, materialCost: 0, meta: { onPlayEffect: 'duelEffect' },
+  })
+
+  // alice holds hulls in zones 1 and 3; bob holds one in zone 2.
+  const armed = () => {
+    const card = duelCard()
+    const game = makeGame({
+      turnNumber: 3, activePlayer: 'alice',
+      privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } },
+    })
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'mine1', name: 'Mine One', playedOnTurn: 1 }))
+    game.state.zones[2].cards.a.push(zoneEntry({ instanceId: 'mine2', name: 'Mine Two', playedOnTurn: 1 }))
+    game.state.zones[1].cards.b.push(zoneEntry({ instanceId: 'foe1', name: 'Foe', playedOnTurn: 1 }))
+    return { game, card }
+  }
+
+  const play = (game: EngineGame, card: CardInstance) => {
+    const r = applyAction(game, 'alice', { type: 'PLAY_ABILITY_CARD', instanceId: card.instanceId }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    return r.game
+  }
+
+  const answer = (game: EngineGame, choiceId: string) => {
+    const r = applyAction(game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    return r.game
+  }
+
+  it('hop 1 offers the actor own vehicles across the whole board', () => {
+    const { game, card } = armed()
+    const after = play(game, card)
+    expect(after.state.pendingEffect?.options?.map((o) => o.id).sort()).toEqual(['mine1', 'mine2'])
+  })
+
+  it('hop 2 offers every enemy vehicle, and stashes the hop-1 pick', () => {
+    const { game, card } = armed()
+    const hop2 = answer(play(game, card), 'mine2')
+    expect(hop2.state.pendingEffect?.options?.map((o) => o.id)).toEqual(['foe1'])
+    expect(hop2.state.pendingEffect?.data?.friendlyId).toBe('mine2')
+  })
+
+  it('locks a battle between two hulls in DIFFERENT zones', () => {
+    const { game, card } = armed()
+    const done = answer(answer(play(game, card), 'mine2'), 'foe1')
+    const battle = done.state.activeBattle!
+    expect(battle.attackerIds).toEqual(['mine2'])
+    expect(battle.defenderIds).toEqual(['foe1'])
+    // The battle home zone is the DUELLING player own hull's — zone 3.
+    expect(battle.zoneId).toBe(3)
+  })
+
+  // E-7: the aggressor is the Duel player, which decides isDefender for every
+  // DP2 trigger in that battle.
+  it('E-7: the Duel player is the aggressor', () => {
+    const { game, card } = armed()
+    const done = answer(answer(play(game, card), 'mine1'), 'foe1')
+    expect(done.state.activeBattle?.aggressor).toBe('a')
+  })
+
+  // E-8: a forced battle is not a zone activation. Eclipse alone stamps it.
+  it('E-8: activates neither zone', () => {
+    const { game, card } = armed()
+    const done = answer(answer(play(game, card), 'mine2'), 'foe1')
+    for (const zone of done.state.zones) expect(zone.lastActivatedTurn).toBeNull()
+  })
+
+  // The tempting shortcut is wrong and is worth pinning against: bringing the
+  // enemy hull in via battle.summons looks like it fits, but a summon
+  // EVAPORATES on report approval regardless of HP (spec 4.4) — no death, no
+  // discard, no destroyedEntries. That would make the enemy hull unkillable,
+  // defeating the entire card.
+  it('the enemy hull is a real combatant, not a summon', () => {
+    const { game, card } = armed()
+    const done = answer(answer(play(game, card), 'mine2'), 'foe1')
+    expect(done.state.activeBattle?.summons).toEqual([])
+  })
+
+  it('the duelled enemy hull can actually be destroyed', () => {
+    const { game, card } = armed()
+    const locked = answer(answer(play(game, card), 'mine2'), 'foe1')
+    const submitted = applyAction(locked, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT', results: { mine2: 100, foe1: 0 }, repairs: [],
+    }, makeCtx())
+    if (!submitted.ok) throw new Error(submitted.error)
+    const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, makeCtx())
+    if (!decided.ok) throw new Error(decided.error)
+    expect(decided.game.state.zones[1].cards.b).toHaveLength(0)
+    expect(decided.game.state.destroyed.b.map((c) => c.name)).toContain('Foe')
+  })
+
+  // resolution.targetInstanceId is client-supplied and unvalidated; the chain
+  // reads only choiceId and its own stashed data.
+  it('ignores resolution.targetInstanceId on both hops', () => {
+    const { game, card } = armed()
+    const hop2 = applyAction(play(game, card), 'alice', {
+      type: 'RESOLVE_PENDING_EFFECT', choiceId: 'mine2', targetInstanceId: 'mine1',
+    }, makeCtx())
+    if (!hop2.ok) throw new Error(hop2.error)
+    expect(hop2.game.state.pendingEffect?.data?.friendlyId).toBe('mine2')
+  })
+
+  it('refuses cleanly when the hop-1 hull left the board before hop 2', () => {
+    const { game, card } = armed()
+    const hop2 = answer(play(game, card), 'mine2')
+    hop2.state.zones[2].cards.a = []
+    const r = applyAction(hop2, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'foe1' }, makeCtx())
+    expect(r).toMatchObject({ ok: false, status: 400 })
+  })
+
+  it('fizzles rather than failing when the actor has no vehicle at all', () => {
+    const card = duelCard()
+    const game = makeGame({
+      turnNumber: 3, activePlayer: 'alice',
+      privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } },
+    })
+    const after = play(game, card)
+    expect(after.state.pendingEffect).toBeNull()
+    expect(after.state.activeBattle).toBeNull()
+  })
+
+  it('fizzles when there is no enemy vehicle to challenge', () => {
+    const card = duelCard()
+    const game = makeGame({
+      turnNumber: 3, activePlayer: 'alice',
+      privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } },
+    })
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'mine1', name: 'Mine', playedOnTurn: 1 }))
+    const done = answer(play(game, card), 'mine1')
+    expect(done.state.pendingEffect).toBeNull()
+    expect(done.state.activeBattle).toBeNull()
+  })
+
+  it('works for two hulls in the SAME zone too', () => {
+    const card = duelCard()
+    const game = makeGame({
+      turnNumber: 3, activePlayer: 'alice',
+      privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } },
+    })
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'mine1', name: 'Mine', playedOnTurn: 1 }))
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe1', name: 'Foe', playedOnTurn: 1 }))
+    const done = answer(answer(play(game, card), 'mine1'), 'foe1')
+    expect(done.state.activeBattle?.zoneId).toBe(1)
+  })
+})

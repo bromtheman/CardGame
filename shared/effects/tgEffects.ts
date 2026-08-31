@@ -1,12 +1,12 @@
 import {
   choice, enemyVehicleOptions, friendlyVehicleOptions, grant, spawnVehicles, summonHulls,
 } from './primitives.ts'
-import { joinBattle } from '../engine/battleDeclare.ts'
+import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
 import { checkVictory, copyMeta, findVehicle, otherSide } from '../engine/gameEngine.ts'
 import { FACTORY_ESCORT_KEY, returnToHand, sacrificeEntry } from '../engine/battleTriggers.ts'
 import { BASE_DAMAGE_DIVISOR, KEYWORDS, VENGEFUL_BASE_DAMAGE } from '../gameSettings.ts'
 import type { ZoneCardEntry } from '../engine/engineTypes.ts'
-import type { EffectFn } from './registry.ts'
+import type { EffectFn, EffectPayload } from './registry.ts'
 import { registerEffect } from './registry.ts'
 
 // TG built-in card effects (wave 7).
@@ -354,3 +354,81 @@ function factory(effectName: string, swarmName: string): EffectFn {
 
 registerEffect('havocFactoryEffect', factory('havocFactoryEffect', 'Havoc Swarm'), { needsCatalog: true })
 registerEffect('mirthFactoryEffect', factory('mirthFactoryEffect', 'Mirth Swarm'), { needsCatalog: true })
+
+// "Target a friendly and enemy vehicle. They can be in different zones. they
+// 1v1."
+//
+// ✅ PLAY_ABILITY_CARD accepts this shape: Duel carries no playOn* target key,
+// so `needsTarget` is false and all targeting happens inside the choice chain.
+//
+// TWO HOPS, both routed through choice(). Orbit Flank writes its second
+// pendingEffect BY HAND, which bypasses choice()'s one-slot check and can
+// clobber an offer already owed; docs/claude/card-effects.md says explicitly to
+// route a new suspension through choice() instead, so hop 2 is its own choice()
+// closure invoked with `resolution` cleared. RESOLVE_PENDING_EFFECT has already
+// nulled state.pendingEffect by then, so the slot is free for it to take.
+//
+// The hop-1 pick is carried in hop 2's `data`, never read back off
+// resolution.targetInstanceId, which is client-supplied and unvalidated — and
+// re-checked against the board on resolve, because the hull may have left while
+// the dialog sat open.
+//
+// Rulings: the aggressor is the DUEL PLAYER (E-7), which decides isDefender for
+// every DP2 trigger in the battle; and it activates NEITHER zone (E-8) — a
+// forced battle is not a zone activation, and Eclipse alone passes
+// activatesZone, from its own text.
+const DUEL = 'duelEffect'
+
+function resolveDuel(payload: EffectPayload, friendlyId: string, enemyId: string | null): boolean {
+  const { game, actor, ctx, card } = payload
+  // No enemy vehicle anywhere: the duel simply fizzles rather than failing.
+  if (enemyId === null) {
+    game.state.log.push(`${card.name} finds no enemy vehicle to challenge`)
+    return true
+  }
+  const mine = findVehicle(game.state, friendlyId)
+  const theirs = findVehicle(game.state, enemyId)
+  if (!mine || mine.side !== actor) return false
+  if (!theirs || theirs.side !== otherSide(actor)) return false
+  // zoneId is the battle's HOME zone — the duelling player's own hull's. The
+  // away hull is resolved by id, which is what `crossZone` switches on.
+  return declareForcedBattle(game, ctx, {
+    zoneId: mine.zone.id,
+    aggressor: actor,
+    attackerIds: [friendlyId],
+    defenderIds: [enemyId],
+    cause: card.name,
+    crossZone: true,
+  })
+}
+
+const duelHop2 = (friendlyId: string): EffectFn => choice({
+  effect: DUEL,
+  prompt: 'Choose an enemy vehicle for it to fight',
+  options: ({ game, actor }) => enemyVehicleOptions(game, actor, null),
+  data: () => ({ friendlyId }),
+  resolve: (payload, enemyId) => resolveDuel(payload, friendlyId, enemyId),
+})
+
+const duelHop1: EffectFn = choice({
+  effect: DUEL,
+  prompt: 'Choose one of your vehicles to send into a duel',
+  options: ({ game, actor }) => friendlyVehicleOptions(game, actor, null),
+  resolve: (payload, friendlyId) => {
+    if (friendlyId === null) {
+      payload.game.state.log.push(`${payload.card.name} finds no vehicle to send`)
+      return true
+    }
+    // Hop 2's first entry: `resolution` cleared so choice() takes the slot
+    // again, `pending` cleared so it cannot be mistaken for hop 2's own.
+    return duelHop2(friendlyId)({ ...payload, resolution: undefined, pending: undefined })
+  },
+})
+
+// The router. Hop 2 is told apart by the friendlyId hop 1 stashed — never by
+// anything the client sent.
+registerEffect(DUEL, (payload) => {
+  const stashed = payload.pending?.data?.friendlyId
+  if (typeof stashed === 'string') return duelHop2(stashed)(payload)
+  return duelHop1(payload)
+})

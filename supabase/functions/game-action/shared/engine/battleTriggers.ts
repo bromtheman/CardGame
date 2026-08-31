@@ -3,7 +3,9 @@ import type { CardInstance, SnapshotCard, ZoneEffect } from './gameInit.ts'
 import type {
   BattleCasualty, BattleContext, EngineContext, EngineGame, Side, ZoneCardEntry,
 } from './engineTypes.ts'
-import { discardCard, discardSnapshotOf, otherSide, ownerSideOf, zoneById } from './gameEngine.ts'
+import {
+  discardCard, discardSnapshotOf, findVehicle, otherSide, ownerSideOf, zoneById,
+} from './gameEngine.ts'
 import {
   BYSTANDER_EFFECTS, DEPLOY_WATCHER_EFFECTS, RESOLVE_BYSTANDER_EFFECTS, effectFor, effectName,
 } from '../effects/registry.ts'
@@ -90,8 +92,15 @@ function lockRoster(game: EngineGame): BattleParticipant[] {
   const roster: BattleParticipant[] = []
   const collect = (ids: string[], side: Side) => {
     for (const id of ids) {
+      // Zone first, then the summon map, then BOARD-WIDE (wave 7): a
+      // cross-zone battle's away hull is on the board but not in this zone,
+      // and without the last fallback its DP2 lock triggers never fire. The
+      // side check keeps it exact — an id is only ever collected for the side
+      // whose list named it.
+      const away = findVehicle(game.state, id)
       const entry = (zone.cards[side] as ZoneCardEntry[]).find((c) => c.instanceId === id) ??
-        summons.get(id)
+        summons.get(id) ??
+        (away?.side === side ? away.entry : undefined)
       if (entry) roster.push({ entry, side })
     }
   }

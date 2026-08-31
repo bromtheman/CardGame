@@ -35,7 +35,6 @@ const EXEMPT: Record<string, string> = {
 // purpose: the first twelve carry no card text at all (so G2 never inspects
 // them) and Anguish is permanently EXEMPT above.
 const KNOWN_GAPS: Record<string, string> = {
-  'TG:Duel': 'wave 7 — a cross-zone forced battle, which ActiveBattle cannot express',
 }
 
 // Cards that pass G2 — they resolve at least one implemented effect — but
@@ -189,7 +188,7 @@ describe('built-in card effect coverage', () => {
     for (const label of Object.values(KNOWN_GAPS)) expect(label.startsWith('wave 7')).toBe(true)
     // Decremented by whoever closes a card, in the same commit that makes it
     // work — and it must reach 0 before wave 7 can be called complete.
-    expect(Object.keys(KNOWN_GAPS)).toHaveLength(1)
+    expect(Object.keys(KNOWN_GAPS)).toHaveLength(0)
   })
 
   it('PARTIAL names real cards that currently pass G1 and G2, and never overlaps KNOWN_GAPS', async () => {
