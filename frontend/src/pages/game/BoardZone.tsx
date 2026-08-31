@@ -10,6 +10,7 @@ import crosshairIcon from '../../assets/icons/crosshairSVG.svg'
 import torpedoIcon from '../../assets/icons/torpedoSVG.svg'
 import noSubsIcon from '../../assets/icons/noSubsSVG.svg'
 import ship2Icon from '../../assets/icons/ship2SVG.svg'
+import shieldIcon from '../../assets/icons/shieldSVG.svg'
 
 const ZONE_EFFECT_ICONS: Record<ZoneEffectIcon, string> = {
   anchor: anchorIcon,
@@ -17,6 +18,7 @@ const ZONE_EFFECT_ICONS: Record<ZoneEffectIcon, string> = {
   torpedo: torpedoIcon,
   noSubs: noSubsIcon,
   ghostShip: ship2Icon,
+  shield: shieldIcon,
 }
 
 const BIOME_TINT: Record<string, string> = {

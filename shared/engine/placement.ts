@@ -7,6 +7,7 @@ import {
   copyMeta, discardCard, err, findVehicle, otherSide, registerHandler, zoneById,
 } from './gameEngine.ts'
 import { costModifierFor, effectFor, effectName, noteUnimplemented } from '../effects/registry.ts'
+import { dispatchDeployWatchers } from './battleTriggers.ts'
 
 const BIOMES_BY_TYPE: Record<string, string[]> = {
   [VEHICLE_TYPES.SHIP]: [ZONE_TYPES.WATER, ZONE_TYPES.BEACH],
@@ -355,6 +356,10 @@ registerHandler('PLAY_CARD_TO_ZONE', (game, actor, action, ctx) => {
   game.state.log.push(
     card.type === 'vehicle' ? `${card.name} deployed to zone ${action.zoneId}` : `${card.name} resolved`,
   )
+  // DP7 (spec §4.3). After the deploy line, so the log reads deploy-then-trap,
+  // and after resolvePlayEffects' failure check, so a refused play springs
+  // nothing. Vehicles only: the card says "plays a vehicle into that zone".
+  if (card.type === 'vehicle') dispatchDeployWatchers(game, ctx, action.zoneId, actor)
   return { ok: true, game }
 })
 
@@ -490,5 +495,9 @@ registerHandler('PLAY_CARD_TARGETING_CARD_IN_HAND', (game, actor, action, ctx) =
   game.state.log.push(
     card.type === 'vehicle' ? `${card.name} deployed to zone ${action.zoneId}` : `${card.name} resolved`,
   )
+  // DP7's SECOND seam (spec §4.3). This handler deploys vehicles too, through
+  // the same deployVehicle — a dispatch added only to PLAY_CARD_TO_ZONE is a
+  // card that works until someone plays Excalibur.
+  if (card.type === 'vehicle') dispatchDeployWatchers(game, ctx, action.zoneId as number, actor)
   return { ok: true, game }
 })

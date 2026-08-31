@@ -50,12 +50,26 @@ export const CATALOG_EFFECTS: ReadonlySet<string> = catalogEffects
 const bystanderEffects = new Set<string>()
 export const BYSTANDER_EFFECTS: ReadonlySet<string> = bystanderEffects
 
+// Effects that want DP7 — the dispatch that fires when the OPPONENT deploys
+// into a zone their rider watches (spec §4.3, "DP7 as wave 6 built it").
+// Derived from registration, and opt-in for the same load-bearing reason
+// BYSTANDER_EFFECTS is: dispatchDeployWatchers fires ONLY to members, so no
+// other zone rider ever meets a `phase: 'deploy'` context it was not written
+// for. dwgWatersEffect is why that matters — its router falls through to its
+// claim branch for any phase it does not recognise. Blockade is the only
+// member today.
+const deployWatcherEffects = new Set<string>()
+export const DEPLOY_WATCHER_EFFECTS: ReadonlySet<string> = deployWatcherEffects
+
 export function registerEffect(
-  name: string, fn: EffectFn, opts?: { needsCatalog?: boolean; battleBystander?: boolean },
+  name: string,
+  fn: EffectFn,
+  opts?: { needsCatalog?: boolean; battleBystander?: boolean; deployWatcher?: boolean },
 ): void {
   effects.set(name, fn)
   if (opts?.needsCatalog) catalogEffects.add(name)
   if (opts?.battleBystander) bystanderEffects.add(name)
+  if (opts?.deployWatcher) deployWatcherEffects.add(name)
 }
 export function registerCostModifier(name: string, fn: CostModifierFn): void { costModifiers.set(name, fn) }
 export const effectFor = (name: string): EffectFn | null => effects.get(name) ?? null

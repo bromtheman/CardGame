@@ -1,7 +1,7 @@
 import type { Side } from '@shared/engine/engineTypes'
 import type { ZoneEffect } from '@shared/engine/gameInit'
 
-export type ZoneEffectIcon = 'anchor' | 'crosshair' | 'torpedo' | 'noSubs' | 'ghostShip'
+export type ZoneEffectIcon = 'anchor' | 'crosshair' | 'torpedo' | 'noSubs' | 'ghostShip' | 'shield'
 
 export interface ZoneEffectBadge {
   key: string
@@ -43,6 +43,14 @@ const ZONE_EFFECT_DISPLAY: Record<string, { icon: ZoneEffectIcon; label: string;
     icon: 'ghostShip',
     label: 'Recurring Threat',
     text: 'A destroyed vehicle may be summoned back into their defensive battles here.',
+  },
+  // Wave 6. Not decoration: the marker is the only warning the other player
+  // gets before deploying into a fleet battle they did not choose, and it is
+  // permanent — so it must be visible for as long as it stands.
+  blockadeEffect: {
+    icon: 'shield',
+    label: 'Blockade',
+    text: 'Deploying a vehicle here starts a fleet battle while they hold this zone.',
   },
 }
 

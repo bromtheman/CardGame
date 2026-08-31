@@ -17,20 +17,22 @@ const EXEMPT: Record<string, string> = {
 // Delete entries as their wave lands — the "KNOWN_GAPS contains no stale
 // entries" test below rejects stale ones, so this list only shrinks.
 //
-// The five effect-coverage waves emptied it: all 65 of the spec's cards are
-// built. Everything left arrived AFTER them, from the 2026-08-30 balance pass,
-// and wave 6 is the wave closing those twelve. Group A (Basher, Nothung,
-// Balmung, Harbringer) is done: four one-liners over primitives that already
-// existed.
-const KNOWN_GAPS: Record<string, string> = {
-  // The 2026-08-30 balance pass seeded twelve cards whose text needs behaviour
-  // the engine does not have yet. Every one plays vanilla and logs a note at
-  // play time (spec §3.9); none of them silently half-works.
-  //
-  //   new mechanics
-  //     SS:Blockade                a rider that fires when the ENEMY deploys
-  'SS:Blockade': 'balance 2026-08-30',
-}
+// The five effect-coverage waves emptied it of that spec's 65 cards; the
+// 2026-08-30 balance pass then added twelve more, and WAVE 6 CLOSED THOSE.
+// So it is empty again — for the first time since the balance pass opened it:
+//
+//   Group A  Basher, Nothung, Balmung, Harbringer — one-liners over existing
+//            primitives, no engine work at all
+//   Group B  Judgement, Victoria, Chrysaor, Paladin — small extensions to
+//            costModifier, ACTIVATE_VEHICLE and resourceSurge
+//   Group C  Albacore + Tarpon (an owner-side aircraft lock read off seeded
+//            data), Purifier (a new per-zone battle-loss field on
+//            PublicGameState), Blockade (DP7 — a zone rider that fires when
+//            the OPPONENT deploys)
+//
+// It stays asserted over, and the toHaveLength(0) below is what stops a
+// newly-seeded card with an unimplemented effect name being added quietly.
+const KNOWN_GAPS: Record<string, string> = {}
 
 // Cards that pass G2 — they resolve at least one implemented effect — but
 // whose card text is only partly built. G2 asks "any implemented effect?",
@@ -168,16 +170,17 @@ describe('built-in card effect coverage', () => {
     expect(stale).toEqual([])
   })
 
-  // All five effect-coverage waves are done, so nothing labelled for one may
-  // reappear. The count is deliberately exact rather than `toHaveLength(0)`:
-  // it is what stops a thirteenth gap being added quietly, and it must be
-  // decremented by whoever closes one.
-  it('all five waves are complete — only the 2026-08-30 balance pass remains', () => {
-    for (const wave of ['wave 1', 'wave 2', 'wave 3', 'wave 4', 'wave 5']) {
-      expect(Object.values(KNOWN_GAPS).filter((w) => w.startsWith(wave))).toEqual([])
-      expect(Object.values(PARTIAL).filter((w) => w.startsWith(wave))).toEqual([])
+  // Every wave is done, and so is the 2026-08-30 balance pass's backlog, so
+  // nothing labelled for any of them may reappear. The count is what stops a
+  // new gap being added quietly — it must be decremented by whoever closes
+  // one, and INCREMENTED, visibly, by anyone who opens one.
+  it('all five waves and the 2026-08-30 balance pass are complete', () => {
+    const closed = ['wave 1', 'wave 2', 'wave 3', 'wave 4', 'wave 5', 'balance 2026-08-30']
+    for (const label of closed) {
+      expect(Object.values(KNOWN_GAPS).filter((w) => w.startsWith(label))).toEqual([])
+      expect(Object.values(PARTIAL).filter((w) => w.startsWith(label))).toEqual([])
     }
-    expect(Object.keys(KNOWN_GAPS)).toHaveLength(1)
+    expect(Object.keys(KNOWN_GAPS)).toHaveLength(0)
   })
 
   it('PARTIAL names real cards that currently pass G1 and G2, and never overlaps KNOWN_GAPS', async () => {

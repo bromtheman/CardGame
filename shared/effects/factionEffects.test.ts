@@ -3589,3 +3589,313 @@ describe('wave 6 — SS Victoria', () => {
     expect(r.ok).toBe(false)
   })
 })
+
+// ===========================================================================
+// Wave 6 — SS Blockade, and DP7 (spec §4.3, "DP7 as wave 6 built it").
+//
+// "Choose a zone, whenever the opponent plays a vehicle into that zone while
+// you have at least one vehicle there, a fleet battle immediately begins in
+// that zone. If you lose with no surviving vehicles, the blockade goes away,
+// otherwise it remains."
+//
+// The only card in the backlog needing a new dispatch point: every existing
+// rider dispatch hangs off a battle, a bombardment or the turn end. None
+// fires on a play.
+// ===========================================================================
+
+describe('wave 6 — SS Blockade', () => {
+  const blockadeSnap = snap({
+    name: 'Blockade', faction: 'SS', type: 'ability', vehicleType: null,
+    materialCost: 0, cardText: 'Choose a zone…', meta: { playOnZoneEffect: 'blockadeEffect' },
+  })
+  const watersSnap = snap({
+    name: 'DWG Waters', faction: 'DWG', type: 'ability', vehicleType: null,
+    materialCost: 0, meta: { playOnZoneEffect: 'dwgWatersEffect' },
+  })
+  const blockCtx = () => makeCtx({ catalog: [blockadeSnap, watersSnap] })
+  const riders = (game: EngineGame) =>
+    game.state.zoneEffects.filter((e) => e.effect === 'blockadeEffect')
+
+  // Player b holds the blockade; player a (the active player) is the one who
+  // will sail into it.
+  function blockaded(place?: (g: EngineGame) => void) {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zoneEffects.push({
+      effect: 'blockadeEffect', zoneId: 1, side: 'b', cardName: 'Blockade', setOnTurn: 2,
+    })
+    place?.(game)
+    return game
+  }
+  function deploy(game: EngineGame, over: Record<string, unknown> = {}, zoneId = 1) {
+    const card = inst({ name: 'Intruder', vehicleType: 'ship', materialCost: 0, ...over })
+    game.privates.a.hand = [card]
+    game.state.counts.a.hand = 1
+    const r = applyAction(
+      game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId }, blockCtx(),
+    )
+    if (!r.ok) throw new Error(r.error)
+    return { game: r.game, card }
+  }
+
+  describe('the claim', () => {
+    const claim = (game: EngineGame, zoneId = 1) => {
+      const card = inst({ ...blockadeSnap })
+      game.privates.a.hand = [card]
+      game.state.counts.a.hand = 1
+      return applyAction(
+        game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId }, blockCtx(),
+      )
+    }
+
+    it('writes one PERMANENT rider — the card says "otherwise it remains"', () => {
+      const r = claim(makeGame({ turnNumber: 3 }))
+      if (!r.ok) throw new Error(r.error)
+      expect(riders(r.game)).toHaveLength(1)
+      expect(riders(r.game)[0]).toMatchObject({ zoneId: 1, side: 'a', cardName: 'Blockade' })
+      expect(riders(r.game)[0].expiresOnTurn).toBeUndefined()
+    })
+
+    // Ruling C-13, the ambushClaim precedent: refuse before the handler
+    // commits, so the play is not spent on a no-op.
+    it('refuses a second claim on a zone this side already holds', () => {
+      const game = makeGame({ turnNumber: 3 })
+      const first = claim(game)
+      if (!first.ok) throw new Error(first.error)
+      expect(claim(first.game).ok).toBe(false)
+      expect(riders(first.game)).toHaveLength(1)
+    })
+
+    it('lets the OTHER side blockade the same zone', () => {
+      const game = makeGame({ turnNumber: 3 })
+      game.state.zoneEffects.push({
+        effect: 'blockadeEffect', zoneId: 1, side: 'b', cardName: 'Blockade', setOnTurn: 2,
+      })
+      const r = claim(game)
+      if (!r.ok) throw new Error(r.error)
+      expect(riders(r.game).map((e) => e.side).sort()).toEqual(['a', 'b'])
+    })
+  })
+
+  describe('the spring', () => {
+    // Ruling C-8: the blockader is the aggressor. Every other forced battle in
+    // the codebase names the effect's owner, and DWG Waters' clause 3 inverts
+    // only because the enemy's own action was already an attack.
+    it('declares with the BLOCKADER as aggressor, so the deployer defends on their own turn', () => {
+      const game = blockaded((g) => {
+        g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'guard', name: 'Guard' }))
+      })
+      const { game: after, card } = deploy(game)
+      const battle = after.state.activeBattle!
+      expect(battle.aggressor).toBe('b')
+      expect(battle.attackerIds).toEqual(['guard'])
+      expect(battle.defenderIds).toEqual([card.instanceId])
+    })
+
+    // Ruling C-9: a FLEET battle — everything eligible on both sides, not just
+    // the hull that walked into it.
+    it('drags in every hull on both sides, not only the one just played', () => {
+      const game = blockaded((g) => {
+        g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'g1', name: 'Guard 1' }))
+        g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'g2', name: 'Guard 2' }))
+        g.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'a1', name: 'Bystander' }))
+      })
+      const { game: after, card } = deploy(game)
+      const battle = after.state.activeBattle!
+      expect([...battle.attackerIds].sort()).toEqual(['g1', 'g2'])
+      expect([...battle.defenderIds].sort()).toEqual([card.instanceId, 'a1'].sort())
+    })
+
+    // §7.3's Gang Up ruling: Inoffensive is precisely "cannot attack", and a
+    // forced battle is not a licence to break it. It says nothing about being
+    // attacked, so the defender's side keeps its Inoffensive hulls.
+    it('excludes Inoffensive hulls from the aggressor side but not the defender side', () => {
+      const game = blockaded((g) => {
+        g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'guard', name: 'Guard' }))
+        g.state.zones[0].cards.b.push(zoneEntry({
+          instanceId: 'meek', name: 'Meek', keywords: ['inoffensive'],
+        }))
+        g.state.zones[0].cards.a.push(zoneEntry({
+          instanceId: 'timid', name: 'Timid', keywords: ['inoffensive'],
+        }))
+      })
+      const { game: after, card } = deploy(game)
+      const battle = after.state.activeBattle!
+      expect(battle.attackerIds).toEqual(['guard'])
+      expect([...battle.defenderIds].sort()).toEqual([card.instanceId, 'timid'].sort())
+    })
+
+    it('declares nothing when every blockading hull is Inoffensive', () => {
+      const game = blockaded((g) => {
+        g.state.zones[0].cards.b.push(zoneEntry({ name: 'Meek', keywords: ['inoffensive'] }))
+      })
+      expect(deploy(game).game.state.activeBattle).toBeNull()
+    })
+
+    // Ruling C-11: the card removes the rider on a loss and on nothing else.
+    it('declares nothing and KEEPS the rider when the blockader holds no hull there', () => {
+      const after = deploy(blockaded()).game
+      expect(after.state.activeBattle).toBeNull()
+      expect(riders(after)).toHaveLength(1)
+    })
+
+    it('ignores a deploy by the blockader themselves', () => {
+      const game = blockaded((g) => {
+        g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'guard', name: 'Guard' }))
+      })
+      const card = inst({ name: 'Reinforcement', vehicleType: 'ship', materialCost: 0 })
+      game.privates.b.hand = [card]
+      game.state.counts.b.hand = 1
+      game.activePlayer = 'bob'
+      const r = applyAction(
+        game, 'bob', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, blockCtx(),
+      )
+      if (!r.ok) throw new Error(r.error)
+      expect(r.game.state.activeBattle).toBeNull()
+    })
+
+    it('ignores a deploy into a DIFFERENT zone', () => {
+      const game = blockaded((g) => {
+        g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'guard', name: 'Guard' }))
+      })
+      expect(deploy(game, {}, 2).game.state.activeBattle).toBeNull()
+    })
+
+    // The card says "plays a VEHICLE". An ability resolving on the zone is not
+    // a deploy.
+    it('ignores an ABILITY played to the zone', () => {
+      const game = blockaded((g) => {
+        g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'guard', name: 'Guard' }))
+      })
+      const ability = inst({ ...watersSnap })
+      game.privates.a.hand = [ability]
+      game.state.counts.a.hand = 1
+      const r = applyAction(
+        game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: ability.instanceId, zoneId: 1 }, blockCtx(),
+      )
+      if (!r.ok) throw new Error(r.error)
+      expect(r.game.state.activeBattle).toBeNull()
+    })
+
+    // Ruling C-12. A forced battle is not a zone activation (spec §4.3);
+    // Eclipse alone is the exception.
+    it('does not spend the zone activation', () => {
+      const game = blockaded((g) => {
+        g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'guard', name: 'Guard' }))
+      })
+      expect(deploy(game).game.state.zones[0].lastActivatedTurn).toBeNull()
+    })
+
+    // Ruling C-13: one battle per PLAY, not one per hull. Three hulls arrive
+    // inside a single deployVehicle call.
+    it('declares exactly one battle for an additionalSpawns play', () => {
+      const game = blockaded((g) => {
+        g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'guard', name: 'Guard' }))
+      })
+      const { game: after } = deploy(game, { meta: { additionalSpawns: 2 } })
+      expect(after.state.zones[0].cards.a).toHaveLength(3)
+      expect(after.state.activeBattle!.defenderIds).toHaveLength(3)
+    })
+
+    // The SECOND seam. PLAY_CARD_TARGETING_CARD_IN_HAND deploys vehicles too
+    // (DP6), and a dispatch added to only one handler is a card that works
+    // until someone plays Excalibur.
+    it('springs through PLAY_CARD_TARGETING_CARD_IN_HAND as well', () => {
+      const game = blockaded((g) => {
+        g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'guard', name: 'Guard' }))
+      })
+      const excalibur = inst({
+        name: 'Excalibur', faction: 'SS', vehicleType: 'ship', materialCost: 0,
+        meta: { playOnCardEffect: 'excaliburEffect' },
+      })
+      const target = inst({ name: 'AI Ship', vehicleType: 'ship', materialCost: 100_000, isBuiltIn: true })
+      game.privates.a.hand = [excalibur, target]
+      game.state.counts.a.hand = 2
+      const r = applyAction(game, 'alice', {
+        type: 'PLAY_CARD_TARGETING_CARD_IN_HAND',
+        instanceId: excalibur.instanceId, targetInstanceId: target.instanceId, zoneId: 1,
+      }, blockCtx())
+      if (!r.ok) throw new Error(r.error)
+      expect(r.game.state.activeBattle?.aggressor).toBe('b')
+      expect(r.game.state.activeBattle?.defenderIds).toEqual([excalibur.instanceId])
+    })
+  })
+
+  describe('isolation from every other rider', () => {
+    // Ruling C-14, and the reason DP7 is opt-in rather than a broadcast:
+    // dwgWatersEffect's router falls through to its CLAIM branch for any phase
+    // it does not recognise, so an unfamiliar context would make it try to
+    // claim a zone with no targetZoneId and log a failure on every enemy
+    // deploy into a zone it holds.
+    it('never hands a DWG Waters rider a deploy context', () => {
+      const game = blockaded((g) => {
+        g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'guard', name: 'Guard' }))
+        g.state.zoneEffects.push({
+          effect: 'dwgWatersEffect', zoneId: 1, side: 'b', cardName: 'DWG Waters', setOnTurn: 2,
+        })
+      })
+      const after = deploy(game).game
+      expect(after.state.log.join('\n')).not.toContain('zone effect could not resolve')
+    })
+
+    // declareForcedBattle ends in dispatchBattleLock, which iterates EVERY
+    // rider on the zone — including the Blockade that just declared. Without a
+    // phase guard it would recurse.
+    it('does not re-declare when its own battle lock re-enters it', () => {
+      const game = blockaded((g) => {
+        g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'guard', name: 'Guard' }))
+      })
+      const after = deploy(game).game
+      expect(after.state.activeBattle!.attackerIds).toEqual(['guard'])
+      expect(riders(after)).toHaveLength(1)
+    })
+
+    // Ruling C-15: it reads no catalog itself, but fireRider mints its payload
+    // card from one.
+    it('carries needsCatalog', () => {
+      expect(CATALOG_EFFECTS.has('blockadeEffect')).toBe(true)
+    })
+  })
+
+  describe('the aftermath', () => {
+    // Ruling C-10: read off the POST-RESOLUTION board, which §7.3's Trebuchet
+    // ruling already blesses. It is the only route that works — the
+    // continuation's own `won` means "the ENEMY has no survivors", the
+    // opposite of what this clause asks.
+    function fight(defenderHp: number, blockaderHp: number) {
+      const game = blockaded((g) => {
+        g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'guard', name: 'Guard' }))
+        g.state.zoneEffects.push({
+          effect: 'blockadeEffect', zoneId: 2, side: 'b', cardName: 'Blockade', setOnTurn: 2,
+        })
+      })
+      const { game: declared, card } = deploy(game)
+      const submitted = applyAction(declared, 'alice', {
+        type: 'SUBMIT_BATTLE_REPORT',
+        results: { guard: blockaderHp, [card.instanceId]: defenderHp }, repairs: [],
+      }, blockCtx())
+      if (!submitted.ok) throw new Error(submitted.error)
+      const decided = applyAction(
+        submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, blockCtx(),
+      )
+      if (!decided.ok) throw new Error(decided.error)
+      return decided.game
+    }
+
+    it('remains while the blockader still holds a hull in the zone', () => {
+      const after = fight(0, 100)
+      expect(after.state.zones[0].cards.b).toHaveLength(1)
+      expect(riders(after).filter((e) => e.zoneId === 1)).toHaveLength(1)
+    })
+
+    it('goes away when the blockading fleet is wiped out', () => {
+      const after = fight(100, 0)
+      expect(after.state.zones[0].cards.b).toEqual([])
+      expect(riders(after).filter((e) => e.zoneId === 1)).toEqual([])
+    })
+
+    it('removes only that side blockade on that zone, leaving others standing', () => {
+      const after = fight(100, 0)
+      expect(riders(after).map((e) => e.zoneId)).toEqual([2])
+    })
+  })
+})

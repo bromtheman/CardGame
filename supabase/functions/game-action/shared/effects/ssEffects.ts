@@ -8,8 +8,9 @@ import {
   sacrificeToSave, sequence, spawnInto, spawnVehicles, summonHulls,
 } from './primitives.ts'
 import { registerEffect } from './registry.ts'
-import type { EngineGame, Side } from '../engine/engineTypes.ts'
-import { findVehicle, otherSide } from '../engine/gameEngine.ts'
+import type { EffectPayload } from './registry.ts'
+import type { EngineGame, Side, ZoneCardEntry } from '../engine/engineTypes.ts'
+import { findVehicle, otherSide, zoneById } from '../engine/gameEngine.ts'
 import { declareForcedBattle } from '../engine/battleDeclare.ts'
 
 // SS built-in card effects.
@@ -358,3 +359,131 @@ registerEffect(SACRILEGO, (payload) => {
   grant({ cp: 1 })(payload)
   return sacrilegoSave(payload)
 })
+
+const BLOCKADE = 'blockadeEffect'
+
+// "Choose a zone, whenever the opponent plays a vehicle into that zone while
+// you have at least one vehicle there, a fleet battle immediately begins in
+// that zone. If you lose with no surviving vehicles, the blockade goes away,
+// otherwise it remains."
+//
+// DP7's only customer (spec §4.3, "DP7 as wave 6 built it"). Three clauses
+// behind ONE registry name, told apart by the payload — the DWG Waters shape,
+// and it must stay one name because the zoneEffects entry stores the name it
+// was claimed under, and that is what dispatches the rider once the ability
+// itself has been spent.
+//
+//   clause 1  no battle, no continuation  → claim the zone (permanently)
+//   clause 2  battle.phase === 'deploy'   → spring the trap
+//   clause 3  continuation                → keep or break the blockade
+//
+// { needsCatalog: true } is NOT about this effect's own needs — it reads no
+// catalog at all. fireRider mints the rider's payload card from ctx.catalog by
+// cardName, so without the flag game-action never loads one and the blockade
+// is silently skipped in production while every unit test passes.
+function blockadeClaim({ game, actor, card, targetZoneId }: EffectPayload): boolean {
+  if (typeof targetZoneId !== 'number') return false
+  const zone = zoneById(game.state, targetZoneId)
+  if (!zone) return false
+  // A second blockade on a zone you already hold one in buys nothing — refuse
+  // before the handler commits, so the play is not spent on a no-op (the
+  // ambushClaim and dwgWatersClaim precedent). The OPPONENT may still claim
+  // the same zone; the two riders are independent.
+  const held = game.state.zoneEffects.some(
+    (e) => e.effect === BLOCKADE && e.zoneId === targetZoneId && e.side === actor,
+  )
+  if (held) return false
+  game.state.zoneEffects.push({
+    // Permanent — no expiresOnTurn. "Otherwise it remains" is the card's own
+    // word for it, and clause 3 is the only thing that removes it.
+    effect: BLOCKADE, zoneId: targetZoneId, side: actor, cardName: card.name,
+    setOnTurn: game.turnNumber,
+  })
+  game.state.log.push(`Player ${actor.toUpperCase()} blockades zone ${targetZoneId}`)
+  return true
+}
+
+// Clause 2. `actor` here is the RIDER's side — fireRider dispatches with
+// rider.side — so the blockader is the aggressor, which is what every other
+// forced battle in the codebase does with the effect's owner (spec §7.3,
+// wave 6). DWG Waters' clause 3 is the one inversion, and it inverts because
+// the enemy's action there was already an attack; a deploy is not.
+function blockadeSpring(payload: EffectPayload): boolean {
+  const { game, actor, ctx, card, battle } = payload
+  // Its own battle's lock pass re-enters this rider a moment after it
+  // declares — dispatchBattleLock iterates every rider on the zone. Anything
+  // but 'deploy' is a no-op, which is what stops the recursion.
+  if (!battle || battle.phase !== 'deploy') return true
+  // One battle per play: another rider may already have sprung, and
+  // declareForcedBattle refuses outright while activeBattle is non-null.
+  if (game.state.activeBattle) return true
+  const zone = zoneById(game.state, battle.zoneId)
+  if (!zone) return true
+  const mine = zone.cards[actor] as ZoneCardEntry[]
+  const theirs = zone.cards[otherSide(actor)] as ZoneCardEntry[]
+  // "while you have at least one vehicle there". Without one the trap does not
+  // spring — and is NOT spent either: the card removes it on a loss and on
+  // nothing else.
+  if (mine.length === 0) return true
+  // "A FLEET battle begins in that zone": everything on both sides, not just
+  // the hull that walked in. The aggressor's force excludes Inoffensive hulls
+  // (spec §7.3's Gang Up ruling — Inoffensive is precisely "cannot attack",
+  // and a forced battle is not a licence to break it); the defender's side
+  // keeps its own, because Inoffensive says nothing about being attacked.
+  const attackerIds = mine
+    .filter((c) => !c.keywords.includes(KEYWORDS.INOFFENSIVE))
+    .map((c) => c.instanceId)
+  const defenderIds = theirs.map((c) => c.instanceId)
+  if (attackerIds.length === 0 || defenderIds.length === 0) return true
+  return declareForcedBattle(game, ctx, {
+    zoneId: battle.zoneId,
+    aggressor: actor,
+    attackerIds,
+    defenderIds,
+    // The removal condition needs the battle's OUTCOME, which does not exist
+    // until DECIDE_BATTLE_REPORT — exactly what continuation is for (spec
+    // §4.3, departure 3). zoneId is stashed because activeBattle is already
+    // null by the time clause 3 runs.
+    continuation: { effect: BLOCKADE, side: actor, card, data: { zoneId: battle.zoneId } },
+    cause: card.name,
+    // No activatesZone: a forced battle is not a zone activation (spec §4.3).
+  })
+}
+
+// Clause 3. "If you lose with no surviving vehicles, the blockade goes away,
+// otherwise it remains."
+//
+// Read off the POST-RESOLUTION board rather than off the outcome, which §7.3's
+// Trebuchet ruling already blesses ("read off the post-resolution state, which
+// needs no outcome plumbing on the payload"). It is also the only route that
+// works: contextForResolve hands a continuation `won` for its OWN side, which
+// means "the enemy has no survivors" — the opposite of what this clause asks —
+// and `survived` is meaningless for an ability card that was never a
+// participant. Since clause 2 drags in every eligible hull, "no vehicles left
+// in the zone" and "lost with no surviving vehicles" are the same statement.
+//
+// This is NOT wave 4's mistake: that was re-deriving a win from a roster
+// stashed at DECLARE time, which a late joiner made stale. The current board
+// cannot go stale.
+function blockadeAftermath({ game, actor, continuation }: EffectPayload): boolean {
+  const zoneId = continuation?.data?.zoneId
+  if (typeof zoneId !== 'number') return false
+  const zone = zoneById(game.state, zoneId)
+  if (!zone) return false
+  if (zone.cards[actor].length > 0) return true
+  game.state.zoneEffects = game.state.zoneEffects.filter(
+    (e) => !(e.effect === BLOCKADE && e.zoneId === zoneId && e.side === actor),
+  )
+  game.state.log.push(`The blockade of zone ${zoneId} is broken`)
+  return true
+}
+
+registerEffect(BLOCKADE, (payload) => {
+  // Checked first: a continuation carries a 'resolve' BattleContext, and only
+  // `continuation` tells it apart from an ordinary resolve trigger.
+  if (payload.continuation !== undefined) return blockadeAftermath(payload)
+  // Nothing here ever suspends, so a resolution can only be someone else's.
+  if (payload.resolution !== undefined) return true
+  if (payload.battle) return blockadeSpring(payload)
+  return blockadeClaim(payload)
+}, { needsCatalog: true, deployWatcher: true })

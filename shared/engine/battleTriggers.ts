@@ -4,7 +4,7 @@ import type {
   BattleCasualty, BattleContext, EngineContext, EngineGame, Side, ZoneCardEntry,
 } from './engineTypes.ts'
 import { discardCard, discardSnapshotOf, otherSide, ownerSideOf, zoneById } from './gameEngine.ts'
-import { BYSTANDER_EFFECTS, effectFor, effectName } from '../effects/registry.ts'
+import { BYSTANDER_EFFECTS, DEPLOY_WATCHER_EFFECTS, effectFor, effectName } from '../effects/registry.ts'
 
 // DP2 (spec §4.3, and its seven "DP2 departure" subsections). This module owns
 // the whole battle-trigger dispatch and registers no handler of its own: the
@@ -169,6 +169,42 @@ function fireRider(
   const card: CardInstance = { ...snapshot, instanceId: ctx.newId() }
   if (!fn({ game, actor: rider.side, card, ctx, battle })) {
     game.state.log.push(`${rider.cardName}'s zone effect could not resolve`)
+  }
+}
+
+// DP7 (spec §4.3, "DP7 as wave 6 built it"). Fires when the OPPONENT plays a
+// vehicle into a zone this side's rider watches — the first dispatch that
+// hangs off a PLAY rather than off a battle, a bombardment or the turn end.
+// Called from BOTH `PLAY_CARD_TO_ZONE` and `PLAY_CARD_TARGETING_CARD_IN_HAND`,
+// the two handlers that share deployVehicle; a dispatch added to only one is a
+// card that works until someone plays Excalibur.
+//
+// Two things make it narrow on purpose:
+//
+//   * `rider.side === actor` is skipped — the card says "whenever the OPPONENT
+//     plays a vehicle into that zone", so a reinforcement of your own is not a
+//     trespass.
+//   * only DEPLOY_WATCHER_EFFECTS members are dispatched, so no other rider
+//     ever meets a phase it was not written for. dwgWatersEffect's router
+//     falls through to its claim branch on an unrecognised phase, so a
+//     broadcast would make it attempt a claim with no target zone and log a
+//     spurious failure on every enemy deploy into a zone it holds.
+//
+// `isDefender: true` because the rider's owner is by construction not the
+// acting player. One battle per play: a rider that finds one already declared
+// stops the pass, the same guard dispatchZoneInterception uses.
+export function dispatchDeployWatchers(
+  game: EngineGame, ctx: EngineContext, zoneId: number, actor: Side,
+): void {
+  const context: BattleContext = {
+    phase: 'deploy', zoneId, isDefender: true, isParticipant: false,
+    forced: false, survived: false, won: false, casualties: [],
+  }
+  for (const rider of [...game.state.zoneEffects]) {
+    if (rider.zoneId !== zoneId || rider.side === actor) continue
+    if (!DEPLOY_WATCHER_EFFECTS.has(rider.effect)) continue
+    if (game.state.activeBattle) return
+    fireRider(game, ctx, rider, context)
   }
 }
 
