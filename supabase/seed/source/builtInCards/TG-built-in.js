@@ -430,6 +430,7 @@ export const tgVehicles = [
         blueprintId: null,
         keywords: [KEYWORDS.STEALTHY],
         meta: {
+            [TRIGGERS.ON_BATTLE_EFFECT]: 'obeliskBattle',
         }
     }, {
         name: 'Loathing',

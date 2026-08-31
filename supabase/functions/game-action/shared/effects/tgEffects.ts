@@ -1,4 +1,5 @@
-import { grant, spawnVehicles } from './primitives.ts'
+import { grant, spawnVehicles, summonHulls } from './primitives.ts'
+import { joinBattle } from '../engine/battleDeclare.ts'
 import { registerEffect } from './registry.ts'
 
 // TG built-in card effects (wave 7).
@@ -38,3 +39,39 @@ registerEffect('fearOnPlay', spawnVehicles({
   count: 1,
   zones: 'all',
 }), { needsCatalog: true })
+
+// "Whenever this vehicle participates in a fleet battle, spawn a temporary
+// Mirth swarm to fight on your side in the battlefield."
+//
+// A BATTLE SUMMON, not a board spawn (spec §4.4): summonHulls + joinBattle,
+// never zone.cards, so it evaporates on report approval regardless of HP.
+// harbringerBattle's shape, minus the choice — Obelisk's text offers nothing.
+//
+// ⚠ The lock guard is load-bearing, not defensive: DP2 fires the SAME
+// onBattleEffect key at resolve, by which point activeBattle is already null.
+// Harbringer is the worked example.
+//
+// "Participates in a fleet battle" reads to offensive AND defensive battles,
+// and — per §7.3's Catshark ruling — to forced ones, so there is deliberately
+// no isDefender guard. Obelisk is a participant rather than a rider, so it
+// needs no zoneEffects entry and no bystander flag: DP2's lock pass already
+// reaches participants on both sides.
+//
+// ✅ Mirth Swarm already prints TEMPORARY, so the word in the card text is
+// decorative and no keyword grant is passed.
+//
+// ⚠ Obelisk is STEALTHY, so an ATTACK_ENEMY_FLEET naming it raises the
+// response window instead of locking — and DP2's whole dispatch then happens
+// on RESPOND_TO_ATTACK. Live scenarios must go through that action.
+registerEffect('obeliskBattle', ({ game, actor, ctx, card, battle }) => {
+  if (!battle || battle.phase !== 'lock' || !battle.isParticipant) return true
+  const summons = summonHulls(game, ctx, 'Mirth Swarm', 1)
+  // A missing catalog card is a data bug, not an empty pool — but at lock the
+  // battle is already declared and cannot be rolled back, so this reports
+  // failure and DP2's dispatcher logs it rather than throwing.
+  if (!summons) return false
+  const [swarm] = summons
+  if (!joinBattle(game, actor, swarm.instanceId, swarm)) return false
+  game.state.log.push(`${card.name} calls in a ${swarm.name}`)
+  return true
+}, { needsCatalog: true })

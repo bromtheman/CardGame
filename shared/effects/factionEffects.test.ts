@@ -4428,3 +4428,104 @@ describe('TG Fear — a Horror into every zone (wave 7)', () => {
     expect(CATALOG_EFFECTS.has('fearOnPlay')).toBe(true)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Wave 7, group C — TG Obelisk.
+//
+// "Whenever this vehicle participates in a fleet battle, spawn a temporary
+// Mirth swarm to fight on your side in the battlefield."
+//
+// A BATTLE SUMMON, not a board spawn (spec §4.4): summonHulls + joinBattle,
+// never zone.cards. It evaporates on report approval regardless of HP.
+describe('TG Obelisk — a Mirth Swarm battle summon (wave 7)', () => {
+  const mirthSwarm = snap({
+    name: 'Mirth Swarm', faction: 'TG', vehicleType: 'plane', materialCost: 200_000,
+    keywords: [KEYWORDS.ROBOTIC, KEYWORDS.TEMPORARY, KEYWORDS.HALF_COST],
+    meta: { summonOnly: true },
+  })
+  const obeliskCtx = () => makeCtx({ catalog: [mirthSwarm] })
+
+  const obeliskEntry = (over = {}) => zoneEntry({
+    instanceId: 'ob1', name: 'Obelisk', faction: 'TG', vehicleType: 'sub',
+    materialCost: 40_000, keywords: [KEYWORDS.STEALTHY],
+    meta: { onBattleEffect: 'obeliskBattle' }, playedOnTurn: 1, ...over,
+  })
+
+  // A forced battle is the shortest route to a locked battle with a chosen
+  // roster, and it exercises the same dispatchBattleLock participant pass an
+  // ordinary fleet attack does.
+  const fight = (aggressor: 'a' | 'b') => {
+    const game = makeGame({ turnNumber: 3, activePlayer: 'alice' })
+    game.state.zones[0].cards.a.push(obeliskEntry())
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe1', name: 'Foe', playedOnTurn: 1 }))
+    const ctx = obeliskCtx()
+    const ok = declareForcedBattle(game, ctx, {
+      zoneId: 1,
+      aggressor,
+      attackerIds: aggressor === 'a' ? ['ob1'] : ['foe1'],
+      defenderIds: aggressor === 'a' ? ['foe1'] : ['ob1'],
+      cause: 'Test',
+    })
+    if (!ok) throw new Error('battle not declared')
+    return game
+  }
+
+  it('summons one Mirth Swarm onto its own side at lock', () => {
+    const game = fight('a')
+    const battle = game.state.activeBattle!
+    expect(battle.summons.map((s) => s.name)).toEqual(['Mirth Swarm'])
+    // Membership in a side's id list is the whole of "which side it joined"
+    // (decision 18).
+    expect(battle.attackerIds).toContain(battle.summons[0].instanceId)
+    expect(battle.defenderIds).not.toContain(battle.summons[0].instanceId)
+  })
+
+  // "Participates in a fleet battle" reads to offensive AND defensive battles,
+  // and — per §7.3's Catshark ruling — to forced ones. So there is
+  // deliberately no isDefender guard.
+  it('fires on a battle it is DEFENDING as readily as one it attacks', () => {
+    const game = fight('b')
+    const battle = game.state.activeBattle!
+    expect(battle.summons).toHaveLength(1)
+    expect(battle.defenderIds).toContain(battle.summons[0].instanceId)
+  })
+
+  // ⚠ DP2 fires the same onBattleEffect key at RESOLVE too. Harbringer is the
+  // worked example of the guard; without it Obelisk would try to summon into a
+  // battle that no longer exists.
+  it('does nothing at the resolve phase', () => {
+    const game = makeGame({ turnNumber: 3 })
+    const entry = obeliskEntry()
+    game.state.zones[0].cards.a.push(entry)
+    const resolveCtx: BattleContext = {
+      phase: 'resolve', zoneId: 1, isDefender: false, isParticipant: true,
+      forced: false, survived: true, won: true, casualties: [],
+    }
+    expect(effectFor('obeliskBattle')!({
+      game, actor: 'a', card: entry, ctx: obeliskCtx(), battle: resolveCtx,
+    })).toBe(true)
+    expect(game.state.activeBattle).toBeNull()
+  })
+
+  // A battle summon NEVER enters zone.cards — that is the whole of what makes
+  // it evaporate on report approval rather than die (spec §4.4).
+  it('never puts the Swarm on the board', () => {
+    const game = fight('a')
+    for (const zone of game.state.zones) {
+      expect(zone.cards.a.map((c) => c.name)).not.toContain('Mirth Swarm')
+      expect(zone.cards.b.map((c) => c.name)).not.toContain('Mirth Swarm')
+    }
+  })
+
+  // ✅ Mirth Swarm already prints TEMPORARY, so the word in Obelisk's card
+  // text is decorative and no keyword grant is needed. Asserted rather than
+  // assumed, because a grant would have been the obvious thing to write.
+  it('needs no TEMPORARY grant — the Swarm already prints it', () => {
+    const summon = fight('a').state.activeBattle!.summons[0]
+    expect(summon.keywords).toContain(KEYWORDS.TEMPORARY)
+  })
+
+  it('is registered as needing the catalog', () => {
+    expect(CATALOG_EFFECTS.has('obeliskBattle')).toBe(true)
+  })
+})
