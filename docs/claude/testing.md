@@ -78,6 +78,20 @@ npx vitest run shared/effects       # path filter — the ONLY sanctioned way to
 
 ## Live E2E (scripted, against the real project)
 
+✅ **The plumbing is already extracted — do not re-extract it.**
+`scripts/smoke-lib.mjs` exports `keep`, `die`, `step`, `results`, `api`, `rest`,
+`fn`, `signIn`, `builtIns`, `buildDeck`, `startGame`, `cleanUp` and `report`,
+plus the per-game helpers `sideOf`, `activeIs`, `passTo`, `drawUntil`,
+`lockIfPending`, `attempt`, `waitForMaterials`, `spendInto` and `deployShip`.
+`smoke-wave5/6/7.mjs` are scenarios only. Three of those helpers exist because
+a wave learned something the hard way: `lockIfPending` because
+`ATTACK_ENEMY_FLEET` does **not** always lock the battle (a Stealthy or
+omissible defender raises the response window instead, and DP2's whole dispatch
+then happens on `RESPOND_TO_ATTACK`), and `waitForMaterials`/`spendInto`
+because income is **set** to `floor(turnNumber) × rate` rather than
+accumulated, so it only ever rises — a low threshold must be spent into and a
+high one waited for.
+
 `scripts/smoke-wave4.mjs` is the worked, working example — and it is meant to be
 **reused**, not read as history. Point its `required` deck lists at the cards a
 wave needs and it does the rest: signs in both QA accounts from
