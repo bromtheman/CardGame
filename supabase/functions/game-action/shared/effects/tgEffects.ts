@@ -1,5 +1,7 @@
-import { grant, spawnVehicles, summonHulls } from './primitives.ts'
+import { choice, enemyVehicleOptions, grant, spawnVehicles, summonHulls } from './primitives.ts'
 import { joinBattle } from '../engine/battleDeclare.ts'
+import { findVehicle } from '../engine/gameEngine.ts'
+import { KEYWORDS } from '../gameSettings.ts'
 import { registerEffect } from './registry.ts'
 
 // TG built-in card effects (wave 7).
@@ -75,3 +77,46 @@ registerEffect('obeliskBattle', ({ game, actor, ctx, card, battle }) => {
   game.state.log.push(`${card.name} calls in a ${swarm.name}`)
   return true
 }, { needsCatalog: true })
+
+// "When this vehicle is played, you may target any enemy vehicle on the board
+// and give it INOFFENSIVE keyword."
+//
+// ⚠ NOT a grantKeywords composition, and composing it would fail SILENTLY:
+// grantKeywords reads `payload.targetInstanceId`, which RESOLVE_PENDING_EFFECT
+// never sets. The card would suspend correctly, resolve, and do nothing.
+//
+// Eclipse's shape instead — the target arrives as `choiceId`, which `choice()`
+// has already validated against `pending.options` before resolve runs, and
+// which is therefore the ONLY channel used. `resolution.targetInstanceId` is
+// client-supplied and unvalidated and is never read.
+//
+// No `data` stash is needed, unlike Air Strafe's: nothing about this card
+// depends on state the board cannot hand back. resolve re-runs the identical
+// enemyVehicleOptions() call to re-confirm the choice, in case the hull left
+// while the dialog sat open.
+//
+// `zoneId: null` scopes the options to the WHOLE board — the card says "any
+// enemy vehicle on the board", not "in this zone". On-field vehicles are
+// already public, so pendingEffect.options leaks nothing (spec §4.2,
+// departure 4).
+const HYSTERIA = 'hysteriaOnPlay'
+registerEffect(HYSTERIA, choice({
+  effect: HYSTERIA,
+  prompt: 'Choose an enemy vehicle to make Inoffensive',
+  options: ({ game, actor }) => enemyVehicleOptions(game, actor, null),
+  resolve: ({ game, actor }, choiceId) => {
+    // "You may": choice() resolves straight through with null when the board
+    // holds no enemy vehicle, and that is a success, not a fizzle.
+    if (choiceId === null) return true
+    if (!enemyVehicleOptions(game, actor, null).some((o) => o.id === choiceId)) return false
+    const found = findVehicle(game.state, choiceId)
+    if (!found) return false
+    // Idempotent, matching grantKeywords: a keyword already carried is not
+    // duplicated.
+    if (!found.entry.keywords.includes(KEYWORDS.INOFFENSIVE)) {
+      found.entry.keywords = [...found.entry.keywords, KEYWORDS.INOFFENSIVE]
+    }
+    game.state.log.push(`${found.entry.name} is made Inoffensive`)
+    return true
+  },
+}))

@@ -7,6 +7,7 @@ import {
   applyAction, declareForcedBattle, discardSnapshotOf, effectiveCostInGame, effectiveMaterialCostOf,
   legalZonesFor,
   joinBattle,
+  findVehicle,
 } from '../engine/index.ts'
 import type { CardInstance } from '../engine/gameInit.ts'
 import type { BattleCasualty, BattleContext, EngineContext, EngineGame } from '../engine/engineTypes.ts'
@@ -4527,5 +4528,117 @@ describe('TG Obelisk — a Mirth Swarm battle summon (wave 7)', () => {
 
   it('is registered as needing the catalog', () => {
     expect(CATALOG_EFFECTS.has('obeliskBattle')).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Wave 7, group C — TG Hysteria.
+//
+// "When this vehicle is played, you may target any enemy vehicle on the board
+// and give it INOFFENSIVE keyword."
+//
+// ⚠ NOT a grantKeywords composition. grantKeywords reads
+// payload.targetInstanceId, which RESOLVE_PENDING_EFFECT never sets — so
+// composing the two would suspend correctly, resolve, and then silently do
+// nothing.
+describe('TG Hysteria — INOFFENSIVE onto any enemy vehicle (wave 7)', () => {
+  const hysteria = () => inst({
+    instanceId: 'hys1', name: 'Hysteria', faction: 'TG', vehicleType: 'ship',
+    materialCost: 730_000, keywords: [KEYWORDS.BLOCKER, KEYWORDS.ROBOTIC],
+    meta: { onPlayEffect: 'hysteriaOnPlay' },
+  })
+
+  // Enemies spread across TWO zones — the card says "any enemy vehicle on the
+  // board", so the options must not be scoped to the played zone.
+  const armed = () => {
+    const card = hysteria()
+    const game = makeGame({
+      turnNumber: 3, activePlayer: 'alice',
+      privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } },
+    })
+    game.state.resources.a.materials = 900_000
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'far1', name: 'Far Foe', playedOnTurn: 1 }))
+    game.state.zones[1].cards.b.push(zoneEntry({ instanceId: 'near1', name: 'Near Foe', playedOnTurn: 1 }))
+    return { game, card }
+  }
+
+  const play = (game: EngineGame, card: CardInstance, zoneId = 1) => {
+    const r = applyAction(game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    return r.game
+  }
+
+  it('offers every enemy vehicle on the board, not just the played zone', () => {
+    const { game, card } = armed()
+    const after = play(game, card)
+    expect(after.state.pendingEffect?.effect).toBe('hysteriaOnPlay')
+    expect(after.state.pendingEffect?.options?.map((o) => o.id).sort()).toEqual(['far1', 'near1'])
+  })
+
+  it('grants INOFFENSIVE to the chosen hull, and to no other', () => {
+    const { game, card } = armed()
+    const suspended = play(game, card)
+    const done = applyAction(suspended, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'near1' }, makeCtx())
+    if (!done.ok) throw new Error(done.error)
+    expect(findVehicle(done.game.state, 'near1')!.entry.keywords).toContain(KEYWORDS.INOFFENSIVE)
+    expect(findVehicle(done.game.state, 'far1')!.entry.keywords).not.toContain(KEYWORDS.INOFFENSIVE)
+    expect(done.game.state.pendingEffect).toBeNull()
+  })
+
+  it('is idempotent on a hull that already prints INOFFENSIVE', () => {
+    const { game, card } = armed()
+    findVehicle(game.state, 'near1')!.entry.keywords.push(KEYWORDS.INOFFENSIVE)
+    const done = applyAction(
+      play(game, card), 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'near1' }, makeCtx(),
+    )
+    if (!done.ok) throw new Error(done.error)
+    const kw = findVehicle(done.game.state, 'near1')!.entry.keywords
+    expect(kw.filter((k) => k === KEYWORDS.INOFFENSIVE)).toHaveLength(1)
+  })
+
+  // "You may" — choice() calls resolve(payload, null) when the options are
+  // empty, so a board with no enemy vehicle must not suspend AND must not fail.
+  it('resolves without suspending when there is no enemy vehicle anywhere', () => {
+    const card = hysteria()
+    const game = makeGame({
+      turnNumber: 3, activePlayer: 'alice',
+      privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } },
+    })
+    game.state.resources.a.materials = 900_000
+    const after = play(game, card)
+    expect(after.state.pendingEffect).toBeNull()
+    expect(after.state.zones[0].cards.a.map((c) => c.name)).toContain('Hysteria')
+  })
+
+  // The target may leave the board while the dialog sits open — applyAction
+  // admits nothing that could move it today, but the re-check is what keeps
+  // that true if the freeze is ever relaxed.
+  it('refuses cleanly when the chosen hull has left the board', () => {
+    const { game, card } = armed()
+    const suspended = play(game, card)
+    suspended.state.zones[1].cards.b = []
+    const done = applyAction(suspended, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'near1' }, makeCtx())
+    expect(done).toMatchObject({ ok: false, status: 400 })
+  })
+
+  // resolution.targetInstanceId is client-supplied and unvalidated. choiceId
+  // is the only channel, and choice() has already checked it against
+  // pending.options before resolve ever runs.
+  it('ignores resolution.targetInstanceId entirely', () => {
+    const { game, card } = armed()
+    const suspended = play(game, card)
+    const done = applyAction(suspended, 'alice', {
+      type: 'RESOLVE_PENDING_EFFECT', choiceId: 'near1', targetInstanceId: 'far1',
+    }, makeCtx())
+    if (!done.ok) throw new Error(done.error)
+    expect(findVehicle(done.game.state, 'near1')!.entry.keywords).toContain(KEYWORDS.INOFFENSIVE)
+    expect(findVehicle(done.game.state, 'far1')!.entry.keywords).not.toContain(KEYWORDS.INOFFENSIVE)
+  })
+
+  it('never targets the actor’s own hulls', () => {
+    const { game, card } = armed()
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'mine1', name: 'Mine', playedOnTurn: 1 }))
+    const after = play(game, card)
+    expect(after.state.pendingEffect?.options?.map((o) => o.id)).not.toContain('mine1')
   })
 })

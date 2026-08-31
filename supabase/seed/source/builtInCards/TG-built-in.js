@@ -274,6 +274,7 @@ export const tgVehicles = [
         blueprintId: null,
         keywords: [KEYWORDS.BLOCKER, KEYWORDS.ROBOTIC, KEYWORDS.UPKEEP_REQUIRED],
         meta: {
+            [TRIGGERS.ON_PLAY]: 'hysteriaOnPlay',
         }
     },
     {
