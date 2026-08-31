@@ -13,28 +13,29 @@ const key = (c: { faction: string; name: string }) => `${c.faction}:${c.name}`
 // sheet, not a trigger. There is nothing for the engine to fire.
 const EXEMPT: Record<string, string> = {
   'SS:Falcon Squadron': 'Robotic-shaped conduct text: players apply it when reporting results',
+  'TG:Anguish': 'Deployment-order conduct text for the spawn sheet: the engine has no deployment-order concept, so there is nothing to fire',
 }
 
-// The gaps not yet closed (Falcon Squadron is permanently EXEMPT above).
-// Delete entries as their wave lands — the "KNOWN_GAPS contains no stale
-// entries" test below rejects stale ones, so this list only shrinks.
+// The gaps not yet closed (Falcon Squadron and TG Anguish are permanently
+// EXEMPT above). Delete entries as their wave lands — the "KNOWN_GAPS contains
+// no stale entries" test below rejects stale ones, so this list only shrinks.
 //
-// The five effect-coverage waves emptied it of that spec's 65 cards; the
-// 2026-08-30 balance pass then added twelve more, and WAVE 6 CLOSED THOSE.
-// So it is empty again — for the first time since the balance pass opened it:
+// The five effect-coverage waves emptied it of that spec's 65 cards, and wave 6
+// closed the twelve the 2026-08-30 balance pass added. It reached zero, and the
+// toHaveLength assertion below is what stops a newly-seeded card with an
+// unimplemented effect name being added quietly.
 //
-//   Group A  Basher, Nothung, Balmung, Harbringer — one-liners over existing
-//            primitives, no engine work at all
-//   Group B  Judgement, Victoria, Chrysaor, Paladin — small extensions to
-//            costModifier, ACTIVATE_VEHICLE and resourceSurge
-//   Group C  Albacore + Tarpon (an owner-side aircraft lock read off seeded
-//            data), Purifier (a new per-zone battle-loss field on
-//            PublicGameState), Blockade (DP7 — a zone rider that fires when
-//            the OPPONENT deploys)
+// WAVE 7 REOPENED IT, deliberately and visibly, by seeding a whole faction
+// before wiring its behaviour. Every entry below is a TG card whose row now
+// exists and whose effect does not yet, and each names the mechanic it is
+// waiting on. The list drains to zero across the wave; the toHaveLength literal
+// below moves with it, one task at a time.
 //
-// It stays asserted over, and the toHaveLength(0) below is what stops a
-// newly-seeded card with an unimplemented effect name being added quietly.
-const KNOWN_GAPS: Record<string, string> = {}
+// The ten vanilla TG cards, the two Swarms and TG:Anguish are absent on
+// purpose: the first twelve carry no card text at all (so G2 never inspects
+// them) and Anguish is permanently EXEMPT above.
+const KNOWN_GAPS: Record<string, string> = {
+}
 
 // Cards that pass G2 — they resolve at least one implemented effect — but
 // whose card text is only partly built. G2 asks "any implemented effect?",
@@ -176,12 +177,17 @@ describe('built-in card effect coverage', () => {
   // nothing labelled for any of them may reappear. The count is what stops a
   // new gap being added quietly — it must be decremented by whoever closes
   // one, and INCREMENTED, visibly, by anyone who opens one.
-  it('all five waves and the 2026-08-30 balance pass are complete', () => {
+  it('waves 1-6 and the 2026-08-30 balance pass are complete; wave 7 is draining', () => {
     const closed = ['wave 1', 'wave 2', 'wave 3', 'wave 4', 'wave 5', 'balance 2026-08-30']
     for (const label of closed) {
       expect(Object.values(KNOWN_GAPS).filter((w) => w.startsWith(label))).toEqual([])
       expect(Object.values(PARTIAL).filter((w) => w.startsWith(label))).toEqual([])
     }
+    // Every remaining entry belongs to the wave currently in flight, so a gap
+    // from a closed wave can never reappear under wave 7's cover.
+    for (const label of Object.values(KNOWN_GAPS)) expect(label.startsWith('wave 7')).toBe(true)
+    // Decremented by whoever closes a card, in the same commit that makes it
+    // work — and it must reach 0 before wave 7 can be called complete.
     expect(Object.keys(KNOWN_GAPS)).toHaveLength(0)
   })
 

@@ -65,6 +65,19 @@ Some meta keys are **plain data, not effect names**: `additionalSpawns`,
 `summonOnly`. None carries a registry name, so all six sit outside `TRIGGERS` /
 `ALL_META_KEYS` and **G1 and G3 never look at them**.
 
+⚠ **THE SEED HAS ITS OWN COPY OF THE VOCABULARY, and wave 7 walked into it.**
+`supabase/seed/source/*.js` import `"../gameSettings"` — which resolves to
+`supabase/seed/source/gameSettings.js`, a **second, hand-maintained**
+`KEYWORDS`/`TRIGGERS`/`FACTIONS`/`VEHICLE_TYPES` map, **not**
+`shared/gameSettings.ts`. Adding a keyword to the shared file alone leaves
+`KEYWORDS.YOUR_NEW_ONE` evaluating to `undefined` in every card that prints it,
+and `keywords: [null, "robotic"]` is then written into jsonb with **no error,
+no log line and every guard green** — G1/G2/G3 read effect names, not keywords.
+Wave 7 shipped ten such cards into a generated `seed_data.sql` before a
+seed-backed VALUE assertion caught it. `supabase/seed/tgFaction.test.ts` now
+carries a drift guard asserting the two maps agree in both directions; add a
+keyword to **both** files, and run the suite.
+
 ⚠ **G2 does.** The first three are `DATA_EFFECT_KEYS`, the subset that
 *satisfies a card's text on its own* — which is the whole reason Buzzsaw and
 Veles can close with no effect name at all (spec §4.8). But G2 and

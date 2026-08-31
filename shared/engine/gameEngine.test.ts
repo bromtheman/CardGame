@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { LOG_MAX_ENTRIES } from '../gameSettings'
+import { KEYWORDS, LOG_MAX_ENTRIES } from '../gameSettings'
 import { applyAction, effectiveCostInGame, normalizeState } from './index'
 import { takeFromEnemyDeck } from '../effects/primitives.ts'
 import type { PublicGameState } from './gameInit.ts'
+import type { ZoneCardEntry } from './engineTypes.ts'
 import { inst, makeCtx, makeGame, snap, zoneEntry } from './testFixtures'
 
 describe('guards', () => {
@@ -741,5 +742,144 @@ describe('normalizeState — lostBattleOnTurn', () => {
     normalizeState(g.state)
     expect(g.state.zones[0].lostBattleOnTurn).toEqual({ a: 2, b: null })
     expect(g.state.zones[1].lostBattleOnTurn).toEqual({ a: null, b: 3 })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Wave 7 — UPKEEP_REQUIRED (spec §7.3, rulings U-0 … U-8).
+//
+// "At turn start, reduce your resources this turn by 15% of this card's cost."
+// Driven through applyAction rather than by calling endTurn, because the whole
+// ruling is about WHERE in that sequence the deduction sits: after the
+// Temporary cull, after income is SET, before the draw.
+//
+// makeGame defaults to turnNumber 2 / activePlayer alice, so alice ending her
+// turn makes turnNumber 2.5 and hands bob an income of floor(2.5) * 75k =
+// 150,000. Every figure below is against that.
+//
+// A battle summon never pays, which has no test here because it is unreachable
+// by construction rather than guarded: a summon lives only in
+// ActiveBattle.summons, and applyAction refuses END_TURN outright while a
+// battle stands (battleFrozen). The upkeep pass reads zone.cards, which a
+// summon never enters (spec §4.4).
+describe('END_TURN upkeep (wave 7)', () => {
+  const TURN_INCOME = 150000
+  const upkeepHull = (over: Partial<ZoneCardEntry> = {}) =>
+    zoneEntry({ materialCost: 70000, keywords: [KEYWORDS.UPKEEP_REQUIRED], ...over })
+
+  it('U-0: charges 15% of the hull cost against the turn income that was just set', () => {
+    const g = makeGame()
+    g.state.zones[0].cards.b.push(upkeepHull())
+    const r = applyAction(g, 'alice', { type: 'END_TURN' }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.resources.b.materials).toBe(TURN_INCOME - 10500)
+  })
+
+  it('U-4: charges every zone, and only the side whose turn is starting', () => {
+    const g = makeGame()
+    for (const zone of g.state.zones) zone.cards.b.push(upkeepHull())
+    // Alice's own upkeep hull is NOT charged — it is not her turn starting.
+    g.state.zones[0].cards.a.push(upkeepHull({ materialCost: 800000 }))
+    const r = applyAction(g, 'alice', { type: 'END_TURN' }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.resources.b.materials).toBe(TURN_INCOME - 31500)
+  })
+
+  it('U-4: a captured hull is fed by its CONTROLLER, not its owner', () => {
+    const g = makeGame()
+    // ownerSide 'a' decides whose DECK it returns to, never who pays for it.
+    g.state.zones[0].cards.b.push(upkeepHull({ meta: { ownerSide: 'a' } }))
+    const r = applyAction(g, 'alice', { type: 'END_TURN' }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.resources.b.materials).toBe(TURN_INCOME - 10500)
+  })
+
+  it('U-4: a vehicle without the keyword costs nothing', () => {
+    const g = makeGame()
+    g.state.zones[0].cards.b.push(zoneEntry({ materialCost: 800000 }))
+    const r = applyAction(g, 'alice', { type: 'END_TURN' }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.resources.b.materials).toBe(TURN_INCOME)
+  })
+
+  // The ONLY assertion that separates the two candidate cost authorities. No
+  // seeded card carries both keywords, so nothing built from real data can
+  // tell effectiveMaterialCostOf from printed materialCost — hence a fixture.
+  it('U-1: reads effectiveMaterialCostOf, so Half-Cost halves the upkeep too', () => {
+    const g = makeGame()
+    g.state.zones[0].cards.b.push(upkeepHull({
+      materialCost: 200000, keywords: [KEYWORDS.UPKEEP_REQUIRED, KEYWORDS.HALF_COST],
+    }))
+    const r = applyAction(g, 'alice', { type: 'END_TURN' }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    // 15% of the HALVED 100,000, not of the printed 200,000.
+    expect(r.game.state.resources.b.materials).toBe(TURN_INCOME - 15000)
+  })
+
+  // Every real card's 15% is exact to the hundred, so this needs a fixture too.
+  it('U-2: rounds up, matching repairCostOf', () => {
+    const g = makeGame()
+    g.state.zones[0].cards.b.push(upkeepHull({ materialCost: 70001 }))
+    const r = applyAction(g, 'alice', { type: 'END_TURN' }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.resources.b.materials).toBe(TURN_INCOME - 10501)
+  })
+
+  // canAffordInGame compares `materials >= cost`, so a negative would behave
+  // plausibly and silently. Chosen rather than defaulted.
+  it('U-3: clamps at zero rather than carrying a debt', () => {
+    const g = makeGame()
+    g.state.zones[0].cards.b.push(upkeepHull({ materialCost: 4000000 }))
+    const r = applyAction(g, 'alice', { type: 'END_TURN' }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.resources.b.materials).toBe(0)
+  })
+
+  it('U-5: a hull pays nothing until its own side’s next turn starts', () => {
+    const g = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+    g.state.zones[0].cards.a.push(upkeepHull({ playedOnTurn: 2 }))
+    // Alice ends turn 2: bob's turn starts, and bob owns no upkeep hull.
+    const first = applyAction(g, 'alice', { type: 'END_TURN' }, makeCtx())
+    if (!first.ok) throw new Error(first.error)
+    expect(first.game.state.resources.b.materials).toBe(TURN_INCOME)
+    // Bob ends turn 2.5: alice's turn starts, and NOW she pays.
+    const second = applyAction(first.game, 'bob', { type: 'END_TURN' }, makeCtx())
+    if (!second.ok) throw new Error(second.error)
+    expect(second.game.state.resources.a.materials).toBe(225000 - 10500) // floor(3) * 75k
+  })
+
+  // The Temporary cull already runs BEFORE the income line, so a despawned
+  // hull cannot be billed. No TG card carries both keywords; the ordering is
+  // free and it is the honest one, so it is pinned rather than left to luck.
+  it('U-6: a Temporary hull despawns first and is never billed', () => {
+    const g = makeGame()
+    g.state.zones[0].cards.b.push(upkeepHull({
+      materialCost: 800000, keywords: [KEYWORDS.UPKEEP_REQUIRED, KEYWORDS.TEMPORARY],
+    }))
+    const r = applyAction(g, 'alice', { type: 'END_TURN' }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.zones[0].cards.b).toHaveLength(0)
+    expect(r.game.state.resources.b.materials).toBe(TURN_INCOME)
+  })
+
+  it('U-7: logs one line per turn carrying the total, never one per hull', () => {
+    const g = makeGame()
+    for (const zone of g.state.zones) zone.cards.b.push(upkeepHull())
+    const r = applyAction(g, 'alice', { type: 'END_TURN' }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    const lines = r.game.state.log.filter((l) => l.toLowerCase().includes('upkeep'))
+    expect(lines).toHaveLength(1)
+    // Raw, ungrouped digits, matching every other figure in state.log
+    // ("base bombardment for 240"). toLocaleString would read better and is
+    // locale-dependent between Node and Deno, which is not a trade this line
+    // is worth making.
+    expect(lines[0]).toContain('31500')
+  })
+
+  it('U-7: logs nothing at all when the side owes no upkeep', () => {
+    const g = makeGame()
+    const r = applyAction(g, 'alice', { type: 'END_TURN' }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.log.some((l) => l.toLowerCase().includes('upkeep'))).toBe(false)
   })
 })

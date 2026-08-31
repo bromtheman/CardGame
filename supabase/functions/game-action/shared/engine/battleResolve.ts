@@ -2,7 +2,7 @@ import {
   KEYWORDS, REPAIR_COST_RATE, REPAIR_WINDOW_MIN_PERCENT, SURVIVE_HP_PERCENT,
 } from '../gameSettings.ts'
 import type { ApplyResult, BattleCasualty, EngineGame, Side, ZoneCardEntry } from './engineTypes.ts'
-import { discardCard, err, otherSide, registerHandler, zoneById } from './gameEngine.ts'
+import { discardCard, err, findVehicle, otherSide, registerHandler, zoneById } from './gameEngine.ts'
 import { effectiveMaterialCostOf } from './placement.ts'
 import { effectFor } from '../effects/registry.ts'
 
@@ -91,23 +91,23 @@ function participantsOf(game: EngineGame): Map<string, { entry: ZoneCardEntry; s
     battle.summons.map((s) => [s.instanceId, s as ZoneCardEntry]),
   )
   const map = new Map<string, { entry: ZoneCardEntry; side: Side }>()
-  for (const id of battle.attackerIds) {
-    const entry = zone.cards[battle.aggressor].find((c) => c.instanceId === id)
-    if (entry) map.set(id, { entry: entry as ZoneCardEntry, side: battle.aggressor })
-    else {
+  // Zone, then the summon map, then BOARD-WIDE (wave 7). The last fallback is
+  // what a cross-zone battle needs: without it the away hull misses the roster
+  // entirely and is SILENTLY DROPPED from the report — SUBMIT_BATTLE_REPORT
+  // would then reject a report that named it, and the destruction branch would
+  // never see it.
+  const collect = (ids: string[], side: Side) => {
+    for (const id of ids) {
+      const entry = zone.cards[side].find((c) => c.instanceId === id) as ZoneCardEntry | undefined
+      if (entry) { map.set(id, { entry, side }); continue }
       const summon = summonMap.get(id)
-      if (summon) map.set(id, { entry: summon, side: battle.aggressor })
+      if (summon) { map.set(id, { entry: summon, side }); continue }
+      const away = findVehicle(game.state, id)
+      if (away?.side === side) map.set(id, { entry: away.entry, side })
     }
   }
-  const defenderSide: Side = battle.aggressor === 'a' ? 'b' : 'a'
-  for (const id of battle.defenderIds) {
-    const entry = zone.cards[defenderSide].find((c) => c.instanceId === id)
-    if (entry) map.set(id, { entry: entry as ZoneCardEntry, side: defenderSide })
-    else {
-      const summon = summonMap.get(id)
-      if (summon) map.set(id, { entry: summon, side: defenderSide })
-    }
-  }
+  collect(battle.attackerIds, battle.aggressor)
+  collect(battle.defenderIds, battle.aggressor === 'a' ? 'b' : 'a')
   return map
 }
 
@@ -192,6 +192,14 @@ registerHandler('DECIDE_BATTLE_REPORT', (game, actor, action, ctx) => {
   }
   for (const side of ['a', 'b'] as Side[]) game.state.resources[side].materials -= owed[side]
   const zone = zoneById(game.state, battle.zoneId)!
+  // Which zones each side actually fought from, captured BEFORE the
+  // destruction loop below removes the dead from the board (wave 7, ruling
+  // E-9). A summon is in no zone, so it falls back to the battle's own — it
+  // evaporates rather than dying, and records nothing either way.
+  const participantZones: Record<Side, Set<number>> = { a: new Set(), b: new Set() }
+  for (const [id, { side }] of participants) {
+    participantZones[side].add(findVehicle(game.state, id)?.zone.id ?? battle.zoneId)
+  }
   let destroyedCount = 0
   let summonCount = 0
   // Doubles as DP2's casualty list (spec §4.3, DP2 departure 1): the death
@@ -220,7 +228,12 @@ registerHandler('DECIDE_BATTLE_REPORT', (game, actor, action, ctx) => {
     // either in practice: validateRepairChoices and the roster filter above
     // are what keep a summon id out of repairIds in the first place.
     if (!survives && !summon) {
-      zone.cards[side] = zone.cards[side].filter((c) => c.instanceId !== id)
+      // Removed from the hull's OWN zone, not the battle's (wave 7). For a
+      // single-zone battle the two are the same; for a cross-zone one, filtering
+      // the battle's zone would leave a destroyed away hull standing on the
+      // board — the loudest of the four cross-zone failure modes.
+      const home = findVehicle(game.state, id)?.zone ?? zone
+      home.cards[side] = home.cards[side].filter((c) => c.instanceId !== id)
       discardCard(game, side, entry)
       destroyedCount++
       game.state.log.push(`${entry.name} was destroyed (${hp}%)`)
@@ -252,8 +265,18 @@ registerHandler('DECIDE_BATTLE_REPORT', (game, actor, action, ctx) => {
   // nothing; a mutual wipe records both, because each side did lose. Every
   // battle counts — forced ones included (spec §7.3, wave 6), which falls out
   // of recording at the single point every battle resolves through.
+  // Wave 7, ruling E-9: recorded per side in THAT SIDE's own participant's
+  // zone. For a single-zone battle every participant is in the battle's zone,
+  // so this is byte-identical to what it always recorded; for a cross-zone
+  // duel it keeps the loss on the zone whose wreckage Purifier is reading.
+  // `participantZones` was captured BEFORE the destruction loop above, because
+  // by here a dead hull is off the board and findVehicle can no longer place it.
   for (const side of ['a', 'b'] as Side[]) {
-    if (outcome.wonBy[otherSide(side)]) zone.lostBattleOnTurn[side] = game.turnNumber
+    if (!outcome.wonBy[otherSide(side)]) continue
+    for (const zoneId of participantZones[side]) {
+      const lost = zoneById(game.state, zoneId)
+      if (lost) lost.lostBattleOnTurn[side] = game.turnNumber
+    }
   }
   game.state.activeBattle = null
   game.state.pendingReport = null

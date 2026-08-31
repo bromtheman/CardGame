@@ -56,3 +56,20 @@ describe('attributesOf', () => {
     expect(attributesOf(null, [])).toEqual([])
   })
 })
+
+// Wave 7, ruling E-3. TG Vengeful is a submarine whose card text deals base
+// damage, so the glossary can no longer say a sub "can never damage an enemy
+// base" — the rule it was describing is the BOMBARDMENT roster
+// (baseStrikersIn), not card-forced damage. This pins the narrowed wording, so
+// the contradiction cannot quietly come back.
+describe('submarine base-damage wording (wave 7)', () => {
+  const sub = VEHICLE_TYPE_INFO[VEHICLE_TYPES.SUB]
+
+  it('scopes the prohibition to bombardment', () => {
+    expect(sub.description).toContain('never bombard an enemy base')
+  })
+
+  it('no longer claims a card effect cannot damage one', () => {
+    expect(sub.description).not.toContain('never damage an enemy base')
+  })
+})

@@ -10,7 +10,24 @@ import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
 import type { EngineGame, Side, ZoneCardEntry } from '../engine/engineTypes.ts'
 
 // LH built-in card effects.
-const tgRobotics = drawFromPool({ source: 'catalog', filter: { faction: 'TG' }, count: 1 })
+
+// The "[TG] Robotics" pool — the four TG ships LH borrows, marked in
+// LH-Built-in.js rather than selected by faction (spec §7.3, ruling L-1).
+//
+// ⚠ This filter used to read `{ faction: 'TG' }`, and the catalog it filters
+// is the WHOLE cards table (game-action's probe is
+// `.eq('is_built_in', true)`, with no faction scoping and no scoping to the
+// decks in play). So the pool was the query
+// `where is_built_in and faction = 'TG'` — four rows before wave 7 and thirty
+// after it, with no edit to this file and none that could have been withheld.
+// Putting the new cards in the TG faction is not what AVOIDS that; it is what
+// CAUSES it. The marker is what holds the pool at four.
+//
+// ⚠ There are TWO filters, not one: this, and roboticAssemblersEffect's own
+// inline one further down. Fixing only this leaves Robotic Assemblers offering
+// all 28 — in a dialog whose options are public to both players.
+const LH_ROBOTICS_POOL = 'lhRoboticsPool'
+const tgRobotics = drawFromPool({ source: 'catalog', filter: { metaFlag: LH_ROBOTICS_POOL }, count: 1 })
 registerEffect('ampereOnPlay', tgRobotics, { needsCatalog: true })
 registerEffect('candelaOnPlay', tgRobotics, { needsCatalog: true })
 registerEffect('quadrupoleOnPlay', tgRobotics, { needsCatalog: true })
@@ -51,14 +68,19 @@ registerEffect('sapphireEffect', whenPlayed(
 // a random card from the [TG] Robotics pool." Same pool as Ampere's.
 registerEffect('spectrumEffect', tgRobotics, { needsCatalog: true })
 
-// "Choose a [TG] Robotics card to add to your hand." All four TG built-ins
-// are public, so offering them by name leaks nothing.
+// "Choose a [TG] Robotics card to add to your hand." All four are public, so
+// offering them by name leaks nothing.
+//
+// ⚠ The SECOND of the pool's two filters (see tgRobotics above). It is
+// hand-rolled rather than a drawFromPool spec, so the marker has to be applied
+// here separately — and this is the one whose failure is loudest, because
+// pendingEffect.options lives in PublicGameState and both players scroll it.
 const ROBOTIC_ASSEMBLERS = 'roboticAssemblersEffect'
 registerEffect(ROBOTIC_ASSEMBLERS, choice({
   effect: ROBOTIC_ASSEMBLERS,
   prompt: 'Choose a [TG] Robotics card to add to your hand',
   options: ({ ctx }) => ctx.catalog
-    .filter((c) => c.isBuiltIn && c.faction === 'TG' && c.meta.summonOnly !== true)
+    .filter((c) => c.isBuiltIn && c.meta[LH_ROBOTICS_POOL] === true && c.meta.summonOnly !== true)
     .sort((x, y) => x.name.localeCompare(y.name))
     .map((c) => ({ id: c.cardId, label: c.name })),
   resolve: ({ game, actor, ctx }, choiceId) => {

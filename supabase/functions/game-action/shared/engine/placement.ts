@@ -8,6 +8,7 @@ import {
 } from './gameEngine.ts'
 import { costModifierFor, effectFor, effectName, noteUnimplemented } from '../effects/registry.ts'
 import { dispatchDeployWatchers } from './battleTriggers.ts'
+import { effectiveMaterialCostOf } from './costs.ts'
 
 const BIOMES_BY_TYPE: Record<string, string[]> = {
   [VEHICLE_TYPES.SHIP]: [ZONE_TYPES.WATER, ZONE_TYPES.BEACH],
@@ -93,6 +94,32 @@ function battleLossMissing(
   return typeof lost !== 'number' || lost < turnNumber - PURIFIER_LOSS_WINDOW_TURNS
 }
 
+// TG Alarmed: "Can only play this into a zone in which you control a AI
+// vehicle" (spec §7.3, wave 7).
+//
+// A PREREQUISITE, like battleLossMissing above and unlike everything before
+// it: it narrows the legal set to the zones that satisfy it, where the other
+// rules remove zones from it. Read off `deployRequiresAiVehicle`, another data
+// key, so the rule outlives the card.
+//
+// ⚠ Ruling D-1: "an AI vehicle" is `isBuiltIn === true`. That is spec §7.3's
+// FIRST ruling, and OW:Garrison prints the identical phrase ("Target an AI
+// vehicle in hand") and reads it the same way, as do Air Strafe, Excalibur,
+// Repairmen Ready and Martyr Attack. Wave 7's handoff recommended the ROBOTIC
+// keyword on the grounds that the engine has no AI concept; it has had one
+// since wave 1, and two meanings for one printed phrase is what decision 1
+// forbids.
+//
+// "YOU control" is the actor's own side, so this reads zone.cards[side] —
+// the same pronoun distinction aircraftLocked draws against screenBlocks.
+function aiVehicleMissing(
+  state: PublicGameState, side: Side, zoneId: number, card: CardInstance,
+): boolean {
+  if (card.meta.deployRequiresAiVehicle !== true) return false
+  const zone = state.zones.find((z) => z.id === zoneId)
+  return !zone?.cards[side].some((c) => c.isBuiltIn)
+}
+
 // `turnNumber` is REQUIRED rather than optional, for the reason
 // ZoneCardEntry's stamps are: tsc then finds every call site, including the
 // three in the frontend, instead of silently defaulting one of them.
@@ -106,18 +133,17 @@ export function legalZonesFor(
       !screenBlocks(state, side, z.id, card.vehicleType!) &&
       !aircraftLocked(state, side, z.id, card.vehicleType!) &&
       !riderBlocks(state, side, z.id, card.faction) &&
-      !battleLossMissing(state, side, z.id, card, turnNumber)
+      !battleLossMissing(state, side, z.id, card, turnNumber) &&
+      !aiVehicleMissing(state, side, z.id, card)
     ))
     .map((z) => z.id)
 }
 
-// Spec §3.7 Half-Cost: the discount is applied at usage time, never baked
-// into stored material_cost (seed data and create-card both store full cost).
-export function effectiveMaterialCostOf(card: { materialCost: number; keywords: string[] }): number {
-  return card.keywords.includes(KEYWORDS.HALF_COST)
-    ? Math.floor(card.materialCost / 2)
-    : card.materialCost
-}
+// Spec §3.7 Half-Cost. The definition moved to the leaf module `costs.ts` in
+// wave 7 so endTurn could reach it without closing a gameEngine ↔ placement
+// import cycle; it is re-exported here so every existing importer is
+// unchanged and there is still exactly one definition.
+export { effectiveMaterialCostOf } from './costs.ts'
 
 export function canAfford(state: PublicGameState, side: Side, card: CardInstance): boolean {
   return (
