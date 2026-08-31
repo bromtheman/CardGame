@@ -838,3 +838,371 @@ describe('captured cards spawn hulls for their captor', () => {
     expect(hulls.map((c) => c.meta.ownerSide)).toEqual(['b', undefined])
   })
 })
+
+// ===========================================================================
+// Wave 6 — resourceSurge's two departures from spec §4.6 (see "4.6 as wave 6
+// extended it"). Chrysaor needs a surge that RAISES the price; Paladin needs
+// one that GRANTS keywords onto the hull, which §4.6 originally ruled out.
+// ===========================================================================
+
+const CHRYSAOR_META = {
+  resourceSurge: { materialsOver: 200_000, extraSpawns: 1, costDelta: 100_000 },
+}
+const PALADIN_META = {
+  resourceSurge: { materialsUnder: 240_000, grantKeywords: [KEYWORDS.HALF_COST, KEYWORDS.TEMPORARY] },
+}
+
+describe('resourceSurge — Chrysaor raises its own price', () => {
+  const chrysaor = () => inst({
+    name: 'Chrysaor', vehicleType: 'ship', materialCost: 100_000,
+    keywords: [KEYWORDS.STEALTHY], meta: CHRYSAOR_META,
+  })
+  const priced = (materials: number) => {
+    const game = makeGame()
+    game.state.resources.a.materials = materials
+    return effectiveCostInGame(game.state, 'a', chrysaor())
+  }
+  const deploy = (materials: number) => {
+    const card = chrysaor()
+    const game = makeGame({ privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } } })
+    game.state.resources.a.materials = materials
+    const r = applyAction(
+      game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx(),
+    )
+    if (!r.ok) throw new Error(r.error)
+    return r.game
+  }
+
+  it('charges the printed price at exactly the threshold — the text says "more than"', () => {
+    expect(priced(200_000)).toBe(100_000)
+  })
+
+  it('charges 100k more strictly above the threshold', () => {
+    expect(priced(200_001)).toBe(200_000)
+  })
+
+  it('lands one hull unsurged and two when surged', () => {
+    expect(deploy(200_000).state.zones[0].cards.a).toHaveLength(1)
+    expect(deploy(200_001).state.zones[0].cards.a).toHaveLength(2)
+  })
+
+  // Ruling B-10, and the exact regression the handoff warned about: pay()
+  // reduces the materials the condition reads, so a post-payment re-read
+  // would flip Chrysaor's own condition off between pricing and spawning.
+  // 200_001 - 200_000 = 1, which is emphatically NOT "more than 200k".
+  it('does not flip its own condition off by paying for itself', () => {
+    const game = deploy(200_001)
+    expect(game.state.resources.a.materials).toBe(1)
+    expect(game.state.zones[0].cards.a).toHaveLength(2)
+  })
+
+  // Ruling B-6. A purchase-price mechanic like every other, so base damage,
+  // repairs and in-battle resources still read the printed 100k.
+  it('leaves effectiveMaterialCostOf and the landed keywords alone', () => {
+    expect(effectiveMaterialCostOf(chrysaor())).toBe(100_000)
+    for (const entry of deploy(200_001).state.zones[0].cards.a) {
+      expect(entry.keywords).toEqual([KEYWORDS.STEALTHY])
+    }
+  })
+})
+
+describe('resourceSurge — Paladin grants keywords onto the hull', () => {
+  const paladin = () => inst({
+    name: 'Paladin', vehicleType: 'ship', materialCost: 240_000, keywords: [], meta: PALADIN_META,
+  })
+  const priced = (materials: number) => {
+    const game = makeGame()
+    game.state.resources.a.materials = materials
+    return effectiveCostInGame(game.state, 'a', paladin())
+  }
+  const deploy = (materials: number, over: Record<string, unknown> = {}) => {
+    const card = inst({ ...paladin(), ...over })
+    const game = makeGame({ privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } } })
+    game.state.resources.a.materials = materials
+    const r = applyAction(
+      game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx(),
+    )
+    if (!r.ok) throw new Error(r.error)
+    return r.game
+  }
+
+  it('charges full price at exactly the threshold — the text says "less than"', () => {
+    expect(priced(240_000)).toBe(240_000)
+  })
+
+  it('halves the price below the threshold', () => {
+    expect(priced(239_999)).toBe(120_000)
+  })
+
+  // Ruling B-7 (spec §4.6, departure 2). BOTH keywords land on the hull,
+  // following the LH flyby hero power, which stamps exactly this pair.
+  it('lands the hull carrying both halfCost and temporary when surged', () => {
+    const entry = deploy(239_999).state.zones[0].cards.a[0]
+    expect([...entry.keywords].sort()).toEqual([KEYWORDS.HALF_COST, KEYWORDS.TEMPORARY].sort())
+  })
+
+  it('lands a plain hull when not surged', () => {
+    expect(deploy(240_000).state.zones[0].cards.a[0].keywords).toEqual([])
+  })
+
+  // The proof that `temporary` really reached the BOARD rather than only the
+  // price: endTurn's cull reads the hull's keyword array, so a Paladin priced
+  // as temporary but not stamped would never despawn.
+  it('a surged Paladin is culled at the next turn start; an unsurged one is not', () => {
+    for (const [materials, survivors] of [[239_999, 0], [240_000, 1]] as const) {
+      const game = deploy(materials)
+      const ended = applyAction(game, 'alice', { type: 'END_TURN' }, makeCtx())
+      if (!ended.ok) throw new Error(ended.error)
+      expect(ended.game.state.zones[0].cards.a).toHaveLength(survivors)
+    }
+  })
+
+  it('stamps the granted keywords onto additionalSpawns copies too', () => {
+    const game = deploy(239_999, { meta: { ...PALADIN_META, additionalSpawns: 1 } })
+    const hulls = game.state.zones[0].cards.a
+    expect(hulls).toHaveLength(2)
+    for (const entry of hulls) expect(entry.keywords).toContain(KEYWORDS.TEMPORARY)
+  })
+
+  it('merges idempotently with a keyword the card already prints', () => {
+    const game = deploy(239_999, { keywords: [KEYWORDS.TEMPORARY] })
+    expect(game.state.zones[0].cards.a[0].keywords.filter((k) => k === KEYWORDS.TEMPORARY)).toHaveLength(1)
+  })
+
+  // Ruling B-8. "CAN be played with" describes the legality the condition
+  // unlocks, not a per-play election — an offer would freeze the game on
+  // every Paladin.
+  it('never suspends on a choice', () => {
+    expect(deploy(239_999).state.pendingEffect).toBeNull()
+  })
+})
+
+// Ruling B-9's other arm. A surge with no grantKeywords of its own is still a
+// Half-Cost SUPPRESSION, so the two older cards must be byte-for-byte
+// unchanged by the extension above. Deliberately a separate test rather than
+// trusting the block near PREDATOR_META to notice.
+describe('resourceSurge — PredatorX and Orbit still lose Half-Cost', () => {
+  const priced = (materials: number, meta: Record<string, unknown>, cost: number) => {
+    const game = makeGame()
+    game.state.resources.a.materials = materials
+    return effectiveCostInGame(
+      game.state, 'a', inst({ materialCost: cost, keywords: [KEYWORDS.HALF_COST], meta }),
+    )
+  }
+
+  it('PredatorX pays full price when surged and half when not', () => {
+    expect(priced(120_001, PREDATOR_META, 120_000)).toBe(120_000)
+    expect(priced(120_000, PREDATOR_META, 120_000)).toBe(60_000)
+  })
+
+  it('Orbit pays full price when surged and half when not', () => {
+    expect(priced(140_000, ORBIT_META, 140_000)).toBe(140_000)
+    expect(priced(139_999, ORBIT_META, 140_000)).toBe(70_000)
+  })
+})
+
+// ===========================================================================
+// Wave 6 — DWG Albacore and Tarpon: "While this vehicle is alive, you may not
+// play any other aircraft into this zone."
+//
+// A placement rule sourced from a HULL ON THE BOARD, read off a seeded data
+// key rather than an effect name — the riderBlocks / blocksFaction precedent,
+// so the next card wanting it needs no engine edit.
+// ===========================================================================
+
+describe('aircraftLock — Albacore and Tarpon', () => {
+  const locker = (over: Record<string, unknown> = {}) => zoneEntry({
+    name: 'Albacore', faction: 'DWG', vehicleType: 'airship',
+    materialCost: 260_000, keywords: [KEYWORDS.FRAGILE],
+    meta: { aircraftLock: true }, ...over,
+  })
+  // Zone 1 is water, 2 beach, 3 land — every one of them admits an aircraft,
+  // so a missing zone in these lists is the lock and never a biome.
+  const zonesFor = (vehicleType: string, place: (g: ReturnType<typeof makeGame>) => void) => {
+    const g = makeGame()
+    place(g)
+    return legalZonesFor(g.state, 'a', inst({ vehicleType, faction: 'DWG' }))
+  }
+
+  it.each(['plane', 'airship'])('locks the zone against the owner own %s', (vehicleType) => {
+    expect(zonesFor(vehicleType, (g) => { g.state.zones[0].cards.a.push(locker()) })).toEqual([2, 3])
+  })
+
+  // Ruling C-3: "any OTHER aircraft" falls out for free — a card in hand is by
+  // definition not the hull already on the board, so a SECOND Albacore into
+  // the same zone is blocked, and a Tarpon into an Albacore's zone is too.
+  it('blocks a second locking airship into the same zone', () => {
+    const g = makeGame()
+    g.state.zones[0].cards.a.push(locker())
+    const second = inst({ name: 'Tarpon', faction: 'DWG', vehicleType: 'airship', meta: { aircraftLock: true } })
+    expect(legalZonesFor(g.state, 'a', second)).toEqual([2, 3])
+  })
+
+  // Compared against the same card with no locker on the board rather than
+  // against a hard-coded list: a tank cannot enter zone 1 anyway (it is
+  // water), so a literal expectation would pass for the wrong reason.
+  it.each(['ship', 'sub', 'tank'])('leaves a non-aircraft %s exactly as it was', (vehicleType) => {
+    const card = inst({ vehicleType, faction: 'DWG' })
+    const clear = makeGame()
+    const locked = makeGame()
+    locked.state.zones[0].cards.a.push(locker())
+    expect(legalZonesFor(locked.state, 'a', card)).toEqual(legalZonesFor(clear.state, 'a', card))
+  })
+
+  // Ruling C-1 (spec §7.3, wave 6), and the assertion that pins the pronoun.
+  // "YOU may not play" restricts the OWNER — the opposite of AIR_SCREEN,
+  // which the two rules now sit beside in the same function.
+  it('an ENEMY locker does not block the actor aircraft', () => {
+    expect(zonesFor('plane', (g) => { g.state.zones[0].cards.b.push(locker()) })).toEqual([1, 2, 3])
+  })
+
+  it('an AIR_SCREEN on the enemy still blocks, so the two rules do not shadow each other', () => {
+    const g = makeGame()
+    g.state.zones[0].cards.b.push(zoneEntry({ name: 'Screen', keywords: [KEYWORDS.AIR_SCREEN] }))
+    g.state.zones[1].cards.a.push(locker())
+    expect(legalZonesFor(g.state, 'a', inst({ vehicleType: 'plane' }))).toEqual([3])
+  })
+
+  it('PLAY_CARD_TO_ZONE refuses the locked zone through the handler', () => {
+    const { g, card } = withHand({ vehicleType: 'plane', materialCost: 0, faction: 'DWG' })
+    g.state.zones[0].cards.a.push(locker())
+    const r = applyAction(g, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx())
+    expect(r).toMatchObject({ ok: false, status: 400 })
+  })
+
+  // Ruling C-4: the lock reaches PLAYS and nothing else. Sub Killer's block
+  // takes the same latitude, and §7.4 already exempts every other arrival.
+  it('MOVE_VEHICLE still relocates an aircraft into a locked zone', () => {
+    const g = makeGame({ turnNumber: 3 })
+    g.state.zones[0].cards.a.push(locker())
+    const mover = zoneEntry({
+      name: 'Flyer', vehicleType: 'plane', keywords: [KEYWORDS.MOBILE], playedOnTurn: 2,
+    })
+    g.state.zones[1].cards.a.push(mover)
+    const r = applyAction(g, 'alice', { type: 'MOVE_VEHICLE', instanceId: mover.instanceId, zoneId: 1 }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.zones[0].cards.a.map((c) => c.name)).toEqual(['Albacore', 'Flyer'])
+  })
+
+  it('an additionalSpawns copy lands beside the lock its own play created', () => {
+    const { g, card } = withHand({
+      name: 'Albacore', vehicleType: 'airship', materialCost: 0, faction: 'DWG',
+      meta: { aircraftLock: true, additionalSpawns: 1 },
+    })
+    const r = applyAction(g, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.zones[0].cards.a).toHaveLength(2)
+  })
+
+  it('only a truthy aircraftLock locks — a mistyped value is not a lock', () => {
+    for (const value of [false, null, 0, 'true']) {
+      const g = makeGame()
+      g.state.zones[0].cards.a.push(locker({ meta: { aircraftLock: value } }))
+      expect(legalZonesFor(g.state, 'a', inst({ vehicleType: 'plane' }))).toEqual([1, 2, 3])
+    }
+  })
+})
+
+// ===========================================================================
+// Wave 6 — WF Purifier: "This ship can only be played into a zone in which you
+// have lost a fleet battle the previous turn."
+//
+// Ruling C-5 (spec §7.3, wave 6): "the previous turn" is the last FULL round,
+// current turn included — lostBattleOnTurn >= turnNumber - 1. The counter moves
+// in half steps, so the strictly-previous half-turn is the OPPONENT'S, and
+// reading it that way would admit only a defensive loss.
+// ===========================================================================
+
+describe('deployRequiresBattleLoss — Purifier', () => {
+  const purifier = () => inst({
+    name: 'Purifier', faction: 'WF', vehicleType: 'ship', materialCost: 760_000,
+    keywords: [KEYWORDS.HALF_COST, KEYWORDS.FRAGILE],
+    meta: { deployRequiresBattleLoss: true, noBaseDamage: true },
+  })
+  // turnNumber 4: the window opens at 3 and takes everything at or above it.
+  const zones = (place: (g: ReturnType<typeof makeGame>) => void, turnNumber = 4) => {
+    const g = makeGame({ turnNumber })
+    place(g)
+    return legalZonesFor(g.state, 'a', purifier(), turnNumber)
+  }
+
+  it('offers no zone at all with no recorded loss', () => {
+    expect(zones(() => {})).toEqual([])
+  })
+
+  it('offers exactly the zone the actor lost in', () => {
+    expect(zones((g) => { g.state.zones[1].lostBattleOnTurn.a = 4 })).toEqual([2])
+  })
+
+  it('reads a loss on THIS turn — fresher wreckage is still wreckage', () => {
+    expect(zones((g) => { g.state.zones[0].lostBattleOnTurn.a = 4 })).toEqual([1])
+  })
+
+  // The two sides of the ruling C-5 boundary. 4 - 1 = 3 is the actor's own
+  // previous turn; 2.5 was a full round and a half ago.
+  it('admits a loss one full turn back and refuses one older', () => {
+    expect(zones((g) => { g.state.zones[0].lostBattleOnTurn.a = 3 })).toEqual([1])
+    expect(zones((g) => { g.state.zones[0].lostBattleOnTurn.a = 3.5 })).toEqual([1])
+    expect(zones((g) => { g.state.zones[0].lostBattleOnTurn.a = 2.5 })).toEqual([])
+    expect(zones((g) => { g.state.zones[0].lostBattleOnTurn.a = 2 })).toEqual([])
+  })
+
+  it('ignores a loss the ENEMY suffered in that zone', () => {
+    expect(zones((g) => { g.state.zones[0].lostBattleOnTurn.b = 4 })).toEqual([])
+  })
+
+  it('still obeys biome legality on top of the prerequisite', () => {
+    // Zone 3 is land, and Purifier is a ship — a loss there earns nothing.
+    expect(zones((g) => { g.state.zones[2].lostBattleOnTurn.a = 4 })).toEqual([])
+  })
+
+  it('PLAY_CARD_TO_ZONE refuses a zone with no loss and allows one with', () => {
+    for (const [record, ok] of [[null, false], [4, true]] as const) {
+      const g = makeGame({ turnNumber: 4 })
+      const card = purifier()
+      g.privates.a.hand = [card]
+      g.state.counts.a.hand = 1
+      g.state.resources.a.materials = 1_000_000
+      g.state.zones[0].lostBattleOnTurn.a = record
+      const r = applyAction(
+        g, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx(),
+      )
+      expect(r.ok).toBe(ok)
+    }
+  })
+
+  it('leaves every other card untouched by the prerequisite', () => {
+    const g = makeGame({ turnNumber: 4 })
+    expect(legalZonesFor(g.state, 'a', inst({ vehicleType: 'ship' }), 4)).toEqual([1, 2])
+  })
+
+  it('only a truthy deployRequiresBattleLoss gates — a mistyped value does not', () => {
+    for (const value of [false, null, 0, 'true']) {
+      const g = makeGame({ turnNumber: 4 })
+      const card = inst({ ...purifier(), meta: { deployRequiresBattleLoss: value } })
+      expect(legalZonesFor(g.state, 'a', card, 4)).toEqual([1, 2])
+    }
+  })
+})
+
+// SURVIVING MUTATION: battleLossMissing's optional chaining. A game row
+// written before wave 6 has zones with no lostBattleOnTurn at all, and
+// normalizeState only runs at the applyAction boundary — legalZonesFor is also
+// called DIRECTLY by the frontend, against whatever state the query handed it.
+// Without the optional chaining that is a crash on the hand, not a refusal.
+describe('deployRequiresBattleLoss — an unnormalized zone', () => {
+  it('refuses rather than throwing when the zone has no loss record at all', () => {
+    const g = makeGame({ turnNumber: 4 })
+    for (const zone of g.state.zones) {
+      delete (zone as unknown as Record<string, unknown>).lostBattleOnTurn
+    }
+    const purifier = inst({
+      name: 'Purifier', faction: 'WF', vehicleType: 'ship', materialCost: 760_000,
+      meta: { deployRequiresBattleLoss: true, noBaseDamage: true },
+    })
+    expect(() => legalZonesFor(g.state, 'a', purifier, 4)).not.toThrow()
+    expect(legalZonesFor(g.state, 'a', purifier, 4)).toEqual([])
+    // …and an ordinary card is unaffected by the missing field.
+    expect(legalZonesFor(g.state, 'a', inst({ vehicleType: 'ship' }), 4)).toEqual([1, 2])
+  })
+})

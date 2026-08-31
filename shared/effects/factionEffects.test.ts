@@ -26,6 +26,10 @@ const DRAW_ONE = [
   'claymoreEffect', 'palisadeEffect', 'purifierEffect',
   'javelinOnDeath', 'ironMaidenOnDeath', 'victoriaOnDeath',
   'trondheimOnDeath', 'coulombEffect',
+  // Wave 6. Basher: "When this is destroyed, draw a card". It prints no
+  // keywords at all, so the standing prohibition on SCRAPPY + onDeathEffect
+  // (docs/claude/card-effects.md) is clear.
+  'basherOnDeath',
 ]
 const CP_ONLY: [string, number][] = [
   ['bulwarkOnPlay', 2], ['maelstromOnPlay', 1], ['maceEffect', 1],
@@ -3089,5 +3093,1147 @@ describe('wave 5 — Sabotage', () => {
     const ended = applyAction(decided.game, 'alice', { type: 'END_TURN' }, sabCtx())
     if (!ended.ok) throw new Error(ended.error)
     expect(ended.game.privates.a.hand).toHaveLength(0)
+  })
+})
+
+// ===========================================================================
+// Wave 6 — the twelve cards of the 2026-08-30 balance pass.
+//
+// Driven through applyAction wherever a handler is part of what is being
+// proved. A direct effectFor() call would pass even if the seeded meta key or
+// the handler wiring were wrong.
+// ===========================================================================
+
+describe('wave 6 — SS Nothung', () => {
+  const sacrilegoSnap = snap({
+    name: 'Sacrilego', faction: 'SS', vehicleType: 'ship', materialCost: 80_000,
+    keywords: ['scrappy', 'stealthy', 'mobile'],
+    meta: { onBattleEffect: 'sacrilegoBattle' },
+  })
+  const nothung = () => inst({
+    name: 'Nothung', faction: 'SS', vehicleType: 'ship', materialCost: 0,
+    keywords: ['blocker'], meta: { onPlayEffect: 'nothungOnPlay' },
+  })
+  const nothungCtx = () => makeCtx({ catalog: [sacrilegoSnap] })
+
+  function play(zoneId: number) {
+    const card = nothung()
+    const game = makeGame({ privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } } })
+    const r = applyAction(
+      game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId }, nothungCtx(),
+    )
+    if (!r.ok) throw new Error(r.error)
+    return r.game
+  }
+
+  it('puts a friendly Sacrilego into the zone Nothung was played into', () => {
+    const game = play(1)
+    expect(game.state.zones[0].cards.a.map((c) => c.name)).toEqual(['Nothung', 'Sacrilego'])
+    // …and nowhere else, on neither side.
+    expect(game.state.zones[1].cards.a).toEqual([])
+    expect(game.state.zones[0].cards.b).toEqual([])
+  })
+
+  it('follows Nothung into whichever zone it was played into', () => {
+    const game = play(2)
+    expect(game.state.zones[1].cards.a.map((c) => c.name)).toEqual(['Nothung', 'Sacrilego'])
+    expect(game.state.zones[0].cards.a).toEqual([])
+  })
+
+  // Ruling A-1 (spec §7.3, wave 6). Spawning is not playing skips
+  // onPlayEffect and NOTHING else, so the spawned hull's own battle trigger
+  // survives — which is why the card names Sacrilego rather than a vanilla
+  // hull. Asserted rather than assumed: the alternative is discovering it in
+  // a battle report.
+  it('the spawned Sacrilego keeps its printed battle trigger', () => {
+    const spawned = play(1).state.zones[0].cards.a.find((c) => c.name === 'Sacrilego')!
+    expect(spawned.meta.onBattleEffect).toBe('sacrilegoBattle')
+    expect(spawned.keywords).toEqual(['scrappy', 'stealthy', 'mobile'])
+  })
+
+  it('fails the play when the catalog has no Sacrilego — a data bug, not an empty pool', () => {
+    const card = nothung()
+    const game = makeGame({ privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } } })
+    const r = applyAction(
+      game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx(),
+    )
+    expect(r.ok).toBe(false)
+  })
+})
+
+// The wave-6 half of the needsCatalog check (handoff trap 4). Same reasoning
+// as the rider block above: makeCtx hands every test a catalog, so a missing
+// flag is invisible to unit tests and shows up only as a dead card in
+// production. Asserted at runtime rather than by reading the source.
+describe('wave 6 — effects that must carry needsCatalog', () => {
+  it.each(['nothungOnPlay', 'balmungOnPlay', 'harbringerBattle', 'victoriaActivate'])(
+    '%s', (name) => { expect(CATALOG_EFFECTS.has(name)).toBe(true) },
+  )
+})
+
+describe('wave 6 — SS Balmung', () => {
+  const hydraSnap = snap({
+    name: 'Hydra', faction: 'SS', vehicleType: 'airship', materialCost: 230_000,
+    blueprintCost: 231_000, keywords: ['mobile'], meta: {},
+  })
+  const balmung = () => inst({
+    name: 'Balmung', faction: 'SS', vehicleType: 'ship', materialCost: 0,
+    keywords: ['blocker'], meta: { onPlayEffect: 'balmungOnPlay' },
+  })
+  const balmungCtx = () => makeCtx({ catalog: [hydraSnap] })
+
+  function play() {
+    const card = balmung()
+    const game = makeGame({ privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } } })
+    const r = applyAction(
+      game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, balmungCtx(),
+    )
+    if (!r.ok) throw new Error(r.error)
+    return r.game
+  }
+
+  it('mints exactly one Hydra into the actor own hand and nowhere else', () => {
+    const game = play()
+    expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Hydra'])
+    expect(game.privates.b.hand).toEqual([])
+    // A card in hand, never a hull on the board — the text says "in hand".
+    expect(game.state.zones[0].cards.a.map((c) => c.name)).toEqual(['Balmung'])
+  })
+
+  // Ruling A-2 (spec §7.3, wave 6). "Reduce its COST to zero" is a price, not
+  // a rewrite. A minted materialCost: 0 would silently make the Hydra
+  // harmless as well as free — this is the assertion that catches it.
+  it('reduces the price with costDelta and leaves the printed materialCost alone', () => {
+    const hydra = play().privates.a.hand[0]
+    expect(hydra.meta.costDelta).toBe(-230_000)
+    expect(hydra.materialCost).toBe(230_000)
+  })
+
+  it('costs nothing to play but still does its printed damage and repair', () => {
+    const game = play()
+    const hydra = game.privates.a.hand[0]
+    expect(effectiveCostInGame(game.state, 'a', hydra)).toBe(0)
+    // The figure base damage, repairs and in-battle resources all read.
+    expect(effectiveMaterialCostOf(hydra)).toBe(230_000)
+  })
+
+  it('resyncs the public hand count, which a direct push does not do for you', () => {
+    const game = play()
+    expect(game.state.counts.a.hand).toBe(game.privates.a.hand.length)
+    expect(game.state.counts.a.hand).toBe(1)
+  })
+
+  // Ruling A-3. state.log is public and the Hydra is going into a hidden
+  // hand. Balmung's own text already reveals it, so this leaks nothing — but
+  // the rule is absolute and drawFromPool sets the precedent.
+  it('never names the minted card in the public log', () => {
+    expect(play().state.log.join('\n')).not.toContain('Hydra')
+  })
+
+  it('fails the play when the catalog has no Hydra — a data bug, not an empty pool', () => {
+    const card = balmung()
+    const game = makeGame({ privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } } })
+    const r = applyAction(
+      game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx(),
+    )
+    expect(r.ok).toBe(false)
+  })
+
+  // summonOnly cards are spawned, never drafted (docs/claude/architecture.md).
+  // This effect filters ctx.catalog by name directly rather than going through
+  // drawFromPool, so it does not get that guard for free — reservesEffect
+  // missed exactly this and could mint a Flying Squirrel into a hand.
+  it('refuses to mint a summonOnly card even if one is named Hydra', () => {
+    const card = balmung()
+    const game = makeGame({ privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } } })
+    const r = applyAction(
+      game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 },
+      makeCtx({ catalog: [snap({ ...hydraSnap, meta: { summonOnly: true } })] }),
+    )
+    expect(r.ok).toBe(false)
+  })
+})
+
+describe('wave 6 — WF Harbringer', () => {
+  const wfShip = (name: string, materialCost: number) =>
+    snap({ name, faction: 'WF', type: 'vehicle', vehicleType: 'ship', materialCost })
+  // Boundary cards on purpose: the card says "<=100k", and The Repentance is a
+  // real WF PLANE at exactly 100k, so the type filter is load-bearing rather
+  // than decorative.
+  const pool = [
+    wfShip('Buzzsaw', 80_000),
+    wfShip('Earth Raker', 50_000),
+    wfShip('On The Line', 100_000),
+    wfShip('Over The Line', 100_001),
+    snap({ name: 'The Repentance', faction: 'WF', type: 'vehicle', vehicleType: 'plane', materialCost: 100_000 }),
+    snap({ name: 'Sacrilego', faction: 'SS', type: 'vehicle', vehicleType: 'ship', materialCost: 80_000 }),
+    snap({
+      name: 'Summon Only', faction: 'WF', type: 'vehicle', vehicleType: 'ship',
+      materialCost: 10_000, meta: { summonOnly: true },
+    }),
+  ]
+  const harbCtx = () => makeCtx({ catalog: pool })
+  const lockCtx = (over: Partial<BattleContext> = {}): BattleContext => ({
+    phase: 'lock', zoneId: 1, isDefender: false, isParticipant: true,
+    forced: false, survived: false, won: false, casualties: [], ...over,
+  })
+  const fire = (game: EngineGame, battle: BattleContext) => effectFor('harbringerBattle')!({
+    game, actor: 'a', card: inst({ name: 'Harbringer', faction: 'WF' }), ctx: harbCtx(), battle,
+  })
+
+  // Ruling A-6. The pool is WF SHIPS at <= 100k, inclusive, on printed cost.
+  it('offers exactly the WF ships at or under 100k, and nothing else', () => {
+    const game = makeGame()
+    expect(fire(game, lockCtx())).toBe(true)
+    expect(game.state.pendingEffect?.options.map((o) => o.id).sort()).toEqual(
+      ['Buzzsaw', 'Earth Raker', 'On The Line'],
+    )
+  })
+
+  // Ruling A-4 (spec §7.3, wave 6). "Whenever this ship is in fleet combat"
+  // reads to both directions — so BOTH of these must offer, and neither may
+  // be guarded away by an isDefender check.
+  it.each([false, true])('offers whether it is attacking or defending (isDefender=%s)', (isDefender) => {
+    const game = makeGame()
+    expect(fire(game, lockCtx({ isDefender }))).toBe(true)
+    expect(game.state.pendingEffect).not.toBeNull()
+  })
+
+  it('offers nothing at resolve — the guest joins a fight, it does not arrive after one', () => {
+    const game = makeGame()
+    expect(fire(game, lockCtx({ phase: 'resolve' }))).toBe(true)
+    expect(game.state.pendingEffect).toBeNull()
+  })
+
+  it('offers nothing to a non-participant', () => {
+    const game = makeGame()
+    expect(fire(game, lockCtx({ isParticipant: false }))).toBe(true)
+    expect(game.state.pendingEffect).toBeNull()
+  })
+
+  it('joins the chosen hull to the battle as a summon on Harbringer own side', () => {
+    const game = makeGame({ turnNumber: 3 })
+    const harbringer = zoneEntry({
+      name: 'Harbringer', faction: 'WF', vehicleType: 'ship', playedOnTurn: 2,
+      meta: { onBattleEffect: 'harbringerBattle' },
+    })
+    const victim = zoneEntry({ name: 'Victim' })
+    game.state.zones[0].cards.a.push(harbringer)
+    game.state.zones[0].cards.b.push(victim)
+    const declared = applyAction(game, 'alice', {
+      type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
+      attackerIds: [harbringer.instanceId], targetIds: [victim.instanceId],
+    }, harbCtx())
+    if (!declared.ok) throw new Error(declared.error)
+    expect(declared.game.state.pendingEffect?.side).toBe('a')
+    const r = applyAction(
+      declared.game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'Buzzsaw' }, harbCtx(),
+    )
+    if (!r.ok) throw new Error(r.error)
+    const battle = r.game.state.activeBattle!
+    expect(battle.summons.map((s) => s.name)).toEqual(['Buzzsaw'])
+    // A summon's SIDE is decided by which id list it is in (spec §4.4).
+    expect(battle.attackerIds).toContain(battle.summons[0].instanceId)
+    expect(battle.defenderIds).not.toContain(battle.summons[0].instanceId)
+    // Never pushed onto the board — it evaporates with the battle.
+    expect(r.game.state.zones[0].cards.a.map((c) => c.name)).toEqual(['Harbringer'])
+  })
+
+  it('declining leaves the battle exactly as it was', () => {
+    const game = makeGame({ turnNumber: 3 })
+    const harbringer = zoneEntry({
+      name: 'Harbringer', faction: 'WF', vehicleType: 'ship', playedOnTurn: 2,
+      meta: { onBattleEffect: 'harbringerBattle' },
+    })
+    const victim = zoneEntry({ name: 'Victim' })
+    game.state.zones[0].cards.a.push(harbringer)
+    game.state.zones[0].cards.b.push(victim)
+    const declared = applyAction(game, 'alice', {
+      type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
+      attackerIds: [harbringer.instanceId], targetIds: [victim.instanceId],
+    }, harbCtx())
+    if (!declared.ok) throw new Error(declared.error)
+    const r = applyAction(
+      declared.game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', cancel: true }, harbCtx(),
+    )
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.activeBattle!.summons).toEqual([])
+    expect(r.game.state.activeBattle!.attackerIds).toEqual([harbringer.instanceId])
+  })
+
+  it('resolves without an offer when the pool is empty', () => {
+    const game = makeGame()
+    expect(fire(game, lockCtx())).toBe(true)
+    const empty = makeGame()
+    const ok = effectFor('harbringerBattle')!({
+      game: empty, actor: 'a', card: inst({ name: 'Harbringer' }),
+      ctx: makeCtx({ catalog: [] }), battle: lockCtx(),
+    })
+    expect(ok).toBe(true)
+    expect(empty.state.pendingEffect).toBeNull()
+  })
+})
+
+describe('wave 6 — WF Judgement', () => {
+  const judgementCard = () => inst({
+    name: 'Judgement', faction: 'WF', vehicleType: 'ship', materialCost: 540_000,
+    meta: { costModifier: 'judgementCostModifier', onActivate: 'judgementActivate', activateCpCost: 1 },
+  })
+
+  // Ruling B-1 (spec §7.3, wave 6). "While your opponent HAS a submarine or
+  // airship" names no zone; the card's own second sentence says "in this
+  // zone" explicitly. The contrast inside one card is the evidence.
+  describe('judgementCostModifier — the whole enemy board', () => {
+    const priced = (place?: (g: EngineGame) => void) => {
+      const game = makeGame()
+      place?.(game)
+      return effectiveCostInGame(game.state, 'a', judgementCard())
+    }
+
+    it('costs full price when the enemy has neither', () => {
+      expect(priced()).toBe(540_000)
+      expect(priced((g) => { g.state.zones[0].cards.b.push(zoneEntry({ vehicleType: 'ship' })) })).toBe(540_000)
+      expect(priced((g) => { g.state.zones[0].cards.b.push(zoneEntry({ vehicleType: 'tank' })) })).toBe(540_000)
+    })
+
+    it.each(['sub', 'airship'])('costs 100k less against an enemy %s', (vehicleType) => {
+      expect(priced((g) => { g.state.zones[0].cards.b.push(zoneEntry({ vehicleType })) })).toBe(440_000)
+    })
+
+    // The zone Judgement itself would land in is irrelevant — this is the
+    // assertion that pins the ruling rather than an accident of fixtures.
+    it('reads every zone, not just one', () => {
+      expect(priced((g) => { g.state.zones[2].cards.b.push(zoneEntry({ vehicleType: 'airship' })) })).toBe(440_000)
+    })
+
+    it('ignores the actor own subs and airships', () => {
+      expect(priced((g) => {
+        g.state.zones[0].cards.a.push(zoneEntry({ vehicleType: 'sub' }))
+        g.state.zones[1].cards.a.push(zoneEntry({ vehicleType: 'airship' }))
+      })).toBe(540_000)
+    })
+
+    it('does not stack — the text is a flat discount, not a per-hull one', () => {
+      expect(priced((g) => {
+        g.state.zones[0].cards.b.push(zoneEntry({ vehicleType: 'sub' }))
+        g.state.zones[0].cards.b.push(zoneEntry({ vehicleType: 'airship' }))
+        g.state.zones[1].cards.b.push(zoneEntry({ vehicleType: 'sub' }))
+      })).toBe(440_000)
+    })
+
+    it('prices for side b symmetrically, reading side a as the enemy', () => {
+      const game = makeGame()
+      game.state.zones[0].cards.a.push(zoneEntry({ vehicleType: 'sub' }))
+      expect(effectiveCostInGame(game.state, 'b', judgementCard())).toBe(440_000)
+      expect(effectiveCostInGame(game.state, 'a', judgementCard())).toBe(540_000)
+    })
+  })
+
+  describe('judgementActivate — a 1v1 against a sub or airship in this zone', () => {
+    function armed(place?: (g: EngineGame) => void) {
+      const game = makeGame({ turnNumber: 3 })
+      const judgement = zoneEntry({
+        name: 'Judgement', faction: 'WF', vehicleType: 'ship', playedOnTurn: 2,
+        meta: { onActivate: 'judgementActivate', activateCpCost: 1 },
+      })
+      game.state.zones[0].cards.a.push(judgement)
+      place?.(game)
+      return { game, judgement }
+    }
+    const activate = (game: EngineGame, instanceId: string) =>
+      applyAction(game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId }, makeCtx())
+
+    it('offers only enemy subs and airships in its own zone', () => {
+      const { game, judgement } = armed((g) => {
+        g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'sub-here', name: 'Diver', vehicleType: 'sub' }))
+        g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'air-here', name: 'Blimp', vehicleType: 'airship' }))
+        g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'ship-here', name: 'Hull', vehicleType: 'ship' }))
+        g.state.zones[1].cards.b.push(zoneEntry({ instanceId: 'sub-away', name: 'Far', vehicleType: 'sub' }))
+        g.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'own-sub', name: 'Mine', vehicleType: 'sub' }))
+      })
+      const r = activate(game, judgement.instanceId)
+      if (!r.ok) throw new Error(r.error)
+      expect(r.game.state.pendingEffect?.options.map((o) => o.id).sort()).toEqual(['air-here', 'sub-here'])
+    })
+
+    it('declares a 1v1 forced battle against the chosen hull', () => {
+      const { game, judgement } = armed((g) => {
+        g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'sub-here', name: 'Diver', vehicleType: 'sub' }))
+        g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'air-here', name: 'Blimp', vehicleType: 'airship' }))
+      })
+      const offered = activate(game, judgement.instanceId)
+      if (!offered.ok) throw new Error(offered.error)
+      const r = applyAction(
+        offered.game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'air-here' }, makeCtx(),
+      )
+      if (!r.ok) throw new Error(r.error)
+      const battle = r.game.state.activeBattle!
+      expect(battle.aggressor).toBe('a')
+      expect(battle.attackerIds).toEqual([judgement.instanceId])
+      expect(battle.defenderIds).toEqual(['air-here'])
+      // A forced battle is not a zone activation (spec §4.3) — Eclipse alone
+      // is the exception and says so in its own text.
+      expect(r.game.state.zones[0].lastActivatedTurn).toBeNull()
+    })
+
+    it('charges the printed 1cp and stamps once-per-turn', () => {
+      const { game, judgement } = armed((g) => {
+        g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'sub-here', name: 'Diver', vehicleType: 'sub' }))
+      })
+      const before = game.state.resources.a.cp
+      const r = activate(game, judgement.instanceId)
+      if (!r.ok) throw new Error(r.error)
+      expect(r.game.state.resources.a.cp).toBe(before - 1)
+      const again = activate(r.game, judgement.instanceId)
+      expect(again.ok).toBe(false)
+    })
+
+    it('fails when the zone holds no eligible target', () => {
+      const { game, judgement } = armed((g) => {
+        g.state.zones[0].cards.b.push(zoneEntry({ name: 'Hull', vehicleType: 'ship' }))
+      })
+      expect(activate(game, judgement.instanceId).ok).toBe(false)
+    })
+  })
+})
+
+describe('wave 6 — SS Victoria', () => {
+  const victoriaSnap = snap({
+    name: 'Victoria', faction: 'SS', vehicleType: 'ship', materialCost: 250_000,
+    keywords: [], meta: { onActivate: 'victoriaActivate', activateMaterialCost: 200_000 },
+  })
+  const vicCtx = () => makeCtx({ catalog: [victoriaSnap] })
+
+  function armed(zoneIndex = 0) {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.resources.a.materials = 500_000
+    const victoria = zoneEntry({
+      instanceId: 'vic-1', name: 'Victoria', faction: 'SS', vehicleType: 'ship',
+      materialCost: 250_000, playedOnTurn: 2,
+      meta: { onActivate: 'victoriaActivate', activateMaterialCost: 200_000 },
+    })
+    game.state.zones[zoneIndex].cards.a.push(victoria)
+    return { game, victoria }
+  }
+
+  it('spawns a second Victoria into its own zone and charges 200k', () => {
+    const { game, victoria } = armed()
+    const r = applyAction(
+      game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: victoria.instanceId }, vicCtx(),
+    )
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.zones[0].cards.a.map((c) => c.name)).toEqual(['Victoria', 'Victoria'])
+    expect(r.game.state.resources.a.materials).toBe(300_000)
+  })
+
+  // Ruling B-5 (spec §7.3, wave 6). ACTIVATE_VEHICLE passes the
+  // client-supplied action.zoneId straight through as targetZoneId, so an
+  // effect that read it could be redirected by a stale or malicious client.
+  // Braveheart is the precedent: re-derive the zone from the hull itself.
+  it('ignores a client-supplied zoneId and uses the hull own zone', () => {
+    const { game, victoria } = armed(1)
+    const r = applyAction(
+      game, 'alice',
+      { type: 'ACTIVATE_VEHICLE', instanceId: victoria.instanceId, zoneId: 3 },
+      vicCtx(),
+    )
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.zones[1].cards.a.map((c) => c.name)).toEqual(['Victoria', 'Victoria'])
+    expect(r.game.state.zones[2].cards.a).toEqual([])
+  })
+
+  // Ruling B-4. Spawning is not playing, so the new hull carries its printed
+  // meta — which means it can be activated in its own right. The chain is
+  // per-hull, per-turn, and hard-bounded by materials; this asserts the
+  // mechanism rather than assuming it.
+  it('the spawned Victoria carries its own activated ability, unstamped', () => {
+    const { game, victoria } = armed()
+    const r = applyAction(
+      game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: victoria.instanceId }, vicCtx(),
+    )
+    if (!r.ok) throw new Error(r.error)
+    const spawned = r.game.state.zones[0].cards.a.find((c) => c.instanceId !== victoria.instanceId)!
+    expect(spawned.meta).toMatchObject({
+      onActivate: 'victoriaActivate', activateMaterialCost: 200_000,
+    })
+    expect(spawned).toHaveProperty('activatedOnTurn', null)
+  })
+
+  it('refuses when the actor cannot afford the 200k, spawning nothing', () => {
+    const { game, victoria } = armed()
+    game.state.resources.a.materials = 199_999
+    const r = applyAction(
+      game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: victoria.instanceId }, vicCtx(),
+    )
+    expect(r.ok).toBe(false)
+    expect(game.state.zones[0].cards.a).toHaveLength(1)
+  })
+
+  it('cannot be activated twice in one turn', () => {
+    const { game, victoria } = armed()
+    const first = applyAction(
+      game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: victoria.instanceId }, vicCtx(),
+    )
+    if (!first.ok) throw new Error(first.error)
+    const second = applyAction(
+      first.game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: victoria.instanceId }, vicCtx(),
+    )
+    expect(second).toMatchObject({ ok: false, status: 409 })
+  })
+
+  it('fails when the catalog has no Victoria — a data bug, not an empty pool', () => {
+    const { game, victoria } = armed()
+    const r = applyAction(
+      game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: victoria.instanceId }, makeCtx(),
+    )
+    expect(r.ok).toBe(false)
+  })
+})
+
+// ===========================================================================
+// Wave 6 — SS Blockade, and DP7 (spec §4.3, "DP7 as wave 6 built it").
+//
+// "Choose a zone, whenever the opponent plays a vehicle into that zone while
+// you have at least one vehicle there, a fleet battle immediately begins in
+// that zone. If you lose with no surviving vehicles, the blockade goes away,
+// otherwise it remains."
+//
+// The only card in the backlog needing a new dispatch point: every existing
+// rider dispatch hangs off a battle, a bombardment or the turn end. None
+// fires on a play.
+// ===========================================================================
+
+describe('wave 6 — SS Blockade', () => {
+  const blockadeSnap = snap({
+    name: 'Blockade', faction: 'SS', type: 'ability', vehicleType: null,
+    materialCost: 0, cardText: 'Choose a zone…', meta: { playOnZoneEffect: 'blockadeEffect' },
+  })
+  const watersSnap = snap({
+    name: 'DWG Waters', faction: 'DWG', type: 'ability', vehicleType: null,
+    materialCost: 0, meta: { playOnZoneEffect: 'dwgWatersEffect' },
+  })
+  const blockCtx = () => makeCtx({ catalog: [blockadeSnap, watersSnap] })
+  const riders = (game: EngineGame) =>
+    game.state.zoneEffects.filter((e) => e.effect === 'blockadeEffect')
+
+  // Player b holds the blockade; player a (the active player) is the one who
+  // will sail into it.
+  function blockaded(place?: (g: EngineGame) => void) {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zoneEffects.push({
+      effect: 'blockadeEffect', zoneId: 1, side: 'b', cardName: 'Blockade', setOnTurn: 2,
+    })
+    place?.(game)
+    return game
+  }
+  function deploy(game: EngineGame, over: Record<string, unknown> = {}, zoneId = 1) {
+    const card = inst({ name: 'Intruder', vehicleType: 'ship', materialCost: 0, ...over })
+    game.privates.a.hand = [card]
+    game.state.counts.a.hand = 1
+    const r = applyAction(
+      game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId }, blockCtx(),
+    )
+    if (!r.ok) throw new Error(r.error)
+    return { game: r.game, card }
+  }
+
+  describe('the claim', () => {
+    const claim = (game: EngineGame, zoneId = 1) => {
+      const card = inst({ ...blockadeSnap })
+      game.privates.a.hand = [card]
+      game.state.counts.a.hand = 1
+      return applyAction(
+        game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId }, blockCtx(),
+      )
+    }
+
+    it('writes one PERMANENT rider — the card says "otherwise it remains"', () => {
+      const r = claim(makeGame({ turnNumber: 3 }))
+      if (!r.ok) throw new Error(r.error)
+      expect(riders(r.game)).toHaveLength(1)
+      expect(riders(r.game)[0]).toMatchObject({ zoneId: 1, side: 'a', cardName: 'Blockade' })
+      expect(riders(r.game)[0].expiresOnTurn).toBeUndefined()
+    })
+
+    // Ruling C-13, the ambushClaim precedent: refuse before the handler
+    // commits, so the play is not spent on a no-op.
+    it('refuses a second claim on a zone this side already holds', () => {
+      const game = makeGame({ turnNumber: 3 })
+      const first = claim(game)
+      if (!first.ok) throw new Error(first.error)
+      expect(claim(first.game).ok).toBe(false)
+      expect(riders(first.game)).toHaveLength(1)
+    })
+
+    it('lets the OTHER side blockade the same zone', () => {
+      const game = makeGame({ turnNumber: 3 })
+      game.state.zoneEffects.push({
+        effect: 'blockadeEffect', zoneId: 1, side: 'b', cardName: 'Blockade', setOnTurn: 2,
+      })
+      const r = claim(game)
+      if (!r.ok) throw new Error(r.error)
+      expect(riders(r.game).map((e) => e.side).sort()).toEqual(['a', 'b'])
+    })
+  })
+
+  describe('the spring', () => {
+    // Ruling C-8: the blockader is the aggressor. Every other forced battle in
+    // the codebase names the effect's owner, and DWG Waters' clause 3 inverts
+    // only because the enemy's own action was already an attack.
+    it('declares with the BLOCKADER as aggressor, so the deployer defends on their own turn', () => {
+      const game = blockaded((g) => {
+        g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'guard', name: 'Guard' }))
+      })
+      const { game: after, card } = deploy(game)
+      const battle = after.state.activeBattle!
+      expect(battle.aggressor).toBe('b')
+      expect(battle.attackerIds).toEqual(['guard'])
+      expect(battle.defenderIds).toEqual([card.instanceId])
+    })
+
+    // Ruling C-9: a FLEET battle — everything eligible on both sides, not just
+    // the hull that walked into it.
+    it('drags in every hull on both sides, not only the one just played', () => {
+      const game = blockaded((g) => {
+        g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'g1', name: 'Guard 1' }))
+        g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'g2', name: 'Guard 2' }))
+        g.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'a1', name: 'Bystander' }))
+      })
+      const { game: after, card } = deploy(game)
+      const battle = after.state.activeBattle!
+      expect([...battle.attackerIds].sort()).toEqual(['g1', 'g2'])
+      expect([...battle.defenderIds].sort()).toEqual([card.instanceId, 'a1'].sort())
+    })
+
+    // §7.3's Gang Up ruling: Inoffensive is precisely "cannot attack", and a
+    // forced battle is not a licence to break it. It says nothing about being
+    // attacked, so the defender's side keeps its Inoffensive hulls.
+    it('excludes Inoffensive hulls from the aggressor side but not the defender side', () => {
+      const game = blockaded((g) => {
+        g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'guard', name: 'Guard' }))
+        g.state.zones[0].cards.b.push(zoneEntry({
+          instanceId: 'meek', name: 'Meek', keywords: ['inoffensive'],
+        }))
+        g.state.zones[0].cards.a.push(zoneEntry({
+          instanceId: 'timid', name: 'Timid', keywords: ['inoffensive'],
+        }))
+      })
+      const { game: after, card } = deploy(game)
+      const battle = after.state.activeBattle!
+      expect(battle.attackerIds).toEqual(['guard'])
+      expect([...battle.defenderIds].sort()).toEqual([card.instanceId, 'timid'].sort())
+    })
+
+    it('declares nothing when every blockading hull is Inoffensive', () => {
+      const game = blockaded((g) => {
+        g.state.zones[0].cards.b.push(zoneEntry({ name: 'Meek', keywords: ['inoffensive'] }))
+      })
+      expect(deploy(game).game.state.activeBattle).toBeNull()
+    })
+
+    // Ruling C-11: the card removes the rider on a loss and on nothing else.
+    it('declares nothing and KEEPS the rider when the blockader holds no hull there', () => {
+      const after = deploy(blockaded()).game
+      expect(after.state.activeBattle).toBeNull()
+      expect(riders(after)).toHaveLength(1)
+    })
+
+    it('ignores a deploy by the blockader themselves', () => {
+      const game = blockaded((g) => {
+        g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'guard', name: 'Guard' }))
+      })
+      const card = inst({ name: 'Reinforcement', vehicleType: 'ship', materialCost: 0 })
+      game.privates.b.hand = [card]
+      game.state.counts.b.hand = 1
+      game.activePlayer = 'bob'
+      const r = applyAction(
+        game, 'bob', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, blockCtx(),
+      )
+      if (!r.ok) throw new Error(r.error)
+      expect(r.game.state.activeBattle).toBeNull()
+    })
+
+    it('ignores a deploy into a DIFFERENT zone', () => {
+      const game = blockaded((g) => {
+        g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'guard', name: 'Guard' }))
+      })
+      expect(deploy(game, {}, 2).game.state.activeBattle).toBeNull()
+    })
+
+    // The card says "plays a VEHICLE". An ability resolving on the zone is not
+    // a deploy.
+    it('ignores an ABILITY played to the zone', () => {
+      const game = blockaded((g) => {
+        g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'guard', name: 'Guard' }))
+      })
+      const ability = inst({ ...watersSnap })
+      game.privates.a.hand = [ability]
+      game.state.counts.a.hand = 1
+      const r = applyAction(
+        game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: ability.instanceId, zoneId: 1 }, blockCtx(),
+      )
+      if (!r.ok) throw new Error(r.error)
+      expect(r.game.state.activeBattle).toBeNull()
+    })
+
+    // Ruling C-12. A forced battle is not a zone activation (spec §4.3);
+    // Eclipse alone is the exception.
+    it('does not spend the zone activation', () => {
+      const game = blockaded((g) => {
+        g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'guard', name: 'Guard' }))
+      })
+      expect(deploy(game).game.state.zones[0].lastActivatedTurn).toBeNull()
+    })
+
+    // Ruling C-13: one battle per PLAY, not one per hull. Three hulls arrive
+    // inside a single deployVehicle call.
+    it('declares exactly one battle for an additionalSpawns play', () => {
+      const game = blockaded((g) => {
+        g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'guard', name: 'Guard' }))
+      })
+      const { game: after } = deploy(game, { meta: { additionalSpawns: 2 } })
+      expect(after.state.zones[0].cards.a).toHaveLength(3)
+      expect(after.state.activeBattle!.defenderIds).toHaveLength(3)
+    })
+
+    // The SECOND seam. PLAY_CARD_TARGETING_CARD_IN_HAND deploys vehicles too
+    // (DP6), and a dispatch added to only one handler is a card that works
+    // until someone plays Excalibur.
+    it('springs through PLAY_CARD_TARGETING_CARD_IN_HAND as well', () => {
+      const game = blockaded((g) => {
+        g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'guard', name: 'Guard' }))
+      })
+      const excalibur = inst({
+        name: 'Excalibur', faction: 'SS', vehicleType: 'ship', materialCost: 0,
+        meta: { playOnCardEffect: 'excaliburEffect' },
+      })
+      const target = inst({ name: 'AI Ship', vehicleType: 'ship', materialCost: 100_000, isBuiltIn: true })
+      game.privates.a.hand = [excalibur, target]
+      game.state.counts.a.hand = 2
+      const r = applyAction(game, 'alice', {
+        type: 'PLAY_CARD_TARGETING_CARD_IN_HAND',
+        instanceId: excalibur.instanceId, targetInstanceId: target.instanceId, zoneId: 1,
+      }, blockCtx())
+      if (!r.ok) throw new Error(r.error)
+      expect(r.game.state.activeBattle?.aggressor).toBe('b')
+      expect(r.game.state.activeBattle?.defenderIds).toEqual([excalibur.instanceId])
+    })
+  })
+
+  describe('isolation from every other rider', () => {
+    // Ruling C-14, and the reason DP7 is opt-in rather than a broadcast:
+    // dwgWatersEffect's router falls through to its CLAIM branch for any phase
+    // it does not recognise, so an unfamiliar context would make it try to
+    // claim a zone with no targetZoneId and log a failure on every enemy
+    // deploy into a zone it holds.
+    it('never hands a DWG Waters rider a deploy context', () => {
+      const game = blockaded((g) => {
+        g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'guard', name: 'Guard' }))
+        g.state.zoneEffects.push({
+          effect: 'dwgWatersEffect', zoneId: 1, side: 'b', cardName: 'DWG Waters', setOnTurn: 2,
+        })
+      })
+      const after = deploy(game).game
+      expect(after.state.log.join('\n')).not.toContain('zone effect could not resolve')
+    })
+
+    // declareForcedBattle ends in dispatchBattleLock, which iterates EVERY
+    // rider on the zone — including the Blockade that just declared. Without a
+    // phase guard it would recurse.
+    it('does not re-declare when its own battle lock re-enters it', () => {
+      const game = blockaded((g) => {
+        g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'guard', name: 'Guard' }))
+      })
+      const after = deploy(game).game
+      expect(after.state.activeBattle!.attackerIds).toEqual(['guard'])
+      expect(riders(after)).toHaveLength(1)
+    })
+
+    // Ruling C-15: it reads no catalog itself, but fireRider mints its payload
+    // card from one.
+    it('carries needsCatalog', () => {
+      expect(CATALOG_EFFECTS.has('blockadeEffect')).toBe(true)
+    })
+  })
+
+  describe('the aftermath', () => {
+    // Ruling C-10: read off the POST-RESOLUTION board, which §7.3's Trebuchet
+    // ruling already blesses. It is the only route that works — the
+    // continuation's own `won` means "the ENEMY has no survivors", the
+    // opposite of what this clause asks.
+    function fight(defenderHp: number, blockaderHp: number) {
+      const game = blockaded((g) => {
+        g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'guard', name: 'Guard' }))
+        g.state.zoneEffects.push({
+          effect: 'blockadeEffect', zoneId: 2, side: 'b', cardName: 'Blockade', setOnTurn: 2,
+        })
+      })
+      const { game: declared, card } = deploy(game)
+      const submitted = applyAction(declared, 'alice', {
+        type: 'SUBMIT_BATTLE_REPORT',
+        results: { guard: blockaderHp, [card.instanceId]: defenderHp }, repairs: [],
+      }, blockCtx())
+      if (!submitted.ok) throw new Error(submitted.error)
+      const decided = applyAction(
+        submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, blockCtx(),
+      )
+      if (!decided.ok) throw new Error(decided.error)
+      return decided.game
+    }
+
+    it('remains while the blockader still holds a hull in the zone', () => {
+      const after = fight(0, 100)
+      expect(after.state.zones[0].cards.b).toHaveLength(1)
+      expect(riders(after).filter((e) => e.zoneId === 1)).toHaveLength(1)
+    })
+
+    it('goes away when the blockading fleet is wiped out', () => {
+      const after = fight(100, 0)
+      expect(after.state.zones[0].cards.b).toEqual([])
+      expect(riders(after).filter((e) => e.zoneId === 1)).toEqual([])
+    })
+
+    it('removes only that side blockade on that zone, leaving others standing', () => {
+      const after = fight(100, 0)
+      expect(riders(after).map((e) => e.zoneId)).toEqual([2])
+    })
+  })
+})
+
+// Found by the late re-read of all twelve card texts, after everything was
+// built and green — the pass wave 5 identified as its single highest-value
+// check.
+//
+// An Inoffensive hull counts for "while you have at least one vehicle there"
+// but cannot be an attacker (§7.3's Gang Up ruling), so a blockader holding
+// ONLY Inoffensive hulls is in a state neither clause obviously covers: the
+// trap does not spring, and it is not removed either. Both halves follow from
+// the printed text read literally, and both are pinned here so the behaviour
+// is deliberate rather than incidental.
+describe('wave 6 — Blockade and an Inoffensive-only blockading fleet', () => {
+  const blockadeSnap = snap({
+    name: 'Blockade', faction: 'SS', type: 'ability', vehicleType: null,
+    materialCost: 0, meta: { playOnZoneEffect: 'blockadeEffect' },
+  })
+  const ctx = () => makeCtx({ catalog: [blockadeSnap] })
+  const riders = (game: EngineGame) =>
+    game.state.zoneEffects.filter((e) => e.effect === 'blockadeEffect')
+
+  function armed(place: (g: EngineGame) => void) {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zoneEffects.push({
+      effect: 'blockadeEffect', zoneId: 1, side: 'b', cardName: 'Blockade', setOnTurn: 2,
+    })
+    place(game)
+    const card = inst({ name: 'Intruder', vehicleType: 'ship', materialCost: 0 })
+    game.privates.a.hand = [card]
+    game.state.counts.a.hand = 1
+    const r = applyAction(
+      game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, ctx(),
+    )
+    if (!r.ok) throw new Error(r.error)
+    return { game: r.game, card }
+  }
+
+  // "…while you have at least one vehicle there, a fleet battle immediately
+  // begins" — but a fleet with no one able to attack cannot begin one. The
+  // rider is NOT spent: the card removes it on a loss and on nothing else.
+  it('neither springs nor spends itself when every blockading hull is Inoffensive', () => {
+    const { game } = armed((g) => {
+      g.state.zones[0].cards.b.push(zoneEntry({ name: 'Meek', keywords: ['inoffensive'] }))
+    })
+    expect(game.state.activeBattle).toBeNull()
+    expect(riders(game)).toHaveLength(1)
+  })
+
+  // "If you lose with no surviving vehicles, the blockade goes away." An
+  // Inoffensive hull never joined the battle, so it survives it — and the
+  // blockader therefore HAS a surviving vehicle. Read literally, the blockade
+  // remains, which is also the only reading consistent with the trigger
+  // clause above: it still has the one vehicle it needs to be armed.
+  it('remains when its only survivor is an Inoffensive hull that never fought', () => {
+    const { game, card } = armed((g) => {
+      g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'guard', name: 'Guard' }))
+      g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'meek', name: 'Meek', keywords: ['inoffensive'] }))
+    })
+    // The Inoffensive hull is not in the battle at all.
+    expect(game.state.activeBattle!.attackerIds).toEqual(['guard'])
+    const submitted = applyAction(game, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT',
+      results: { guard: 0, [card.instanceId]: 100 }, repairs: [],
+    }, ctx())
+    if (!submitted.ok) throw new Error(submitted.error)
+    const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, ctx())
+    if (!decided.ok) throw new Error(decided.error)
+    expect(decided.game.state.zones[0].cards.b.map((c) => c.name)).toEqual(['Meek'])
+    expect(riders(decided.game)).toHaveLength(1)
+  })
+})
+
+// ===========================================================================
+// Wave 6 — tests written to kill SURVIVING MUTATIONS.
+//
+// Each exists because a mutation of the line it covers passed the whole suite,
+// which means the test that claimed to cover it proved less than its name.
+//
+// The survivors were invisible until the harness stopped counting
+// functionSharedSync.test.ts as a kill: that test compares shared/ to its
+// edge-function copy and so fails for ANY edit to a shared/ file, killing
+// every mutation trivially. Wave 5 warned about false SURVIVORS from a
+// too-narrow scope; this is the mirror, and worse — a false kill hides a real
+// gap instead of merely wasting an investigation.
+// ===========================================================================
+
+// Two synthetic effects, t_-prefixed so they can never collide with a seeded
+// name (docs/claude/testing.md).
+registerEffect('t_alwaysFails', () => false)
+// A deploy watcher that records that it ran and then removes ITSELF, the shape
+// Ambush and Ongoing Attrition already have at lock. It is what makes the
+// snapshot in dispatchDeployWatchers observable.
+registerEffect('t_selfRemovingWatcher', ({ game }) => {
+  game.state.log.push('t_watcher ran')
+  const i = game.state.zoneEffects.findIndex((e) => e.effect === 't_selfRemovingWatcher')
+  if (i >= 0) game.state.zoneEffects.splice(i, 1)
+  return true
+}, { needsCatalog: true, deployWatcher: true })
+
+describe('wave 6 — mutation survivors', () => {
+  const blockadeSnap = snap({
+    name: 'Blockade', faction: 'SS', type: 'ability', vehicleType: null,
+    materialCost: 0, meta: { playOnZoneEffect: 'blockadeEffect' },
+  })
+  const watersSnap = snap({
+    name: 'DWG Waters', faction: 'DWG', type: 'ability', vehicleType: null,
+    materialCost: 0, meta: { playOnZoneEffect: 'dwgWatersEffect' },
+  })
+  const bCtx = () => makeCtx({ catalog: [blockadeSnap, watersSnap] })
+  const rider = (over: Record<string, unknown> = {}) => ({
+    effect: 'blockadeEffect', zoneId: 1, side: 'b' as const, cardName: 'Blockade', setOnTurn: 2, ...over,
+  })
+  const deployInto = (game: EngineGame, over: Record<string, unknown> = {}) => {
+    const card = inst({ name: 'Intruder', vehicleType: 'ship', materialCost: 0, ...over })
+    game.privates.a.hand = [card]
+    game.state.counts.a.hand = 1
+    return {
+      result: applyAction(
+        game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, bCtx(),
+      ),
+      card,
+    }
+  }
+  const ok = (r: ReturnType<typeof applyAction>) => {
+    if (!r.ok) throw new Error(r.error)
+    return r.game
+  }
+
+  // SURVIVOR: "DP7 broadcasts to every rider". The isolation test asserted the
+  // ABSENCE of a log line, which the mutation does not reliably produce.
+  // Assert the observable consequence instead: dwgWatersEffect's router falls
+  // through to its CLAIM branch on an unrecognised phase, so a broadcast makes
+  // it plant a second marker.
+  //
+  // ⚠ ORDER MATTERS, and the first version of this test did not have it. With
+  // the Blockade rider first, it declares a battle and the pass returns at its
+  // own one-battle guard BEFORE reaching DWG Waters — so the mutation was
+  // invisible and the test passed for a reason unrelated to its name. DWG
+  // Waters must come FIRST in zoneEffects for the membership check to be the
+  // only thing standing between it and a dispatch.
+  it('a DWG Waters rider is not dispatched at all, even when it is first in the list', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zoneEffects.push({
+      effect: 'dwgWatersEffect', zoneId: 1, side: 'b', cardName: 'DWG Waters', setOnTurn: 2,
+    }, rider())
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'guard', name: 'Guard' }))
+    const after = ok(deployInto(game).result)
+    // Reached with a phase it does not recognise, its router falls through to
+    // its CLAIM branch, which has no target zone and fails — which fireRider
+    // then logs.
+    expect(after.state.log.join('\n')).not.toContain('could not resolve')
+    expect(after.state.zoneEffects.filter((e) => e.effect === 'dwgWatersEffect')).toHaveLength(1)
+    // The blockade behind it still springs.
+    expect(after.state.activeBattle).not.toBeNull()
+  })
+
+  // SURVIVOR: "DP7 fires the actor own riders too". The original test put no
+  // enemy hull in the zone, so the mutated dispatch bailed on an empty
+  // defender list rather than on the side check — it passed for the wrong
+  // reason. Both sides need a hull for the side check to be the only thing
+  // between this and a battle.
+  it('a blockader reinforcing their own blockaded zone starts no battle', () => {
+    const game = makeGame({ turnNumber: 3, activePlayer: 'bob' })
+    game.state.zoneEffects.push(rider())
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'guard', name: 'Guard' }))
+    // The enemy IS present, so a dispatch ignoring `rider.side === actor`
+    // would find a full roster on both sides and declare.
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'theirs', name: 'Trespasser' }))
+    const card = inst({ name: 'Reinforcement', vehicleType: 'ship', materialCost: 0 })
+    game.privates.b.hand = [card]
+    game.state.counts.b.hand = 1
+    const after = ok(applyAction(
+      game, 'bob', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, bCtx(),
+    ))
+    expect(after.state.activeBattle).toBeNull()
+  })
+
+  // SURVIVOR: "DP7 drops its one-battle guard". Nothing exercised two deploy
+  // watchers on one zone, and blockadeSpring carried a duplicate guard that
+  // made the dispatcher's unobservable. That duplicate is gone; this covers
+  // the one that remains. Without it the second rider reaches
+  // declareForcedBattle, which refuses over a live battle and logs.
+  it('a second blockade on the same zone does not try to declare over the first', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zoneEffects.push(rider(), rider())
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'guard', name: 'Guard' }))
+    const after = ok(deployInto(game).result)
+    expect(after.state.activeBattle).not.toBeNull()
+    expect(after.state.log.join('\n')).not.toContain('could not resolve')
+  })
+
+  // SURVIVOR: "DP7 iterates zoneEffects live rather than snapshotted". A rider
+  // that removes itself as it fires shifts the array under a live iterator and
+  // the next entry is skipped. blockadeEffect does not self-remove, but Ambush
+  // and Ongoing Attrition both do exactly that at lock — which is why every
+  // other dispatch in that file snapshots, and why the next deploy watcher
+  // will need this to hold.
+  it('dispatches every watcher even when one removes itself mid-pass', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zoneEffects.push(
+      rider({ effect: 't_selfRemovingWatcher' }),
+      rider({ effect: 't_selfRemovingWatcher' }),
+    )
+    const after = ok(deployInto(game).result)
+    expect(after.state.log.filter((l) => l === 't_watcher ran')).toHaveLength(2)
+    expect(after.state.zoneEffects).toHaveLength(0)
+  })
+
+  // SURVIVOR: "Blockade springs on any battle phase". The re-entrancy test was
+  // being carried by a duplicate activeBattle guard rather than by the phase
+  // check. A BOMBARDMENT separates them: dispatchZoneInterception hands the
+  // defender's riders a 'baseAttack' context with NO active battle, so without
+  // the phase guard an enemy bombardment would spring the trap.
+  it('an enemy bombardment does not spring the blockade', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zoneEffects.push(rider())
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'guard', name: 'Guard' }))
+    game.state.zones[0].cards.a.push(zoneEntry({ name: 'Bomber', materialCost: 100_000, playedOnTurn: 1 }))
+    const before = game.state.zones[0].baseHp.b
+    const after = ok(applyAction(game, 'alice', { type: 'ATTACK_ENEMY_BASE', zoneId: 1 }, bCtx()))
+    expect(after.state.activeBattle).toBeNull()
+    expect(after.state.zones[0].baseHp.b).toBe(before - 100)
+  })
+
+  // SURVIVOR: "removal ignores the side". The original test put both riders on
+  // the SAME side, so dropping the side check changed nothing. An ENEMY
+  // blockade on the SAME zone is what separates them.
+  it('a broken blockade leaves the opponent blockade on that same zone standing', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zoneEffects.push(rider(), rider({ side: 'a' }))
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'guard', name: 'Guard' }))
+    const { result, card } = deployInto(game)
+    const declared = ok(result)
+    const submitted = ok(applyAction(declared, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT', results: { guard: 0, [card.instanceId]: 100 }, repairs: [],
+    }, bCtx()))
+    const decided = ok(applyAction(submitted, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, bCtx()))
+    expect(decided.state.zoneEffects.filter((e) => e.effect === 'blockadeEffect').map((e) => e.side))
+      .toEqual(['a'])
+  })
+
+  // SURVIVOR: "Blockade aftermath trusts an absent stash". A continuation
+  // whose data did not survive jsonb must fail cleanly rather than looking up
+  // zoneById(undefined).
+  it('the aftermath fails cleanly when its stashed zoneId is missing', () => {
+    const game = makeGame({ turnNumber: 3 })
+    const card = inst({ ...blockadeSnap })
+    expect(effectFor('blockadeEffect')!({
+      game, actor: 'b', card, ctx: bCtx(),
+      continuation: { effect: 'blockadeEffect', side: 'b', card },
+    })).toBe(false)
+  })
+
+  // SURVIVOR: "Victoria drops its ownership check". ACTIVATE_VEHICLE checks
+  // ownership before dispatching, so the effect's own check is unreachable
+  // through the handler — but it is part of the function's contract, and
+  // braveheartZone carries the identical guard. A direct call pins it.
+  it('victoriaActivate refuses a hull that is not the actor own', () => {
+    const game = makeGame({ turnNumber: 3 })
+    const victoria = zoneEntry({
+      instanceId: 'vic', name: 'Victoria', vehicleType: 'ship',
+      meta: { onActivate: 'victoriaActivate', activateMaterialCost: 200_000 },
+    })
+    game.state.zones[0].cards.b.push(victoria)
+    expect(effectFor('victoriaActivate')!({
+      game, actor: 'a', card: victoria,
+      ctx: makeCtx({ catalog: [snap({ name: 'Victoria', faction: 'SS', vehicleType: 'ship' })] }),
+    })).toBe(false)
+    expect(game.state.zones[0].cards.b).toHaveLength(1)
+  })
+
+  // SURVIVOR: "Judgement skips its re-validation on resolve". The stashed
+  // choice is re-checked against the board, because the target may leave it
+  // while the dialog sits open.
+  it('Judgement refuses a target that left the board during the choice', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zones[0].cards.a.push(zoneEntry({
+      instanceId: 'j1', name: 'Judgement', faction: 'WF', vehicleType: 'ship', playedOnTurn: 2,
+      meta: { onActivate: 'judgementActivate', activateCpCost: 1 },
+    }))
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'prey', name: 'Diver', vehicleType: 'sub' }))
+    const offered = ok(applyAction(game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: 'j1' }, makeCtx()))
+    offered.state.zones[0].cards.b = [] // the sub slips away before the answer
+    expect(applyAction(
+      offered, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'prey' }, makeCtx(),
+    ).ok).toBe(false)
+  })
+
+  // SURVIVOR: "Harbringer skips its pool re-derivation on resolve", and
+  // "Harbringer joins a battle in a different zone". Both guards protect the
+  // gap between the offer and the answer, and neither was exercised because
+  // every test answered immediately against an unchanged board.
+  describe('Harbringer re-validates across the suspension', () => {
+    const wfShip = (name: string, materialCost: number) =>
+      snap({ name, faction: 'WF', type: 'vehicle', vehicleType: 'ship', materialCost })
+    function offered() {
+      const game = makeGame({ turnNumber: 3 })
+      const harbringer = zoneEntry({
+        instanceId: 'h1', name: 'Harbringer', faction: 'WF', vehicleType: 'ship', playedOnTurn: 2,
+        meta: { onBattleEffect: 'harbringerBattle' },
+      })
+      game.state.zones[0].cards.a.push(harbringer)
+      game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'v1', name: 'Victim' }))
+      return ok(applyAction(game, 'alice', {
+        type: 'ATTACK_ENEMY_FLEET', zoneId: 1, attackerIds: ['h1'], targetIds: ['v1'],
+      }, makeCtx({ catalog: [wfShip('Buzzsaw', 80_000)] })))
+    }
+
+    it('refuses a guest that is no longer in the pool', () => {
+      // The answer arrives against a catalog that no longer holds Buzzsaw.
+      expect(applyAction(
+        offered(), 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'Buzzsaw' },
+        makeCtx({ catalog: [wfShip('Earth Raker', 50_000)] }),
+      ).ok).toBe(false)
+    })
+
+
+    // The FIRST version of this asserted an empty catalog on resolve, which
+    // summonHulls already refuses — so the pool re-derivation was never the
+    // thing being tested and the mutation survived. A card still IN the
+    // catalog but no longer matching the FILTER is what separates them:
+    // summonHulls would mint it happily.
+    it('refuses a guest whose cost has left the pool since the offer', () => {
+      expect(applyAction(
+        offered(), 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'Buzzsaw' },
+        makeCtx({ catalog: [wfShip('Buzzsaw', 200_000)] }),
+      ).ok).toBe(false)
+    })
+
+    it('refuses to join a battle that has moved to another zone', () => {
+      const game = offered()
+      game.state.activeBattle!.zoneId = 2
+      expect(applyAction(
+        game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'Buzzsaw' },
+        makeCtx({ catalog: [wfShip('Buzzsaw', 80_000)] }),
+      ).ok).toBe(false)
+    })
   })
 })

@@ -35,6 +35,18 @@ beforeAll(() => {
     }
     return true
   }, { battleBystander: true })
+
+  // Wave 6 / DP7: an ON-PLAY effect that suspends. Paired with a blockade
+  // rider it produces the doubly-frozen state from the opposite direction —
+  // choice first, battle second.
+  registerEffect('t_freezeSuspend', ({ game, actor, card, resolution }) => {
+    if (resolution !== undefined) return true
+    game.state.pendingEffect = {
+      effect: 't_freezeSuspend', side: actor, card, kind: 'choice',
+      prompt: 'Choose something', options: [{ id: 'x', label: 'X' }],
+    }
+    return true
+  })
 })
 
 // alice is side a and the active player; bob is side b. The forced battle is
@@ -197,5 +209,76 @@ describe('both freezes set at once', () => {
     if (!r.ok) throw new Error(r.error)
     expect(r.game.status).toBe('complete')
     expect(r.game.winnerId).toBe('alice')
+  })
+})
+
+// Wave 6 / DP7. A new ORDERING for the doubly-frozen state: everything above
+// reaches it from a battle lock that raises a choice. DP7 reaches it from the
+// other direction — a play whose own on-play effect suspends, and which THEN
+// springs a blockade, so the battle is declared while a choice is already
+// owed. The freeze rules are the same ones; only the arrival is new.
+//
+// Synthetic throughout: a t_-prefixed suspending effect and a hand-built
+// blockade rider, so this keeps testing the invariant if SS Blockade changes.
+describe('DP7 — a play that suspends AND springs a blockade', () => {
+  function sprung() {
+    const g = makeGame({ turnNumber: 3 })
+    g.state.zoneEffects.push({
+      effect: 'blockadeEffect', zoneId: 1, side: 'b', cardName: 'Blockade', setOnTurn: 2,
+    })
+    const guard = zoneEntry({ instanceId: 'guard', name: 'Guard' })
+    g.state.zones[0].cards.b.push(guard)
+    const card = {
+      ...zoneEntry({ name: 'Suspender', vehicleType: 'ship', materialCost: 0 }),
+      meta: { onPlayEffect: 't_freezeSuspend' },
+    }
+    g.privates.a.hand = [card]
+    g.state.counts.a.hand = 1
+    const ctx = makeCtx({
+      catalog: [{
+        cardId: 'blockade', name: 'Blockade', isBuiltIn: true, ownerId: null, faction: 'SS',
+        type: 'ability', vehicleType: null, blueprintCost: 0, materialCost: 0, cpCost: 0,
+        cardText: '', imageUrl: '', keywords: [], meta: {},
+      }],
+    })
+    const r = applyAction(
+      g, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, ctx,
+    )
+    if (!r.ok) throw new Error(r.error)
+    return { game: r.game, ctx, card }
+  }
+
+  it('leaves BOTH freezes set — the choice is owed and the battle stands', () => {
+    const { game } = sprung()
+    expect(game.state.pendingEffect).not.toBeNull()
+    expect(game.state.activeBattle).not.toBeNull()
+    expect(game.state.activeBattle!.aggressor).toBe('b')
+  })
+
+  it('still admits only PENDING_ACTIONS while the choice is owed', () => {
+    const { game, ctx } = sprung()
+    // A battle action BATTLE_ACTIONS would otherwise allow.
+    expect(applyAction(game, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT', results: {}, repairs: [],
+    }, ctx)).toMatchObject({ ok: false, status: 409 })
+    // And the escape hatch is still reachable, by the player who owes it.
+    const cleared = applyAction(game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', cancel: true }, ctx)
+    if (!cleared.ok) throw new Error(cleared.error)
+    expect(cleared.game.state.pendingEffect).toBeNull()
+    expect(cleared.game.state.activeBattle).not.toBeNull()
+  })
+
+  it('reports the battle normally once the choice is answered', () => {
+    const { game, ctx, card } = sprung()
+    const cleared = applyAction(game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', cancel: true }, ctx)
+    if (!cleared.ok) throw new Error(cleared.error)
+    const submitted = applyAction(cleared.game, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT',
+      results: { guard: 100, [card.instanceId]: 0 }, repairs: [],
+    }, ctx)
+    if (!submitted.ok) throw new Error(submitted.error)
+    const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, ctx)
+    if (!decided.ok) throw new Error(decided.error)
+    expect(decided.game.state.activeBattle).toBeNull()
   })
 })

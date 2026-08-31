@@ -37,7 +37,12 @@ export interface BattleCasualty {
 // one clause ("survives a victorious fleet battle OR inflicts damage to the
 // enemy base") stays one implementation.
 export interface BattleContext {
-  phase: 'lock' | 'resolve' | 'baseAttack'
+  // `deploy` is wave 6's (DP7): the OPPONENT played a vehicle into a zone this
+  // rider watches, and no battle exists yet — so `zoneId` is the only field
+  // that carries meaning, exactly as at `lock`. Only effects that registered
+  // { deployWatcher: true } are ever handed one, which is what keeps every
+  // other rider from needing a guard against a phase it has never seen.
+  phase: 'lock' | 'resolve' | 'baseAttack' | 'deploy'
   zoneId: number
   isDefender: boolean
   isParticipant: boolean

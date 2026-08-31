@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { loadSeedData } from './transform'
 import { TRIGGERS, GT_HEAVY_AIRSHIP_MIN_COST } from '../../shared/gameSettings'
 import '../../shared/engine/index'
-import { DATA_EFFECT_KEYS, effectName, isImplemented } from '../../shared/effects/registry'
+import {
+  DATA_EFFECT_KEYS, effectName, isImplemented, registeredEffectNames,
+} from '../../shared/effects/registry'
 
 const ALL_META_KEYS = [...Object.values(TRIGGERS), 'costModifier']
 const key = (c: { faction: string; name: string }) => `${c.faction}:${c.name}`
@@ -17,33 +19,22 @@ const EXEMPT: Record<string, string> = {
 // Delete entries as their wave lands — the "KNOWN_GAPS contains no stale
 // entries" test below rejects stale ones, so this list only shrinks.
 //
-// The five effect-coverage waves emptied it: all 65 of the spec's cards are
-// built. Everything left arrived AFTER them, from the 2026-08-30 balance pass.
-const KNOWN_GAPS: Record<string, string> = {
-  // The 2026-08-30 balance pass seeded twelve cards whose text needs behaviour
-  // the engine does not have yet. Every one plays vanilla and logs a note at
-  // play time (spec §3.9); none of them silently half-works.
-  //
-  //   new mechanics
-  //     DWG:Albacore / DWG:Tarpon  a per-player, per-zone aircraft deploy lock
-  //     SS:Chrysaor                a resourceSurge that RAISES the price
-  //     SS:Paladin                 a resourceSurge that GRANTS halfCost+temporary
-  //     SS:Blockade                a rider that fires when the ENEMY deploys
-  //     SS:Victoria                an activated ability paid in materials, not CP
-  //     WF:Judgement               the same, plus a costModifier off enemy hull types
-  //     WF:Purifier                a zone deploy prerequisite + "no base damage"
-  //   existing primitives, not yet registered under their own name
-  //     SS:Nothung                 spawnVehicles('Sacrilego')
-  //     SS:Balmung                 a catalog mint into hand at costDelta -cost
-  //     WF:Basher                  grant({ draw: 1 }) on death
-  //     WF:Harbringer              DWG Waters' clause-2 guest, WF ships <=100k
-  'DWG:Albacore': 'balance 2026-08-30', 'DWG:Tarpon': 'balance 2026-08-30',
-  'SS:Chrysaor': 'balance 2026-08-30', 'SS:Paladin': 'balance 2026-08-30',
-  'SS:Blockade': 'balance 2026-08-30', 'SS:Victoria': 'balance 2026-08-30',
-  'SS:Nothung': 'balance 2026-08-30', 'SS:Balmung': 'balance 2026-08-30',
-  'WF:Purifier': 'balance 2026-08-30', 'WF:Judgement': 'balance 2026-08-30',
-  'WF:Basher': 'balance 2026-08-30', 'WF:Harbringer': 'balance 2026-08-30',
-}
+// The five effect-coverage waves emptied it of that spec's 65 cards; the
+// 2026-08-30 balance pass then added twelve more, and WAVE 6 CLOSED THOSE.
+// So it is empty again — for the first time since the balance pass opened it:
+//
+//   Group A  Basher, Nothung, Balmung, Harbringer — one-liners over existing
+//            primitives, no engine work at all
+//   Group B  Judgement, Victoria, Chrysaor, Paladin — small extensions to
+//            costModifier, ACTIVATE_VEHICLE and resourceSurge
+//   Group C  Albacore + Tarpon (an owner-side aircraft lock read off seeded
+//            data), Purifier (a new per-zone battle-loss field on
+//            PublicGameState), Blockade (DP7 — a zone rider that fires when
+//            the OPPONENT deploys)
+//
+// It stays asserted over, and the toHaveLength(0) below is what stops a
+// newly-seeded card with an unimplemented effect name being added quietly.
+const KNOWN_GAPS: Record<string, string> = {}
 
 // Cards that pass G2 — they resolve at least one implemented effect — but
 // whose card text is only partly built. G2 asks "any implemented effect?",
@@ -181,16 +172,17 @@ describe('built-in card effect coverage', () => {
     expect(stale).toEqual([])
   })
 
-  // All five effect-coverage waves are done, so nothing labelled for one may
-  // reappear. The count is deliberately exact rather than `toHaveLength(0)`:
-  // it is what stops a thirteenth gap being added quietly, and it must be
-  // decremented by whoever closes one.
-  it('all five waves are complete — only the 2026-08-30 balance pass remains', () => {
-    for (const wave of ['wave 1', 'wave 2', 'wave 3', 'wave 4', 'wave 5']) {
-      expect(Object.values(KNOWN_GAPS).filter((w) => w.startsWith(wave))).toEqual([])
-      expect(Object.values(PARTIAL).filter((w) => w.startsWith(wave))).toEqual([])
+  // Every wave is done, and so is the 2026-08-30 balance pass's backlog, so
+  // nothing labelled for any of them may reappear. The count is what stops a
+  // new gap being added quietly — it must be decremented by whoever closes
+  // one, and INCREMENTED, visibly, by anyone who opens one.
+  it('all five waves and the 2026-08-30 balance pass are complete', () => {
+    const closed = ['wave 1', 'wave 2', 'wave 3', 'wave 4', 'wave 5', 'balance 2026-08-30']
+    for (const label of closed) {
+      expect(Object.values(KNOWN_GAPS).filter((w) => w.startsWith(label))).toEqual([])
+      expect(Object.values(PARTIAL).filter((w) => w.startsWith(label))).toEqual([])
     }
-    expect(Object.keys(KNOWN_GAPS)).toHaveLength(12)
+    expect(Object.keys(KNOWN_GAPS)).toHaveLength(0)
   })
 
   it('PARTIAL names real cards that currently pass G1 and G2, and never overlaps KNOWN_GAPS', async () => {
@@ -216,5 +208,70 @@ describe('built-in card effect coverage', () => {
     const heavy = airships.filter((c) => c.materialCost >= GT_HEAVY_AIRSHIP_MIN_COST)
     expect(airships).toHaveLength(14)
     expect(heavy).toHaveLength(8)
+  })
+})
+
+// Registry names that deliberately have no seeded card pointing at them.
+//
+// Every entry is a card whose META was cleared or removed while its
+// implementation stayed registered — which is silent, because G1/G2/G3 all
+// iterate seeded CARDS and ask whether each one's effects exist. None of them
+// asks the reverse.
+//
+// They are kept registered rather than deleted for one reason: a game dealt
+// before the change carries a FROZEN snapshot that still names them (spec
+// §9.2 — data does not retrofit live games, code does). Deleting the
+// registration would change an in-flight game's behaviour mid-game; REUSING
+// one of these names for a different card is the Kraken/Paddlegun collision
+// itself, and is the thing this map exists to make visible.
+const DELIBERATE_ORPHANS: Record<string, string> = {
+  purifierEffect: 'balance 2026-08-30 rewrote WF Purifier\'s text and cleared its meta',
+  victoriaOnDeath: 'balance 2026-08-30 replaced SS Victoria\'s draw-on-death with an activated ability',
+  rheaOnPlay: 'balance 2026-08-30 retired SS Rhea outright',
+}
+
+describe('G4: every registered implementation is reachable from a seeded card', () => {
+  // Blind spot 5, closed from the other end (docs/claude/card-effects.md).
+  // Wave 3 shipped excaliburOnPlay registered-but-unreachable for a whole
+  // wave; the 2026-08-30 balance pass orphaned three more without touching a
+  // line of effect code. Neither was visible to G1/G2/G3.
+  it('names no orphan outside the deliberate list', async () => {
+    const { cards } = await loadSeedData()
+    const named = new Set<string>()
+    for (const card of cards) {
+      const meta = (card.meta ?? {}) as Record<string, unknown>
+      for (const key of ALL_META_KEYS) {
+        const name = effectName({ meta }, key)
+        if (name !== null) named.add(name)
+      }
+    }
+    const orphans = registeredEffectNames().filter((n) => (
+      // t_-prefixed names are test stand-ins and never seeded, by the rule in
+      // docs/claude/testing.md that keeps them out of the seed vocabulary.
+      !n.startsWith('t_') && !named.has(n) && DELIBERATE_ORPHANS[n] === undefined
+    ))
+    expect(orphans).toEqual([])
+  })
+
+  // Shrink-only, like KNOWN_GAPS: an entry that starts working again — or a
+  // card that starts naming it — must be deleted rather than left to rot.
+  it('has no stale deliberate orphans', async () => {
+    const { cards } = await loadSeedData()
+    const named = new Set<string>()
+    for (const card of cards) {
+      const meta = (card.meta ?? {}) as Record<string, unknown>
+      for (const key of ALL_META_KEYS) {
+        const name = effectName({ meta }, key)
+        if (name !== null) named.add(name)
+      }
+    }
+    const stale = Object.keys(DELIBERATE_ORPHANS).filter((n) => named.has(n) || !isImplemented(n))
+    expect(stale).toEqual([])
+  })
+
+  it('the deliberate list is exactly the three the balance pass orphaned', () => {
+    expect(Object.keys(DELIBERATE_ORPHANS).sort()).toEqual(
+      ['purifierEffect', 'rheaOnPlay', 'victoriaOnDeath'],
+    )
   })
 })

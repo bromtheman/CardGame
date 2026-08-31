@@ -147,4 +147,85 @@ describe('2026-08-30 balance pass', () => {
       onActivate: 'braveheartActivate', activateCpCost: 1,
     })
   })
+
+  // ------------------------------------------------------------- wave 6
+  //
+  // Harbringer's pool ("one WF ship that costs <=100k") is exactly two cards
+  // today, so its empty-pool path is unreachable and a filter typo would be
+  // INVISIBLE — every unit test would still pass against a hand-built
+  // catalog. Pinning the real membership off the seed is the only thing that
+  // would notice the pool silently changing shape.
+  //
+  // The Repentance is the sharp one: a WF PLANE at exactly 100_000. It is
+  // excluded by the vehicleType filter alone, so this assertion is what
+  // proves that filter is doing work.
+  // Purifier's WHOLE card text is these two keys, and it names no effect
+  // either. Two rules, two values, both compared rather than merely present.
+  it('Purifier carries both of its data rules', async () => {
+    expect((await bySeedKey()).get('WF:Purifier')!.meta).toMatchObject({
+      deployRequiresBattleLoss: true, noBaseDamage: true,
+    })
+  })
+
+  // Albacore and Tarpon carry NO registry name at all — their one sentence is
+  // a placement rule read straight off this key, so this assertion is the only
+  // thing standing between a typo and two inert cards that no guard notices.
+  it.each(['DWG:Albacore', 'DWG:Tarpon'])('%s locks its zone against its owner aircraft', async (k) => {
+    expect((await bySeedKey()).get(k)!.meta?.aircraftLock).toBe(true)
+  })
+
+  // Both surges are compared FIELD BY FIELD rather than for mere presence:
+  // resourceSurge is a DATA_EFFECT_KEY, so G2 closes both cards on the key
+  // existing and never looks at what is in it. A mistyped comparator
+  // (materialsOver where the card says "less than") would leave a card that
+  // is inert AND invisible — no guard failure, and no "plays as vanilla" note
+  // either.
+  it('Chrysaor surges over 200k for +100k and a second hull', async () => {
+    expect((await bySeedKey()).get('SS:Chrysaor')!.meta?.resourceSurge).toEqual({
+      materialsOver: 200_000, extraSpawns: 1, costDelta: 100_000,
+    })
+  })
+
+  it('Paladin surges UNDER 240k, granting halfCost and temporary', async () => {
+    expect((await bySeedKey()).get('SS:Paladin')!.meta?.resourceSurge).toEqual({
+      materialsUnder: 240_000, grantKeywords: ['halfCost', 'temporary'],
+    })
+  })
+
+  // Victoria's text says "spend 200k resources" — a MATERIAL price, the first
+  // in the game. Same silent-pair trap as Judgement below: without the key the
+  // card has a registered ability and no way to press it.
+  it('Victoria carries the 200k material price its text prints', async () => {
+    expect((await bySeedKey()).get('SS:Victoria')!.meta).toMatchObject({
+      onActivate: 'victoriaActivate', activateMaterialCost: 200_000,
+    })
+  })
+
+  // Judgement's text says "pay 1cp", and ACTIVATE_VEHICLE refuses a card with
+  // no price key at all — so without this, the card would have a registered
+  // ability, a card text promising it, and no way to press it. The same
+  // silent-pair trap Braveheart's assertion above exists for.
+  it('Judgement carries the 1cp price its text prints', async () => {
+    expect((await bySeedKey()).get('WF:Judgement')!.meta).toMatchObject({
+      costModifier: 'judgementCostModifier',
+      onActivate: 'judgementActivate',
+      activateCpCost: 1,
+    })
+  })
+
+  it('Harbringer draws from exactly the WF ships at or under 100k', async () => {
+    const { cards } = await loadSeedData()
+    const pool = cards
+      .filter((c) => (
+        c.isBuiltIn && c.faction === 'WF' && c.type === 'vehicle' &&
+        c.vehicleType === 'ship' && c.materialCost <= 100_000 &&
+        c.meta?.summonOnly !== true
+      ))
+      .map((c) => c.name)
+      .sort()
+    expect(pool).toEqual(['Buzzsaw', 'Earth Raker'])
+    const repentance = cards.find((c) => c.faction === 'WF' && c.name === 'The Repentance')!
+    expect({ vt: repentance.vehicleType, cost: repentance.materialCost })
+      .toEqual({ vt: 'plane', cost: 100_000 })
+  })
 })

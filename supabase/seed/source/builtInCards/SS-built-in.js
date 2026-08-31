@@ -34,6 +34,10 @@ export const ssVehicles = [
         keywords: [],
         meta: {
             [TRIGGERS.ON_ACTIVATE]: 'victoriaActivate',
+            // "spend 200k resources" — a MATERIAL price, not a CP one. An
+            // activated ability needs onActivate plus at least one price, or
+            // ACTIVATE_VEHICLE refuses it and BoardZone renders no button.
+            activateMaterialCost: 200000,
         }
     },
     {
@@ -290,6 +294,10 @@ export const ssVehicles = [
         blueprintId: null,
         keywords: [KEYWORDS.STEALTHY],
         meta: {
+            // "While you have more than 200k resources, this card costs 100k
+            // more and spawns in a second Chrysaor." costDelta raises the
+            // PLAY price only — base damage and repairs still read 100k.
+            resourceSurge: { materialsOver: 200000, extraSpawns: 1, costDelta: 100000 },
         }
     },
      {
@@ -307,6 +315,14 @@ export const ssVehicles = [
         blueprintId: null,
         keywords: [],
         meta: {
+            // "While you have less than 240k materials, this can be played
+            // with halfcost and temporary." Both keywords land on the HULL
+            // (spec §4.6, departure 2) — endTurn's cull reads `temporary` off
+            // the board, so a price-only grant would never despawn it.
+            resourceSurge: {
+                materialsUnder: 240000,
+                grantKeywords: [KEYWORDS.HALF_COST, KEYWORDS.TEMPORARY],
+            },
         }
     },
      {

@@ -1,18 +1,30 @@
 import {
   AMBUSH_DISTANCE_M, SPAWN_DISTANCE_MIN_M,
-  ALL_FOR_THE_CAUSE_DOUBLE_COST, KEYWORDS, MARTYR_ATTACK_BOOST_MIN_COST,
+  ALL_FOR_THE_CAUSE_DOUBLE_COST, HARBRINGER_GUEST_MAX_COST, JUDGEMENT_DISCOUNT, KEYWORDS,
+  MARTYR_ATTACK_BOOST_MIN_COST,
   MARTYR_ATTACK_BOOSTED_COUNT, MARTYR_ATTACK_COUNT, VEHICLE_TYPES,
 } from '../gameSettings.ts'
-import type { ZoneCardEntry } from '../engine/engineTypes.ts'
+import type { EngineContext, EngineGame, Side, ZoneCardEntry } from '../engine/engineTypes.ts'
+import type { SnapshotCard } from '../engine/gameInit.ts'
 import { findVehicle, otherSide, zoneById } from '../engine/gameEngine.ts'
-import { declareForcedBattle } from '../engine/battleDeclare.ts'
-import { catalogCard, choice, grant, spawnInto, summonHulls } from './primitives.ts'
-import { registerEffect } from './registry.ts'
+import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
+import {
+  catalogCard, choice, enemyVehicleOptions, grant, spawnInto, summonHulls,
+} from './primitives.ts'
+import { registerCostModifier, registerEffect } from './registry.ts'
 import type { EffectPayload } from './registry.ts'
 
 // WF built-in card effects.
 registerEffect('excruciatorOnPlay', grant({ draw: 1 }))
+// Orphaned by the 2026-08-30 balance pass, which rewrote Purifier's text and
+// cleared its meta. Kept registered rather than deleted: a game dealt before
+// that pass carries a frozen snapshot still naming it, and the name must never
+// be reused for anything else (spec §9.2, the Kraken/Paddlegun collision).
 registerEffect('purifierEffect', grant({ draw: 1 }))
+// "When this is destroyed, draw a card." Basher prints no keywords, so it
+// cannot hit the SCRAPPY-plus-onDeathEffect prohibition that cost Loggerhead
+// its keyword (docs/claude/card-effects.md).
+registerEffect('basherOnDeath', grant({ draw: 1 }))
 
 const AMBUSH = 'ambushEffect'
 
@@ -177,3 +189,143 @@ registerEffect('martyrAttackEffect', ({ game, actor, ctx, targetInstanceId, card
     cause: card.name,
   })
 }, { needsCatalog: true })
+
+const HARBRINGER = 'harbringerBattle'
+
+// "Whenever this ship is in fleet combat, you may spawn in one WF ship that
+// costs <=100k to join the battle."
+//
+// DWG Waters' clause 2 on a PARTICIPANT rather than a rider (spec §7.3,
+// wave 6). DP2's lock pass already reaches participants on both sides, so
+// this needs no zoneEffects entry and no rider dispatch — but it still needs
+// { needsCatalog: true }, because unlike a rider it genuinely reads the
+// catalog for its own pool.
+//
+// "In fleet combat" reads to every battle it fights: offensive, defensive and
+// forced alike (§7.3's Catshark ruling — a battle it participates in is a
+// battle whatever declared it). So there is deliberately NO isDefender guard.
+// The isParticipant guard is not redundant with it: a DP2 effect can also be
+// reached as a forced-battle bystander, and this card's text describes only a
+// battle it is in.
+
+// The summonOnly exclusion is repeated by hand because this filters
+// ctx.catalog directly rather than going through drawFromPool, which is the
+// one place that guard comes for free.
+function harbringerPool(ctx: EngineContext): SnapshotCard[] {
+  return ctx.catalog.filter((c) =>
+    c.isBuiltIn &&
+    c.faction === 'WF' &&
+    c.type === 'vehicle' &&
+    c.vehicleType === VEHICLE_TYPES.SHIP &&
+    c.materialCost <= HARBRINGER_GUEST_MAX_COST &&
+    c.meta.summonOnly !== true)
+}
+
+// Options are catalog card NAMES — public, like Special Foundries' pools and
+// DWG Waters' guest list, so offering them leaks nothing (spec §4.2,
+// departure 5).
+const harbringerOffer = choice({
+  effect: HARBRINGER,
+  prompt: 'Spawn in a WF ship to join this battle?',
+  options: ({ ctx }) => harbringerPool(ctx).map((c) => ({ id: c.name, label: c.name })),
+  data: ({ battle }) => ({ zoneId: battle?.zoneId }),
+  resolve: ({ game, actor, ctx, card, pending }, choiceId) => {
+    // Empty pool: nothing to spawn, and nothing to fail.
+    if (choiceId === null) return true
+    const zoneId = pending?.data?.zoneId
+    if (typeof zoneId !== 'number') return false
+    const battle = game.state.activeBattle
+    // The battle may have gone while the choice sat open; and the pool is
+    // re-derived rather than trusted, so a stale option cannot spawn
+    // something that is no longer eligible.
+    if (!battle || battle.zoneId !== zoneId) return false
+    if (!harbringerPool(ctx).some((c) => c.name === choiceId)) return false
+    const hulls = summonHulls(game, ctx, choiceId, 1)
+    if (!hulls) return false
+    // Membership in attackerIds/defenderIds is what decides a summon's side
+    // (spec §4.4, decision 18), and joinBattle picks the list off `actor` —
+    // so Harbringer's guest always fights on Harbringer's own side.
+    if (!joinBattle(game, actor, hulls[0].instanceId, hulls[0])) return false
+    game.state.log.push(`${card.name} spawns in a ${choiceId} to fight in zone ${zoneId}`)
+    return true
+  },
+})
+
+registerEffect(HARBRINGER, (payload) => {
+  if (payload.resolution !== undefined) return harbringerOffer(payload)
+  const { battle } = payload
+  if (!battle || battle.phase !== 'lock' || !battle.isParticipant) return true
+  return harbringerOffer(payload)
+}, { needsCatalog: true })
+
+// "While your opponent has a submarine or airship, this card costs 100k less.
+// Each turn, you may pay 1cp to have this vehicle 1v1 an enemy submarine or
+// airship in this zone."
+//
+// Two clauses, two mechanisms, and the SCOPE of each is what tells them apart
+// (spec §7.3, wave 6): the discount names no zone and reads the whole enemy
+// board; the duel says "in this zone" and reads one. The contrast inside a
+// single card is the evidence for both halves.
+const JUDGEMENT_PREY = [VEHICLE_TYPES.SUB, VEHICLE_TYPES.AIRSHIP] as readonly string[]
+
+// A flat discount, never per-hull: the text says "a submarine or airship", and
+// one is as much a reason as three. CostModifierFn already receives the whole
+// state and the pricing side, so scanning the other side costs nothing.
+registerCostModifier('judgementCostModifier', (state, side) => {
+  const enemy = otherSide(side)
+  const found = state.zones.some(
+    (z) => z.cards[enemy].some((c) => JUDGEMENT_PREY.includes(c.vehicleType ?? '')),
+  )
+  return found ? -JUDGEMENT_DISCOUNT : 0
+})
+
+const JUDGEMENT = 'judgementActivate'
+
+// Braveheart's shape with a vehicleType filter (DP1 + DP4 + DP3). "Each turn"
+// needs no code: ACTIVATE_VEHICLE pays the CP and stamps activatedOnTurn
+// BEFORE this ever runs, so once-per-turn is already enforced.
+//
+// Like Braveheart, no `data` stash is needed and none is trusted from the
+// client: payload.card on BOTH entries IS the activating hull, so its zone is
+// re-derived identically in options() and resolve() rather than read off
+// RESOLVE_PENDING_EFFECT's unvalidated fields. ACTIVATE_VEHICLE passes
+// action.zoneId straight through as targetZoneId, which is exactly why this
+// must not read it.
+function judgementSelf(game: EngineGame, actor: Side, card: { instanceId: string }) {
+  const found = findVehicle(game.state, card.instanceId)
+  return found && found.side === actor ? found : null
+}
+
+registerEffect(JUDGEMENT, choice({
+  effect: JUDGEMENT,
+  prompt: 'Choose an enemy submarine or airship for Judgement to fight',
+  options: ({ game, actor, card }) => {
+    const self = judgementSelf(game, actor, card)
+    return self
+      ? enemyVehicleOptions(game, actor, self.zone.id, (e) => JUDGEMENT_PREY.includes(e.vehicleType ?? ''))
+      : []
+  },
+  resolve: (payload, choiceId) => {
+    const { game, actor, card, ctx } = payload
+    if (choiceId === null) return false // nothing eligible in the zone — nothing to fight
+    const self = judgementSelf(game, actor, card)
+    if (!self) return false
+    // Defence in depth, and a surviving mutation showed it is ONLY that:
+    // declareForcedBattle re-validates every listed id against the board on
+    // its own side in this zone, which subsumes every case this catches. Kept
+    // because braveheartActivate carries the identical line and the two cards
+    // should not diverge — but do not go hunting for the test that pins it.
+    const stillLegal = enemyVehicleOptions(
+      game, actor, self.zone.id, (e) => JUDGEMENT_PREY.includes(e.vehicleType ?? ''),
+    ).some((o) => o.id === choiceId)
+    if (!stillLegal) return false
+    // No activatesZone: a forced battle is not a zone activation (spec §4.3).
+    return declareForcedBattle(game, ctx, {
+      zoneId: self.zone.id,
+      aggressor: actor,
+      attackerIds: [card.instanceId],
+      defenderIds: [choiceId],
+      cause: card.name,
+    })
+  },
+}))

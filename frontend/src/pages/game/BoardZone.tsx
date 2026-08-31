@@ -10,6 +10,7 @@ import crosshairIcon from '../../assets/icons/crosshairSVG.svg'
 import torpedoIcon from '../../assets/icons/torpedoSVG.svg'
 import noSubsIcon from '../../assets/icons/noSubsSVG.svg'
 import ship2Icon from '../../assets/icons/ship2SVG.svg'
+import shieldIcon from '../../assets/icons/shieldSVG.svg'
 
 const ZONE_EFFECT_ICONS: Record<ZoneEffectIcon, string> = {
   anchor: anchorIcon,
@@ -17,6 +18,7 @@ const ZONE_EFFECT_ICONS: Record<ZoneEffectIcon, string> = {
   torpedo: torpedoIcon,
   noSubs: noSubsIcon,
   ghostShip: ship2Icon,
+  shield: shieldIcon,
 }
 
 const BIOME_TINT: Record<string, string> = {
@@ -184,10 +186,17 @@ export function BoardZone({
       <div className="flex min-h-[76px] flex-wrap gap-1 border-t border-ocean-600/50 pt-2">
         {(zone.cards[mySide] as ZoneCardEntry[]).map((c) => {
           const mobileEligible = !!canMoveVehicles && c.keywords.includes(KEYWORDS.MOBILE) && c.movedOnTurn !== turnNumber
+          // An activated ability needs `onActivate` plus AT LEAST ONE price.
+          // There are two since wave 6 — CP (Braveheart, Judgement) and
+          // materials (Victoria) — and a card may carry either or both. This
+          // gate must stay in step with ACTIVATE_VEHICLE's own: a card the
+          // engine would activate but this rejects has a working ability with
+          // no way to press it.
+          const meta = c.meta as { activateCpCost?: unknown; activateMaterialCost?: unknown; onActivate?: unknown }
           const activateEligible =
             !!canActivateVehicles &&
-            typeof (c.meta as { activateCpCost?: unknown }).activateCpCost === 'number' &&
-            typeof (c.meta as { onActivate?: unknown }).onActivate === 'string' &&
+            (typeof meta.activateCpCost === 'number' || typeof meta.activateMaterialCost === 'number') &&
+            typeof meta.onActivate === 'string' &&
             c.activatedOnTurn !== turnNumber
           const swapOwnEligible = !!swapPickOwnMode && c.faction === 'DWG' && c.vehicleType === VEHICLE_TYPES.SHIP
           return (

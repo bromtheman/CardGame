@@ -54,7 +54,7 @@ function hasLegalExcaliburTarget(card: CardInstance, hand: CardInstance[]): bool
 // of those it sends PLAY_ABILITY_CARD directly, falling back to a plain
 // confirm only when the card has no meta effect at all.
 export function HandBar({
-  hand, state, mySide, send, busy,
+  hand, state, mySide, turnNumber, send, busy,
   placingCard, onPlacingChange,
   fieldTargeting, onFieldTargetingChange,
   moveMode,
@@ -66,6 +66,9 @@ export function HandBar({
   hand: CardInstance[]
   state: PublicGameState
   mySide: Side
+  // legalZonesFor needs it since wave 6: WF Purifier deploys only where its
+  // owner lost a battle within the last full round.
+  turnNumber: number
   send: (action: GameAction) => Promise<void>
   busy: boolean
   placingCard: CardInstance | null
@@ -145,7 +148,7 @@ export function HandBar({
       return
     }
 
-    const legalZones = legalZonesFor(state, mySide, card)
+    const legalZones = legalZonesFor(state, mySide, card, turnNumber)
     if (legalZones.length === 1) {
       cancelBoardModes()
       void send({ type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: legalZones[0] })

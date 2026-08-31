@@ -2,7 +2,7 @@ import {
   KEYWORDS, REPAIR_COST_RATE, REPAIR_WINDOW_MIN_PERCENT, SURVIVE_HP_PERCENT,
 } from '../gameSettings.ts'
 import type { ApplyResult, BattleCasualty, EngineGame, Side, ZoneCardEntry } from './engineTypes.ts'
-import { discardCard, err, registerHandler, zoneById } from './gameEngine.ts'
+import { discardCard, err, otherSide, registerHandler, zoneById } from './gameEngine.ts'
 import { effectiveMaterialCostOf } from './placement.ts'
 import { effectFor } from '../effects/registry.ts'
 
@@ -242,6 +242,19 @@ registerHandler('DECIDE_BATTLE_REPORT', (game, actor, action, ctx) => {
   const battleZoneId = battle.zoneId
   const aggressor = battle.aggressor
   const outcome = battleOutcome(participants, survivingIds, aggressor)
+  // Wave 6: the per-zone, per-side loss record WF Purifier deploys off ("a
+  // zone in which you have lost a fleet battle the previous turn"). Written
+  // here because this is the only place a battle's outcome exists, and off
+  // `outcome.wonBy` rather than a re-derivation, so it can never disagree with
+  // what the resolve triggers below are told.
+  //
+  // A side LOST when the other side won. A draw (neither wonBy) records
+  // nothing; a mutual wipe records both, because each side did lose. Every
+  // battle counts — forced ones included (spec §7.3, wave 6), which falls out
+  // of recording at the single point every battle resolves through.
+  for (const side of ['a', 'b'] as Side[]) {
+    if (outcome.wonBy[otherSide(side)]) zone.lostBattleOnTurn[side] = game.turnNumber
+  }
   game.state.activeBattle = null
   game.state.pendingReport = null
   game.state.log.push(`Battle resolved — ${destroyedCount} vehicle(s) lost`)

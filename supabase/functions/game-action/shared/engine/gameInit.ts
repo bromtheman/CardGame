@@ -37,6 +37,17 @@ export interface ZoneState {
   baseHp: { a: number; b: number }
   cards: { a: CardInstance[]; b: CardInstance[] }
   lastActivatedTurn: number | null
+  // Wave 6. The half-turn number on which each side most recently LOST a
+  // battle in this zone, or null if it never has. Written by
+  // DECIDE_BATTLE_REPORT off the same `outcome.wonBy` the resolve triggers
+  // read, and consumed by legalZonesFor for WF Purifier's deploy
+  // prerequisite ("a zone in which you have lost a fleet battle the previous
+  // turn"). Per-side, like baseHp; a turn number, like lastActivatedTurn.
+  //
+  // REQUIRED, not optional, so tsc finds every zone literal — the same
+  // reasoning behind ZoneCardEntry's three stamps. It still needs a
+  // normalizeState default for rows already in the DB.
+  lostBattleOnTurn: { a: number | null; b: number | null }
 }
 
 // A board-visible marker a card leaves on one zone for one side (DWG Waters,
@@ -216,6 +227,7 @@ export function buildInitialGame(input: {
       baseHp: { a: zone.baseHp, b: zone.baseHp },
       cards: { a: [], b: [] },
       lastActivatedTurn: null,
+      lostBattleOnTurn: { a: null, b: null },
     })),
     // Both sides get turn-1 income at setup; the second player's value is
     // reset (not accumulated) at their first turn start, so this is purely

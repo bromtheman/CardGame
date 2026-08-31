@@ -57,6 +57,7 @@ export function makeGame(over: Partial<EngineGame> = {}): EngineGame {
         baseHp: { a: 1000, b: 1000 },
         cards: { a: [], b: [] },
         lastActivatedTurn: null,
+        lostBattleOnTurn: { a: null, b: null },
       })),
       resources: { a: { materials: 100000, cp: 3 }, b: { materials: 100000, cp: 3 } },
       counts: { a: { hand: 0, deck: 0 }, b: { hand: 0, deck: 0 } },

@@ -50,17 +50,42 @@ export const CATALOG_EFFECTS: ReadonlySet<string> = catalogEffects
 const bystanderEffects = new Set<string>()
 export const BYSTANDER_EFFECTS: ReadonlySet<string> = bystanderEffects
 
+// Effects that want DP7 — the dispatch that fires when the OPPONENT deploys
+// into a zone their rider watches (spec §4.3, "DP7 as wave 6 built it").
+// Derived from registration, and opt-in for the same load-bearing reason
+// BYSTANDER_EFFECTS is: dispatchDeployWatchers fires ONLY to members, so no
+// other zone rider ever meets a `phase: 'deploy'` context it was not written
+// for. dwgWatersEffect is why that matters — its router falls through to its
+// claim branch for any phase it does not recognise. Blockade is the only
+// member today.
+const deployWatcherEffects = new Set<string>()
+export const DEPLOY_WATCHER_EFFECTS: ReadonlySet<string> = deployWatcherEffects
+
 export function registerEffect(
-  name: string, fn: EffectFn, opts?: { needsCatalog?: boolean; battleBystander?: boolean },
+  name: string,
+  fn: EffectFn,
+  opts?: { needsCatalog?: boolean; battleBystander?: boolean; deployWatcher?: boolean },
 ): void {
   effects.set(name, fn)
   if (opts?.needsCatalog) catalogEffects.add(name)
   if (opts?.battleBystander) bystanderEffects.add(name)
+  if (opts?.deployWatcher) deployWatcherEffects.add(name)
 }
 export function registerCostModifier(name: string, fn: CostModifierFn): void { costModifiers.set(name, fn) }
 export const effectFor = (name: string): EffectFn | null => effects.get(name) ?? null
 export const costModifierFor = (name: string): CostModifierFn | null => costModifiers.get(name) ?? null
 export const isImplemented = (name: string): boolean => effects.has(name) || costModifiers.has(name)
+
+// Every name registered so far, effects and cost modifiers alike. Exists for
+// G4 in supabase/seed/effectCoverage.test.ts, which closes the guard's
+// blind spot 5 by asking the question from the OTHER end: not "is this card's
+// effect implemented?" but "does any card name this implementation?".
+//
+// Deleting a card's meta key orphans its implementation silently — the
+// 2026-08-30 balance pass did exactly that to three of them — and nothing
+// else in the suite would notice.
+export const registeredEffectNames = (): string[] =>
+  [...new Set([...effects.keys(), ...costModifiers.keys()])].sort()
 
 // Two seeded rows carry trailing spaces in their effect names — trim on read.
 export function effectName(card: { meta: Record<string, unknown> }, triggerKey: string): string | null {
@@ -79,7 +104,15 @@ const ALL_META_KEYS = [...Object.values(TRIGGERS), 'costModifier']
 // so using one as a pure eligibility predicate inverts this registry's
 // contract. It sits OUTSIDE TRIGGERS deliberately, so G3 never inspects it and
 // HandBar's ALL_TRIGGER_KEYS needs no change.
-export const DATA_EFFECT_KEYS = ['additionalSpawns', 'resourceSurge', 'defensiveOmission'] as const
+// `aircraftLock` (wave 6) joins them for the same reason: Albacore and Tarpon
+// print one sentence, that sentence IS a placement rule read by
+// legalZonesFor, and neither card carries a registry name at all.
+// Purifier's two (wave 6) are both here for the same reason: its whole card
+// text is those two rules, and it names no effect at all.
+export const DATA_EFFECT_KEYS = [
+  'additionalSpawns', 'resourceSurge', 'defensiveOmission', 'aircraftLock',
+  'deployRequiresBattleLoss', 'noBaseDamage',
+] as const
 
 // Spec §3.9: cards referencing unimplemented effects play as vanilla, with a
 // note appended to the game log at play time. A card whose text names no

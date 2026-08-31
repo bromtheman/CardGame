@@ -814,3 +814,73 @@ describe('DP2 at battle resolve', () => {
     expect(resolveFired.some((f) => f.card === 'Bastion' && !f.survived)).toBe(true)
   })
 })
+
+// ===========================================================================
+// Wave 6 — WF Purifier's per-zone, per-side battle-loss record.
+//
+// "This ship can only be played into a zone in which you have lost a fleet
+// battle the previous turn." DECIDE_BATTLE_REPORT already computes wonBy for
+// both sides; this is where that becomes durable state legalZonesFor can read.
+// ===========================================================================
+
+describe('lostBattleOnTurn — the record DECIDE_BATTLE_REPORT writes', () => {
+  const resolve = (results: Record<string, number>, g: ReturnType<typeof inBattle>['g']) => {
+    const submitted = applyAction(g, 'alice', { type: 'SUBMIT_BATTLE_REPORT', results, repairs: [] }, makeCtx())
+    if (!submitted.ok) throw new Error(submitted.error)
+    const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, makeCtx())
+    if (!decided.ok) throw new Error(decided.error)
+    return decided.game
+  }
+
+  it('stamps the losing side with the turn the battle resolved on', () => {
+    const { g, atk, def } = inBattle()
+    const after = resolve({ [atk.instanceId]: 100, [def.instanceId]: 0 }, g)
+    expect(after.state.zones[0].lostBattleOnTurn).toEqual({ a: null, b: 3 })
+  })
+
+  it('stamps the aggressor when the aggressor is the one wiped out', () => {
+    const { g, atk, def } = inBattle()
+    const after = resolve({ [atk.instanceId]: 0, [def.instanceId]: 100 }, g)
+    expect(after.state.zones[0].lostBattleOnTurn).toEqual({ a: 3, b: null })
+  })
+
+  it('records nothing on a draw — both sides kept a survivor', () => {
+    const { g, atk, def } = inBattle()
+    const after = resolve({ [atk.instanceId]: 100, [def.instanceId]: 100 }, g)
+    expect(after.state.zones[0].lostBattleOnTurn).toEqual({ a: null, b: null })
+  })
+
+  it('records nothing when BOTH sides are wiped — each side lost, so each is stamped', () => {
+    const { g, atk, def } = inBattle()
+    const after = resolve({ [atk.instanceId]: 0, [def.instanceId]: 0 }, g)
+    expect(after.state.zones[0].lostBattleOnTurn).toEqual({ a: 3, b: 3 })
+  })
+
+  it('records only in the zone the battle was fought in', () => {
+    const { g, atk, def } = inBattle()
+    const after = resolve({ [atk.instanceId]: 100, [def.instanceId]: 0 }, g)
+    expect(after.state.zones[1].lostBattleOnTurn).toEqual({ a: null, b: null })
+    expect(after.state.zones[2].lostBattleOnTurn).toEqual({ a: null, b: null })
+  })
+
+  // Ruling C-6 (spec §7.3, wave 6). §7.3's Catshark ruling already settles
+  // that a battle is a battle whatever declared it; this is the same rule
+  // reaching the loss record. Everything that resolves through
+  // DECIDE_BATTLE_REPORT counts, which keeps the rule honest: if it resolved
+  // as a battle, it WAS one.
+  it('records a FORCED battle the same as a declared one', () => {
+    const { g, atk, def } = inBattle()
+    // A forced battle differs only in never having stamped the zone.
+    g.state.zones[0].lastActivatedTurn = null
+    const after = resolve({ [atk.instanceId]: 100, [def.instanceId]: 0 }, g)
+    expect(after.state.zones[0].lostBattleOnTurn.b).toBe(3)
+    expect(after.state.zones[0].lastActivatedTurn).toBeNull()
+  })
+
+  it('overwrites an older record rather than keeping the first', () => {
+    const { g, atk, def } = inBattle()
+    g.state.zones[0].lostBattleOnTurn = { a: null, b: 1 }
+    const after = resolve({ [atk.instanceId]: 100, [def.instanceId]: 0 }, g)
+    expect(after.state.zones[0].lostBattleOnTurn.b).toBe(3)
+  })
+})

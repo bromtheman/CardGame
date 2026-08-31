@@ -93,6 +93,20 @@ export const CHANGE_ORDER_DELAY_TURNS = 2
 export const RHEA_MAX_PLANE_COST = 300_000 // Rhea: "base cost under 300k" (exclusive)
 export const GT_HEAVY_AIRSHIP_MIN_COST = 400_000 // spec §7.3: the GT airship cost cliff
 
+// Judgement: "while your opponent has a submarine or airship, this card costs
+// 100k less". A flat discount, not a per-hull one — the text says "a", and one
+// enemy sub is as much a reason as three. Read across the WHOLE enemy board:
+// the card's own second sentence says "in this zone" and this one does not
+// (spec §7.3, wave 6).
+export const JUDGEMENT_DISCOUNT = 100_000
+
+// Purifier: "a zone in which you have lost a fleet battle the previous turn".
+// Turn numbers advance in HALF steps, so this window (1.0) is one full round —
+// the actor's own previous turn plus the opponent's half-turn between, current
+// turn included. Reading it as the strictly-previous half-step would admit only
+// a defensive loss, which the card does not say (spec §7.3, wave 6).
+export const PURIFIER_LOSS_WINDOW_TURNS = 1
+
 export const MARAUDER_DISCOUNT = 50_000  // Marauder: enemy vehicle costs 50k less
 export const EXCALIBUR_COST_DELTA = -200_000 // Excalibur: AI ship in hand costs 200k less
 export const REPAIRMEN_READY_DRAW_MAX_COST = 400_000 // Repairmen Ready draws below this
@@ -117,6 +131,13 @@ export const SACRILEGO_HP_BOOST = 15
 // Exclusive, on printed materialCost — the same authority every other pool
 // filter reads.
 export const DWG_WATERS_GUEST_MAX_COST = 60_000
+
+// Harbringer: "you may spawn in one WF ship that costs <=100k to join the
+// battle". INCLUSIVE, unlike DWG Waters' exclusive <60k — the two cards print
+// different comparators and each keeps its own. Printed materialCost, WF
+// ships only: The Repentance is a WF PLANE at exactly 100k, so the type
+// filter is what excludes it rather than the cost.
+export const HARBRINGER_GUEST_MAX_COST = 100_000
 
 // Human-readable names for the seven hero powers, used wherever a power id
 // is shown to a player (Kraken's refresh choice).
