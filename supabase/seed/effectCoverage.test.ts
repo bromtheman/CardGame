@@ -13,6 +13,7 @@ const key = (c: { faction: string; name: string }) => `${c.faction}:${c.name}`
 // sheet, not a trigger. There is nothing for the engine to fire.
 const EXEMPT: Record<string, string> = {
   'SS:Falcon Squadron': 'Robotic-shaped conduct text: players apply it when reporting results',
+  'TG:Anguish': 'Deployment-order conduct text for the spawn sheet: the engine has no deployment-order concept, so there is nothing to fire',
 }
 
 // The gaps not yet closed (Falcon Squadron is permanently EXEMPT above).
@@ -34,7 +35,30 @@ const EXEMPT: Record<string, string> = {
 //
 // It stays asserted over, and the toHaveLength(0) below is what stops a
 // newly-seeded card with an unimplemented effect name being added quietly.
-const KNOWN_GAPS: Record<string, string> = {}
+// WAVE 7 REOPENED IT, deliberately and visibly, by seeding a whole faction
+// before wiring its behaviour. Every entry below is a TG card whose row now
+// exists and whose effect does not yet, and each names the mechanic it is
+// waiting on. The list drains to zero across the wave; the toHaveLength literal
+// below moves with it, one task at a time.
+//
+// The ten vanilla TG cards, the two Swarms and TG:Anguish are absent on
+// purpose: the first twelve carry no card text at all (so G2 never inspects
+// them) and Anguish is permanently EXEMPT above.
+const KNOWN_GAPS: Record<string, string> = {
+  'TG:Jealousy': 'wave 7 — grant({ draw: 1 }) on death',
+  'TG:Curiosity': 'wave 7 — the additionalSpawns data key',
+  'TG:Acceptance': 'wave 7 — the resourceSurge data key (§4.6 suppressing arm)',
+  'TG:Fear': 'wave 7 — spawnVehicles a Horror into every zone',
+  'TG:Obelisk': 'wave 7 — a Mirth Swarm battle summon at lock',
+  'TG:Hysteria': 'wave 7 — a board-wide choice granting INOFFENSIVE',
+  'TG:Alarmed': 'wave 7 — an AI-vehicle deploy prerequisite, plus a friendly sacrifice',
+  'TG:Horror': 'wave 7 — a self-copy on surviving a battle, capped per zone per turn',
+  'TG:Nostalgia': 'wave 7 — a replacement effect: returnToHand instead of the discard',
+  'TG:Vengeful': 'wave 7 — DP8, a resolve-phase bystander pass across every zone',
+  'TG:Havoc Factory': 'wave 7 — a per-hull battle rider (meta.factoryEscort)',
+  'TG:Mirth Factory': 'wave 7 — a per-hull battle rider (meta.factoryEscort)',
+  'TG:Duel': 'wave 7 — a cross-zone forced battle, which ActiveBattle cannot express',
+}
 
 // Cards that pass G2 — they resolve at least one implemented effect — but
 // whose card text is only partly built. G2 asks "any implemented effect?",
@@ -176,13 +200,18 @@ describe('built-in card effect coverage', () => {
   // nothing labelled for any of them may reappear. The count is what stops a
   // new gap being added quietly — it must be decremented by whoever closes
   // one, and INCREMENTED, visibly, by anyone who opens one.
-  it('all five waves and the 2026-08-30 balance pass are complete', () => {
+  it('waves 1-6 and the 2026-08-30 balance pass are complete; wave 7 is draining', () => {
     const closed = ['wave 1', 'wave 2', 'wave 3', 'wave 4', 'wave 5', 'balance 2026-08-30']
     for (const label of closed) {
       expect(Object.values(KNOWN_GAPS).filter((w) => w.startsWith(label))).toEqual([])
       expect(Object.values(PARTIAL).filter((w) => w.startsWith(label))).toEqual([])
     }
-    expect(Object.keys(KNOWN_GAPS)).toHaveLength(0)
+    // Every remaining entry belongs to the wave currently in flight, so a gap
+    // from a closed wave can never reappear under wave 7's cover.
+    for (const label of Object.values(KNOWN_GAPS)) expect(label.startsWith('wave 7')).toBe(true)
+    // Decremented by whoever closes a card, in the same commit that makes it
+    // work — and it must reach 0 before wave 7 can be called complete.
+    expect(Object.keys(KNOWN_GAPS)).toHaveLength(13)
   })
 
   it('PARTIAL names real cards that currently pass G1 and G2, and never overlaps KNOWN_GAPS', async () => {
