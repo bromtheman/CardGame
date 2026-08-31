@@ -141,6 +141,9 @@ export const dwgVehicles = [
         blueprintId: null,
         keywords: [KEYWORDS.FRAGILE],
         meta: {
+            // Same rule as Albacore, same data key — which is the point of
+            // making it data: one engine predicate serves both cards.
+            aircraftLock: true,
         }
     },{
         name: 'Corsair',
@@ -337,6 +340,11 @@ export const dwgVehicles = [
         blueprintId: null,
         keywords: [KEYWORDS.FRAGILE],
         meta: {
+            // "While this vehicle is alive, YOU may not play any other
+            // aircraft into this zone" — the OWNER's own aircraft, which is
+            // the opposite of AIR_SCREEN (spec §7.3, wave 6). Read by
+            // legalZonesFor off this key, never off a card name.
+            aircraftLock: true,
         }
     },{
         name: 'Recurring Threat',

@@ -18,14 +18,39 @@ export function biomeAllows(vehicleType: string | null, biome: string): boolean 
   return vehicleType !== null && (BIOMES_BY_TYPE[vehicleType] ?? []).includes(biome)
 }
 
+const isAircraft = (vehicleType: string): boolean =>
+  vehicleType === VEHICLE_TYPES.PLANE || vehicleType === VEHICLE_TYPES.AIRSHIP
+
 function screenBlocks(state: PublicGameState, side: Side, zoneId: number, vehicleType: string): boolean {
   const zone = state.zones.find((z) => z.id === zoneId)
   if (!zone) return true
   const enemy = zone.cards[otherSide(side)]
-  const isAir = vehicleType === VEHICLE_TYPES.PLANE || vehicleType === VEHICLE_TYPES.AIRSHIP
-  if (isAir && enemy.some((c) => c.keywords.includes(KEYWORDS.AIR_SCREEN))) return true
+  if (isAircraft(vehicleType) && enemy.some((c) => c.keywords.includes(KEYWORDS.AIR_SCREEN))) return true
   if (vehicleType === VEHICLE_TYPES.SUB && enemy.some((c) => c.keywords.includes(KEYWORDS.SUB_SCREEN))) return true
   return false
+}
+
+// Albacore and Tarpon: "While this vehicle is alive, YOU may not play any
+// other aircraft into this zone" (spec §7.3, wave 6).
+//
+// The pronoun is the whole ruling: this reads the ACTOR'S OWN side of the
+// zone, where screenBlocks above reads the enemy's. The two sit side by side
+// deliberately — AIR_SCREEN is the enemy-facing lock and already exists, so
+// these cards would be redundant seeding if they meant the same thing. Both
+// print FRAGILE, which is drawback-shaped.
+//
+// Read off `data`, like blocksFaction, so the next card wanting the rule needs
+// no engine edit. "Any OTHER aircraft" needs no mechanism: this prices a card
+// in HAND against a zone, so the locking hull can never be the card being
+// blocked — but a second Albacore into the same zone is, which is what the
+// word "other" asks for.
+function aircraftLocked(
+  state: PublicGameState, side: Side, zoneId: number, vehicleType: string,
+): boolean {
+  if (!isAircraft(vehicleType)) return false
+  const zone = state.zones.find((z) => z.id === zoneId)
+  if (!zone) return false
+  return zone.cards[side].some((c) => c.meta.aircraftLock === true)
 }
 
 // A zone rider that forbids this side from PLAYING a card of some faction
@@ -49,6 +74,7 @@ export function legalZonesFor(state: PublicGameState, side: Side, card: CardInst
     .filter((z) => (
       biomeAllows(card.vehicleType, z.biome) &&
       !screenBlocks(state, side, z.id, card.vehicleType!) &&
+      !aircraftLocked(state, side, z.id, card.vehicleType!) &&
       !riderBlocks(state, side, z.id, card.faction)
     ))
     .map((z) => z.id)

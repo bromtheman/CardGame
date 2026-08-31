@@ -1000,3 +1000,105 @@ describe('resourceSurge — PredatorX and Orbit still lose Half-Cost', () => {
     expect(priced(139_999, ORBIT_META, 140_000)).toBe(70_000)
   })
 })
+
+// ===========================================================================
+// Wave 6 — DWG Albacore and Tarpon: "While this vehicle is alive, you may not
+// play any other aircraft into this zone."
+//
+// A placement rule sourced from a HULL ON THE BOARD, read off a seeded data
+// key rather than an effect name — the riderBlocks / blocksFaction precedent,
+// so the next card wanting it needs no engine edit.
+// ===========================================================================
+
+describe('aircraftLock — Albacore and Tarpon', () => {
+  const locker = (over: Record<string, unknown> = {}) => zoneEntry({
+    name: 'Albacore', faction: 'DWG', vehicleType: 'airship',
+    materialCost: 260_000, keywords: [KEYWORDS.FRAGILE],
+    meta: { aircraftLock: true }, ...over,
+  })
+  // Zone 1 is water, 2 beach, 3 land — every one of them admits an aircraft,
+  // so a missing zone in these lists is the lock and never a biome.
+  const zonesFor = (vehicleType: string, place: (g: ReturnType<typeof makeGame>) => void) => {
+    const g = makeGame()
+    place(g)
+    return legalZonesFor(g.state, 'a', inst({ vehicleType, faction: 'DWG' }))
+  }
+
+  it.each(['plane', 'airship'])('locks the zone against the owner own %s', (vehicleType) => {
+    expect(zonesFor(vehicleType, (g) => { g.state.zones[0].cards.a.push(locker()) })).toEqual([2, 3])
+  })
+
+  // Ruling C-3: "any OTHER aircraft" falls out for free — a card in hand is by
+  // definition not the hull already on the board, so a SECOND Albacore into
+  // the same zone is blocked, and a Tarpon into an Albacore's zone is too.
+  it('blocks a second locking airship into the same zone', () => {
+    const g = makeGame()
+    g.state.zones[0].cards.a.push(locker())
+    const second = inst({ name: 'Tarpon', faction: 'DWG', vehicleType: 'airship', meta: { aircraftLock: true } })
+    expect(legalZonesFor(g.state, 'a', second)).toEqual([2, 3])
+  })
+
+  // Compared against the same card with no locker on the board rather than
+  // against a hard-coded list: a tank cannot enter zone 1 anyway (it is
+  // water), so a literal expectation would pass for the wrong reason.
+  it.each(['ship', 'sub', 'tank'])('leaves a non-aircraft %s exactly as it was', (vehicleType) => {
+    const card = inst({ vehicleType, faction: 'DWG' })
+    const clear = makeGame()
+    const locked = makeGame()
+    locked.state.zones[0].cards.a.push(locker())
+    expect(legalZonesFor(locked.state, 'a', card)).toEqual(legalZonesFor(clear.state, 'a', card))
+  })
+
+  // Ruling C-1 (spec §7.3, wave 6), and the assertion that pins the pronoun.
+  // "YOU may not play" restricts the OWNER — the opposite of AIR_SCREEN,
+  // which the two rules now sit beside in the same function.
+  it('an ENEMY locker does not block the actor aircraft', () => {
+    expect(zonesFor('plane', (g) => { g.state.zones[0].cards.b.push(locker()) })).toEqual([1, 2, 3])
+  })
+
+  it('an AIR_SCREEN on the enemy still blocks, so the two rules do not shadow each other', () => {
+    const g = makeGame()
+    g.state.zones[0].cards.b.push(zoneEntry({ name: 'Screen', keywords: [KEYWORDS.AIR_SCREEN] }))
+    g.state.zones[1].cards.a.push(locker())
+    expect(legalZonesFor(g.state, 'a', inst({ vehicleType: 'plane' }))).toEqual([3])
+  })
+
+  it('PLAY_CARD_TO_ZONE refuses the locked zone through the handler', () => {
+    const { g, card } = withHand({ vehicleType: 'plane', materialCost: 0, faction: 'DWG' })
+    g.state.zones[0].cards.a.push(locker())
+    const r = applyAction(g, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx())
+    expect(r).toMatchObject({ ok: false, status: 400 })
+  })
+
+  // Ruling C-4: the lock reaches PLAYS and nothing else. Sub Killer's block
+  // takes the same latitude, and §7.4 already exempts every other arrival.
+  it('MOVE_VEHICLE still relocates an aircraft into a locked zone', () => {
+    const g = makeGame({ turnNumber: 3 })
+    g.state.zones[0].cards.a.push(locker())
+    const mover = zoneEntry({
+      name: 'Flyer', vehicleType: 'plane', keywords: [KEYWORDS.MOBILE], playedOnTurn: 2,
+    })
+    g.state.zones[1].cards.a.push(mover)
+    const r = applyAction(g, 'alice', { type: 'MOVE_VEHICLE', instanceId: mover.instanceId, zoneId: 1 }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.zones[0].cards.a.map((c) => c.name)).toEqual(['Albacore', 'Flyer'])
+  })
+
+  it('an additionalSpawns copy lands beside the lock its own play created', () => {
+    const { g, card } = withHand({
+      name: 'Albacore', vehicleType: 'airship', materialCost: 0, faction: 'DWG',
+      meta: { aircraftLock: true, additionalSpawns: 1 },
+    })
+    const r = applyAction(g, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.zones[0].cards.a).toHaveLength(2)
+  })
+
+  it('only a truthy aircraftLock locks — a mistyped value is not a lock', () => {
+    for (const value of [false, null, 0, 'true']) {
+      const g = makeGame()
+      g.state.zones[0].cards.a.push(locker({ meta: { aircraftLock: value } }))
+      expect(legalZonesFor(g.state, 'a', inst({ vehicleType: 'plane' }))).toEqual([1, 2, 3])
+    }
+  })
+})

@@ -79,7 +79,12 @@ const ALL_META_KEYS = [...Object.values(TRIGGERS), 'costModifier']
 // so using one as a pure eligibility predicate inverts this registry's
 // contract. It sits OUTSIDE TRIGGERS deliberately, so G3 never inspects it and
 // HandBar's ALL_TRIGGER_KEYS needs no change.
-export const DATA_EFFECT_KEYS = ['additionalSpawns', 'resourceSurge', 'defensiveOmission'] as const
+// `aircraftLock` (wave 6) joins them for the same reason: Albacore and Tarpon
+// print one sentence, that sentence IS a placement rule read by
+// legalZonesFor, and neither card carries a registry name at all.
+export const DATA_EFFECT_KEYS = [
+  'additionalSpawns', 'resourceSurge', 'defensiveOmission', 'aircraftLock',
+] as const
 
 // Spec §3.9: cards referencing unimplemented effects play as vanilla, with a
 // note appended to the game log at play time. A card whose text names no
