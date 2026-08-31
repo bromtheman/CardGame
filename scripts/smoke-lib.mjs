@@ -101,7 +101,10 @@ const fn = (name, token, body) => api(`/functions/v1/${name}`, { method: 'POST',
 
 async function builtIns(token) {
   const res = await rest(
-    '/cards?is_built_in=eq.true&select=id,name,faction,type,vehicle_type,material_cost,cp_cost,meta',
+    // keywords added in wave 7: without it every c.keywords is undefined, and a
+    // check like "no card seeded a null keyword" passes VACUOUSLY — wave 6's
+    // harness bug #2, repeated.
+    '/cards?is_built_in=eq.true&select=id,name,faction,type,vehicle_type,material_cost,cp_cost,keywords,meta',
     { token },
   )
   if (res.status !== 200 || !Array.isArray(res.body)) die(`catalog fetch failed (HTTP ${res.status})`)
