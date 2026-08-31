@@ -35,7 +35,6 @@ const EXEMPT: Record<string, string> = {
 // purpose: the first twelve carry no card text at all (so G2 never inspects
 // them) and Anguish is permanently EXEMPT above.
 const KNOWN_GAPS: Record<string, string> = {
-  'TG:Fear': 'wave 7 — spawnVehicles a Horror into every zone',
   'TG:Obelisk': 'wave 7 — a Mirth Swarm battle summon at lock',
   'TG:Hysteria': 'wave 7 — a board-wide choice granting INOFFENSIVE',
   'TG:Alarmed': 'wave 7 — an AI-vehicle deploy prerequisite, plus a friendly sacrifice',
@@ -198,7 +197,7 @@ describe('built-in card effect coverage', () => {
     for (const label of Object.values(KNOWN_GAPS)) expect(label.startsWith('wave 7')).toBe(true)
     // Decremented by whoever closes a card, in the same commit that makes it
     // work — and it must reach 0 before wave 7 can be called complete.
-    expect(Object.keys(KNOWN_GAPS)).toHaveLength(10)
+    expect(Object.keys(KNOWN_GAPS)).toHaveLength(9)
   })
 
   it('PARTIAL names real cards that currently pass G1 and G2, and never overlaps KNOWN_GAPS', async () => {

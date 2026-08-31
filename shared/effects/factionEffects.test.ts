@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { CATALOG_EFFECTS, effectFor, registerEffect } from './registry.ts'
 import { choice } from './primitives.ts'
+import { KEYWORDS } from '../gameSettings.ts'
 import { inst, makeCtx, makeGame, snap, zoneEntry } from '../engine/testFixtures.ts'
 import {
   applyAction, declareForcedBattle, discardSnapshotOf, effectiveCostInGame, effectiveMaterialCostOf,
@@ -4336,5 +4337,94 @@ describe('wave 7 — the LH [TG] Robotics pool reads a marker, not the faction',
     const ctx = makeCtx({ catalog: [marked({ name: 'Borrowed', faction: 'LH' })] })
     expect(effectFor('ampereOnPlay')!({ game, actor: 'a', card: inst(), ctx })).toBe(true)
     expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Borrowed'])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Wave 7, group C — TG Fear.
+//
+// "When this vehicle is played, spawn a friendly horror into each zone."
+// sapphireScreenEffect's shape exactly.
+describe('TG Fear — a Horror into every zone (wave 7)', () => {
+  // Horror carries a battle trigger of its own in its printed meta. Wave 7
+  // seeds it in a later task; the fixture carries it now because the RULING
+  // this file pins is that spawning preserves it.
+  const horror = snap({
+    name: 'Horror', faction: 'TG', vehicleType: 'ship', materialCost: 70_000,
+    keywords: [KEYWORDS.ROBOTIC, KEYWORDS.UPKEEP_REQUIRED],
+    meta: { onBattleEffect: 't_horrorTrigger', onPlayEffect: 't_neverFires' },
+  })
+
+  const playFear = () => {
+    const card = inst({
+      name: 'Fear', faction: 'TG', vehicleType: 'ship', materialCost: 800_000,
+      keywords: [KEYWORDS.BLOCKER, KEYWORDS.ROBOTIC, KEYWORDS.UPKEEP_REQUIRED],
+      meta: { onPlayEffect: 'fearOnPlay' },
+    })
+    const game = makeGame({ privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } } })
+    game.state.resources.a.materials = 900_000
+    // Zone 1 is water — Fear is a ship, so this is its own legal deploy.
+    const r = applyAction(
+      game, 'alice',
+      { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 },
+      makeCtx({ catalog: [horror] }),
+    )
+    if (!r.ok) throw new Error(r.error)
+    return r.game
+  }
+
+  it('puts one Horror in each of the three zones, on the actor’s side', () => {
+    const game = playFear()
+    for (const zone of game.state.zones) {
+      expect(zone.cards.a.filter((c) => c.name === 'Horror')).toHaveLength(1)
+      expect(zone.cards.b).toHaveLength(0)
+    }
+  })
+
+  // §7.4: spawns bypass placement legality — biome and screen rules gate
+  // PLAYS. Horror is a ship and zone 3 is land, so this is the rule visible.
+  it('reaches the land zone a ship could never be played into', () => {
+    const land = playFear().state.zones[2]
+    expect(land.biome).toBe('land')
+    expect(land.cards.a.map((c) => c.name)).toEqual(['Horror'])
+  })
+
+  // ⚠ Spawning is not playing (§7.4), and that rule skips onPlayEffect and
+  // NOTHING ELSE. So each spawned Horror keeps its own printed battle trigger
+  // — wave 6's Nothung/Sacrilego ruling again, and almost certainly intended:
+  // Fear names Horror rather than a vanilla hull for a reason.
+  it('each Horror keeps its own printed battle trigger', () => {
+    for (const zone of playFear().state.zones) {
+      // Found by NAME, not by index: PLAY_CARD_TO_ZONE places the played hull
+      // before effects fire, so zone 1's cards.a[0] is Fear itself.
+      const spawned = zone.cards.a.find((c) => c.name === 'Horror')!
+      expect(spawned.meta.onBattleEffect).toBe('t_horrorTrigger')
+    }
+  })
+
+  it('does NOT fire the spawned Horrors’ own onPlayEffect', () => {
+    // t_neverFires is registered nowhere, so had spawning fired it,
+    // noteUnimplemented-style logging would be the only trace — assert the
+    // absence of any note naming it, and that Fear itself resolved.
+    const game = playFear()
+    expect(game.state.log.join(' ')).not.toContain('t_neverFires')
+  })
+
+  it('spawns the Horrors at full strength, keeping their printed keywords', () => {
+    const spawned = playFear().state.zones[0].cards.a.find((c) => c.name === 'Horror')!
+    expect(spawned.keywords).toContain(KEYWORDS.ROBOTIC)
+    expect(spawned.keywords).toContain(KEYWORDS.UPKEEP_REQUIRED)
+  })
+
+  it('gives every Horror its own instanceId', () => {
+    const ids = playFear().state.zones.map((z) => z.cards.a.find((c) => c.name === 'Horror')!.instanceId)
+    expect(new Set(ids).size).toBe(3)
+  })
+
+  // ⚠ Verified at runtime rather than by reading the source: makeCtx hands
+  // every unit test a catalog, so a missing flag is invisible here and shows
+  // up only as a dead card in production.
+  it('is registered as needing the catalog', () => {
+    expect(CATALOG_EFFECTS.has('fearOnPlay')).toBe(true)
   })
 })
