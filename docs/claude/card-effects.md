@@ -379,9 +379,22 @@ Two older ones are closed: a partly-built card passing G1/G2 despite
 incomplete text (wave 2's `PARTIAL` map above), and a `seed_data.sql` that had
 drifted from `source/*.js` (wave 3's `seedDataSync.test.ts`).
 
-**Both maps are empty as of wave 5**, and the wave assertion loops all five
-waves over both, so a reopened entry fails the build — as does an added one,
-via `expect(Object.keys(KNOWN_GAPS)).toHaveLength(0)`.
+**`PARTIAL` is empty as of wave 5**, and so is every wave's share of
+`KNOWN_GAPS` — all 65 of the spec's cards are built. The wave assertion loops
+all five waves over both maps, so a reopened entry fails the build.
+
+`KNOWN_GAPS` itself is **not** empty: the 2026-08-30 balance pass added twelve
+cards (labelled `balance 2026-08-30`, each with the mechanic it needs named in
+a comment above the map), and `expect(Object.keys(KNOWN_GAPS)).toHaveLength(12)`
+is what stops a thirteenth being added quietly. Four are one-liners over
+primitives that already exist (`SS:Nothung`, `SS:Balmung`, `WF:Basher`,
+`WF:Harbringer`); the other eight need engine work first. Whoever closes one
+deletes its entry and decrements that literal in the same commit.
+
+Four of those twelve are one-liners over primitives that already exist
+(`SS:Nothung`, `SS:Balmung`, `WF:Basher`, `WF:Harbringer`); the other eight
+need engine work first. Whoever closes one must delete its `KNOWN_GAPS` entry
+and decrement the `toHaveLength` literal in the same commit.
 
 ## Play-time cost modifiers
 

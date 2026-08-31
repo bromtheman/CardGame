@@ -1,7 +1,7 @@
 import {
   BASE_DAMAGE_DIVISOR, ONGOING_ATTRITION_DAMAGE_PER_VEHICLE,
   DOUBLE_UP_MAX_COST, DWG_WATERS_GUEST_MAX_COST, FLYING_SQUIRREL_ATTACK_COUNT,
-  HERO_POWER_LABELS, KEYWORDS, MARAUDER_DISCOUNT, RESERVES_CARD_COUNT,
+  HERO_POWER_LABELS, KEYWORDS, MARAUDER_DISCOUNT, RESERVES_CARD_COUNT, VEHICLE_TYPES,
 } from '../gameSettings.ts'
 import type { EngineContext, EngineGame, Side, ZoneCardEntry } from '../engine/engineTypes.ts'
 import type { SnapshotCard } from '../engine/gameInit.ts'
@@ -118,11 +118,14 @@ registerEffect('spawnBuccaneerEffect', ({ game, actor, ctx, targetZoneId }) => {
   return true
 }, { needsCatalog: true })
 
-// target DWG vehicle card in hand spawns an extra copy when played (Double Up)
+// Target DWG SHIP card in hand spawns an extra copy when played (Double Up).
+// The 2026-08-30 balance pass narrowed "DWG vehicle" to "DWG ship": airships,
+// planes, tanks and subs are no longer legal targets.
 registerEffect('doubleUpEffect', ({ game, actor, card, targetInstanceId }) => {
   if (typeof targetInstanceId !== 'string' || targetInstanceId === card.instanceId) return false
   const target = game.privates[actor].hand.find((c) => c.instanceId === targetInstanceId)
   if (!target || target.type !== 'vehicle' || target.faction !== 'DWG') return false
+  if (target.vehicleType !== VEHICLE_TYPES.SHIP) return false
   if (effectiveMaterialCostOf(target) > DOUBLE_UP_MAX_COST) return false
   const current = typeof target.meta.additionalSpawns === 'number' ? target.meta.additionalSpawns : 0
   target.meta = { ...target.meta, additionalSpawns: current + 1 }

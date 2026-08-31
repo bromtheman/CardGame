@@ -13,15 +13,37 @@ const EXEMPT: Record<string, string> = {
   'SS:Falcon Squadron': 'Robotic-shaped conduct text: players apply it when reporting results',
 }
 
-// The gaps not yet closed (Falcon Squadron is permanently EXEMPT above),
-// baselined so the guard is green from day one. Delete entries as their wave
-// lands — the "KNOWN_GAPS contains no stale entries" test below rejects
-// stale ones, so this list only shrinks.
+// The gaps not yet closed (Falcon Squadron is permanently EXEMPT above).
+// Delete entries as their wave lands — the "KNOWN_GAPS contains no stale
+// entries" test below rejects stale ones, so this list only shrinks.
 //
-// EMPTY as of wave 5: all 65 cards are built. It stays asserted over, so a
-// newly-seeded card with an unimplemented effect name has a home ready — and
-// the toHaveLength(0) below is what stops one being added quietly.
-const KNOWN_GAPS: Record<string, string> = {}
+// The five effect-coverage waves emptied it: all 65 of the spec's cards are
+// built. Everything left arrived AFTER them, from the 2026-08-30 balance pass.
+const KNOWN_GAPS: Record<string, string> = {
+  // The 2026-08-30 balance pass seeded twelve cards whose text needs behaviour
+  // the engine does not have yet. Every one plays vanilla and logs a note at
+  // play time (spec §3.9); none of them silently half-works.
+  //
+  //   new mechanics
+  //     DWG:Albacore / DWG:Tarpon  a per-player, per-zone aircraft deploy lock
+  //     SS:Chrysaor                a resourceSurge that RAISES the price
+  //     SS:Paladin                 a resourceSurge that GRANTS halfCost+temporary
+  //     SS:Blockade                a rider that fires when the ENEMY deploys
+  //     SS:Victoria                an activated ability paid in materials, not CP
+  //     WF:Judgement               the same, plus a costModifier off enemy hull types
+  //     WF:Purifier                a zone deploy prerequisite + "no base damage"
+  //   existing primitives, not yet registered under their own name
+  //     SS:Nothung                 spawnVehicles('Sacrilego')
+  //     SS:Balmung                 a catalog mint into hand at costDelta -cost
+  //     WF:Basher                  grant({ draw: 1 }) on death
+  //     WF:Harbringer              DWG Waters' clause-2 guest, WF ships <=100k
+  'DWG:Albacore': 'balance 2026-08-30', 'DWG:Tarpon': 'balance 2026-08-30',
+  'SS:Chrysaor': 'balance 2026-08-30', 'SS:Paladin': 'balance 2026-08-30',
+  'SS:Blockade': 'balance 2026-08-30', 'SS:Victoria': 'balance 2026-08-30',
+  'SS:Nothung': 'balance 2026-08-30', 'SS:Balmung': 'balance 2026-08-30',
+  'WF:Purifier': 'balance 2026-08-30', 'WF:Judgement': 'balance 2026-08-30',
+  'WF:Basher': 'balance 2026-08-30', 'WF:Harbringer': 'balance 2026-08-30',
+}
 
 // Cards that pass G2 — they resolve at least one implemented effect — but
 // whose card text is only partly built. G2 asks "any implemented effect?",
@@ -159,12 +181,16 @@ describe('built-in card effect coverage', () => {
     expect(stale).toEqual([])
   })
 
-  it('all five waves are complete — KNOWN_GAPS and PARTIAL are empty', () => {
+  // All five effect-coverage waves are done, so nothing labelled for one may
+  // reappear. The count is deliberately exact rather than `toHaveLength(0)`:
+  // it is what stops a thirteenth gap being added quietly, and it must be
+  // decremented by whoever closes one.
+  it('all five waves are complete — only the 2026-08-30 balance pass remains', () => {
     for (const wave of ['wave 1', 'wave 2', 'wave 3', 'wave 4', 'wave 5']) {
       expect(Object.values(KNOWN_GAPS).filter((w) => w.startsWith(wave))).toEqual([])
       expect(Object.values(PARTIAL).filter((w) => w.startsWith(wave))).toEqual([])
     }
-    expect(Object.keys(KNOWN_GAPS)).toHaveLength(0)
+    expect(Object.keys(KNOWN_GAPS)).toHaveLength(12)
   })
 
   it('PARTIAL names real cards that currently pass G1 and G2, and never overlaps KNOWN_GAPS', async () => {

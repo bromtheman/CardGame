@@ -378,8 +378,14 @@ describe('repairmenReadyEffect', () => {
     expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Top'])
   })
 
-  it('grants Scrappy but draws nothing for an expensive built-in target', () => {
+  it('draws for a 250k built-in target, which the 2026-08-30 threshold move now admits', () => {
     const { game, target } = run({ isBuiltIn: true, materialCost: 250_000 })
+    expect(target.keywords).toContain('scrappy')
+    expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Top'])
+  })
+
+  it('grants Scrappy but draws nothing for an expensive built-in target', () => {
+    const { game, target } = run({ isBuiltIn: true, materialCost: 450_000 })
     expect(target.keywords).toContain('scrappy')
     expect(game.privates.a.hand).toHaveLength(0)
   })
@@ -390,8 +396,8 @@ describe('repairmenReadyEffect', () => {
     expect(game.privates.a.hand).toHaveLength(0)
   })
 
-  it('grants Scrappy but draws nothing for a built-in target at exactly the 200k boundary — the card says "less than 200k"', () => {
-    const { game, target } = run({ isBuiltIn: true, materialCost: 200_000 })
+  it('grants Scrappy but draws nothing for a built-in target at exactly the 400k boundary — the card says "less than 400k"', () => {
+    const { game, target } = run({ isBuiltIn: true, materialCost: 400_000 })
     expect(target.keywords).toContain('scrappy')
     expect(game.privates.a.hand).toHaveLength(0)
   })
