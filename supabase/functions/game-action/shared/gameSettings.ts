@@ -49,8 +49,16 @@ export const FACTIONS = {
   OW: 'OW', SD: 'SD', WF: 'WF', GT: 'GT',
 } as const
 
-// Factions a deck may use as its base (spec §3.1)
-export const DECK_FACTIONS = ['DWG', 'GT', 'LH', 'OW', 'SS', 'WF'] as const
+// Factions a deck may use as its base (spec §3.1). TG joined in wave 7.
+//
+// ⚠ This is the DECK BUILDER's list, not a validation gate. `validateDeck`
+// (engine/deckValidation.ts) never reads it — it compares a card's faction
+// against the deck's own. The only functional reader in the repo is
+// frontend/src/pages/DecksPage.tsx, which maps it into the faction <select>,
+// so a faction missing here is seeded, visible in the catalog, and simply
+// unreachable in the builder. Nothing in the engine suite can see that; the
+// live deck-builder pass is the check.
+export const DECK_FACTIONS = ['DWG', 'GT', 'LH', 'OW', 'SS', 'TG', 'WF'] as const
 
 export const CARD_TYPES = { VEHICLE: 'vehicle', ABILITY: 'ability' } as const
 
