@@ -61,15 +61,37 @@ export const BYSTANDER_EFFECTS: ReadonlySet<string> = bystanderEffects
 const deployWatcherEffects = new Set<string>()
 export const DEPLOY_WATCHER_EFFECTS: ReadonlySet<string> = deployWatcherEffects
 
+// Effects that want DP8 — the RESOLVE-phase bystander pass (spec §4.3, "DP8 as
+// wave 7 built it"). BYSTANDER_EFFECTS above cannot serve them: it fires only
+// at LOCK, only on a FORCED battle, only for the DEFENDER, and only in the
+// battle's own zone. TG Vengeful needs the resolve phase (a loss is not known
+// until then), on every battle, from any zone, on either side.
+//
+// Derived from registration, and opt-in for the same load-bearing reason the
+// two above are: dispatchBattleResolve's second pass fires ONLY to members, so
+// no other battle trigger ever meets a context it was not written for.
+// dwgWatersEffect is why that matters — its router falls through to its claim
+// branch for any context it does not recognise, so a broadcast would make it
+// attempt a claim with no target zone on EVERY battle in the game. Vengeful is
+// the only member today.
+const resolveBystanderEffects = new Set<string>()
+export const RESOLVE_BYSTANDER_EFFECTS: ReadonlySet<string> = resolveBystanderEffects
+
 export function registerEffect(
   name: string,
   fn: EffectFn,
-  opts?: { needsCatalog?: boolean; battleBystander?: boolean; deployWatcher?: boolean },
+  opts?: {
+    needsCatalog?: boolean
+    battleBystander?: boolean
+    deployWatcher?: boolean
+    resolveBystander?: boolean
+  },
 ): void {
   effects.set(name, fn)
   if (opts?.needsCatalog) catalogEffects.add(name)
   if (opts?.battleBystander) bystanderEffects.add(name)
   if (opts?.deployWatcher) deployWatcherEffects.add(name)
+  if (opts?.resolveBystander) resolveBystanderEffects.add(name)
 }
 export function registerCostModifier(name: string, fn: CostModifierFn): void { costModifiers.set(name, fn) }
 export const effectFor = (name: string): EffectFn | null => effects.get(name) ?? null

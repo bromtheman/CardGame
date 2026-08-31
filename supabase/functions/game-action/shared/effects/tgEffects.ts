@@ -2,9 +2,9 @@ import {
   choice, enemyVehicleOptions, friendlyVehicleOptions, grant, spawnVehicles, summonHulls,
 } from './primitives.ts'
 import { joinBattle } from '../engine/battleDeclare.ts'
-import { copyMeta, findVehicle } from '../engine/gameEngine.ts'
+import { checkVictory, copyMeta, findVehicle, otherSide } from '../engine/gameEngine.ts'
 import { returnToHand, sacrificeEntry } from '../engine/battleTriggers.ts'
-import { KEYWORDS } from '../gameSettings.ts'
+import { BASE_DAMAGE_DIVISOR, KEYWORDS, VENGEFUL_BASE_DAMAGE } from '../gameSettings.ts'
 import type { ZoneCardEntry } from '../engine/engineTypes.ts'
 import { registerEffect } from './registry.ts'
 
@@ -240,3 +240,55 @@ registerEffect('horrorBattle', ({ game, actor, ctx, card, battle }) => {
 // indefinitely, for 13.5k of upkeep a turn.
 registerEffect('nostalgiaOnDeath', ({ game, actor, ctx, card }) =>
   returnToHand(game, actor, card as ZoneCardEntry, ctx))
+
+// "Whenever you lose a vehicle to a fleet battle (any zone) this unit deals
+// 40k damage to the enemy base in this zone."
+//
+// DP8's only customer (spec §4.3). The { resolveBystander: true } flag is what
+// puts it in the new pass — and what keeps every other battle trigger out of
+// it, which is why it is load-bearing rather than bookkeeping.
+//
+// Three rulings live here:
+//
+//   E-2   per VEHICLE lost, not per battle. Two casualties on your side is
+//         80k. `casualties` is on the context; nothing else could supply it,
+//         because by resolve time state.destroyed holds bare snapshots with no
+//         instanceId and no battle of origin.
+//   E-2b  a Vengeful destroyed in that same battle fires nothing. This is NOT
+//         free: `participants` still holds a destroyed hull's entry when the
+//         resolve dispatch runs, so the participant pass DOES reach it. The
+//         findVehicle guard below is what enforces it — the destruction branch
+//         has already removed the hull from zone.cards.
+//   E-3   it damages a base despite being a SUBMARINE. baseStrikersIn excludes
+//         subs and the glossary says a sub "can never damage an enemy base",
+//         but that rule governs BOMBARDMENT (ATTACK_ENEMY_BASE) and this is
+//         card-forced damage. Card text is authoritative (decision 1), and the
+//         Submarine glossary entry is amended to say "bombard" rather than
+//         "damage". E-4 answers the same way for the same reason: an enemy
+//         BLOCKER stops ATTACK_ENEMY_BASE, and this is not that handler.
+//
+// ⚠ The context's zoneId is the BATTLE's, and the card says "the enemy base in
+// THIS zone" — Vengeful's. Re-derived with findVehicle, the way Braveheart
+// re-derives its own zone from payload.card rather than stashing it.
+//
+// It must NOT stamp lastActivatedTurn (a card-forced consequence is not a zone
+// activation — Eclipse alone does, from its own text), and it MUST call
+// checkVictory, because this is a route to a base reaching 0 that
+// ATTACK_ENEMY_BASE's own call cannot cover.
+registerEffect('vengefulBattle', ({ game, actor, card, battle }) => {
+  if (!battle || battle.phase !== 'resolve') return true
+  const lost = battle.casualties.filter((c) => c.side === actor).length
+  if (lost === 0) return true
+  const found = findVehicle(game.state, card.instanceId)
+  if (!found || found.side !== actor) return true // E-2b
+  const enemy = otherSide(actor)
+  const damage = Math.floor((lost * VENGEFUL_BASE_DAMAGE) / BASE_DAMAGE_DIVISOR)
+  if (damage <= 0) return true
+  found.zone.baseHp[enemy] = Math.max(0, found.zone.baseHp[enemy] - damage)
+  game.state.log.push(
+    `${card.name} strikes the enemy base in zone ${found.zone.id} for ${damage} (${found.zone.baseHp[enemy]} HP remains)`,
+  )
+  if (found.zone.baseHp[enemy] === 0) game.state.log.push(`Zone ${found.zone.id} has fallen`)
+  checkVictory(game)
+  return true
+}, { resolveBystander: true })

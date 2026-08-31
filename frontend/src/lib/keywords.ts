@@ -119,7 +119,13 @@ export const VEHICLE_TYPE_INFO: Record<string, Attribute> = {
     key: VEHICLE_TYPES.SUB,
     label: 'Submarine',
     icon: subIcon,
-    description: 'Deploys to water and beach zones, and can never damage an enemy base. Blocked by an enemy Sub Screen. A deck may hold at most 6 submarines.',
+    // Wave 7 narrowed this from "can never damage an enemy base": TG Vengeful
+    // is a submarine whose card text deals base damage. The rule it was
+    // describing is the BOMBARDMENT roster (baseStrikersIn, reached only from
+    // ATTACK_ENEMY_BASE), not card-forced damage — so the wording now says
+    // what the engine actually enforces, and no printed rule contradicts a
+    // shipped card (spec §7.3, ruling E-3).
+    description: 'Deploys to water and beach zones, and can never bombard an enemy base — though a card effect may still damage one. Blocked by an enemy Sub Screen. A deck may hold at most 6 submarines.',
   },
   [VEHICLE_TYPES.TANK]: {
     key: VEHICLE_TYPES.TANK,

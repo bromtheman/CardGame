@@ -348,6 +348,7 @@ export const tgVehicles = [
         blueprintId: null,
         keywords: [],
         meta: {
+            [TRIGGERS.ON_BATTLE_EFFECT]: 'vengefulBattle',
         }
     },
     {

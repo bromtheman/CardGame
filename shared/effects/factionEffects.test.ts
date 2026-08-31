@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CATALOG_EFFECTS, effectFor, registerEffect } from './registry.ts'
+import { CATALOG_EFFECTS, RESOLVE_BYSTANDER_EFFECTS, effectFor, registerEffect } from './registry.ts'
 import { choice } from './primitives.ts'
 import { KEYWORDS } from '../gameSettings.ts'
 import { inst, makeCtx, makeGame, snap, zoneEntry } from '../engine/testFixtures.ts'
@@ -5054,5 +5054,228 @@ describe('TG Nostalgia — back to hand instead of the discard (wave 7)', () => 
     if (!decided.ok) throw new Error(decided.error)
     expect(decided.game.state.zones[0].cards.a.map((c) => c.name)).toContain('Nostalgia')
     expect(decided.game.privates.a.hand).toHaveLength(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Wave 7, group E — TG Vengeful, and DP8.
+//
+// "Whenever you lose a vehicle to a fleet battle (any zone) this unit deals
+// 40k damage to the enemy base in this zone."
+//
+// "Any zone" means a battle Vengeful is NOT in, and no existing pass reaches
+// it. BYSTANDER_EFFECTS (Terawatt) is four times too narrow: lock only, forced
+// battles only, the defending side only, and the battle's own zone only.
+// Vengeful needs the RESOLVE phase — a loss is not known until then — on EVERY
+// battle, from ANY zone, on either side. That is DP8.
+describe('TG Vengeful — DP8, a resolve-phase bystander (wave 7)', () => {
+  const vengeful = (over = {}) => zoneEntry({
+    instanceId: 'ven1', name: 'Vengeful', faction: 'TG', vehicleType: 'sub',
+    materialCost: 160_000, meta: { onBattleEffect: 'vengefulBattle' }, playedOnTurn: 1, ...over,
+  })
+
+  // A battle in zone 1 that alice loses `losses` hulls to, with Vengeful
+  // sitting in whichever zone the caller names.
+  const battleLosing = (losses: number, vengefulZone: number) => {
+    const game = makeGame({ turnNumber: 3, activePlayer: 'alice' })
+    const ids: string[] = []
+    for (let i = 0; i < losses; i++) {
+      const id = `doomed${i}`
+      ids.push(id)
+      game.state.zones[0].cards.a.push(zoneEntry({ instanceId: id, name: `Doomed ${i}`, playedOnTurn: 1 }))
+    }
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe1', name: 'Foe', playedOnTurn: 1 }))
+    game.state.zones[vengefulZone - 1].cards.a.push(vengeful())
+    const ctx = makeCtx()
+    if (!declareForcedBattle(game, ctx, {
+      zoneId: 1, aggressor: 'a', attackerIds: ids, defenderIds: ['foe1'], cause: 'Test',
+    })) throw new Error('battle not declared')
+    const results: Record<string, number> = { foe1: 100 }
+    for (const id of ids) results[id] = 0
+    const submitted = applyAction(game, 'alice', { type: 'SUBMIT_BATTLE_REPORT', results, repairs: [] }, ctx)
+    if (!submitted.ok) throw new Error(submitted.error)
+    const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, ctx)
+    if (!decided.ok) throw new Error(decided.error)
+    return decided.game
+  }
+
+  // The whole point of the new dispatch: Vengeful is in zone 2, the battle is
+  // in zone 1, and it still fires.
+  it('fires on a battle in ANOTHER zone', () => {
+    const game = battleLosing(1, 2)
+    // 40k / BASE_DAMAGE_DIVISOR = 40 HP, and it lands on the enemy base in
+    // VENGEFUL's zone, not the battle's.
+    expect(game.state.zones[1].baseHp.b).toBe(960)
+    expect(game.state.zones[0].baseHp.b).toBe(1000)
+  })
+
+  // ⚠ The context's zoneId is the BATTLE's. Vengeful needs its own, so it
+  // re-derives it with findVehicle the way Braveheart does.
+  it('damages the base in Vengeful’s zone, never the battle’s', () => {
+    const game = battleLosing(1, 3)
+    expect(game.state.zones[2].baseHp.b).toBe(960)
+    expect(game.state.zones[0].baseHp.b).toBe(1000)
+  })
+
+  // ⚠ Ruling E-2: per vehicle lost, not per battle. The literal reading, and
+  // `casualties` is on the context.
+  it('E-2: two casualties deal 80, not 40', () => {
+    expect(battleLosing(2, 2).state.zones[1].baseHp.b).toBe(920)
+  })
+
+  it('does nothing when the actor lost no vehicle', () => {
+    const game = makeGame({ turnNumber: 3, activePlayer: 'alice' })
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'atk1', name: 'Attacker', playedOnTurn: 1 }))
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe1', name: 'Foe', playedOnTurn: 1 }))
+    game.state.zones[1].cards.a.push(vengeful())
+    const ctx = makeCtx()
+    declareForcedBattle(game, ctx, {
+      zoneId: 1, aggressor: 'a', attackerIds: ['atk1'], defenderIds: ['foe1'], cause: 'Test',
+    })
+    const submitted = applyAction(game, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT', results: { atk1: 100, foe1: 0 }, repairs: [],
+    }, ctx)
+    if (!submitted.ok) throw new Error(submitted.error)
+    const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, ctx)
+    if (!decided.ok) throw new Error(decided.error)
+    expect(decided.game.state.zones[1].baseHp.b).toBe(1000)
+  })
+
+  // Only the ENEMY's losses are the enemy's problem: bob losing a hull must
+  // not fire alice's Vengeful.
+  it('counts only the actor’s own casualties', () => {
+    const game = makeGame({ turnNumber: 3, activePlayer: 'alice' })
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'atk1', name: 'Attacker', playedOnTurn: 1 }))
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe1', name: 'Foe', playedOnTurn: 1 }))
+    game.state.zones[1].cards.a.push(vengeful())
+    const ctx = makeCtx()
+    declareForcedBattle(game, ctx, {
+      zoneId: 1, aggressor: 'a', attackerIds: ['atk1'], defenderIds: ['foe1'], cause: 'Test',
+    })
+    const submitted = applyAction(game, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT', results: { atk1: 100, foe1: 0 }, repairs: [],
+    }, ctx)
+    if (!submitted.ok) throw new Error(submitted.error)
+    const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, ctx)
+    if (!decided.ok) throw new Error(decided.error)
+    expect(decided.game.state.zones[1].baseHp.b).toBe(1000)
+  })
+
+  // A Vengeful that is IN the battle and survives is reached by the ordinary
+  // participant pass, so an ally dying beside it still fires it — and it must
+  // not be double-fired by the bystander pass on top.
+  it('fires exactly once for a Vengeful fighting in the battle itself', () => {
+    const game = battleLosing(1, 1)
+    expect(game.state.zones[0].baseHp.b).toBe(960)
+  })
+
+  // ⚠ Ruling E-2b. `participants` still holds a destroyed hull's entry when
+  // the resolve dispatch runs, so this is NOT free — the findVehicle guard is
+  // what enforces it.
+  it('E-2b: a Vengeful destroyed in that same battle fires nothing', () => {
+    const game = makeGame({ turnNumber: 3, activePlayer: 'alice' })
+    game.state.zones[0].cards.a.push(vengeful())
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe1', name: 'Foe', playedOnTurn: 1 }))
+    const ctx = makeCtx()
+    declareForcedBattle(game, ctx, {
+      zoneId: 1, aggressor: 'a', attackerIds: ['ven1'], defenderIds: ['foe1'], cause: 'Test',
+    })
+    const submitted = applyAction(game, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT', results: { ven1: 0, foe1: 100 }, repairs: [],
+    }, ctx)
+    if (!submitted.ok) throw new Error(submitted.error)
+    const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, ctx)
+    if (!decided.ok) throw new Error(decided.error)
+    expect(decided.game.state.zones[0].baseHp.b).toBe(1000)
+  })
+
+  // ⚠ Ruling E-3. baseStrikersIn excludes subs and the Submarine glossary says
+  // a sub "can never damage an enemy base" — but that rule governs BOMBARDMENT
+  // (ATTACK_ENEMY_BASE), and this is card-forced damage. Card text is
+  // authoritative (decision 1). The glossary is amended to match.
+  it('E-3: fires despite Vengeful being a submarine', () => {
+    const game = battleLosing(1, 2)
+    expect(findVehicle(game.state, 'ven1')!.entry.vehicleType).toBe('sub')
+    expect(game.state.zones[1].baseHp.b).toBe(960)
+  })
+
+  // ⚠ Ruling E-4, and it must answer the same way E-3 does or neither is
+  // defensible: ATTACK_ENEMY_BASE refuses over a Blocker, and this is not that
+  // handler.
+  it('E-4: fires despite an enemy Blocker in Vengeful’s zone', () => {
+    const game = makeGame({ turnNumber: 3, activePlayer: 'alice' })
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'doomed0', name: 'Doomed', playedOnTurn: 1 }))
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe1', name: 'Foe', playedOnTurn: 1 }))
+    game.state.zones[1].cards.a.push(vengeful())
+    game.state.zones[1].cards.b.push(zoneEntry({ name: 'Wall', keywords: [KEYWORDS.BLOCKER], playedOnTurn: 1 }))
+    const ctx = makeCtx()
+    declareForcedBattle(game, ctx, {
+      zoneId: 1, aggressor: 'a', attackerIds: ['doomed0'], defenderIds: ['foe1'], cause: 'Test',
+    })
+    const submitted = applyAction(game, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT', results: { doomed0: 0, foe1: 100 }, repairs: [],
+    }, ctx)
+    if (!submitted.ok) throw new Error(submitted.error)
+    const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, ctx)
+    if (!decided.ok) throw new Error(decided.error)
+    expect(decided.game.state.zones[1].baseHp.b).toBe(960)
+  })
+
+  // A card-forced consequence is not a zone activation — Eclipse alone stamps
+  // it, and only from its own text.
+  it('does not stamp lastActivatedTurn', () => {
+    expect(battleLosing(1, 2).state.zones[1].lastActivatedTurn).toBeNull()
+  })
+
+  it('calls checkVictory when a second base falls', () => {
+    const game = makeGame({ turnNumber: 3, activePlayer: 'alice' })
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'doomed0', name: 'Doomed', playedOnTurn: 1 }))
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe1', name: 'Foe', playedOnTurn: 1 }))
+    game.state.zones[1].cards.a.push(vengeful())
+    game.state.zones[1].baseHp.b = 40  // exactly one Vengeful hit left
+    game.state.zones[2].baseHp.b = 0   // one zone already lost
+    const ctx = makeCtx()
+    declareForcedBattle(game, ctx, {
+      zoneId: 1, aggressor: 'a', attackerIds: ['doomed0'], defenderIds: ['foe1'], cause: 'Test',
+    })
+    const submitted = applyAction(game, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT', results: { doomed0: 0, foe1: 100 }, repairs: [],
+    }, ctx)
+    if (!submitted.ok) throw new Error(submitted.error)
+    const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, ctx)
+    if (!decided.ok) throw new Error(decided.error)
+    expect(decided.game.state.zones[1].baseHp.b).toBe(0)
+    expect(decided.game.status).toBe('complete')
+  })
+
+  // ⚠ The opt-in flag is load-bearing, not bookkeeping — for exactly DP7's
+  // reason: dwgWatersEffect's router falls through to its claim branch on any
+  // context it does not recognise, so a broadcast would make it attempt a
+  // claim with no target zone on EVERY battle in the game.
+  it('dispatches only to registered members', () => {
+    expect(RESOLVE_BYSTANDER_EFFECTS.has('vengefulBattle')).toBe(true)
+    expect(RESOLVE_BYSTANDER_EFFECTS.has('dwgWatersEffect')).toBe(false)
+    expect(RESOLVE_BYSTANDER_EFFECTS.has('terawattJoin')).toBe(false)
+  })
+
+  it('leaves a non-member’s battle trigger untouched by the bystander pass', () => {
+    const game = makeGame({ turnNumber: 3, activePlayer: 'alice' })
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'doomed0', name: 'Doomed', playedOnTurn: 1 }))
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe1', name: 'Foe', playedOnTurn: 1 }))
+    // A non-participant carrying a NON-member battle trigger, in another zone.
+    game.state.zones[1].cards.a.push(zoneEntry({
+      instanceId: 'by1', name: 'Bystander', meta: { onBattleEffect: 't_deathWatch' }, playedOnTurn: 1,
+    }))
+    const ctx = makeCtx()
+    declareForcedBattle(game, ctx, {
+      zoneId: 1, aggressor: 'a', attackerIds: ['doomed0'], defenderIds: ['foe1'], cause: 'Test',
+    })
+    const submitted = applyAction(game, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT', results: { doomed0: 0, foe1: 100 }, repairs: [],
+    }, ctx)
+    if (!submitted.ok) throw new Error(submitted.error)
+    const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, ctx)
+    if (!decided.ok) throw new Error(decided.error)
+    expect(decided.game.state.log.join(' ')).not.toContain('t_deathWatch fired')
   })
 })

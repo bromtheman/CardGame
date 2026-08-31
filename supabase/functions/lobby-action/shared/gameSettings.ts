@@ -29,6 +29,13 @@ export const HERO_POWER_DISTANCE_MOD_M = 600
 // §3.4), so one surplus vehicle costs 40 of a default 1000 HP base.
 export const ONGOING_ATTRITION_DAMAGE_PER_VEHICLE = 40_000
 
+// TG Vengeful: "deals 40k damage to the enemy base in this zone". Its OWN
+// constant rather than a reuse of ONGOING_ATTRITION_DAMAGE_PER_VEHICLE, which
+// it equals only by coincidence — the same reasoning AMBUSH_DISTANCE_M records
+// below against the hero power. Materials, so it converts through
+// BASE_DAMAGE_DIVISOR: 40k is 40 HP of a default 1000.
+export const VENGEFUL_BASE_DAMAGE = 40_000
+
 // Ambush: "position your ships 600m closer to the enemy". Its own constant
 // rather than a reuse of the hero power's: the two are equal by coincidence,
 // and Ambush deliberately does NOT spend distanceModifiedBy (spec §7.3).

@@ -4,7 +4,9 @@ import type {
   BattleCasualty, BattleContext, EngineContext, EngineGame, Side, ZoneCardEntry,
 } from './engineTypes.ts'
 import { discardCard, discardSnapshotOf, otherSide, ownerSideOf, zoneById } from './gameEngine.ts'
-import { BYSTANDER_EFFECTS, DEPLOY_WATCHER_EFFECTS, effectFor, effectName } from '../effects/registry.ts'
+import {
+  BYSTANDER_EFFECTS, DEPLOY_WATCHER_EFFECTS, RESOLVE_BYSTANDER_EFFECTS, effectFor, effectName,
+} from '../effects/registry.ts'
 
 // DP2 (spec §4.3, and its seven "DP2 departure" subsections). This module owns
 // the whole battle-trigger dispatch and registers no handler of its own: the
@@ -253,6 +255,41 @@ export function dispatchBattleResolve(
       ? TRIGGERS.ON_BATTLE_VICTORY
       : outcome.wonBy[otherSide(side)] ? TRIGGERS.ON_BATTLE_DEFEAT : null
     if (sugar) fire(game, ctx, entry, side, sugar, context)
+  }
+
+  // DP8 (spec §4.3, "DP8 as wave 7 built it"). The second half of DP2
+  // departure 2: a hull that reacts to a battle it is NOT in, at RESOLVE.
+  //
+  // dispatchBattleLock's bystander pass cannot serve it — that one fires only
+  // at lock, only on a forced battle, only for the defending side, and only in
+  // the battle's own zone. TG Vengeful's "whenever you lose a vehicle to a
+  // fleet battle (ANY zone)" needs all four widened at once.
+  //
+  // Snapshotted before dispatching, exactly as the lock pass is and for the
+  // same reason: an effect that puts a hull on the board must not then be
+  // reached by this same loop.
+  //
+  // Membership in RESOLVE_BYSTANDER_EFFECTS is the whole gate. Broadcasting
+  // would hand dwgWatersEffect a context its router does not recognise, and it
+  // falls through to its claim branch — a spurious claim attempt with no
+  // target zone on every battle in the game.
+  const bystanders: { entry: ZoneCardEntry; side: Side }[] = []
+  for (const zone of game.state.zones) {
+    for (const side of ['a', 'b'] as Side[]) {
+      for (const entry of zone.cards[side] as ZoneCardEntry[]) {
+        if (participants.has(entry.instanceId)) continue
+        const name = effectName(entry, TRIGGERS.ON_BATTLE_EFFECT)
+        if (name !== null && RESOLVE_BYSTANDER_EFFECTS.has(name)) bystanders.push({ entry, side })
+      }
+    }
+  }
+  for (const { entry, side } of bystanders) {
+    fire(game, ctx, entry, side, TRIGGERS.ON_BATTLE_EFFECT, {
+      // zoneId is the BATTLE's, not the bystander's — an effect that needs its
+      // own re-derives it with findVehicle, the way Braveheart does.
+      phase: 'resolve', zoneId, isDefender: side !== aggressor, isParticipant: false,
+      forced: false, survived: false, won: outcome.wonBy[side], casualties,
+    })
   }
 }
 
