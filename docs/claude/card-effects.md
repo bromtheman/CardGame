@@ -361,19 +361,21 @@ Six guard blind spots remain open and are not going to close on their own:
    ahead of seeding the card that uses it, grep the seed source for the name
    before calling the task done.
 
-6. ⚠ **Nothing compares the generated SQL to the LIVE `cards` table** — the
-   widest of the six, found in wave 5 by asking production what it actually
-   holds. G1/G2/G3 read `loadSeedData()`, and `seedDataSync.test.ts` compares
-   the source to `seed_data.sql`; the chain stops there. Production currently
-   serves **133** built-in cards where the seed produces **123**, and seven of
-   them name eight effects that do not exist (`balmungOnPlay`,
-   `blockadeEffect`, `nothungOnPlay`, `victoriaActivate`, `basherOnDeath`,
-   `harbringerBattle`, `judgementActivate`, `judgementCostModifier`). Six of
-   those cards appear in no commit in this repo at all. They play vanilla and
-   log the note, so nothing is broken — but they are the §1 audit's original
-   complaint, alive and invisible to every check. The seed is an idempotent
-   upsert on `id`, so applying it corrects a *drifted* row (Victoria); it
-   cannot remove an orphan the source never had.
+6. **Nothing compares the generated SQL to the LIVE `cards` table.** G1/G2/G3
+   read `loadSeedData()`, and `seedDataSync.test.ts` compares the source to
+   `seed_data.sql`; the chain stops there. So the live table can hold rows your
+   checkout does not, and from inside the repo that is indistinguishable from
+   data nobody owns.
+
+   ⚠ **This one comes with a warning about how to read it.** Wave 5 hit exactly
+   that divergence — 133 live built-ins against its own 123 — and reported it as
+   "seven cards the repo has never seen", the widest blind spot yet. It was
+   none of those things: a **balance pass in an unmerged branch** had seeded
+   them deliberately, effects left out of scope on purpose and all twelve
+   recorded in `KNOWN_GAPS` below. `git log -S` came up empty only because the
+   search ran on one branch. **A difference between your checkout and
+   production is a question, not a finding** — `git fetch` and
+   `git log --all -S <name>` answer it before you write it up.
 
 Two older ones are closed: a partly-built card passing G1/G2 despite
 incomplete text (wave 2's `PARTIAL` map above), and a `seed_data.sql` that had
@@ -391,10 +393,9 @@ primitives that already exist (`SS:Nothung`, `SS:Balmung`, `WF:Basher`,
 `WF:Harbringer`); the other eight need engine work first. Whoever closes one
 deletes its entry and decrements that literal in the same commit.
 
-Four of those twelve are one-liners over primitives that already exist
-(`SS:Nothung`, `SS:Balmung`, `WF:Basher`, `WF:Harbringer`); the other eight
-need engine work first. Whoever closes one must delete its `KNOWN_GAPS` entry
-and decrement the `toHaveLength` literal in the same commit.
+Wave 6 is the wave that closes them —
+`docs/superpowers/plans/2026-08-30-effect-coverage-wave-6-handoff.md` has the
+card-by-card breakdown and the engine work each needs.
 
 ## Play-time cost modifiers
 
