@@ -194,11 +194,26 @@ silently skips the deploy).
 
 Three things follow, and the first is a real ordering risk:
 
-1. **The seed must reach production before or with the code.** Seven cards'
-   `meta` changed. Code deployed ahead of the seed would find Albacore with no
-   `aircraftLock`, Victoria with no `activateMaterialCost`, and Purifier with
-   neither key — every one of them silently inert, and no guard would say so,
-   because the guards read the repo rather than the live table (blind spot 6).
+1. ⚠ **The seed will NOT be applied by merging, and this wave needs it applied.**
+   Merging to `main` runs migrate + deploy — it **never reseeds card data**.
+   The CLI seeds from `[db.seed].sql_paths` (default `supabase/seed.sql`); this
+   repo has no such file and `config.toml` deliberately carries no `[db.seed]`
+   block, so applying card data is a **manual `execute_sql` of
+   `supabase/seed/seed_data.sql`**.
+
+   Seven cards' `meta` changed this wave, which makes that step load-bearing
+   rather than a formality. Merge without it and the deployed code finds
+   Albacore with no `aircraftLock`, Victoria with no `activateMaterialCost`,
+   and Purifier with neither key — **every one of them silently inert**, with
+   no error and no log line, because the guards read the repo rather than the
+   live table (blind spot 6). The four cards whose behaviour lives in a
+   registry name (Basher, Nothung, Balmung, Harbringer) would work; the ones
+   whose behaviour is seeded data would not, and the failure would look like
+   nothing at all.
+
+   There is precedent for exactly this being forgotten: commit `8e124b3`
+   ("Loggerhead drops Scrappy", 2026-08-27) sat on `main` for days while
+   production still carried the old keywords.
 2. **The catalog probe is unproven for four new names.** `nothungOnPlay`,
    `balmungOnPlay`, `harbringerBattle`, `victoriaActivate` and `blockadeEffect`
    all carry `{ needsCatalog: true }`, asserted at runtime by unit tests — but
@@ -211,10 +226,13 @@ Three things follow, and the first is a real ordering risk:
 
 ### The post-merge run, in the order it should happen
 
-1. Confirm the seed is applied, then that `game-action` incremented past
-   **v14** — and verify **by content**, not file count: type-only imports are
+1. **Apply `supabase/seed/seed_data.sql` by hand** (`execute_sql`) — merging
+   does not do it (see above) — then confirm `game-action` incremented past
+   **v14**, and verify **by content**, not file count: type-only imports are
    erased in transpilation, so a correct deploy legitimately reads back with
-   fewer modules.
+   fewer modules. A quick seed check that does not need the whole file:
+   `select name, meta from cards where name in ('Albacore','Victoria','Purifier')`
+   should show `aircraftLock`, `activateMaterialCost` and both Purifier keys.
 2. Grep the deployed bundle for `dispatchDeployWatchers`, `blockadeEffect`,
    `aircraftLock`, `lostBattleOnTurn`, `activateMaterialCost`.
 3. Drive one game per faction pair. **Blockade deserves its own pass**: prove
