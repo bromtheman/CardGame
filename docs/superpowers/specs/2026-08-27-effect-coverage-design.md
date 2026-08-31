@@ -276,7 +276,11 @@ built-ins) and waves 3–4's do too, but **a choice over your own hand or deck
 would leak it**, and the private-options mechanism that would need does not
 exist. Check this before adding a choice.
 
-### 4.3 Six dispatch points
+### 4.3 Seven dispatch points
+
+DP1–DP6 were this spec's own; **DP7 was added in wave 6**, for a card outside
+it (SS Blockade, from the 2026-08-30 balance pass). It is listed here because
+the dispatch machinery is this section's, whatever seeded the card.
 
 | # | Point | Shape |
 |---|---|---|
@@ -286,6 +290,7 @@ exist. Check this before adding a choice.
 | DP4 | Choice | `state.pendingEffect`, built in wave 2 — see §4.2 for the shipped shape, freeze rule and resume mechanics |
 | DP5 | Rest-of-turn riders | **Two homes, split by what the rider does** — this row originally predicted `state.scheduled[]` alone, and wave 5 found that serves only one of its four riders. A rider that changes how a battle or a placement in **one zone** resolves lives on `state.zoneEffects` (Ambush, Ongoing Attrition, Sub Killer); a rider that watches **one vehicle** across the turn lives on `state.scheduled[]` (Sabotage), exactly as written here. See "DP5 as wave 5 built it" below |
 | DP6 | A **vehicle** whose effect targets something outside its own zone | The two gaps recorded in `architecture.md`. `PLAY_CARD_TARGETING_CARD_IN_HAND` gains an optional `zoneId` and accepts a vehicle carrying `playOnCardEffect`: the vehicle deploys to the zone (with `additionalSpawns` and `resourceSurge`), then the effect fires, and the card is **not** `spendCard`'d. **Wave 3 built the hand direction only** — see departure 4 |
+| DP7 | A zone rider that fires when the **opponent deploys** into the zone | `dispatchDeployWatchers(game, ctx, zoneId, actor)` in `battleTriggers.ts`, called from **both** `PLAY_CARD_TO_ZONE` and `PLAY_CARD_TARGETING_CARD_IN_HAND` — the two handlers that share `deployVehicle`. Fires `state.zoneEffects` riders on that zone whose `side !== actor`, with a `BattleContext` carrying the new `phase: 'deploy'`. **Built in wave 6**; SS Blockade is the only customer. See "DP7 as wave 6 built it" below |
 
 Two rulings fall out:
 
@@ -615,6 +620,94 @@ mint a payload card for needs `{ needsCatalog: true }` **even if the effect
 itself never reads the catalog** — the dispatcher's own `ctx.catalog` lookup is
 what fails otherwise, silently, in production only.
 
+#### DP7 as wave 6 built it
+
+Every rider dispatch before this one hangs off a battle (`dispatchBattleLock`),
+a bombardment (`dispatchZoneActivation`, `dispatchZoneInterception`) or the
+turn end (`turnEndRiders`). **None fires on a play.** SS Blockade — "choose a
+zone, whenever the opponent plays a vehicle into that zone while you have at
+least one vehicle there, a fleet battle immediately begins in that zone; if you
+lose with no surviving vehicles, the blockade goes away, otherwise it
+remains" — needs exactly that, and it is the only card in the balance pass that
+needs a new dispatch point at all.
+
+It introduces **no new trigger key**. Blockade's clauses ride its
+`playOnZoneEffect` name through `state.zoneEffects`, the DWG Waters shape —
+one registry name serving every occasion, told apart by the payload — so G3's
+`REACHABLE_TRIGGERS` needs no row and the trap that bit waves 2, 3 and 4 does
+not bite this one. (The balance pass's own `ON_BATTLE_DEFEAT` key was dropped
+before seeding, correctly: an ability is `spendCard`'d on resolution and never
+enters `zone.cards`, so no battle trigger can ever reach one.)
+
+Eight rulings:
+
+1. **Both play handlers dispatch, not one.** `PLAY_CARD_TO_ZONE` is the obvious
+   seam; `PLAY_CARD_TARGETING_CARD_IN_HAND` is the second one, because it
+   deploys vehicles too through the shared `deployVehicle` (DP6, departure 4).
+   A dispatch added to only one of them is a card that works until someone
+   plays Excalibur.
+2. **The dispatch is opt-in, not broadcast.** Only riders whose effect
+   registered `{ deployWatcher: true }` are fired — the same mechanism and the
+   same reasoning as DP2's `battleBystander` flag: because the pass dispatches
+   only to members, no other rider needs a phase guard it could silently
+   forget. This is load-bearing rather than tidy. `dwgWatersEffect`'s router
+   falls through to its **claim** branch for any phase it does not recognise,
+   so broadcasting an unfamiliar `'deploy'` context would make it try to claim
+   a zone with no `targetZoneId` and log a spurious failure on every enemy
+   deploy into a zone it holds.
+3. **The blockader is the aggressor.** Every forced battle in the codebase
+   names the effect's owner as aggressor — Braveheart, Martyr Attack, Gang Up,
+   Air Strafe, Orbit Flank, Eclipse. DWG Waters' clause 3 is the sole
+   inversion, and it inverts for a reason that does not apply here: there the
+   enemy's own action *was already an attack* (a bombardment) being
+   intercepted, so the aggression pre-existed. Deploying a vehicle is not an
+   attack. This is not cosmetic — `battle.aggressor` decides `isDefender` for
+   every DP2 trigger in that battle, so the deploying player becomes the
+   **defender** of a battle on their own turn, and their defensive triggers
+   fire. That is the trap the card describes.
+4. **It is a fleet battle: every eligible hull on both sides in that zone
+   fights.** The text says *fleet* battle, the trigger condition frames a force
+   ("while you have at least one vehicle there"), and the removal condition
+   only reads correctly if everything was at risk. The **aggressor's** side
+   excludes `INOFFENSIVE` hulls, per §7.3's Gang Up ruling ("Inoffensive is
+   precisely *cannot attack*, and a forced battle is not a licence to break
+   it"). The defender's side has no such exclusion: Inoffensive means it cannot
+   attack, not that it cannot be attacked, and `ATTACK_ENEMY_FLEET` already
+   lets any hull be targeted.
+5. **"No surviving vehicles" is read off the post-resolution board** —
+   `zone.cards[blockader].length === 0` at continuation time. §7.3's Trebuchet
+   ruling blesses exactly this, and it is **not** wave 4's mistake: that was
+   re-deriving a win from a roster stashed at *declare* time, which a late
+   joiner made stale. Reading the current board cannot go stale. It is also the
+   only route that works — `contextForResolve` hands a continuation `won` for
+   its **own** side, which means "the enemy has no survivors", the opposite of
+   what this clause asks, and `survived` is meaningless for an ability card
+   that was never a participant. With ruling 4 above, "no vehicles left in the
+   zone" and "lost with no surviving vehicles" are the same statement.
+6. **A blockade that does not spring is not spent.** With no blockader hull in
+   the zone, no battle begins and the rider stays. The card removes it on a
+   loss and on nothing else.
+7. **A Blockade battle is not a zone activation** (`declareForcedBattle`
+   without `activatesZone`, per this section's standing ruling; Eclipse remains
+   the sole exception), so the deploying player may still attack or bombard
+   there later the same turn with whatever survived.
+8. **One battle per play, and one per zone.** `additionalSpawns` and surge
+   copies all arrive inside a single `deployVehicle` call, so the dispatch
+   fires once per *play*, not once per hull. A rider that finds
+   `state.activeBattle` already set returns without declaring (the
+   `dispatchZoneInterception` precedent), and a second Blockade claim on a zone
+   the same side already holds is refused at play time (the `ambushClaim`
+   precedent) so the play is not spent on a no-op.
+
+⚠ **Blockade needs `{ needsCatalog: true }`** even though it reads no catalog
+itself — `fireRider` mints its payload card from `ctx.catalog` by `cardName`,
+the same trap DP5's closing paragraph describes.
+
+⚠ **The rider is re-entered by its own battle's lock pass.**
+`declareForcedBattle` ends in `dispatchBattleLock`, which iterates every
+`zoneEffects` rider on that zone — including the Blockade that just declared.
+`blockadeEffect` must no-op on any phase but `'deploy'`, or it recurses.
+
 ### 4.4 Battle summons
 
 `ActiveBattle` gains `summons: ZoneCardEntry[]`. Summoned combatants live only
@@ -738,6 +831,60 @@ meta.resourceSurge = { materialsAtLeast: 140000, extraSpawns: 1 } // Orbit
 
 Exactly one of `materialsOver` / `materialsAtLeast` is present, preserving each
 card's own comparator. Resources are read **before** payment.
+
+#### 4.6 as wave 6 extended it — two departures
+
+The 2026-08-30 balance pass added two cards the shape above cannot express.
+Both are extensions of the same condition, not a second mechanism.
+
+**Departure 1 — a surge may RAISE the price.** Chrysaor prints "while you have
+more than 200k resources, this card costs 100k more and spawns in a second
+Chrysaor". `extraSpawns` already covers its second clause; the first needs
+`costDelta?: number`, summed into `effectiveCostInGame` when the condition
+holds. It stays a purchase-price mechanic — `effectiveMaterialCostOf` is
+untouched, exactly as decision 8 requires.
+
+**Departure 2 — a surge may GRANT hull keywords, which this section originally
+ruled out.** §4.6 above says a surge is "pricing only … the hulls that land
+keep their printed keywords". Paladin prints "while you have less than 240k
+materials, this can be played with halfcost and temporary", and `temporary` is
+unambiguously a **hull** property: the cull in `endTurn` reads it off the
+board, so a Paladin that got it only at price time would never despawn and the
+card's whole drawback would be missing.
+
+The pair is not split. `halfCost` and `temporary` both land on the hull,
+because the LH hero power **`flyby`** is the direct precedent for exactly that
+pair: it stamps both onto a card in hand, and both travel onto the deployed
+hull. Pricing with one and stamping the other would be a rule with no
+precedent and no text behind it. The consequence is accepted openly: a surged
+Paladin deals `floor(120000 / 1000) = 120` base damage rather than 240, and
+repairs at half price.
+
+Two more rulings fall out of the pair:
+
+- **A surge with no `grantKeywords` of its own is a Half-Cost *suppression*;
+  one with `grantKeywords` adds them instead.** One rule, two arms. This is
+  what preserves PredatorX and Orbit byte-for-byte — neither carries
+  `grantKeywords`, so both still lose Half-Cost — while giving Paladin the
+  inverse with no seed change to either older card.
+- **The grant is automatic, not offered.** "**Can** be played with" describes
+  the legality the condition unlocks, not a per-play election. An offer would
+  freeze the game on every Paladin, and declining is strictly worse for the
+  chooser alone — the same test §7.3 applies to Ambush and to DWG Waters'
+  clause 3.
+
+The shape, after both departures — `materialsUnder` is the third comparator,
+and no card carries more than one:
+
+```js
+meta.resourceSurge = { materialsOver: 200000, extraSpawns: 1, costDelta: 100000 }   // Chrysaor
+meta.resourceSurge = { materialsUnder: 240000, grantKeywords: ['halfCost', 'temporary'] } // Paladin
+```
+
+⚠ **Every field is read BEFORE `pay()`**, which both play handlers already do
+for `extraSpawns`. Chrysaor is the card that would expose a regression: its
+surged price is 200k against a `> 200k` condition, so a post-payment re-read
+flips its own condition off.
 
 ### 4.7 Two infrastructure repairs
 
@@ -1121,6 +1268,112 @@ Added in wave 5:
   a fleet" guard for the same reason clause 2 does: DWG Waters' clause 3
   declares a battle whose only defender is a summoned guardian, and one zone
   can hold both markers.
+
+Added in wave 6:
+
+Wave 6 is not a wave of this spec — its twelve cards come from the 2026-08-30
+balance pass, recorded in `KNOWN_GAPS` rather than in §8's delivery table. The
+spec's *machinery* is still binding for them, so their rulings are filed here
+with the rest.
+
+- **A spawned hull keeps every printed trigger except `onPlayEffect`.**
+  Nothung's "also create a friendly Sacrilego in that zone" mints a hull that
+  prints `onBattleEffect: sacrilegoBattle`, and that trigger **does** fire when
+  the Sacrilego later fights. §7.4 skips `onPlayEffect` and nothing else, so
+  this is the existing rule applied rather than a new one — but it is worth
+  saying out loud, because it is why the card names Sacrilego rather than a
+  vanilla hull, and the alternative is discovering it in a battle report.
+- **"Reduce its cost to zero" is a price, not a rewrite.** Balmung mints a
+  Hydra into hand carrying `costDelta: -230000` (its printed `materialCost`),
+  never a minted `materialCost: 0`. `costDelta` never reaches
+  `effectiveMaterialCostOf` (§4.5), so the free Hydra still deals its printed
+  base damage and still costs its printed repair — which is what "reduce its
+  **cost**" says; minting at zero would silently make it harmless as well as
+  free. `loggerheadOnDeath` does mint at zero and is **not** the precedent to
+  copy: its copy goes into a *deck*, where nothing but the price ever reads
+  that number.
+- **Balmung's log line does not name the Hydra.** The card's own public text
+  already reveals it, so naming it would leak nothing new — but the
+  hidden-hand log rule is absolute, and `drawFromPool` already sets the
+  precedent ("adds a card to their hand").
+- **Harbringer's "whenever this ship is in fleet combat" reads to every battle
+  it fights** — offensive, defensive and forced alike, per §7.3's Catshark
+  ruling. It guards on `phase === 'lock'` and `isParticipant` with no
+  `isDefender` check. It is a **participant, not a rider**: DP2's lock roster
+  already reaches participants on both sides, so it needs no `zoneEffects`
+  entry and no rider dispatch. It still needs `{ needsCatalog: true }`, because
+  it reads `ctx.catalog` for its own pool.
+- **Harbringer's pool is WF **ships** costing `<= 100k`**, inclusive, on
+  printed `materialCost`. Measured against the seed, that is exactly two cards
+  — Buzzsaw (80k) and Earth Raker (50k) — so the empty-pool path is
+  unreachable today and a filter typo would be invisible; the membership is
+  pinned by a seed-backed assertion. The type filter is load-bearing rather
+  than decorative: `The Repentance` is a WF **plane** at exactly 100k and is
+  excluded by it alone.
+- **Judgement's discount reads the whole board; its duel reads one zone.**
+  "While your opponent **has** a submarine or airship" names no zone, and the
+  card's own second sentence says "in this zone" explicitly. The contrast
+  inside one card is the evidence.
+- **An activation price is charged flat.** `activateCpCost` and its new sibling
+  `activateMaterialCost` are not run through `effectiveCostInGame`: Half-Cost
+  and `costModifier` are *play*-time purchase mechanics (§4.5, §4.6), and
+  activating is not playing (DP1).
+- **Victoria's chain is per-hull, per-turn, and bounded by materials.**
+  Spawning is not playing, so the spawned Victoria carries its printed
+  `onActivate` + `activateMaterialCost`, and DP1 imposes no freshly-deployed
+  restriction — so it may be activated the same turn it appears. This is **not**
+  Trebuchet's unbounded-chain problem (corrected above): there the repeat was
+  free and Dryad replaced its own casualty, so nothing narrowed; here every
+  link costs a further 200k against income that is *set* to
+  `floor(turnNumber) × MATERIALS_PER_TURN`, which is a hard per-turn bound. No
+  cap is invented, because the card prints none and the material cost already
+  is one.
+- **Victoria re-derives its own zone and never trusts `action.zoneId`.**
+  `ACTIVATE_VEHICLE` passes the client-supplied `zoneId` straight through as
+  `targetZoneId`. Braveheart is the precedent: find the hull by
+  `findVehicle(card.instanceId)` and use *its* zone.
+- **Chrysaor's surge raises the play price only.** "Costs 100k more" is a
+  purchase-price mechanic like every other, so `effectiveMaterialCostOf` is
+  untouched and base damage, repairs and in-battle resources still read 100k.
+- **Albacore and Tarpon restrict THEIR OWN CONTROLLER.** The text says "**you**
+  may not play any other aircraft into this zone". Three reasons to read the
+  pronoun literally: decision 1 makes card text authoritative and "you" is
+  unambiguous; `AIR_SCREEN` already exists as the enemy-facing version, so
+  seeding a second key that did the same thing would be redundant; and both
+  cards are `FRAGILE`, which is drawback-shaped rather than weapon-shaped. The
+  alternative reading is recorded and rejected — if playtesting overturns it,
+  the change is one predicate, because the rule is read off `data` rather than
+  off an effect name (the `blocksFaction` precedent).
+- **"Aircraft" is `plane` + `airship`** — exactly the pair `screenBlocks`
+  already treats as air, reusing that predicate rather than a second one.
+  "Any **other** aircraft" needs no mechanism: `legalZonesFor` prices a card in
+  *hand* against a zone that already holds the locking hull, so the hull can
+  never block itself, while a second Albacore into the same zone is blocked.
+- **The aircraft lock reaches plays and nothing else.** `additionalSpawns`
+  copies, `resourceSurge` extras, summons and `MOVE_VEHICLE` / Rapid
+  Redeployment all bypass placement legality (§7.4). The card says "play", and
+  Sub Killer's block already takes the same latitude.
+- **Purifier's "the previous turn" means the last full round, current turn
+  included** — `lostBattleOnTurn >= turnNumber - 1`. The turn counter moves in
+  half steps, so the strictly-previous half-turn is the *opponent's*, and
+  reading it that way would mean only a **defensive** loss ever qualified — an
+  arbitrary restriction the text does not print. The fiction is "your wreckage
+  is still floating there", and wreckage from an attack you lost on your own
+  last turn counts as much as wreckage from a defence. Wave 5's ruling that
+  "the turn" is read from the actor's own frame already points here: the
+  actor's previous turn began at `turnNumber - 1`. A loss on the current turn
+  is fresher still, so the window includes it.
+- **Any battle resolved through `DECIDE_BATTLE_REPORT` counts as a lost fleet
+  battle**, forced ones included, in either role. §7.3's Catshark and Recurring
+  Threat rulings both point the same way. A **bombardment** is not a battle and
+  records nothing; a **draw** records nothing for either side.
+- **"Does no damage to the enemy base" is a `baseStrikersIn` exclusion, not
+  `INOFFENSIVE`.** `INOFFENSIVE` also means "cannot attack a fleet", which
+  Purifier can. Excluding it from `baseStrikersIn` also excludes it from
+  `dispatchBaseAttackVictory`, which is right: a hull that dealt no damage did
+  not "inflict damage to the enemy base" for Plunderer's purposes. A zone
+  holding only Purifiers bombards for 0, which `ATTACK_ENEMY_BASE` already
+  refuses with "No vehicles able to strike".
 
 ### 7.4 Spawning is not playing
 
