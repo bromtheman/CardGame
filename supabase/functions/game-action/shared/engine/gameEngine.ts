@@ -227,7 +227,14 @@ export function discardSnapshotOf(card: CardInstance, controller: Side): Snapsho
     instanceId: _instanceId, playedOnTurn: _p, movedOnTurn: _m, activatedOnTurn: _a, ...snapshot
   } = card as ZoneCardEntry
   const owner = ownerSideOf(card, controller)
-  const { costDelta: _costDelta, ...withoutCostDelta } = snapshot.meta
+  // `factoryEscort` (wave 7) comes off for exactly costDelta's reason: it is a
+  // per-INSTANCE grant, stamped onto one hull on the board by a Havoc/Mirth
+  // Factory that has since been spent. Left on, it would ride into
+  // state.destroyed and — through reshuffleDiscard — back into the deck, so a
+  // Factory'd hull would return PERMANENTLY upgraded, and again after every
+  // later death. This is the strip list the comment above warns about; nothing
+  // in TypeScript would have caught the omission.
+  const { costDelta: _costDelta, factoryEscort: _factoryEscort, ...withoutCostDelta } = snapshot.meta
   snapshot.meta = withoutCostDelta
   if (owner !== controller) {
     const { ownerSide: _ownerSide, ...meta } = snapshot.meta

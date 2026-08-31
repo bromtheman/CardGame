@@ -17,6 +17,17 @@ import {
 // seeded cards when wave 4 opened, so the wave authored the dispatch and the
 // seed data together.
 
+// The per-entry meta key a Havoc/Mirth Factory stamps onto its target (wave
+// 7). Deliberately OUTSIDE TRIGGERS, so G3 never inspects it and HandBar needs
+// no change; its VALUE is the Factory effect's own registry name, which is what
+// makes the game-action catalog probe load a catalog for it — that probe scans
+// every meta value for a CATALOG_EFFECTS member regardless of key, and the
+// Factory card itself was spent turns ago.
+//
+// ⚠ It is a per-instance stamp, so it MUST be named in discardSnapshotOf's
+// strip list — see the comment there.
+export const FACTORY_ESCORT_KEY = 'factoryEscort'
+
 export interface BattleParticipant { entry: ZoneCardEntry; side: Side }
 export interface BattleOutcome { wonBy: Record<Side, boolean>; survived: Set<string> }
 
@@ -116,7 +127,18 @@ export function dispatchBattleLock(game: EngineGame, ctx: EngineContext, forced:
   })
 
   for (const { entry, side } of lockRoster(game)) {
-    fire(game, ctx, entry, side, TRIGGERS.ON_BATTLE_EFFECT, context(side !== battle.aggressor, true))
+    const own = context(side !== battle.aggressor, true)
+    fire(game, ctx, entry, side, TRIGGERS.ON_BATTLE_EFFECT, own)
+    // Wave 7's per-HULL rider (spec §4.4). state.zoneEffects is per-ZONE, so
+    // the Factories stamp their own registry name onto the targeted hull under
+    // meta.factoryEscort, and it is dispatched here by the same `fire` — a
+    // custom meta key rather than a TRIGGERS one, which is the whole of what
+    // lets a hull carry BOTH its own printed battle trigger and an escort.
+    // (The handoff's alternative — overwriting onBattleEffect — would have had
+    // to refuse a target that already carried one, and could never have been
+    // stripped in discardSnapshotOf, because Obelisk and Horror carry that key
+    // as card data.)
+    fire(game, ctx, entry, side, FACTORY_ESCORT_KEY, own)
   }
 
   if (forced) {

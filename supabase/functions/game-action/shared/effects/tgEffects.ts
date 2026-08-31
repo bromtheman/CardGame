@@ -3,9 +3,10 @@ import {
 } from './primitives.ts'
 import { joinBattle } from '../engine/battleDeclare.ts'
 import { checkVictory, copyMeta, findVehicle, otherSide } from '../engine/gameEngine.ts'
-import { returnToHand, sacrificeEntry } from '../engine/battleTriggers.ts'
+import { FACTORY_ESCORT_KEY, returnToHand, sacrificeEntry } from '../engine/battleTriggers.ts'
 import { BASE_DAMAGE_DIVISOR, KEYWORDS, VENGEFUL_BASE_DAMAGE } from '../gameSettings.ts'
 import type { ZoneCardEntry } from '../engine/engineTypes.ts'
+import type { EffectFn } from './registry.ts'
 import { registerEffect } from './registry.ts'
 
 // TG built-in card effects (wave 7).
@@ -211,7 +212,10 @@ registerEffect('horrorBattle', ({ game, actor, ctx, card, battle }) => {
   const copy: ZoneCardEntry = {
     ...found.entry,
     instanceId: ctx.newId(),
-    meta: copyMeta(found.entry.meta),
+    // The escort is a per-instance grant on the hull the Factory targeted, so
+    // a copy does not inherit it — the same reasoning discardSnapshotOf uses
+    // to keep it out of the discard.
+    meta: (({ [FACTORY_ESCORT_KEY]: _escort, ...rest }) => rest)(copyMeta(found.entry.meta)),
     keywords: [...found.entry.keywords],
     playedOnTurn: game.turnNumber,
     movedOnTurn: null,
@@ -292,3 +296,61 @@ registerEffect('vengefulBattle', ({ game, actor, card, battle }) => {
   checkVictory(game)
   return true
 }, { resolveBystander: true })
+
+// "Target friendly robotic vehicle. Whenever that vehicle is engaged in a
+// fleet combat, spawn a Havoc/Mirth swarm to fight along side it."
+//
+// state.zoneEffects is per-ZONE. This is per-HULL, which is new — and the
+// target is a live ZoneCardEntry with its own meta, so the trigger is STAMPED
+// onto it under `factoryEscort`.
+//
+// ⚠ THE VALUE IS THE EFFECT'S OWN REGISTRY NAME, not the swarm's card name,
+// and that is load-bearing three times over:
+//
+//   1. The game-action catalog probe scans every meta VALUE for a
+//      CATALOG_EFFECTS member, regardless of key. The Factory card is spent
+//      turns before the escort fires, so nothing else in play names the
+//      effect — a card-name value would mean no catalog, and the escort would
+//      die in production only, with every unit test green.
+//   2. dispatchBattleLock dispatches it with the same `fire` helper the
+//      printed triggers use, so there is no new dispatch machinery at all.
+//   3. Each Factory's own name selects its own swarm, so one implementation
+//      serves both cards without a second lookup table.
+//
+// ⚠ A DISTINCT KEY rather than overwriting the target's `onBattleEffect`, which
+// the handoff proposed. Three things fall out: a hull may carry BOTH its own
+// printed battle trigger and an escort (Obelisk does, and there is a test that
+// it summons twice), no refusal branch is needed for an already-triggered
+// target, and — the decisive one — `factoryEscort` CAN be named in
+// discardSnapshotOf's strip list, whereas `onBattleEffect` never could, because
+// Obelisk and Horror carry it as printed card data that must survive death.
+//
+// ⚠ Ruling E-5: PLAY_CARD_TARGETING_CARD_ON_FIELD checks only
+// findVehicle(targetInstanceId) — NOT ownership — so this validates own-side
+// AND robotic itself, or either Factory could be played onto an enemy hull.
+function factory(effectName: string, swarmName: string): EffectFn {
+  return ({ game, actor, ctx, card, battle, targetInstanceId }) => {
+    // Escort half: dispatched at battle lock off the stamp. `battle` is the
+    // only thing distinguishing the two entries — dwgWatersEffect's shape.
+    if (battle) {
+      if (battle.phase !== 'lock') return true
+      const summons = summonHulls(game, ctx, swarmName, 1)
+      if (!summons) return false
+      const [hull] = summons
+      if (!joinBattle(game, actor, hull.instanceId, hull)) return false
+      game.state.log.push(`A ${swarmName} joins the battle alongside ${card.name}`)
+      return true
+    }
+    // Play half: validate, then stamp.
+    if (typeof targetInstanceId !== 'string') return false
+    const found = findVehicle(game.state, targetInstanceId)
+    if (!found || found.side !== actor) return false
+    if (!found.entry.keywords.includes(KEYWORDS.ROBOTIC)) return false
+    found.entry.meta = { ...found.entry.meta, [FACTORY_ESCORT_KEY]: effectName }
+    game.state.log.push(`${card.name} is assigned to ${found.entry.name}`)
+    return true
+  }
+}
+
+registerEffect('havocFactoryEffect', factory('havocFactoryEffect', 'Havoc Swarm'), { needsCatalog: true })
+registerEffect('mirthFactoryEffect', factory('mirthFactoryEffect', 'Mirth Swarm'), { needsCatalog: true })

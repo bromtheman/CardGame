@@ -5279,3 +5279,177 @@ describe('TG Vengeful — DP8, a resolve-phase bystander (wave 7)', () => {
     expect(decided.game.state.log.join(' ')).not.toContain('t_deathWatch fired')
   })
 })
+
+// ---------------------------------------------------------------------------
+// Wave 7, group E — TG Havoc Factory and Mirth Factory.
+//
+// "Target friendly robotic vehicle. Whenever that vehicle is engaged in a
+// fleet combat, spawn a Havoc/Mirth swarm to fight along side it."
+//
+// state.zoneEffects is per-ZONE; this is per-HULL, which is new. The target is
+// a live ZoneCardEntry with its own meta, so the trigger is STAMPED onto it as
+// meta.factoryEscort — and the value is the FACTORY'S OWN REGISTRY NAME, which
+// is what makes three separate things work at once (see tgEffects.ts).
+describe('TG Havoc/Mirth Factory — a rider on a hull (wave 7)', () => {
+  const swarm = (name: string) => snap({
+    name, faction: 'TG', vehicleType: 'plane', materialCost: name === 'Havoc Swarm' ? 120_000 : 200_000,
+    keywords: [KEYWORDS.ROBOTIC, KEYWORDS.TEMPORARY, KEYWORDS.HALF_COST],
+    meta: { summonOnly: true },
+  })
+  const factoryCtx = () => makeCtx({ catalog: [swarm('Havoc Swarm'), swarm('Mirth Swarm')] })
+
+  const factoryCard = (which: 'Havoc' | 'Mirth') => inst({
+    instanceId: `f-${which}`, name: `${which} Factory`, faction: 'TG', type: 'ability',
+    vehicleType: null, materialCost: which === 'Havoc' ? 120_000 : 200_000,
+    meta: { playOnVehicleEffect: `${which.toLowerCase()}FactoryEffect` },
+  })
+
+  const robotic = (over = {}) => zoneEntry({
+    instanceId: 'bot1', name: 'Obsession', faction: 'TG', vehicleType: 'ship',
+    keywords: [KEYWORDS.ROBOTIC], playedOnTurn: 1, ...over,
+  })
+
+  // Play a Factory onto a target and return the result, un-thrown.
+  const playOnto = (targetId: string, which: 'Havoc' | 'Mirth' = 'Havoc', setup?: (g: EngineGame) => void) => {
+    const card = factoryCard(which)
+    const game = makeGame({
+      turnNumber: 3, activePlayer: 'alice',
+      privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } },
+    })
+    game.state.resources.a.materials = 500_000
+    game.state.zones[0].cards.a.push(robotic())
+    setup?.(game)
+    return applyAction(game, 'alice', {
+      type: 'PLAY_CARD_TARGETING_CARD_ON_FIELD', instanceId: card.instanceId, targetInstanceId: targetId,
+    }, factoryCtx())
+  }
+
+  it('stamps its own registry name onto the targeted hull', () => {
+    const r = playOnto('bot1', 'Havoc')
+    if (!r.ok) throw new Error(r.error)
+    expect(findVehicle(r.game.state, 'bot1')!.entry.meta.factoryEscort).toBe('havocFactoryEffect')
+  })
+
+  it('Mirth Factory stamps its own name, not Havoc’s', () => {
+    const r = playOnto('bot1', 'Mirth')
+    if (!r.ok) throw new Error(r.error)
+    expect(findVehicle(r.game.state, 'bot1')!.entry.meta.factoryEscort).toBe('mirthFactoryEffect')
+  })
+
+  // ⚠ Ruling E-5. PLAY_CARD_TARGETING_CARD_ON_FIELD checks only
+  // findVehicle(targetInstanceId) — NOT ownership — so without this the card
+  // could be played onto an enemy hull, handing the opponent a free escort.
+  it('E-5: refuses an enemy hull', () => {
+    const r = playOnto('foe1', 'Havoc', (g) => {
+      g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe1', keywords: [KEYWORDS.ROBOTIC], playedOnTurn: 1 }))
+    })
+    expect(r).toMatchObject({ ok: false, status: 400 })
+  })
+
+  it('E-5: refuses a friendly hull that is not ROBOTIC', () => {
+    const r = playOnto('plain1', 'Havoc', (g) => {
+      g.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'plain1', keywords: [], playedOnTurn: 1 }))
+    })
+    expect(r).toMatchObject({ ok: false, status: 400 })
+  })
+
+  // Fight the stamped hull and return the locked battle.
+  const fightWith = (entry: ReturnType<typeof robotic>, aggressor: 'a' | 'b' = 'a') => {
+    const game = makeGame({ turnNumber: 3, activePlayer: 'alice' })
+    game.state.zones[0].cards.a.push(entry)
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe1', name: 'Foe', playedOnTurn: 1 }))
+    const ctx = factoryCtx()
+    if (!declareForcedBattle(game, ctx, {
+      zoneId: 1,
+      aggressor,
+      attackerIds: aggressor === 'a' ? [entry.instanceId] : ['foe1'],
+      defenderIds: aggressor === 'a' ? ['foe1'] : [entry.instanceId],
+      cause: 'Test',
+    })) throw new Error('battle not declared')
+    return game
+  }
+
+  it('summons its swarm when the stamped hull enters a battle', () => {
+    const game = fightWith(robotic({ meta: { factoryEscort: 'havocFactoryEffect' } }))
+    const battle = game.state.activeBattle!
+    expect(battle.summons.map((s) => s.name)).toEqual(['Havoc Swarm'])
+    expect(battle.attackerIds).toContain(battle.summons[0].instanceId)
+  })
+
+  it('fights alongside on a DEFENSIVE battle too', () => {
+    const game = fightWith(robotic({ meta: { factoryEscort: 'mirthFactoryEffect' } }), 'b')
+    const battle = game.state.activeBattle!
+    expect(battle.summons.map((s) => s.name)).toEqual(['Mirth Swarm'])
+    expect(battle.defenderIds).toContain(battle.summons[0].instanceId)
+  })
+
+  it('never puts the swarm on the board', () => {
+    const game = fightWith(robotic({ meta: { factoryEscort: 'havocFactoryEffect' } }))
+    for (const zone of game.state.zones) {
+      expect(zone.cards.a.map((c) => c.name)).not.toContain('Havoc Swarm')
+    }
+  })
+
+  // ⚠ The collision the handoff's stamp-onBattleEffect design would have had
+  // to REFUSE. A distinct key means a hull can carry both its own printed
+  // battle trigger and an escort, and both fire.
+  it('coexists with the hull’s OWN printed battle trigger', () => {
+    const game = fightWith(robotic({
+      name: 'Obelisk', vehicleType: 'sub', keywords: [KEYWORDS.ROBOTIC, KEYWORDS.STEALTHY],
+      meta: { onBattleEffect: 'obeliskBattle', factoryEscort: 'havocFactoryEffect' },
+    }))
+    const names = game.state.activeBattle!.summons.map((s) => s.name).sort()
+    expect(names).toEqual(['Havoc Swarm', 'Mirth Swarm'])
+  })
+
+  // ⚠ THE BUG MOST LIKELY TO BE MISSED. discardSnapshotOf's own comment says
+  // "Every per-entry stamp must be named here. TypeScript does NOT catch one
+  // you forget" — an unstripped stamp rides into state.destroyed and, through
+  // reshuffleDiscard, back into the deck: a Factory'd hull that dies would
+  // return PERMANENTLY upgraded, and again on every later death.
+  it('the stamp does NOT ride into the discard', () => {
+    const entry = robotic({ meta: { factoryEscort: 'havocFactoryEffect' } })
+    const snapshot = discardSnapshotOf(entry, 'a')
+    expect(snapshot.meta.factoryEscort).toBeUndefined()
+  })
+
+  it('a Horror copy does not inherit an escort', () => {
+    const game = makeGame({ turnNumber: 3 })
+    const entry = zoneEntry({
+      instanceId: 'h1', name: 'Horror', faction: 'TG', vehicleType: 'ship',
+      keywords: [KEYWORDS.ROBOTIC],
+      meta: { onBattleEffect: 'horrorBattle', factoryEscort: 'havocFactoryEffect' },
+      playedOnTurn: 1,
+    })
+    game.state.zones[0].cards.a.push(entry)
+    effectFor('horrorBattle')!({
+      game, actor: 'a', card: entry, ctx: makeCtx(),
+      battle: {
+        phase: 'resolve', zoneId: 1, isDefender: false, isParticipant: true,
+        forced: false, survived: true, won: true, casualties: [],
+      },
+    })
+    expect(game.state.zones[0].cards.a[1].meta.factoryEscort).toBeUndefined()
+    // Its own printed trigger still rides across.
+    expect(game.state.zones[0].cards.a[1].meta.onBattleEffect).toBe('horrorBattle')
+  })
+
+  // ⚠ The escort fires from a hull whose FACTORY CARD was spent turns ago, so
+  // nothing in play names the effect under a trigger key. The probe
+  // (game-action/index.ts) scans every meta VALUE for a CATALOG_EFFECTS
+  // member regardless of key — which is exactly why the stamp's value is the
+  // registry name rather than the swarm's card name. Without both halves the
+  // catalog is never loaded and the escort dies in production only.
+  it('both factory effects need the catalog', () => {
+    expect(CATALOG_EFFECTS.has('havocFactoryEffect')).toBe(true)
+    expect(CATALOG_EFFECTS.has('mirthFactoryEffect')).toBe(true)
+  })
+
+  it('the stamped value is a name the catalog probe recognises', () => {
+    const entry = robotic({ meta: { factoryEscort: 'havocFactoryEffect' } })
+    const wantsCatalog = Object.values(entry.meta).some(
+      (v) => typeof v === 'string' && CATALOG_EFFECTS.has(v.trim()),
+    )
+    expect(wantsCatalog).toBe(true)
+  })
+})
