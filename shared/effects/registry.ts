@@ -76,6 +76,17 @@ export const effectFor = (name: string): EffectFn | null => effects.get(name) ??
 export const costModifierFor = (name: string): CostModifierFn | null => costModifiers.get(name) ?? null
 export const isImplemented = (name: string): boolean => effects.has(name) || costModifiers.has(name)
 
+// Every name registered so far, effects and cost modifiers alike. Exists for
+// G4 in supabase/seed/effectCoverage.test.ts, which closes the guard's
+// blind spot 5 by asking the question from the OTHER end: not "is this card's
+// effect implemented?" but "does any card name this implementation?".
+//
+// Deleting a card's meta key orphans its implementation silently — the
+// 2026-08-30 balance pass did exactly that to three of them — and nothing
+// else in the suite would notice.
+export const registeredEffectNames = (): string[] =>
+  [...new Set([...effects.keys(), ...costModifiers.keys()])].sort()
+
 // Two seeded rows carry trailing spaces in their effect names — trim on read.
 export function effectName(card: { meta: Record<string, unknown> }, triggerKey: string): string | null {
   const raw = card.meta[triggerKey]

@@ -336,7 +336,8 @@ currently empty and waiting for the next partly-built card.
 unimplemented effect name being added quietly. Adding a card to either map is
 now a deliberate act with a visible diff, which is exactly what it should be.
 
-Six guard blind spots remain open and are not going to close on their own:
+Six blind spots were open going into wave 6; **five remain** — number 5 is now
+closed by G4, below. None of the rest closes on its own:
 
 1. A card that has left `KNOWN_GAPS` is no longer checked at all (Garrison's
    trigger key can be reverted today with the suite green).
@@ -360,6 +361,29 @@ Six guard blind spots remain open and are not going to close on their own:
    function exists, not that any card can reach it. If you register an effect
    ahead of seeding the card that uses it, grep the seed source for the name
    before calling the task done.
+
+   ⚠ **It reopens from the other end too, and did.** Wave 5's close-out
+   reported this blind spot "swept clean — every one of the 69 registry names
+   outside test files is named by a seeded card". That was true when written
+   and false a day later: the 2026-08-30 balance pass rewrote Purifier's and
+   Victoria's card text, cleared their meta and retired Rhea, orphaning
+   `purifierEffect`, `victoriaOnDeath` and `rheaOnPlay` without touching a
+   line of effect code. **Deleting a card's meta key orphans its
+   implementation silently**, and no guard says so. Wave 6 left all three
+   registered on purpose: a game dealt before that pass carries a frozen
+   snapshot still naming them, and *reusing* one of those names for a new card
+   is the Kraken/Paddlegun collision itself (spec §9.2).
+
+   ✅ **CLOSED in wave 6 by G4** (`effectCoverage.test.ts`), which asks the
+   question from the other end: not "is this card's effect implemented?" but
+   "does any card name this implementation?". It reads
+   `registeredEffectNames()` off the registry, skips `t_`-prefixed test
+   stand-ins, and fails on anything else that no seeded card names.
+   The three above sit in its `DELIBERATE_ORPHANS` map with the reason each is
+   kept — a map that is shrink-only and asserted over, exactly like
+   `KNOWN_GAPS`. **Adding an entry is now a visible diff with a written
+   justification**, which is the whole point: an orphan is fine, an
+   *unexplained* orphan is not.
 
 6. **Nothing compares the generated SQL to the LIVE `cards` table.** G1/G2/G3
    read `loadSeedData()`, and `seedDataSync.test.ts` compares the source to

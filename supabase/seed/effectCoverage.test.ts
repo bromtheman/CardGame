@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { loadSeedData } from './transform'
 import { TRIGGERS, GT_HEAVY_AIRSHIP_MIN_COST } from '../../shared/gameSettings'
 import '../../shared/engine/index'
-import { DATA_EFFECT_KEYS, effectName, isImplemented } from '../../shared/effects/registry'
+import {
+  DATA_EFFECT_KEYS, effectName, isImplemented, registeredEffectNames,
+} from '../../shared/effects/registry'
 
 const ALL_META_KEYS = [...Object.values(TRIGGERS), 'costModifier']
 const key = (c: { faction: string; name: string }) => `${c.faction}:${c.name}`
@@ -206,5 +208,70 @@ describe('built-in card effect coverage', () => {
     const heavy = airships.filter((c) => c.materialCost >= GT_HEAVY_AIRSHIP_MIN_COST)
     expect(airships).toHaveLength(14)
     expect(heavy).toHaveLength(8)
+  })
+})
+
+// Registry names that deliberately have no seeded card pointing at them.
+//
+// Every entry is a card whose META was cleared or removed while its
+// implementation stayed registered — which is silent, because G1/G2/G3 all
+// iterate seeded CARDS and ask whether each one's effects exist. None of them
+// asks the reverse.
+//
+// They are kept registered rather than deleted for one reason: a game dealt
+// before the change carries a FROZEN snapshot that still names them (spec
+// §9.2 — data does not retrofit live games, code does). Deleting the
+// registration would change an in-flight game's behaviour mid-game; REUSING
+// one of these names for a different card is the Kraken/Paddlegun collision
+// itself, and is the thing this map exists to make visible.
+const DELIBERATE_ORPHANS: Record<string, string> = {
+  purifierEffect: 'balance 2026-08-30 rewrote WF Purifier\'s text and cleared its meta',
+  victoriaOnDeath: 'balance 2026-08-30 replaced SS Victoria\'s draw-on-death with an activated ability',
+  rheaOnPlay: 'balance 2026-08-30 retired SS Rhea outright',
+}
+
+describe('G4: every registered implementation is reachable from a seeded card', () => {
+  // Blind spot 5, closed from the other end (docs/claude/card-effects.md).
+  // Wave 3 shipped excaliburOnPlay registered-but-unreachable for a whole
+  // wave; the 2026-08-30 balance pass orphaned three more without touching a
+  // line of effect code. Neither was visible to G1/G2/G3.
+  it('names no orphan outside the deliberate list', async () => {
+    const { cards } = await loadSeedData()
+    const named = new Set<string>()
+    for (const card of cards) {
+      const meta = (card.meta ?? {}) as Record<string, unknown>
+      for (const key of ALL_META_KEYS) {
+        const name = effectName({ meta }, key)
+        if (name !== null) named.add(name)
+      }
+    }
+    const orphans = registeredEffectNames().filter((n) => (
+      // t_-prefixed names are test stand-ins and never seeded, by the rule in
+      // docs/claude/testing.md that keeps them out of the seed vocabulary.
+      !n.startsWith('t_') && !named.has(n) && DELIBERATE_ORPHANS[n] === undefined
+    ))
+    expect(orphans).toEqual([])
+  })
+
+  // Shrink-only, like KNOWN_GAPS: an entry that starts working again — or a
+  // card that starts naming it — must be deleted rather than left to rot.
+  it('has no stale deliberate orphans', async () => {
+    const { cards } = await loadSeedData()
+    const named = new Set<string>()
+    for (const card of cards) {
+      const meta = (card.meta ?? {}) as Record<string, unknown>
+      for (const key of ALL_META_KEYS) {
+        const name = effectName({ meta }, key)
+        if (name !== null) named.add(name)
+      }
+    }
+    const stale = Object.keys(DELIBERATE_ORPHANS).filter((n) => named.has(n) || !isImplemented(n))
+    expect(stale).toEqual([])
+  })
+
+  it('the deliberate list is exactly the three the balance pass orphaned', () => {
+    expect(Object.keys(DELIBERATE_ORPHANS).sort()).toEqual(
+      ['purifierEffect', 'rheaOnPlay', 'victoriaOnDeath'],
+    )
   })
 })

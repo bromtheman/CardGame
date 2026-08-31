@@ -335,9 +335,12 @@ neither may crash. SS/WF/GT powers are future work (spec §10).
 - Unimplemented effect names are tracked in `KNOWN_GAPS` in
   `supabase/seed/effectCoverage.test.ts`; partly-built cards in `PARTIAL` — see
   [card-effects.md](card-effects.md) for which map a card belongs in.
-  **Both are EMPTY as of wave 5**: all 65 cards in the effect-coverage spec are
-  built. They stay asserted over, and the `toHaveLength(0)` is what stops a
-  newly-seeded card with an unimplemented name being added quietly.
+  **Both are EMPTY as of wave 6**: all 65 cards in the effect-coverage spec and
+  all twelve from the 2026-08-30 balance pass are built. They stay asserted
+  over, and the `toHaveLength(0)` is what stops a newly-seeded card with an
+  unimplemented name being added quietly. ⚠ This line read "as of wave 5" while
+  `KNOWN_GAPS` held twelve entries — a doc that a passing suite cannot
+  contradict, because nothing asserts prose.
 - `state.destroyed` is a **live reservoir, not a log** — `drawCard` on an empty
   deck reshuffles the whole pile back into it, so anything reading the discard
   after a death trigger has run must re-check (`canRevive`).
