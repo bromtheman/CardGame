@@ -4766,3 +4766,166 @@ describe('TG Alarmed — sacrifice a friendly AI vehicle (wave 7)', () => {
     expect(after.state.pendingEffect?.options?.map((o) => o.id)).toEqual(['ai1'])
   })
 })
+
+// ---------------------------------------------------------------------------
+// Wave 7, group D — TG Horror.
+//
+// "Whenever a horror survives a fleet battle, create anther copy of it in this
+// zone. Max one spawn per zone." (`anther` is the card's own typo; cardText is
+// data, and it is reproduced verbatim rather than silently corrected.)
+//
+// ⚠ Ruling D-3: "a horror" is read as THIS Horror. The sentence continues
+// "create another copy OF IT", which points back at the same hull, and DP2
+// already dispatches per participant.
+// ⚠ Ruling D-4: "max one spawn per zone" is per TURN, read off the board as
+// "a Horror in this zone already has playedOnTurn === game.turnNumber". Each
+// fire() is an isolated invocation with no shared scratchpad, so any counter
+// has to be read off the board; this reading needs no new state.
+describe('TG Horror — a self-copy on surviving a battle (wave 7)', () => {
+  const horrorEntry = (over = {}) => zoneEntry({
+    instanceId: 'h1', name: 'Horror', faction: 'TG', vehicleType: 'ship',
+    materialCost: 70_000, keywords: [KEYWORDS.ROBOTIC, KEYWORDS.UPKEEP_REQUIRED],
+    meta: { onBattleEffect: 'horrorBattle' }, playedOnTurn: 1, ...over,
+  })
+
+  const resolveCtx = (over: Partial<BattleContext> = {}): BattleContext => ({
+    phase: 'resolve', zoneId: 1, isDefender: false, isParticipant: true,
+    forced: false, survived: true, won: true, casualties: [], ...over,
+  })
+
+  const fire = (game: EngineGame, entry: ReturnType<typeof horrorEntry>, battle = resolveCtx()) =>
+    effectFor('horrorBattle')!({ game, actor: 'a', card: entry, ctx: makeCtx(), battle })
+
+  it('copies itself into its own zone on surviving', () => {
+    const game = makeGame({ turnNumber: 3 })
+    const entry = horrorEntry()
+    game.state.zones[0].cards.a.push(entry)
+    expect(fire(game, entry)).toBe(true)
+    expect(game.state.zones[0].cards.a.map((c) => c.name)).toEqual(['Horror', 'Horror'])
+  })
+
+  it('does nothing when it did not survive', () => {
+    const game = makeGame({ turnNumber: 3 })
+    const entry = horrorEntry()
+    game.state.zones[0].cards.a.push(entry)
+    expect(fire(game, entry, resolveCtx({ survived: false }))).toBe(true)
+    expect(game.state.zones[0].cards.a).toHaveLength(1)
+  })
+
+  it('does nothing at the lock phase', () => {
+    const game = makeGame({ turnNumber: 3 })
+    const entry = horrorEntry()
+    game.state.zones[0].cards.a.push(entry)
+    expect(fire(game, entry, resolveCtx({ phase: 'lock', survived: false }))).toBe(true)
+    expect(game.state.zones[0].cards.a).toHaveLength(1)
+  })
+
+  // D-3: the copy lands in the SURVIVOR's zone, which is re-derived from the
+  // hull rather than taken from battle.zoneId.
+  it('D-3: copies into the surviving hull’s own zone', () => {
+    const game = makeGame({ turnNumber: 3 })
+    const entry = horrorEntry()
+    game.state.zones[2].cards.a.push(entry)
+    expect(fire(game, entry, resolveCtx({ zoneId: 1 }))).toBe(true)
+    expect(game.state.zones[2].cards.a).toHaveLength(2)
+    expect(game.state.zones[0].cards.a).toHaveLength(0)
+  })
+
+  it('D-4: a second survival in the same zone on the same turn spawns nothing', () => {
+    const game = makeGame({ turnNumber: 3 })
+    const entry = horrorEntry()
+    game.state.zones[0].cards.a.push(entry)
+    expect(fire(game, entry)).toBe(true)
+    expect(fire(game, entry)).toBe(true)
+    expect(game.state.zones[0].cards.a).toHaveLength(2)
+  })
+
+  it('D-4: the cap lifts on the next turn', () => {
+    const game = makeGame({ turnNumber: 3 })
+    const entry = horrorEntry()
+    game.state.zones[0].cards.a.push(entry)
+    fire(game, entry)
+    game.turnNumber = 4
+    expect(fire(game, entry)).toBe(true)
+    expect(game.state.zones[0].cards.a).toHaveLength(3)
+  })
+
+  it('D-4: the cap is per zone, so another zone still spawns this turn', () => {
+    const game = makeGame({ turnNumber: 3 })
+    const first = horrorEntry()
+    const second = horrorEntry({ instanceId: 'h2' })
+    game.state.zones[0].cards.a.push(first)
+    game.state.zones[1].cards.a.push(second)
+    fire(game, first)
+    expect(fire(game, second)).toBe(true)
+    expect(game.state.zones[0].cards.a).toHaveLength(2)
+    expect(game.state.zones[1].cards.a).toHaveLength(2)
+  })
+
+  // Copying the ENTRY rather than minting from the catalog is what carries
+  // granted keywords across — clydesdaleEffect and loggerheadOnDeath are the
+  // precedents.
+  it('the copy carries keywords GRANTED to the survivor, not just printed ones', () => {
+    const game = makeGame({ turnNumber: 3 })
+    const entry = horrorEntry({ keywords: [KEYWORDS.ROBOTIC, KEYWORDS.SCRAPPY] })
+    game.state.zones[0].cards.a.push(entry)
+    fire(game, entry)
+    expect(game.state.zones[0].cards.a[1].keywords).toContain(KEYWORDS.SCRAPPY)
+  })
+
+  // ⚠ Every copy-minting effect runs the source meta through copyMeta, or a
+  // captured hull's copy goes home to a deck it never came from.
+  it('runs the source meta through copyMeta, so a captured Horror’s copy is not on loan', () => {
+    const game = makeGame({ turnNumber: 3 })
+    const entry = horrorEntry({ meta: { onBattleEffect: 'horrorBattle', ownerSide: 'b' } })
+    game.state.zones[0].cards.a.push(entry)
+    fire(game, entry)
+    const copy = game.state.zones[0].cards.a[1]
+    expect(copy.meta.ownerSide).toBeUndefined()
+    expect(copy.meta.onBattleEffect).toBe('horrorBattle')
+  })
+
+  it('stamps the copy with this turn and a fresh instanceId', () => {
+    const game = makeGame({ turnNumber: 3 })
+    const entry = horrorEntry()
+    game.state.zones[0].cards.a.push(entry)
+    fire(game, entry)
+    const copy = game.state.zones[0].cards.a[1]
+    expect(copy.playedOnTurn).toBe(3)
+    expect(copy.movedOnTurn).toBeNull()
+    expect(copy.activatedOnTurn).toBeNull()
+    expect(copy.instanceId).not.toBe('h1')
+  })
+
+  it('does nothing when the hull has left the board', () => {
+    const game = makeGame({ turnNumber: 3 })
+    expect(fire(game, horrorEntry())).toBe(true)
+    expect(game.state.zones[0].cards.a).toHaveLength(0)
+  })
+
+  // ✅ It copies the ENTRY, so it never reads ctx.catalog — and so, unlike
+  // Fear and Obelisk, it must NOT be registered as needing one. Asserted
+  // rather than commented, because the claim is easy to get wrong either way.
+  it('does not need the catalog', () => {
+    expect(CATALOG_EFFECTS.has('horrorBattle')).toBe(false)
+  })
+
+  // End to end through a real battle, so the DP2 resolve dispatch itself is
+  // exercised rather than only the effect body.
+  it('fires from a real DECIDE_BATTLE_REPORT', () => {
+    const game = makeGame({ turnNumber: 3, activePlayer: 'alice' })
+    game.state.zones[0].cards.a.push(horrorEntry())
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe1', name: 'Foe', playedOnTurn: 1 }))
+    const ctx = makeCtx()
+    if (!declareForcedBattle(game, ctx, {
+      zoneId: 1, aggressor: 'a', attackerIds: ['h1'], defenderIds: ['foe1'], cause: 'Test',
+    })) throw new Error('battle not declared')
+    const submitted = applyAction(game, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT', results: { h1: 100, foe1: 0 }, repairs: [],
+    }, ctx)
+    if (!submitted.ok) throw new Error(submitted.error)
+    const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, ctx)
+    if (!decided.ok) throw new Error(decided.error)
+    expect(decided.game.state.zones[0].cards.a.filter((c) => c.name === 'Horror')).toHaveLength(2)
+  })
+})

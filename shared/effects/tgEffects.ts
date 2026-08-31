@@ -2,9 +2,10 @@ import {
   choice, enemyVehicleOptions, friendlyVehicleOptions, grant, spawnVehicles, summonHulls,
 } from './primitives.ts'
 import { joinBattle } from '../engine/battleDeclare.ts'
-import { findVehicle } from '../engine/gameEngine.ts'
+import { copyMeta, findVehicle } from '../engine/gameEngine.ts'
 import { sacrificeEntry } from '../engine/battleTriggers.ts'
 import { KEYWORDS } from '../gameSettings.ts'
+import type { ZoneCardEntry } from '../engine/engineTypes.ts'
 import { registerEffect } from './registry.ts'
 
 // TG built-in card effects (wave 7).
@@ -173,3 +174,50 @@ registerEffect(ALARMED, choice({
     return true
   },
 }))
+
+// "Whenever a horror survives a fleet battle, create anther copy of it in this
+// zone. Max one spawn per zone." (`anther` is the card's own typo, reproduced
+// verbatim in cardText because card text is data.)
+//
+// ⚠ Ruling D-3 — "a horror" is THIS Horror. The sentence continues "create
+// another copy OF IT", which points back at the same hull, and DP2 already
+// dispatches per participant. Reading it as "any Horror anywhere" would need
+// DP8's dispatch and is a much bigger card than it looks.
+//
+// ⚠ Ruling D-4 — "max one spawn per zone" is per TURN, read off the board.
+// Each fire() is an isolated invocation with no shared scratchpad, so any
+// counter has to be read off state; a Horror in this zone already stamped with
+// the current turn IS this turn's spawn, and that needs no new field.
+//
+// ✅ It copies the surviving ENTRY rather than minting from the catalog, which
+// is what carries keywords GRANTED to that hull across (clydesdaleEffect and
+// loggerheadOnDeath are the precedents) — and is why this effect needs no
+// { needsCatalog: true } and meets no fireRider trap: it is a participant
+// trigger, not a zoneEffects rider.
+//
+// The zone comes from findVehicle rather than from battle.zoneId: the two
+// agree for a participant today, but the hull's own zone is what the card
+// says, and Braveheart sets the precedent for re-deriving it.
+registerEffect('horrorBattle', ({ game, actor, ctx, card, battle }) => {
+  if (!battle || battle.phase !== 'resolve' || !battle.survived) return true
+  const found = findVehicle(game.state, card.instanceId)
+  // Destroyed hulls are still in `participants` when the resolve dispatch
+  // runs, so this is reachable rather than defensive.
+  if (!found || found.side !== actor) return true
+  const alreadySpawned = found.zone.cards[actor].some(
+    (c) => c.name === card.name && (c as ZoneCardEntry).playedOnTurn === game.turnNumber,
+  )
+  if (alreadySpawned) return true
+  const copy: ZoneCardEntry = {
+    ...found.entry,
+    instanceId: ctx.newId(),
+    meta: copyMeta(found.entry.meta),
+    keywords: [...found.entry.keywords],
+    playedOnTurn: game.turnNumber,
+    movedOnTurn: null,
+    activatedOnTurn: null,
+  }
+  found.zone.cards[actor].push(copy)
+  game.state.log.push(`${card.name} splits in zone ${found.zone.id}`)
+  return true
+})
