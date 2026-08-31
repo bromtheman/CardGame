@@ -34,6 +34,10 @@ export const ssVehicles = [
         keywords: [],
         meta: {
             [TRIGGERS.ON_ACTIVATE]: 'victoriaActivate',
+            // "spend 200k resources" — a MATERIAL price, not a CP one. An
+            // activated ability needs onActivate plus at least one price, or
+            // ACTIVATE_VEHICLE refuses it and BoardZone renders no button.
+            activateMaterialCost: 200000,
         }
     },
     {

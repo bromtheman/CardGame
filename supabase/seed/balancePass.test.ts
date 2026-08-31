@@ -159,6 +159,15 @@ describe('2026-08-30 balance pass', () => {
   // The Repentance is the sharp one: a WF PLANE at exactly 100_000. It is
   // excluded by the vehicleType filter alone, so this assertion is what
   // proves that filter is doing work.
+  // Victoria's text says "spend 200k resources" — a MATERIAL price, the first
+  // in the game. Same silent-pair trap as Judgement below: without the key the
+  // card has a registered ability and no way to press it.
+  it('Victoria carries the 200k material price its text prints', async () => {
+    expect((await bySeedKey()).get('SS:Victoria')!.meta).toMatchObject({
+      onActivate: 'victoriaActivate', activateMaterialCost: 200_000,
+    })
+  })
+
   // Judgement's text says "pay 1cp", and ACTIVATE_VEHICLE refuses a card with
   // no price key at all — so without this, the card would have a registered
   // ability, a card text promising it, and no way to press it. The same

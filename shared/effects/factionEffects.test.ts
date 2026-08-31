@@ -3166,7 +3166,7 @@ describe('wave 6 — SS Nothung', () => {
 // flag is invisible to unit tests and shows up only as a dead card in
 // production. Asserted at runtime rather than by reading the source.
 describe('wave 6 — effects that must carry needsCatalog', () => {
-  it.each(['nothungOnPlay', 'balmungOnPlay', 'harbringerBattle'])(
+  it.each(['nothungOnPlay', 'balmungOnPlay', 'harbringerBattle', 'victoriaActivate'])(
     '%s', (name) => { expect(CATALOG_EFFECTS.has(name)).toBe(true) },
   )
 })
@@ -3494,5 +3494,98 @@ describe('wave 6 — WF Judgement', () => {
       })
       expect(activate(game, judgement.instanceId).ok).toBe(false)
     })
+  })
+})
+
+describe('wave 6 — SS Victoria', () => {
+  const victoriaSnap = snap({
+    name: 'Victoria', faction: 'SS', vehicleType: 'ship', materialCost: 250_000,
+    keywords: [], meta: { onActivate: 'victoriaActivate', activateMaterialCost: 200_000 },
+  })
+  const vicCtx = () => makeCtx({ catalog: [victoriaSnap] })
+
+  function armed(zoneIndex = 0) {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.resources.a.materials = 500_000
+    const victoria = zoneEntry({
+      instanceId: 'vic-1', name: 'Victoria', faction: 'SS', vehicleType: 'ship',
+      materialCost: 250_000, playedOnTurn: 2,
+      meta: { onActivate: 'victoriaActivate', activateMaterialCost: 200_000 },
+    })
+    game.state.zones[zoneIndex].cards.a.push(victoria)
+    return { game, victoria }
+  }
+
+  it('spawns a second Victoria into its own zone and charges 200k', () => {
+    const { game, victoria } = armed()
+    const r = applyAction(
+      game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: victoria.instanceId }, vicCtx(),
+    )
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.zones[0].cards.a.map((c) => c.name)).toEqual(['Victoria', 'Victoria'])
+    expect(r.game.state.resources.a.materials).toBe(300_000)
+  })
+
+  // Ruling B-5 (spec §7.3, wave 6). ACTIVATE_VEHICLE passes the
+  // client-supplied action.zoneId straight through as targetZoneId, so an
+  // effect that read it could be redirected by a stale or malicious client.
+  // Braveheart is the precedent: re-derive the zone from the hull itself.
+  it('ignores a client-supplied zoneId and uses the hull own zone', () => {
+    const { game, victoria } = armed(1)
+    const r = applyAction(
+      game, 'alice',
+      { type: 'ACTIVATE_VEHICLE', instanceId: victoria.instanceId, zoneId: 3 },
+      vicCtx(),
+    )
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.zones[1].cards.a.map((c) => c.name)).toEqual(['Victoria', 'Victoria'])
+    expect(r.game.state.zones[2].cards.a).toEqual([])
+  })
+
+  // Ruling B-4. Spawning is not playing, so the new hull carries its printed
+  // meta — which means it can be activated in its own right. The chain is
+  // per-hull, per-turn, and hard-bounded by materials; this asserts the
+  // mechanism rather than assuming it.
+  it('the spawned Victoria carries its own activated ability, unstamped', () => {
+    const { game, victoria } = armed()
+    const r = applyAction(
+      game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: victoria.instanceId }, vicCtx(),
+    )
+    if (!r.ok) throw new Error(r.error)
+    const spawned = r.game.state.zones[0].cards.a.find((c) => c.instanceId !== victoria.instanceId)!
+    expect(spawned.meta).toMatchObject({
+      onActivate: 'victoriaActivate', activateMaterialCost: 200_000,
+    })
+    expect(spawned).toHaveProperty('activatedOnTurn', null)
+  })
+
+  it('refuses when the actor cannot afford the 200k, spawning nothing', () => {
+    const { game, victoria } = armed()
+    game.state.resources.a.materials = 199_999
+    const r = applyAction(
+      game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: victoria.instanceId }, vicCtx(),
+    )
+    expect(r.ok).toBe(false)
+    expect(game.state.zones[0].cards.a).toHaveLength(1)
+  })
+
+  it('cannot be activated twice in one turn', () => {
+    const { game, victoria } = armed()
+    const first = applyAction(
+      game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: victoria.instanceId }, vicCtx(),
+    )
+    if (!first.ok) throw new Error(first.error)
+    const second = applyAction(
+      first.game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: victoria.instanceId }, vicCtx(),
+    )
+    expect(second).toMatchObject({ ok: false, status: 409 })
+  })
+
+  it('fails when the catalog has no Victoria — a data bug, not an empty pool', () => {
+    const { game, victoria } = armed()
+    const r = applyAction(
+      game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: victoria.instanceId }, makeCtx(),
+    )
+    expect(r.ok).toBe(false)
   })
 })

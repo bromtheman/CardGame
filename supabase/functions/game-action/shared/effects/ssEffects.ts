@@ -208,6 +208,32 @@ registerEffect(AIR_STRAFE, choice({
   },
 }), { needsCatalog: true })
 
+// "Each turn you may spend 200k resources to spawn another victoria into this
+// zone." DP1 with a MATERIAL price rather than a CP one (spec §7.3, wave 6):
+// ACTIVATE_VEHICLE charges meta.activateMaterialCost and stamps
+// activatedOnTurn before this runs, so "each turn" needs no code here.
+//
+// The zone is re-derived from the hull rather than read off
+// payload.targetZoneId, which ACTIVATE_VEHICLE fills from the CLIENT-supplied
+// action.zoneId — Braveheart's precedent, and the reason it matters: a stale
+// or malicious client could otherwise land the spawn in a zone Victoria is
+// not in.
+//
+// Spawning is not playing (spec §7.4), so the new hull keeps its printed meta
+// and can be activated in its own right. That chain is per-hull and
+// per-turn, and every link costs a further 200k against income that is SET
+// each turn — a hard bound, unlike Trebuchet's free repeat.
+registerEffect('victoriaActivate', ({ game, actor, ctx, card }) => {
+  const self = findVehicle(game.state, card.instanceId)
+  if (!self || self.side !== actor) return false
+  const snapshot = catalogCard(ctx, 'Victoria')
+  // A named card the catalog cannot supply is a data bug, not an empty pool.
+  if (!snapshot || snapshot.meta.summonOnly === true) return false
+  if (!spawnInto(game, ctx, actor, self.zone.id, snapshot)) return false
+  game.state.log.push(`Victoria commissions another hull in zone ${self.zone.id}`)
+  return true
+}, { needsCatalog: true })
+
 const BRAVEHEART = 'braveheartActivate'
 
 // "Once per turn, you may pay 1cp to have this ship 1v1 an enemy vehicle in
