@@ -3899,3 +3899,341 @@ describe('wave 6 — SS Blockade', () => {
     })
   })
 })
+
+// Found by the late re-read of all twelve card texts, after everything was
+// built and green — the pass wave 5 identified as its single highest-value
+// check.
+//
+// An Inoffensive hull counts for "while you have at least one vehicle there"
+// but cannot be an attacker (§7.3's Gang Up ruling), so a blockader holding
+// ONLY Inoffensive hulls is in a state neither clause obviously covers: the
+// trap does not spring, and it is not removed either. Both halves follow from
+// the printed text read literally, and both are pinned here so the behaviour
+// is deliberate rather than incidental.
+describe('wave 6 — Blockade and an Inoffensive-only blockading fleet', () => {
+  const blockadeSnap = snap({
+    name: 'Blockade', faction: 'SS', type: 'ability', vehicleType: null,
+    materialCost: 0, meta: { playOnZoneEffect: 'blockadeEffect' },
+  })
+  const ctx = () => makeCtx({ catalog: [blockadeSnap] })
+  const riders = (game: EngineGame) =>
+    game.state.zoneEffects.filter((e) => e.effect === 'blockadeEffect')
+
+  function armed(place: (g: EngineGame) => void) {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zoneEffects.push({
+      effect: 'blockadeEffect', zoneId: 1, side: 'b', cardName: 'Blockade', setOnTurn: 2,
+    })
+    place(game)
+    const card = inst({ name: 'Intruder', vehicleType: 'ship', materialCost: 0 })
+    game.privates.a.hand = [card]
+    game.state.counts.a.hand = 1
+    const r = applyAction(
+      game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, ctx(),
+    )
+    if (!r.ok) throw new Error(r.error)
+    return { game: r.game, card }
+  }
+
+  // "…while you have at least one vehicle there, a fleet battle immediately
+  // begins" — but a fleet with no one able to attack cannot begin one. The
+  // rider is NOT spent: the card removes it on a loss and on nothing else.
+  it('neither springs nor spends itself when every blockading hull is Inoffensive', () => {
+    const { game } = armed((g) => {
+      g.state.zones[0].cards.b.push(zoneEntry({ name: 'Meek', keywords: ['inoffensive'] }))
+    })
+    expect(game.state.activeBattle).toBeNull()
+    expect(riders(game)).toHaveLength(1)
+  })
+
+  // "If you lose with no surviving vehicles, the blockade goes away." An
+  // Inoffensive hull never joined the battle, so it survives it — and the
+  // blockader therefore HAS a surviving vehicle. Read literally, the blockade
+  // remains, which is also the only reading consistent with the trigger
+  // clause above: it still has the one vehicle it needs to be armed.
+  it('remains when its only survivor is an Inoffensive hull that never fought', () => {
+    const { game, card } = armed((g) => {
+      g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'guard', name: 'Guard' }))
+      g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'meek', name: 'Meek', keywords: ['inoffensive'] }))
+    })
+    // The Inoffensive hull is not in the battle at all.
+    expect(game.state.activeBattle!.attackerIds).toEqual(['guard'])
+    const submitted = applyAction(game, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT',
+      results: { guard: 0, [card.instanceId]: 100 }, repairs: [],
+    }, ctx())
+    if (!submitted.ok) throw new Error(submitted.error)
+    const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, ctx())
+    if (!decided.ok) throw new Error(decided.error)
+    expect(decided.game.state.zones[0].cards.b.map((c) => c.name)).toEqual(['Meek'])
+    expect(riders(decided.game)).toHaveLength(1)
+  })
+})
+
+// ===========================================================================
+// Wave 6 — tests written to kill SURVIVING MUTATIONS.
+//
+// Each exists because a mutation of the line it covers passed the whole suite,
+// which means the test that claimed to cover it proved less than its name.
+//
+// The survivors were invisible until the harness stopped counting
+// functionSharedSync.test.ts as a kill: that test compares shared/ to its
+// edge-function copy and so fails for ANY edit to a shared/ file, killing
+// every mutation trivially. Wave 5 warned about false SURVIVORS from a
+// too-narrow scope; this is the mirror, and worse — a false kill hides a real
+// gap instead of merely wasting an investigation.
+// ===========================================================================
+
+// Two synthetic effects, t_-prefixed so they can never collide with a seeded
+// name (docs/claude/testing.md).
+registerEffect('t_alwaysFails', () => false)
+// A deploy watcher that records that it ran and then removes ITSELF, the shape
+// Ambush and Ongoing Attrition already have at lock. It is what makes the
+// snapshot in dispatchDeployWatchers observable.
+registerEffect('t_selfRemovingWatcher', ({ game }) => {
+  game.state.log.push('t_watcher ran')
+  const i = game.state.zoneEffects.findIndex((e) => e.effect === 't_selfRemovingWatcher')
+  if (i >= 0) game.state.zoneEffects.splice(i, 1)
+  return true
+}, { needsCatalog: true, deployWatcher: true })
+
+describe('wave 6 — mutation survivors', () => {
+  const blockadeSnap = snap({
+    name: 'Blockade', faction: 'SS', type: 'ability', vehicleType: null,
+    materialCost: 0, meta: { playOnZoneEffect: 'blockadeEffect' },
+  })
+  const watersSnap = snap({
+    name: 'DWG Waters', faction: 'DWG', type: 'ability', vehicleType: null,
+    materialCost: 0, meta: { playOnZoneEffect: 'dwgWatersEffect' },
+  })
+  const bCtx = () => makeCtx({ catalog: [blockadeSnap, watersSnap] })
+  const rider = (over: Record<string, unknown> = {}) => ({
+    effect: 'blockadeEffect', zoneId: 1, side: 'b' as const, cardName: 'Blockade', setOnTurn: 2, ...over,
+  })
+  const deployInto = (game: EngineGame, over: Record<string, unknown> = {}) => {
+    const card = inst({ name: 'Intruder', vehicleType: 'ship', materialCost: 0, ...over })
+    game.privates.a.hand = [card]
+    game.state.counts.a.hand = 1
+    return {
+      result: applyAction(
+        game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, bCtx(),
+      ),
+      card,
+    }
+  }
+  const ok = (r: ReturnType<typeof applyAction>) => {
+    if (!r.ok) throw new Error(r.error)
+    return r.game
+  }
+
+  // SURVIVOR: "DP7 broadcasts to every rider". The isolation test asserted the
+  // ABSENCE of a log line, which the mutation does not reliably produce.
+  // Assert the observable consequence instead: dwgWatersEffect's router falls
+  // through to its CLAIM branch on an unrecognised phase, so a broadcast makes
+  // it plant a second marker.
+  //
+  // ⚠ ORDER MATTERS, and the first version of this test did not have it. With
+  // the Blockade rider first, it declares a battle and the pass returns at its
+  // own one-battle guard BEFORE reaching DWG Waters — so the mutation was
+  // invisible and the test passed for a reason unrelated to its name. DWG
+  // Waters must come FIRST in zoneEffects for the membership check to be the
+  // only thing standing between it and a dispatch.
+  it('a DWG Waters rider is not dispatched at all, even when it is first in the list', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zoneEffects.push({
+      effect: 'dwgWatersEffect', zoneId: 1, side: 'b', cardName: 'DWG Waters', setOnTurn: 2,
+    }, rider())
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'guard', name: 'Guard' }))
+    const after = ok(deployInto(game).result)
+    // Reached with a phase it does not recognise, its router falls through to
+    // its CLAIM branch, which has no target zone and fails — which fireRider
+    // then logs.
+    expect(after.state.log.join('\n')).not.toContain('could not resolve')
+    expect(after.state.zoneEffects.filter((e) => e.effect === 'dwgWatersEffect')).toHaveLength(1)
+    // The blockade behind it still springs.
+    expect(after.state.activeBattle).not.toBeNull()
+  })
+
+  // SURVIVOR: "DP7 fires the actor own riders too". The original test put no
+  // enemy hull in the zone, so the mutated dispatch bailed on an empty
+  // defender list rather than on the side check — it passed for the wrong
+  // reason. Both sides need a hull for the side check to be the only thing
+  // between this and a battle.
+  it('a blockader reinforcing their own blockaded zone starts no battle', () => {
+    const game = makeGame({ turnNumber: 3, activePlayer: 'bob' })
+    game.state.zoneEffects.push(rider())
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'guard', name: 'Guard' }))
+    // The enemy IS present, so a dispatch ignoring `rider.side === actor`
+    // would find a full roster on both sides and declare.
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'theirs', name: 'Trespasser' }))
+    const card = inst({ name: 'Reinforcement', vehicleType: 'ship', materialCost: 0 })
+    game.privates.b.hand = [card]
+    game.state.counts.b.hand = 1
+    const after = ok(applyAction(
+      game, 'bob', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, bCtx(),
+    ))
+    expect(after.state.activeBattle).toBeNull()
+  })
+
+  // SURVIVOR: "DP7 drops its one-battle guard". Nothing exercised two deploy
+  // watchers on one zone, and blockadeSpring carried a duplicate guard that
+  // made the dispatcher's unobservable. That duplicate is gone; this covers
+  // the one that remains. Without it the second rider reaches
+  // declareForcedBattle, which refuses over a live battle and logs.
+  it('a second blockade on the same zone does not try to declare over the first', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zoneEffects.push(rider(), rider())
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'guard', name: 'Guard' }))
+    const after = ok(deployInto(game).result)
+    expect(after.state.activeBattle).not.toBeNull()
+    expect(after.state.log.join('\n')).not.toContain('could not resolve')
+  })
+
+  // SURVIVOR: "DP7 iterates zoneEffects live rather than snapshotted". A rider
+  // that removes itself as it fires shifts the array under a live iterator and
+  // the next entry is skipped. blockadeEffect does not self-remove, but Ambush
+  // and Ongoing Attrition both do exactly that at lock — which is why every
+  // other dispatch in that file snapshots, and why the next deploy watcher
+  // will need this to hold.
+  it('dispatches every watcher even when one removes itself mid-pass', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zoneEffects.push(
+      rider({ effect: 't_selfRemovingWatcher' }),
+      rider({ effect: 't_selfRemovingWatcher' }),
+    )
+    const after = ok(deployInto(game).result)
+    expect(after.state.log.filter((l) => l === 't_watcher ran')).toHaveLength(2)
+    expect(after.state.zoneEffects).toHaveLength(0)
+  })
+
+  // SURVIVOR: "Blockade springs on any battle phase". The re-entrancy test was
+  // being carried by a duplicate activeBattle guard rather than by the phase
+  // check. A BOMBARDMENT separates them: dispatchZoneInterception hands the
+  // defender's riders a 'baseAttack' context with NO active battle, so without
+  // the phase guard an enemy bombardment would spring the trap.
+  it('an enemy bombardment does not spring the blockade', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zoneEffects.push(rider())
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'guard', name: 'Guard' }))
+    game.state.zones[0].cards.a.push(zoneEntry({ name: 'Bomber', materialCost: 100_000, playedOnTurn: 1 }))
+    const before = game.state.zones[0].baseHp.b
+    const after = ok(applyAction(game, 'alice', { type: 'ATTACK_ENEMY_BASE', zoneId: 1 }, bCtx()))
+    expect(after.state.activeBattle).toBeNull()
+    expect(after.state.zones[0].baseHp.b).toBe(before - 100)
+  })
+
+  // SURVIVOR: "removal ignores the side". The original test put both riders on
+  // the SAME side, so dropping the side check changed nothing. An ENEMY
+  // blockade on the SAME zone is what separates them.
+  it('a broken blockade leaves the opponent blockade on that same zone standing', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zoneEffects.push(rider(), rider({ side: 'a' }))
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'guard', name: 'Guard' }))
+    const { result, card } = deployInto(game)
+    const declared = ok(result)
+    const submitted = ok(applyAction(declared, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT', results: { guard: 0, [card.instanceId]: 100 }, repairs: [],
+    }, bCtx()))
+    const decided = ok(applyAction(submitted, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, bCtx()))
+    expect(decided.state.zoneEffects.filter((e) => e.effect === 'blockadeEffect').map((e) => e.side))
+      .toEqual(['a'])
+  })
+
+  // SURVIVOR: "Blockade aftermath trusts an absent stash". A continuation
+  // whose data did not survive jsonb must fail cleanly rather than looking up
+  // zoneById(undefined).
+  it('the aftermath fails cleanly when its stashed zoneId is missing', () => {
+    const game = makeGame({ turnNumber: 3 })
+    const card = inst({ ...blockadeSnap })
+    expect(effectFor('blockadeEffect')!({
+      game, actor: 'b', card, ctx: bCtx(),
+      continuation: { effect: 'blockadeEffect', side: 'b', card },
+    })).toBe(false)
+  })
+
+  // SURVIVOR: "Victoria drops its ownership check". ACTIVATE_VEHICLE checks
+  // ownership before dispatching, so the effect's own check is unreachable
+  // through the handler — but it is part of the function's contract, and
+  // braveheartZone carries the identical guard. A direct call pins it.
+  it('victoriaActivate refuses a hull that is not the actor own', () => {
+    const game = makeGame({ turnNumber: 3 })
+    const victoria = zoneEntry({
+      instanceId: 'vic', name: 'Victoria', vehicleType: 'ship',
+      meta: { onActivate: 'victoriaActivate', activateMaterialCost: 200_000 },
+    })
+    game.state.zones[0].cards.b.push(victoria)
+    expect(effectFor('victoriaActivate')!({
+      game, actor: 'a', card: victoria,
+      ctx: makeCtx({ catalog: [snap({ name: 'Victoria', faction: 'SS', vehicleType: 'ship' })] }),
+    })).toBe(false)
+    expect(game.state.zones[0].cards.b).toHaveLength(1)
+  })
+
+  // SURVIVOR: "Judgement skips its re-validation on resolve". The stashed
+  // choice is re-checked against the board, because the target may leave it
+  // while the dialog sits open.
+  it('Judgement refuses a target that left the board during the choice', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zones[0].cards.a.push(zoneEntry({
+      instanceId: 'j1', name: 'Judgement', faction: 'WF', vehicleType: 'ship', playedOnTurn: 2,
+      meta: { onActivate: 'judgementActivate', activateCpCost: 1 },
+    }))
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'prey', name: 'Diver', vehicleType: 'sub' }))
+    const offered = ok(applyAction(game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: 'j1' }, makeCtx()))
+    offered.state.zones[0].cards.b = [] // the sub slips away before the answer
+    expect(applyAction(
+      offered, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'prey' }, makeCtx(),
+    ).ok).toBe(false)
+  })
+
+  // SURVIVOR: "Harbringer skips its pool re-derivation on resolve", and
+  // "Harbringer joins a battle in a different zone". Both guards protect the
+  // gap between the offer and the answer, and neither was exercised because
+  // every test answered immediately against an unchanged board.
+  describe('Harbringer re-validates across the suspension', () => {
+    const wfShip = (name: string, materialCost: number) =>
+      snap({ name, faction: 'WF', type: 'vehicle', vehicleType: 'ship', materialCost })
+    function offered() {
+      const game = makeGame({ turnNumber: 3 })
+      const harbringer = zoneEntry({
+        instanceId: 'h1', name: 'Harbringer', faction: 'WF', vehicleType: 'ship', playedOnTurn: 2,
+        meta: { onBattleEffect: 'harbringerBattle' },
+      })
+      game.state.zones[0].cards.a.push(harbringer)
+      game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'v1', name: 'Victim' }))
+      return ok(applyAction(game, 'alice', {
+        type: 'ATTACK_ENEMY_FLEET', zoneId: 1, attackerIds: ['h1'], targetIds: ['v1'],
+      }, makeCtx({ catalog: [wfShip('Buzzsaw', 80_000)] })))
+    }
+
+    it('refuses a guest that is no longer in the pool', () => {
+      // The answer arrives against a catalog that no longer holds Buzzsaw.
+      expect(applyAction(
+        offered(), 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'Buzzsaw' },
+        makeCtx({ catalog: [wfShip('Earth Raker', 50_000)] }),
+      ).ok).toBe(false)
+    })
+
+
+    // The FIRST version of this asserted an empty catalog on resolve, which
+    // summonHulls already refuses — so the pool re-derivation was never the
+    // thing being tested and the mutation survived. A card still IN the
+    // catalog but no longer matching the FILTER is what separates them:
+    // summonHulls would mint it happily.
+    it('refuses a guest whose cost has left the pool since the offer', () => {
+      expect(applyAction(
+        offered(), 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'Buzzsaw' },
+        makeCtx({ catalog: [wfShip('Buzzsaw', 200_000)] }),
+      ).ok).toBe(false)
+    })
+
+    it('refuses to join a battle that has moved to another zone', () => {
+      const game = offered()
+      game.state.activeBattle!.zoneId = 2
+      expect(applyAction(
+        game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'Buzzsaw' },
+        makeCtx({ catalog: [wfShip('Buzzsaw', 80_000)] }),
+      ).ok).toBe(false)
+    })
+  })
+})

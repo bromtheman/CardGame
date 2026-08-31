@@ -310,6 +310,11 @@ registerEffect(JUDGEMENT, choice({
     if (choiceId === null) return false // nothing eligible in the zone — nothing to fight
     const self = judgementSelf(game, actor, card)
     if (!self) return false
+    // Defence in depth, and a surviving mutation showed it is ONLY that:
+    // declareForcedBattle re-validates every listed id against the board on
+    // its own side in this zone, which subsumes every case this catches. Kept
+    // because braveheartActivate carries the identical line and the two cards
+    // should not diverge — but do not go hunting for the test that pins it.
     const stillLegal = enemyVehicleOptions(
       game, actor, self.zone.id, (e) => JUDGEMENT_PREY.includes(e.vehicleType ?? ''),
     ).some((o) => o.id === choiceId)

@@ -146,3 +146,73 @@ describe('ACTIVATE_VEHICLE — activateMaterialCost', () => {
     }
   })
 })
+
+// Two surviving mutations, both in the same shape: the ORIGINAL tests only
+// ever exercised a malformed material price on a card with no CP price, where
+// the "at least one price" gate already refused it — so the malformed-value
+// branch and Math.floor were never reached at all.
+describe('ACTIVATE_VEHICLE — mutation survivors', () => {
+  const priced = (meta: Record<string, unknown>) => {
+    const game = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+    game.privates.a.deck = [inst({ name: 'Spare' })]
+    game.state.counts.a = { hand: 0, deck: 1 }
+    game.state.resources.a.materials = 500_000
+    game.state.resources.a.cp = 3
+    game.state.zones[0].cards.a.push(zoneEntry({ name: 'Foundry', instanceId: 'm1', meta }))
+    return { game, act: () => applyAction(game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: 'm1' }, makeCtx()) }
+  }
+
+  // A card carrying a VALID cp price and a MALFORMED material one must be
+  // refused, not quietly activated for the CP alone. This is the data-key
+  // blind spot in miniature: a mistyped value that reads as "free".
+  it.each([-1, Number.NaN, '200000'])(
+    'refuses a card whose material price is %p alongside a valid CP price',
+    (bad) => {
+      const { act, game } = priced({
+        onActivate: 't_activateDraw', activateCpCost: 1, activateMaterialCost: bad,
+      })
+      const before = game.state.resources.a.cp
+      expect(act()).toMatchObject({ ok: false, status: 400 })
+      expect(game.state.resources.a.cp).toBe(before)
+    },
+  )
+
+  // The mirror: a malformed CP price alongside a valid material one.
+  it('refuses a card whose CP price is malformed alongside a valid material price', () => {
+    const { act } = priced({
+      onActivate: 't_activateDraw', activateCpCost: -1, activateMaterialCost: 200_000,
+    })
+    expect(act()).toMatchObject({ ok: false, status: 400 })
+  })
+
+  // Math.floor, not Math.ceil. No seeded card prints a fractional price, so
+  // only a direct fixture reaches it — and the two differ by exactly 1.
+  it('rounds a fractional activation price DOWN', () => {
+    const { act, game } = priced({ onActivate: 't_activateDraw', activateMaterialCost: 200_000.7 })
+    const r = act()
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.resources.a.materials).toBe(game.state.resources.a.materials - 200_000)
+  })
+})
+
+// A NULL price key is an ABSENT price key, not a malformed one — the same
+// reading normalizeState takes of every nullable field. So a card with a valid
+// CP price and an explicitly-null material price has a working CP-only
+// ability. Written after a mutation-survivor test asserted the opposite and
+// was wrong: the expectation was the defect, not the code.
+describe('ACTIVATE_VEHICLE — a null price key means absent', () => {
+  it('activates on the CP price alone', () => {
+    const game = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+    game.privates.a.deck = [inst({ name: 'Spare' })]
+    game.state.counts.a = { hand: 0, deck: 1 }
+    game.state.resources.a.cp = 2
+    game.state.zones[0].cards.a.push(zoneEntry({
+      name: 'Foundry', instanceId: 'm2',
+      meta: { onActivate: 't_activateDraw', activateCpCost: 1, activateMaterialCost: null },
+    }))
+    const r = applyAction(game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: 'm2' }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.resources.a.cp).toBe(1)
+    expect(r.game.state.resources.a.materials).toBe(game.state.resources.a.materials)
+  })
+})

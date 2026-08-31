@@ -414,17 +414,15 @@ function blockadeSpring(payload: EffectPayload): boolean {
   // declares — dispatchBattleLock iterates every rider on the zone. Anything
   // but 'deploy' is a no-op, which is what stops the recursion.
   if (!battle || battle.phase !== 'deploy') return true
-  // One battle per play: another rider may already have sprung, and
-  // declareForcedBattle refuses outright while activeBattle is non-null.
-  if (game.state.activeBattle) return true
+  // NOTE: there is deliberately no `if (game.state.activeBattle) return true`
+  // here. dispatchDeployWatchers already stops its pass at the first battle
+  // declared, and a second guard on the same condition made THAT one
+  // unobservable — a surviving mutation is what exposed it. One guard, in the
+  // dispatcher, where it generalises to any future deploy watcher.
   const zone = zoneById(game.state, battle.zoneId)
   if (!zone) return true
   const mine = zone.cards[actor] as ZoneCardEntry[]
   const theirs = zone.cards[otherSide(actor)] as ZoneCardEntry[]
-  // "while you have at least one vehicle there". Without one the trap does not
-  // spring — and is NOT spent either: the card removes it on a loss and on
-  // nothing else.
-  if (mine.length === 0) return true
   // "A FLEET battle begins in that zone": everything on both sides, not just
   // the hull that walked in. The aggressor's force excludes Inoffensive hulls
   // (spec §7.3's Gang Up ruling — Inoffensive is precisely "cannot attack",
@@ -434,6 +432,12 @@ function blockadeSpring(payload: EffectPayload): boolean {
     .filter((c) => !c.keywords.includes(KEYWORDS.INOFFENSIVE))
     .map((c) => c.instanceId)
   const defenderIds = theirs.map((c) => c.instanceId)
+  // One check covers both readings, and a separate `mine.length === 0` test
+  // above it was a line no test could distinguish from its absence (another
+  // surviving mutation): "while you have at least one vehicle there" fails
+  // when the fleet is empty, and Gang Up's rule fails when every hull in it is
+  // Inoffensive. Either way the trap does not spring — and is NOT spent
+  // either: the card removes it on a loss and on nothing else.
   if (attackerIds.length === 0 || defenderIds.length === 0) return true
   return declareForcedBattle(game, ctx, {
     zoneId: battle.zoneId,
@@ -466,6 +470,10 @@ function blockadeSpring(payload: EffectPayload): boolean {
 // stashed at DECLARE time, which a late joiner made stale. The current board
 // cannot go stale.
 function blockadeAftermath({ game, actor, continuation }: EffectPayload): boolean {
+  // The type guard is load-bearing for TYPESCRIPT (data is
+  // Record<string, unknown>) and, a surviving mutation showed, for nothing
+  // else: zoneById(undefined) already returns undefined and the next line
+  // refuses. Keep it; it is what makes the value a number below.
   const zoneId = continuation?.data?.zoneId
   if (typeof zoneId !== 'number') return false
   const zone = zoneById(game.state, zoneId)

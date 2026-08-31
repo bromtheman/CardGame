@@ -359,6 +359,12 @@ registerHandler('PLAY_CARD_TO_ZONE', (game, actor, action, ctx) => {
   // DP7 (spec §4.3). After the deploy line, so the log reads deploy-then-trap,
   // and after resolvePlayEffects' failure check, so a refused play springs
   // nothing. Vehicles only: the card says "plays a vehicle into that zone".
+  //
+  // ⚠ That second ordering is defence in depth and NOTHING MORE — a surviving
+  // mutation proved it. applyAction works on a structuredClone, so a failing
+  // effect discards everything this dispatch would have done anyway. Keep the
+  // order (it is free and it is the honest one), but do not go looking for the
+  // test that pins it: there cannot be one.
   if (card.type === 'vehicle') dispatchDeployWatchers(game, ctx, action.zoneId, actor)
   return { ok: true, game }
 })

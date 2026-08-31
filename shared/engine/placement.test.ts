@@ -1184,3 +1184,25 @@ describe('deployRequiresBattleLoss — Purifier', () => {
     }
   })
 })
+
+// SURVIVING MUTATION: battleLossMissing's optional chaining. A game row
+// written before wave 6 has zones with no lostBattleOnTurn at all, and
+// normalizeState only runs at the applyAction boundary — legalZonesFor is also
+// called DIRECTLY by the frontend, against whatever state the query handed it.
+// Without the optional chaining that is a crash on the hand, not a refusal.
+describe('deployRequiresBattleLoss — an unnormalized zone', () => {
+  it('refuses rather than throwing when the zone has no loss record at all', () => {
+    const g = makeGame({ turnNumber: 4 })
+    for (const zone of g.state.zones) {
+      delete (zone as unknown as Record<string, unknown>).lostBattleOnTurn
+    }
+    const purifier = inst({
+      name: 'Purifier', faction: 'WF', vehicleType: 'ship', materialCost: 760_000,
+      meta: { deployRequiresBattleLoss: true, noBaseDamage: true },
+    })
+    expect(() => legalZonesFor(g.state, 'a', purifier, 4)).not.toThrow()
+    expect(legalZonesFor(g.state, 'a', purifier, 4)).toEqual([])
+    // …and an ordinary card is unaffected by the missing field.
+    expect(legalZonesFor(g.state, 'a', inst({ vehicleType: 'ship' }), 4)).toEqual([1, 2])
+  })
+})
