@@ -190,6 +190,14 @@ registerEffect(ALARMED, choice({
 // counter has to be read off state; a Horror in this zone already stamped with
 // the current turn IS this turn's spawn, and that needs no new field.
 //
+// ⚠ Recorded by wave 7's late re-read: `playedOnTurn` cannot tell a Horror that
+// COPIED into this zone this turn from one that ARRIVED here this turn by any
+// other route — Fear's spawn, or an ordinary play. So a Horror that Fear
+// dropped on turn N and which then survives a battle still on turn N produces
+// no copy. That errs toward FEWER copies on the wave's acknowledged balance hot
+// spot (a 70k self-replicating hull), and distinguishing the two would need the
+// per-zone counter D-4 deliberately avoided. Left as the conservative reading.
+//
 // ✅ It copies the surviving ENTRY rather than minting from the catalog, which
 // is what carries keywords GRANTED to that hull across (clydesdaleEffect and
 // loggerheadOnDeath are the precedents) — and is why this effect needs no
@@ -389,6 +397,12 @@ function resolveDuel(payload: EffectPayload, friendlyId: string, enemyId: string
   const mine = findVehicle(game.state, friendlyId)
   const theirs = findVehicle(game.state, enemyId)
   if (!mine || mine.side !== actor) return false
+  // ⚠ Ruling E-10. The friendly pick becomes attackerIds[0] of a forced
+  // battle, and §7.3's Gang Up ruling is explicit: INOFFENSIVE means "cannot
+  // attack", and a forced battle is not licence to break it. Re-checked here
+  // as well as filtered in the offer, because the hull may have GAINED the
+  // keyword between the two hops — an enemy TG Hysteria grants it.
+  if (mine.entry.keywords.includes(KEYWORDS.INOFFENSIVE)) return false
   if (!theirs || theirs.side !== otherSide(actor)) return false
   // zoneId is the battle's HOME zone — the duelling player's own hull's. The
   // away hull is resolved by id, which is what `crossZone` switches on.
@@ -413,7 +427,12 @@ const duelHop2 = (friendlyId: string): EffectFn => choice({
 const duelHop1: EffectFn = choice({
   effect: DUEL,
   prompt: 'Choose one of your vehicles to send into a duel',
-  options: ({ game, actor }) => friendlyVehicleOptions(game, actor, null),
+  // Inoffensive hulls excluded (E-10): the pick attacks, and Inoffensive is
+  // precisely "cannot attack". The ENEMY target is deliberately unfiltered —
+  // Inoffensive can still DEFEND, which is Gang Up's shape exactly.
+  options: ({ game, actor }) => friendlyVehicleOptions(
+    game, actor, null, (e) => !e.keywords.includes(KEYWORDS.INOFFENSIVE),
+  ),
   resolve: (payload, friendlyId) => {
     if (friendlyId === null) {
       payload.game.state.log.push(`${payload.card.name} finds no vehicle to send`)

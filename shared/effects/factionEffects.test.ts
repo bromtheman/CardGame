@@ -5759,3 +5759,73 @@ describe('TG Duel — a cross-zone 1v1 (wave 7)', () => {
     expect(done.state.activeBattle?.zoneId).toBe(1)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Wave 7, ruling E-10 — found by the late re-read, not by building the card.
+//
+// Duel's friendly pick becomes attackerIds[0] of a forced battle, and spec
+// §7.3's Gang Up ruling is explicit: "Inoffensive means 'cannot attack', and a
+// forced battle is not licence to break that". Duel is exactly Gang Up's
+// shape — the actor choosing their own attacker — so it must exclude
+// Inoffensive hulls too.
+//
+// Live-reachable rather than theoretical: TG Hysteria grants INOFFENSIVE to an
+// ENEMY vehicle, so in any game facing a TG deck one of your own hulls can
+// carry it, and Duel would otherwise send it to attack.
+describe('TG Duel — E-10, an Inoffensive hull cannot be sent to duel', () => {
+  const duelCard = () => inst({
+    instanceId: 'duel1', name: 'Duel', faction: 'TG', type: 'ability',
+    vehicleType: null, materialCost: 0, meta: { onPlayEffect: 'duelEffect' },
+  })
+
+  const armed = () => {
+    const card = duelCard()
+    const game = makeGame({
+      turnNumber: 3, activePlayer: 'alice',
+      privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } },
+    })
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'able', name: 'Able', playedOnTurn: 1 }))
+    game.state.zones[0].cards.a.push(zoneEntry({
+      instanceId: 'meek', name: 'Meek', keywords: [KEYWORDS.INOFFENSIVE], playedOnTurn: 1,
+    }))
+    game.state.zones[1].cards.b.push(zoneEntry({ instanceId: 'foe1', name: 'Foe', playedOnTurn: 1 }))
+    return { game, card }
+  }
+
+  it('does not offer an Inoffensive hull at hop 1', () => {
+    const { game, card } = armed()
+    const r = applyAction(game, 'alice', { type: 'PLAY_ABILITY_CARD', instanceId: card.instanceId }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.pendingEffect?.options?.map((o) => o.id)).toEqual(['able'])
+  })
+
+  it('refuses one smuggled past the dialog', () => {
+    const { game, card } = armed()
+    const played = applyAction(game, 'alice', { type: 'PLAY_ABILITY_CARD', instanceId: card.instanceId }, makeCtx())
+    if (!played.ok) throw new Error(played.error)
+    // choice() validates choiceId against pending.options, so reaching
+    // resolveDuel with 'meek' needs the hull to have GAINED Inoffensive after
+    // the offer — which is what the resolve-time re-check is for.
+    const hop1 = applyAction(played.game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'able' }, makeCtx())
+    if (!hop1.ok) throw new Error(hop1.error)
+    findVehicle(hop1.game.state, 'able')!.entry.keywords.push(KEYWORDS.INOFFENSIVE)
+    const r = applyAction(hop1.game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'foe1' }, makeCtx())
+    expect(r).toMatchObject({ ok: false, status: 400 })
+  })
+
+  // Inoffensive means "cannot attack. It can still defend" — so the ENEMY
+  // target is deliberately unfiltered, matching Gang Up's single named
+  // defender.
+  it('still allows an Inoffensive ENEMY to be duelled', () => {
+    const { game, card } = armed()
+    findVehicle(game.state, 'foe1')!.entry.keywords.push(KEYWORDS.INOFFENSIVE)
+    const played = applyAction(game, 'alice', { type: 'PLAY_ABILITY_CARD', instanceId: card.instanceId }, makeCtx())
+    if (!played.ok) throw new Error(played.error)
+    const hop1 = applyAction(played.game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'able' }, makeCtx())
+    if (!hop1.ok) throw new Error(hop1.error)
+    expect(hop1.game.state.pendingEffect?.options?.map((o) => o.id)).toEqual(['foe1'])
+    const done = applyAction(hop1.game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'foe1' }, makeCtx())
+    if (!done.ok) throw new Error(done.error)
+    expect(done.game.state.activeBattle?.defenderIds).toEqual(['foe1'])
+  })
+})
