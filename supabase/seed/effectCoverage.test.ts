@@ -16,25 +16,15 @@ const EXEMPT: Record<string, string> = {
   'TG:Anguish': 'Deployment-order conduct text for the spawn sheet: the engine has no deployment-order concept, so there is nothing to fire',
 }
 
-// The gaps not yet closed (Falcon Squadron is permanently EXEMPT above).
-// Delete entries as their wave lands — the "KNOWN_GAPS contains no stale
-// entries" test below rejects stale ones, so this list only shrinks.
+// The gaps not yet closed (Falcon Squadron and TG Anguish are permanently
+// EXEMPT above). Delete entries as their wave lands — the "KNOWN_GAPS contains
+// no stale entries" test below rejects stale ones, so this list only shrinks.
 //
-// The five effect-coverage waves emptied it of that spec's 65 cards; the
-// 2026-08-30 balance pass then added twelve more, and WAVE 6 CLOSED THOSE.
-// So it is empty again — for the first time since the balance pass opened it:
+// The five effect-coverage waves emptied it of that spec's 65 cards, and wave 6
+// closed the twelve the 2026-08-30 balance pass added. It reached zero, and the
+// toHaveLength assertion below is what stops a newly-seeded card with an
+// unimplemented effect name being added quietly.
 //
-//   Group A  Basher, Nothung, Balmung, Harbringer — one-liners over existing
-//            primitives, no engine work at all
-//   Group B  Judgement, Victoria, Chrysaor, Paladin — small extensions to
-//            costModifier, ACTIVATE_VEHICLE and resourceSurge
-//   Group C  Albacore + Tarpon (an owner-side aircraft lock read off seeded
-//            data), Purifier (a new per-zone battle-loss field on
-//            PublicGameState), Blockade (DP7 — a zone rider that fires when
-//            the OPPONENT deploys)
-//
-// It stays asserted over, and the toHaveLength(0) below is what stops a
-// newly-seeded card with an unimplemented effect name being added quietly.
 // WAVE 7 REOPENED IT, deliberately and visibly, by seeding a whole faction
 // before wiring its behaviour. Every entry below is a TG card whose row now
 // exists and whose effect does not yet, and each names the mechanic it is
@@ -46,8 +36,6 @@ const EXEMPT: Record<string, string> = {
 // them) and Anguish is permanently EXEMPT above.
 const KNOWN_GAPS: Record<string, string> = {
   'TG:Jealousy': 'wave 7 — grant({ draw: 1 }) on death',
-  'TG:Curiosity': 'wave 7 — the additionalSpawns data key',
-  'TG:Acceptance': 'wave 7 — the resourceSurge data key (§4.6 suppressing arm)',
   'TG:Fear': 'wave 7 — spawnVehicles a Horror into every zone',
   'TG:Obelisk': 'wave 7 — a Mirth Swarm battle summon at lock',
   'TG:Hysteria': 'wave 7 — a board-wide choice granting INOFFENSIVE',
@@ -211,7 +199,7 @@ describe('built-in card effect coverage', () => {
     for (const label of Object.values(KNOWN_GAPS)) expect(label.startsWith('wave 7')).toBe(true)
     // Decremented by whoever closes a card, in the same commit that makes it
     // work — and it must reach 0 before wave 7 can be called complete.
-    expect(Object.keys(KNOWN_GAPS)).toHaveLength(13)
+    expect(Object.keys(KNOWN_GAPS)).toHaveLength(11)
   })
 
   it('PARTIAL names real cards that currently pass G1 and G2, and never overlaps KNOWN_GAPS', async () => {

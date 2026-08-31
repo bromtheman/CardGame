@@ -1206,3 +1206,118 @@ describe('deployRequiresBattleLoss — an unnormalized zone', () => {
     expect(legalZonesFor(g.state, 'a', inst({ vehicleType: 'ship' }), 4)).toEqual([1, 2])
   })
 })
+
+// ---------------------------------------------------------------------------
+// Wave 7, group B — two TG cards that are pure DATA and name no registry
+// effect at all, exactly as Buzzsaw and Veles do (spec §4.8).
+//
+// The literals here are tied to the real seeded rows by
+// supabase/seed/tgFaction.test.ts, which asserts the cards carry these exact
+// objects. Neither half is enough alone: this file proves the engine reads the
+// shape, that one proves the card carries it.
+const CURIOSITY_META = { additionalSpawns: 1 }
+const ACCEPTANCE_META = { resourceSurge: { materialsAtLeast: 150_000, extraSpawns: 1 } }
+
+describe('TG Curiosity — additionalSpawns (wave 7)', () => {
+  // "Whenever this vehicle is played into a zone, spawn a second curiosity
+  // into that zone too."
+  const play = (zoneId: number) => {
+    const card = inst({
+      name: 'Curiosity', vehicleType: 'airship', materialCost: 80_000, meta: CURIOSITY_META,
+    })
+    const game = makeGame({ privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } } })
+    game.state.resources.a.materials = 200_000
+    const r = applyAction(game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    return r.game
+  }
+
+  it('lands two hulls in the played zone for one payment', () => {
+    const game = play(1)
+    expect(game.state.zones[0].cards.a).toHaveLength(2)
+    expect(game.state.resources.a.materials).toBe(120_000)
+  })
+
+  it('puts the copy in the SAME zone, never spread across the board', () => {
+    const game = play(2)
+    expect(game.state.zones[1].cards.a).toHaveLength(2)
+    expect(game.state.zones[0].cards.a).toHaveLength(0)
+    expect(game.state.zones[2].cards.a).toHaveLength(0)
+  })
+
+  // ✅ No infinite loop, and no guard to go looking for: deployVehicle is the
+  // only reader of additionalSpawns, and the copies it mints never pass back
+  // through it — so the inherited key on a copy never fires again.
+  it('does not cascade: the copy inherits the key but spawns nothing itself', () => {
+    const game = play(1)
+    const hulls = game.state.zones[0].cards.a
+    expect(hulls).toHaveLength(2)
+    expect(hulls[1].meta.additionalSpawns).toBe(1)
+  })
+
+  it('gives the copy its own instanceId', () => {
+    const [first, second] = play(1).state.zones[0].cards.a
+    expect(second.instanceId).not.toBe(first.instanceId)
+  })
+})
+
+describe('TG Acceptance — resourceSurge, the suppressing arm (wave 7)', () => {
+  // "If you have at least 150k materials, this card loses halfcost keyword and
+  // spawns a second acceptance." The comparator is materialsAtLeast (Orbit's),
+  // because the text says "at least" — §4.6 keeps exactly one per card so each
+  // card's own wording survives.
+  const deploy = (materials: number) => {
+    const card = inst({
+      name: 'Acceptance', vehicleType: 'plane', materialCost: 150_000,
+      keywords: [KEYWORDS.HALF_COST, KEYWORDS.TEMPORARY], meta: ACCEPTANCE_META,
+    })
+    const game = makeGame({ privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } } })
+    game.state.resources.a.materials = materials
+    const r = applyAction(game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    return r.game
+  }
+
+  it('at exactly 150k: full price, two hulls', () => {
+    const game = deploy(150_000)
+    expect(game.state.zones[0].cards.a).toHaveLength(2)
+    expect(game.state.resources.a.materials).toBe(0)
+  })
+
+  it('at 149,999: half price, one hull', () => {
+    const game = deploy(149_999)
+    expect(game.state.zones[0].cards.a).toHaveLength(1)
+    expect(game.state.resources.a.materials).toBe(74_999)
+  })
+
+  // ⚠ Ruling A-1, and the assertion most likely to be wrong. The suppression
+  // is PRICE-ONLY: the hull on the board keeps HALF_COST, which feeds
+  // effectiveMaterialCostOf and so its base damage and its repair bill. So a
+  // surged Acceptance pays 150k and still hits like a 75k hull. PredatorX has
+  // this shape already and wave 6's ruling B-7 answered it for Paladin; the
+  // alternative would need a keyword-stripping arm that does not exist.
+  it('A-1: the landed hulls keep HALF_COST — suppression is price-only', () => {
+    const game = deploy(150_000)
+    for (const entry of game.state.zones[0].cards.a) {
+      expect(entry.keywords).toContain(KEYWORDS.HALF_COST)
+      expect(effectiveMaterialCostOf(entry)).toBe(75_000)
+    }
+  })
+
+  // ✅ The exact case the read-before-pay() ordering exists for (Chrysaor was
+  // the first): Acceptance's threshold EQUALS its own printed cost, so a
+  // post-payment re-read would flip its own condition off between pricing and
+  // spawning, charging 150k and landing one hull.
+  it('reads the surge before payment, so paying for itself cannot cancel it', () => {
+    const game = deploy(150_000)
+    expect(game.state.resources.a.materials).toBe(0)
+    expect(game.state.zones[0].cards.a).toHaveLength(2)
+  })
+
+  it('both hulls are Temporary, so the pair is culled at the next turn start', () => {
+    const game = deploy(150_000)
+    for (const entry of game.state.zones[0].cards.a) {
+      expect(entry.keywords).toContain(KEYWORDS.TEMPORARY)
+    }
+  })
+})

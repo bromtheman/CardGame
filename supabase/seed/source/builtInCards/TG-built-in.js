@@ -220,6 +220,7 @@ export const tgVehicles = [
         blueprintId: null,
         keywords: [],
         meta: {
+            additionalSpawns: 1,
         }
     },
     {
@@ -288,6 +289,7 @@ export const tgVehicles = [
         blueprintId: null,
         keywords: [KEYWORDS.HALF_COST, KEYWORDS.TEMPORARY],
         meta: {
+            resourceSurge: { materialsAtLeast: 150000, extraSpawns: 1 },
         }
     },
     {

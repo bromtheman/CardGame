@@ -298,3 +298,36 @@ describe('the seed vocabulary matches shared/gameSettings', () => {
     }
   })
 })
+
+// ---------------------------------------------------------------------------
+// Group B — the two cards whose whole behaviour is a data key, with no
+// registry name at all (spec §4.8, as Buzzsaw and Veles do).
+//
+// ⚠ The guard checks a data key's PRESENCE, never its VALUE (blind spot 4), so
+// a mistyped `materialsAtLeast` or an `additionalSpawns: true` would leave the
+// card inert AND invisible — no failing guard and no "plays as vanilla" note.
+// These are the assertions that would notice. The engine-side halves live in
+// shared/engine/placement.test.ts.
+describe('group B data keys carry the exact values the engine compares', () => {
+  it('Curiosity spawns exactly one extra hull', async () => {
+    const card = (await bySeedKey()).get('TG:Curiosity')!
+    expect(card.meta.additionalSpawns).toBe(1)
+  })
+
+  it('Acceptance surges on "at least", with one extra hull and no keyword grant', async () => {
+    const card = (await bySeedKey()).get('TG:Acceptance')!
+    // Key for key: an extra `grantKeywords` would silently flip it from the
+    // suppressing arm of ruling B-9 to the granting one, and it would still
+    // pass a presence check.
+    expect(card.meta.resourceSurge).toEqual({ materialsAtLeast: 150_000, extraSpawns: 1 })
+  })
+
+  it('gives neither card a registry name to resolve', async () => {
+    const byKey = await bySeedKey()
+    for (const name of ['Curiosity', 'Acceptance']) {
+      const meta = byKey.get(`TG:${name}`)!.meta
+      expect(meta.onPlayEffect).toBeUndefined()
+      expect(meta.onDeathEffect).toBeUndefined()
+    }
+  })
+})
