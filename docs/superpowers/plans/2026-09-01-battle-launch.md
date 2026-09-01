@@ -65,7 +65,7 @@ overlay already shows the players:
 |---|---|---|
 | Aircraft altitude | `SpawnAltitude: 80` for planes and airships | Spec §3.5's spawn sheet. Everything else spawns at the surface. |
 | Attacker heading | `SpawnAngle: 180` on the aggressor's hulls | Both fleets otherwise spawn facing the same way. Turning the attacker around leaves the defenders already pointed at it — the advantage defending is meant to carry. |
-| In-battle resources | `StartingMaterial` per team = 2 × Σ ⌊cost × 10%⌋ | Spec §3.5 pays per vehicle; FtD only has a per-team pool. Doubling compensates for the pooling. Floored per craft so it matches the figure the overlay quotes. |
+| In-battle resources | `StartingMaterial` per team = its own fleet's full build cost | Deliberately **not** spec §3.5's 10% per vehicle, which the overlay's spawn sheet still quotes for a hand-run match. FtD pools material per team rather than per craft, and a tenth spread across a whole fleet was too small to spend. Uses the effective cost, so a Half Cost hull contributes its halved figure. |
 | Material symmetry | `SymmetricMaterial: false` | The one value that deliberately differs from the saved fixture — the two teams' pools are derived from their own fleets, so they genuinely differ. |
 
 ## Open questions
