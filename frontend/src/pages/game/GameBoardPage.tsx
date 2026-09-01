@@ -5,6 +5,7 @@ import type { Side } from '@shared/engine/engineTypes'
 import type { LobbySettings } from '@shared/lobbySettings'
 import { battleFrozen, biomeAllows, effectiveCostInGame, effectName, findVehicle, legalZonesFor } from '@shared/engine/index'
 import { shortHandNumber } from '@shared/format'
+import { MAX_VEHICLES_PER_ZONE_SIDE } from '@shared/gameSettings'
 import { useGameQuery, useMyGamePlayerQuery, useUsernames } from '../../lib/games'
 import { useRealtimeInvalidate } from '../../lib/realtime'
 import { useAuth } from '../../lib/auth'
@@ -67,7 +68,8 @@ export function GameBoardPage() {
   // Move-mode: shared zone-picking step for Rapid Redeployment (any own
   // vehicle) and the mobile-vehicle "move" affordance (Mobile keyword only).
   // Legal zones mirror heroPowers.ts's moveEntry — any zone but the current
-  // one whose biome fits the vehicle, no screen-blocking check (that only
+  // one whose biome fits the vehicle and whose own side is under the
+  // MAX_VEHICLES_PER_ZONE_SIDE cap, with no screen-blocking check (that only
   // applies to playing a new card from hand, not relocating one already out).
   // 'handTarget' is excluded here — its instanceId names a HAND card
   // (Excalibur), not an on-field one, so findVehicle would just miss.
@@ -76,7 +78,14 @@ export function GameBoardPage() {
     : null
   const legalForMove = moveSource
     ? state.zones
-        .filter((z) => z.id !== moveSource.zone.id && biomeAllows(moveSource.entry.vehicleType, z.biome))
+        .filter((z) => (
+          z.id !== moveSource.zone.id &&
+          biomeAllows(moveSource.entry.vehicleType, z.biome) &&
+          // The move half of the zone-side cap, mirroring moveEntry's own
+          // check. Display-only, like the rest of this filter — the server
+          // re-validates and 400s a move into a full zone either way.
+          z.cards[mySide].length < MAX_VEHICLES_PER_ZONE_SIDE
+        ))
         .map((z) => z.id)
     : []
   // Excalibur's hand direction (DP6, spec §4.3 departure 4): the destination

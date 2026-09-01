@@ -4,8 +4,8 @@ import {
 } from './index'
 import { registerCostModifier, registerEffect } from '../effects/registry.ts'
 import { takeFromEnemyDeck } from '../effects/primitives.ts'
-import { ADDITIONAL_SPAWNS_CAP, KEYWORDS } from '../gameSettings.ts'
-import { inst, makeCtx, makeGame, zoneEntry } from './testFixtures'
+import { ADDITIONAL_SPAWNS_CAP, KEYWORDS, MAX_VEHICLES_PER_ZONE_SIDE } from '../gameSettings.ts'
+import { inst, makeCtx, makeGame, snap, zoneEntry } from './testFixtures'
 
 function withHand(cardOver: Record<string, unknown>) {
   const g = makeGame()
@@ -116,11 +116,24 @@ describe('additionalSpawns', () => {
     expect(r.game.state.resources.a.materials).toBe(60000) // 100000 - 40000, paid once
   })
 
-  it('caps at ADDITIONAL_SPAWNS_CAP extras when meta requests far more', () => {
+  // Two caps in series. ADDITIONAL_SPAWNS_CAP clamps the runaway meta value
+  // (99 → 10); MAX_VEHICLES_PER_ZONE_SIDE then clamps what the board accepts
+  // (11 → 8), and since it is the smaller of the two it is what lands.
+  //
+  // ADDITIONAL_SPAWNS_CAP is therefore no longer observable in the hull COUNT
+  // — but it is still load-bearing, and the log line is where that shows: the
+  // player is told 3 copies were dropped (11 − 8), not 92. Asserting the
+  // count alone would let ADDITIONAL_SPAWNS_CAP be deleted with the suite
+  // still green.
+  it('applies ADDITIONAL_SPAWNS_CAP first, then the zone cap bounds what lands', () => {
     const { g, card } = withHand({ vehicleType: 'ship', materialCost: 10000, meta: { additionalSpawns: 99 } })
     const r = applyAction(g, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx())
     if (!r.ok) throw new Error(r.error)
-    expect(r.game.state.zones[0].cards.a).toHaveLength(ADDITIONAL_SPAWNS_CAP + 1)
+    expect(r.game.state.zones[0].cards.a).toHaveLength(MAX_VEHICLES_PER_ZONE_SIDE)
+    const dropped = ADDITIONAL_SPAWNS_CAP + 1 - MAX_VEHICLES_PER_ZONE_SIDE
+    expect(r.game.state.log).toContain(
+      `Zone 1 is full — ${dropped} further ${card.name} could not deploy`,
+    )
   })
 
   it('spawns none when meta additionalSpawns is non-numeric', () => {
@@ -1386,5 +1399,106 @@ describe('deployRequiresAiVehicle — TG Alarmed (wave 7)', () => {
     game.state.resources.a.materials = 500_000
     const r = applyAction(game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx())
     expect(r).toMatchObject({ ok: false, status: 400 })
+  })
+})
+
+describe('MAX_VEHICLES_PER_ZONE_SIDE — the zone-side cap', () => {
+  // Fill one side of a zone to `count` with plain ships that need no catalog.
+  function fill(g: ReturnType<typeof makeGame>, zoneIndex: number, side: 'a' | 'b', count: number) {
+    for (let i = 0; i < count; i++) {
+      g.state.zones[zoneIndex].cards[side].push(zoneEntry({ vehicleType: 'ship' }))
+    }
+  }
+
+  it('refuses a play into a side already holding the cap', () => {
+    const { g, card } = withHand({ vehicleType: 'ship', materialCost: 10000 })
+    fill(g, 0, 'a', MAX_VEHICLES_PER_ZONE_SIDE)
+    expect(applyAction(g, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx()))
+      .toMatchObject({ ok: false, status: 400 })
+    expect(legalZonesFor(g.state, 'a', card, g.turnNumber)).not.toContain(1)
+  })
+
+  it('allows the play that fills the last slot', () => {
+    const { g, card } = withHand({ vehicleType: 'ship', materialCost: 10000 })
+    fill(g, 0, 'a', MAX_VEHICLES_PER_ZONE_SIDE - 1)
+    expect(legalZonesFor(g.state, 'a', card, g.turnNumber)).toContain(1)
+    const r = applyAction(g, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.zones[0].cards.a).toHaveLength(MAX_VEHICLES_PER_ZONE_SIDE)
+  })
+
+  // The cap is per zone SIDE. Three independent axes, each its own way to
+  // get the scoping wrong: a different zone, the enemy's half of the same
+  // zone, and the enemy's own play into a zone your side has filled.
+  it('is scoped to one side of one zone', () => {
+    const { g, card } = withHand({ vehicleType: 'ship', materialCost: 10000 })
+    fill(g, 0, 'a', MAX_VEHICLES_PER_ZONE_SIDE)
+    // zone 2 (beach) still takes a ship
+    expect(legalZonesFor(g.state, 'a', card, g.turnNumber)).toContain(2)
+    // the enemy's half of zone 1 is untouched by your side being full
+    expect(legalZonesFor(g.state, 'b', card, g.turnNumber)).toContain(1)
+  })
+
+  it('counts only your own side, not the enemy hulls sharing the zone', () => {
+    const { g, card } = withHand({ vehicleType: 'ship', materialCost: 10000 })
+    fill(g, 0, 'b', MAX_VEHICLES_PER_ZONE_SIDE)
+    expect(legalZonesFor(g.state, 'a', card, g.turnNumber)).toContain(1)
+    expect(applyAction(g, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx()).ok)
+      .toBe(true)
+  })
+
+  // The overflow ruling: one free slot makes the card playable, and the
+  // additionalSpawns copies fill what is left instead of the play being
+  // refused. Without the clamp this lands 4 hulls on top of 6 and reaches 10.
+  it('clamps additionalSpawns copies to the remaining slots', () => {
+    const { g, card } = withHand({ vehicleType: 'ship', materialCost: 10000, meta: { additionalSpawns: 3 } })
+    fill(g, 0, 'a', MAX_VEHICLES_PER_ZONE_SIDE - 2)
+    const r = applyAction(g, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.zones[0].cards.a).toHaveLength(MAX_VEHICLES_PER_ZONE_SIDE)
+    // and it says so, rather than dropping them silently
+    // 6 already there + the card itself = 7, so exactly one of its three
+    // copies fits and the other two are dropped.
+    expect(r.game.state.log).toContain(`Zone 1 is full — 2 further ${card.name} could not deploy`)
+  })
+
+  it('still lands the full additionalSpawns payload when it fits', () => {
+    const { g, card } = withHand({ vehicleType: 'ship', materialCost: 10000, meta: { additionalSpawns: 3 } })
+    const r = applyAction(g, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.zones[0].cards.a).toHaveLength(4)
+    expect(r.game.state.log.some((l) => /could not deploy/.test(l))).toBe(false)
+  })
+
+  // A spawn is not a play (spec §7.4) — the cap deliberately does not reach
+  // it, so this pins the boundary rather than leaving it to drift.
+  it('does not stop a spawn from exceeding the cap', () => {
+    const g = makeGame()
+    fill(g, 0, 'a', MAX_VEHICLES_PER_ZONE_SIDE)
+    const buccaneer = snap({ name: 'Buccaneer', vehicleType: 'ship' })
+    const spawner = inst({
+      type: 'ability', vehicleType: null, materialCost: 0,
+      meta: { playOnZoneEffect: 'spawnBuccaneerEffect' },
+    })
+    g.privates.a.hand = [spawner]
+    g.state.counts.a.hand = 1
+    const r = applyAction(
+      g, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: spawner.instanceId, zoneId: 1 },
+      makeCtx({ catalog: [buccaneer] }),
+    )
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.zones[0].cards.a).toHaveLength(MAX_VEHICLES_PER_ZONE_SIDE + 1)
+  })
+
+  // ADDITIONAL_SPAWNS_CAP (10) is larger than the zone cap (8), so the zone
+  // cap is the binding one on an empty side. Pins that they are not confused.
+  it('binds ahead of ADDITIONAL_SPAWNS_CAP on an empty side', () => {
+    expect(MAX_VEHICLES_PER_ZONE_SIDE).toBeLessThan(ADDITIONAL_SPAWNS_CAP + 1)
+    const { g, card } = withHand({
+      vehicleType: 'ship', materialCost: 10000, meta: { additionalSpawns: ADDITIONAL_SPAWNS_CAP },
+    })
+    const r = applyAction(g, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.zones[0].cards.a).toHaveLength(MAX_VEHICLES_PER_ZONE_SIDE)
   })
 })

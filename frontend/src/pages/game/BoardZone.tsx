@@ -1,10 +1,11 @@
 import type { ReactNode } from 'react'
 import type { ZoneState } from '@shared/engine/gameInit'
 import type { Side, ZoneCardEntry } from '@shared/engine/engineTypes'
-import { KEYWORDS, VEHICLE_TYPES, ZONE_TYPES } from '@shared/gameSettings'
+import { KEYWORDS, MAX_VEHICLES_PER_ZONE_SIDE, VEHICLE_TYPES, ZONE_TYPES } from '@shared/gameSettings'
 import { shortHandNumber } from '@shared/format'
 import { MiniVehicle } from './MiniVehicle'
 import type { ZoneEffectBadge, ZoneEffectIcon } from './zoneEffectBadges'
+import { LANE_GRID_COLUMNS, SLOT_HEIGHT_CLASS, SLOT_WIDTH_CLASS } from './laneLayout'
 import anchorIcon from '../../assets/icons/anchorSVG.svg'
 import crosshairIcon from '../../assets/icons/crosshairSVG.svg'
 import torpedoIcon from '../../assets/icons/torpedoSVG.svg'
@@ -71,6 +72,87 @@ function ZoneEffectBadges({ badges }: { badges: ZoneEffectBadge[] }) {
           {badge.label}
         </span>
       ))}
+    </span>
+  )
+}
+
+// A side's vehicle lane: a fixed MAX_VEHICLES_PER_ZONE_SIDE-slot grid, with
+// the unfilled slots drawn as dashed outlines.
+//
+// It is a GRID rather than the flex-wrap this used to be because the row
+// count then followed the OCCUPANCY, so every few vehicles grew the lane and
+// pushed the base HP bars (and the whole panel) down. Rendering all
+// MAX_VEHICLES_PER_ZONE_SIDE slots whether or not they are filled cannot do
+// that — the lane is the same height empty or full, which is only expressible
+// now that the engine caps the side at eight.
+//
+// The empty slots also carry the cap: a player can see how many deployments
+// they have left in this zone without counting chips.
+function VehicleLane({
+  entries,
+  renderEntry,
+  className = '',
+}: {
+  entries: ZoneCardEntry[]
+  renderEntry: (entry: ZoneCardEntry) => ReactNode
+  className?: string
+}) {
+  // A side can sit ABOVE the cap — spawns, revives and Boarding Party
+  // deliberately bypass it (see gameSettings.MAX_VEHICLES_PER_ZONE_SIDE), so
+  // this clamps at zero rather than rendering a negative slot count, and the
+  // grid simply grows a row in that case instead of dropping a real hull.
+  const emptySlots = Math.max(0, MAX_VEHICLES_PER_ZONE_SIDE - entries.length)
+  return (
+    <div
+      // gap-x-0.5 (2px), not gap-1: four 5rem tracks plus three 4px gaps come
+      // to 332px against a zone panel that is 331.7px wide at a 1440 viewport,
+      // so a 4px gap loses the fourth column to a third of a pixel and makes
+      // the lane half a row taller for nothing. 2px fits it with room to
+      // spare. Vertical gap stays 4px — rows need the separation, columns
+      // have the chips' own borders.
+      className={`grid justify-center gap-x-0.5 gap-y-1 ${className}`}
+      style={{ gridTemplateColumns: LANE_GRID_COLUMNS }}
+    >
+      {entries.map(renderEntry)}
+      {Array.from({ length: emptySlots }, (_, i) => (
+        <div
+          key={`empty-${i}`}
+          aria-hidden
+          className={`${SLOT_HEIGHT_CLASS} ${SLOT_WIDTH_CLASS} rounded border border-dashed border-ocean-600/40`}
+        />
+      ))}
+    </div>
+  )
+}
+
+// The front line: enemy territory above it, yours below. Its own element
+// rather than the `border-t` hairline the own-lane used to carry, because the
+// eight-slot grid fills both lanes with dashed outlines and a 1px line at 50%
+// opacity now reads as one more grid line instead of as the boundary between
+// the two fleets. Brass to match the board's own accent, with a centre
+// diamond so the midpoint is unmistakable even on an empty zone.
+function FrontLine() {
+  return (
+    <div aria-hidden className="flex items-center gap-2 py-1">
+      <span className="h-px flex-1 bg-brass-400/30" />
+      <span className="h-1.5 w-1.5 rotate-45 border border-brass-400/70" />
+      <span className="h-px flex-1 bg-brass-400/30" />
+    </div>
+  )
+}
+
+// The "3/8" figure beside the zone title. Turns red once the side is full, so
+// "why can I not play this here?" is answerable from the board itself.
+function LaneCount({ count, mine }: { count: number; mine: boolean }) {
+  const full = count >= MAX_VEHICLES_PER_ZONE_SIDE
+  return (
+    <span
+      title={`${mine ? 'Your' : "Opponent's"} vehicles in this zone (limit ${MAX_VEHICLES_PER_ZONE_SIDE})`}
+      className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold tabular-nums ${
+        full ? 'bg-red-500/20 text-red-400' : 'bg-ocean-950/60 text-ocean-300'
+      }`}
+    >
+      {count}/{MAX_VEHICLES_PER_ZONE_SIDE}
     </span>
   )
 }
@@ -158,14 +240,21 @@ export function BoardZone({
           Zone {zone.id} <span className="text-sm capitalize text-ocean-300">({zone.biome})</span>
         </p>
         <ZoneEffectBadges badges={zoneEffectBadgeList ?? []} />
+        {/* Both sides' occupancy, ordered enemy-then-own to match the panel
+            below it. Counts are public state, like base HP. */}
+        <span className="ml-auto flex items-center gap-1">
+          <LaneCount count={zone.cards[theirSide].length} mine={false} />
+          <LaneCount count={zone.cards[mySide].length} mine />
+        </span>
       </div>
       {/* Both bases, mirroring the zone's own layout: the enemy above their
           vehicles, yours below yours. Base HP is public state and losing two
           zones loses the game, so a player cannot judge the board without
           seeing how close the opponent's base is to falling. */}
       <HpBar label="Enemy base" hp={zone.baseHp[theirSide]} max={maxBaseHp} own={false} />
-      <div className="flex min-h-[76px] flex-wrap gap-1">
-        {(zone.cards[theirSide] as ZoneCardEntry[]).map((c) => {
+      <VehicleLane
+        entries={zone.cards[theirSide] as ZoneCardEntry[]}
+        renderEntry={(c) => {
           const swapEnemyEligible = !!swapPickEnemyMode && c.vehicleType === VEHICLE_TYPES.SHIP
           return (
             <MiniVehicle
@@ -181,10 +270,12 @@ export function BoardZone({
               }
             />
           )
-        })}
-      </div>
-      <div className="flex min-h-[76px] flex-wrap gap-1 border-t border-ocean-600/50 pt-2">
-        {(zone.cards[mySide] as ZoneCardEntry[]).map((c) => {
+        }}
+      />
+      <FrontLine />
+      <VehicleLane
+        entries={zone.cards[mySide] as ZoneCardEntry[]}
+        renderEntry={(c) => {
           const mobileEligible = !!canMoveVehicles && c.keywords.includes(KEYWORDS.MOBILE) && c.movedOnTurn !== turnNumber
           // An activated ability needs `onActivate` plus AT LEAST ONE price.
           // There are two since wave 6 — CP (Braveheart, Judgement) and
@@ -220,8 +311,8 @@ export function BoardZone({
               onActivateClick={activateEligible ? () => onActivateClick?.(c.instanceId) : undefined}
             />
           )
-        })}
-      </div>
+        }}
+      />
       <HpBar label="Your base" hp={zone.baseHp[mySide]} max={maxBaseHp} />
       {children && (
         <div onClick={(e) => e.stopPropagation()}>

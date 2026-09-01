@@ -1,5 +1,6 @@
 import {
-  ADDITIONAL_SPAWNS_CAP, KEYWORDS, PURIFIER_LOSS_WINDOW_TURNS, VEHICLE_TYPES, ZONE_TYPES,
+  ADDITIONAL_SPAWNS_CAP, KEYWORDS, MAX_VEHICLES_PER_ZONE_SIDE, PURIFIER_LOSS_WINDOW_TURNS,
+  VEHICLE_TYPES, ZONE_TYPES,
 } from '../gameSettings.ts'
 import type { CardInstance, PublicGameState } from './gameInit.ts'
 import type { ApplyResult, EngineContext, EngineGame, Side, ZoneCardEntry } from './engineTypes.ts'
@@ -120,6 +121,26 @@ function aiVehicleMissing(
   return !zone?.cards[side].some((c) => c.isBuiltIn)
 }
 
+// The zone-side cap: at most MAX_VEHICLES_PER_ZONE_SIDE of your own hulls on
+// your own half of one zone. Reads the ACTOR'S OWN side — the same pronoun
+// distinction aircraftLocked draws against screenBlocks — so your full zone
+// never constrains the enemy's half of it, nor your other two zones.
+//
+// Requires ONE free slot, not room for the card's whole payload. A card with
+// additionalSpawns lands what fits (deployVehicle clamps) instead of becoming
+// unplayable, so "one slot free" is the entire condition a player has to
+// learn. Deciding it here would also mean re-deriving the resourceSurge spawn
+// count, which is only correct against materials as they stood BEFORE payment
+// — the ordering PLAY_CARD_TO_ZONE's own comment exists to protect.
+//
+// A missing zone reads as full, matching screenBlocks' fail-closed default.
+// Unreachable through legalZonesFor, which iterates state.zones.
+function zoneFull(state: PublicGameState, side: Side, zoneId: number): boolean {
+  const zone = state.zones.find((z) => z.id === zoneId)
+  if (!zone) return true
+  return zone.cards[side].length >= MAX_VEHICLES_PER_ZONE_SIDE
+}
+
 // `turnNumber` is REQUIRED rather than optional, for the reason
 // ZoneCardEntry's stamps are: tsc then finds every call site, including the
 // three in the frontend, instead of silently defaulting one of them.
@@ -134,7 +155,8 @@ export function legalZonesFor(
       !aircraftLocked(state, side, z.id, card.vehicleType!) &&
       !riderBlocks(state, side, z.id, card.faction) &&
       !battleLossMissing(state, side, z.id, card, turnNumber) &&
-      !aiVehicleMissing(state, side, z.id, card)
+      !aiVehicleMissing(state, side, z.id, card) &&
+      !zoneFull(state, side, z.id)
     ))
     .map((z) => z.id)
 }
@@ -320,7 +342,15 @@ function deployVehicle(
   // additionalSpawns: one payment lands N+1 hulls (spec §3.9). resourceSurge
   // (spec §4.6) adds more on top, but only when the surge condition held.
   const printed = Math.max(0, Math.floor(Number(card.meta.additionalSpawns) || 0))
-  const extra = Math.min(printed + (surged ? surgeSpawnsFor(card) : 0), ADDITIONAL_SPAWNS_CAP)
+  const wanted = Math.min(printed + (surged ? surgeSpawnsFor(card) : 0), ADDITIONAL_SPAWNS_CAP)
+  // The zone-side cap binds AFTER ADDITIONAL_SPAWNS_CAP and is the tighter of
+  // the two on a side with hulls already on it. legalZonesFor only guaranteed
+  // one free slot, so a multi-hull payload lands what fits and drops the rest
+  // — the card is never refused for its own copies (see zoneFull's comment).
+  // The hull itself is already pushed above, so the remainder is measured
+  // against the side's length as it now stands.
+  const room = Math.max(0, MAX_VEHICLES_PER_ZONE_SIDE - zone.cards[actor].length)
+  const extra = Math.min(wanted, room)
   for (let i = 0; i < extra; i++) {
     const copy: ZoneCardEntry = {
       ...card, instanceId: ctx.newId(), meta: copyMeta(card.meta), keywords: [...keywords],
@@ -328,6 +358,16 @@ function deployVehicle(
     }
     zone.cards[actor].push(copy)
     placedInstanceIds.push(copy.instanceId)
+  }
+  // Say so rather than dropping them silently — a player who paid for four
+  // hulls and got two is owed the reason. Logged here, which puts it just
+  // AHEAD of the caller's "<card> deployed to zone N" line; that ordering is
+  // cosmetic and deliberate, since moving it would mean threading a count
+  // back through both call sites for a line each reads fine on its own.
+  if (extra < wanted) {
+    game.state.log.push(
+      `Zone ${zoneId} is full — ${wanted - extra} further ${card.name} could not deploy`,
+    )
   }
   return placedInstanceIds
 }

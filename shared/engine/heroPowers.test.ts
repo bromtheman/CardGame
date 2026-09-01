@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CHANGE_ORDER_DELAY_TURNS } from '../gameSettings'
+import { CHANGE_ORDER_DELAY_TURNS, MAX_VEHICLES_PER_ZONE_SIDE } from '../gameSettings'
 import { applyAction, effectiveMaterialCostOf } from './index'
 import { inst, makeCtx, makeGame, snap, zoneEntry } from './testFixtures'
 
@@ -379,5 +379,73 @@ describe('USE_HERO_POWER flyby (LH)', () => {
       .toMatchObject({ ok: false, status: 400 })
     expect(applyAction(g, 'alice', { type: 'USE_HERO_POWER', power: 'flyby', instanceId: wrongType.instanceId }))
       .toMatchObject({ ok: false, status: 400 })
+  })
+})
+
+describe('MAX_VEHICLES_PER_ZONE_SIDE — the move half of the cap', () => {
+  function fill(g: ReturnType<typeof makeGame>, zoneIndex: number, side: 'a' | 'b', count: number) {
+    for (let i = 0; i < count; i++) {
+      g.state.zones[zoneIndex].cards[side].push(zoneEntry({ vehicleType: 'tank' }))
+    }
+  }
+
+  it('refuses MOVE_VEHICLE into a side already holding the cap', () => {
+    const g = makeGame()
+    const truck = zoneEntry({ vehicleType: 'tank', keywords: ['mobile'], playedOnTurn: 1 })
+    g.state.zones[1].cards.a.push(truck)
+    fill(g, 2, 'a', MAX_VEHICLES_PER_ZONE_SIDE)
+    expect(applyAction(g, 'alice', { type: 'MOVE_VEHICLE', instanceId: truck.instanceId, zoneId: 3 }))
+      .toMatchObject({ ok: false, status: 400 })
+    // and the hull stays put rather than vanishing en route
+    expect(g.state.zones[1].cards.a).toHaveLength(1)
+  })
+
+  it('allows the move that fills the last slot', () => {
+    const g = makeGame()
+    const truck = zoneEntry({ vehicleType: 'tank', keywords: ['mobile'], playedOnTurn: 1 })
+    g.state.zones[1].cards.a.push(truck)
+    fill(g, 2, 'a', MAX_VEHICLES_PER_ZONE_SIDE - 1)
+    const r = applyAction(g, 'alice', { type: 'MOVE_VEHICLE', instanceId: truck.instanceId, zoneId: 3 })
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.zones[2].cards.a).toHaveLength(MAX_VEHICLES_PER_ZONE_SIDE)
+  })
+
+  it('reads the destination side only, not the enemy half of it', () => {
+    const g = makeGame()
+    const truck = zoneEntry({ vehicleType: 'tank', keywords: ['mobile'], playedOnTurn: 1 })
+    g.state.zones[1].cards.a.push(truck)
+    fill(g, 2, 'b', MAX_VEHICLES_PER_ZONE_SIDE)
+    expect(applyAction(g, 'alice', { type: 'MOVE_VEHICLE', instanceId: truck.instanceId, zoneId: 3 }).ok).toBe(true)
+  })
+
+  // A full SOURCE zone must not block the move out of it — the check reads
+  // the destination. Without that, a side at the cap would be frozen in place.
+  it('lets a vehicle leave a full side', () => {
+    const g = makeGame()
+    const truck = zoneEntry({ vehicleType: 'tank', keywords: ['mobile'], playedOnTurn: 1 })
+    g.state.zones[1].cards.a.push(truck)
+    fill(g, 1, 'a', MAX_VEHICLES_PER_ZONE_SIDE - 1)
+    expect(g.state.zones[1].cards.a).toHaveLength(MAX_VEHICLES_PER_ZONE_SIDE)
+    const r = applyAction(g, 'alice', { type: 'MOVE_VEHICLE', instanceId: truck.instanceId, zoneId: 3 })
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.zones[2].cards.a).toHaveLength(1)
+  })
+
+  // Boarding Party is a SWAP: net-zero on both sides, so a full zone must not
+  // block it. Pins the boundary the cap deliberately does not cross.
+  it('does not block Boarding Party into a full zone', () => {
+    const g = makeGame()
+    const mine = zoneEntry({ vehicleType: 'ship', faction: 'DWG', materialCost: 90000 })
+    const theirs = zoneEntry({ vehicleType: 'ship', faction: 'OW', materialCost: 50000 })
+    g.state.zones[0].cards.a.push(mine)
+    g.state.zones[0].cards.b.push(theirs)
+    fill(g, 0, 'a', MAX_VEHICLES_PER_ZONE_SIDE - 1)
+    expect(g.state.zones[0].cards.a).toHaveLength(MAX_VEHICLES_PER_ZONE_SIDE)
+    const r = applyAction(g, 'alice', {
+      type: 'USE_HERO_POWER', power: 'boardingParty',
+      instanceId: mine.instanceId, targetInstanceId: theirs.instanceId,
+    })
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.zones[0].cards.a).toHaveLength(MAX_VEHICLES_PER_ZONE_SIDE)
   })
 })

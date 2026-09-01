@@ -6,6 +6,7 @@ import { KeywordIcons } from '../../components/KeywordIcons'
 import { CardDetailsModal } from '../../components/CardDetailsModal'
 import { cardInstanceToRow } from '../../lib/cards'
 import { vehicleTypeIcon } from '../../lib/keywords'
+import { SLOT_HEIGHT_CLASS } from './laneLayout'
 
 // Compact in-zone representation of a played vehicle — always shows the
 // vehicle-type icon (never card art) since it must stay legible at this size.
@@ -42,7 +43,12 @@ export function MiniVehicle({
     <div
       onClick={onClick}
       title={entry.name}
-      className={`relative flex w-20 shrink-0 flex-col items-center rounded border p-1 text-center ${
+      // SLOT_HEIGHT_CLASS rather than an intrinsic height: every chip must be
+      // the same height or a lane of them is not a fixed-height grid, and the
+      // keyword row (below) is the part that used to vary. Deliberately NOT
+      // `overflow-hidden` — the "new"/move/use/details affordances are
+      // positioned outside the box on purpose and clipping would eat them.
+      className={`relative flex ${SLOT_HEIGHT_CLASS} w-20 shrink-0 flex-col items-center rounded border p-1 text-center ${
         selected ? 'border-brass-400 bg-brass-400/20' : 'border-ocean-600 bg-ocean-950/60'
       } ${dimmed ? 'opacity-40' : ''} ${
         onClick ? 'cursor-pointer transition-transform hover:-translate-y-0.5' : ''
@@ -84,11 +90,17 @@ export function MiniVehicle({
       <span className="rounded-full bg-ocean-900 px-2 py-0.5 text-[11px] font-bold text-parchment-100">
         {shortHandNumber(effectiveMaterialCostOf(entry))}
       </span>
-      {entry.keywords.length > 0 && (
-        <div className="mt-1 flex scale-75 flex-wrap justify-center gap-0.5">
-          <KeywordIcons keywords={entry.keywords} />
+      {/* Always rendered, even empty, and at a FIXED height: a chip whose
+          keyword row appears only when it has keywords is a chip with two
+          heights, which is half of why the lanes used to jump. Overflow is
+          hidden here (and only here) so a hull that picks up extra keywords
+          in play — Flyby and Paladin both grant two — cannot grow the row.
+          The "?" affordance opens the full card for anything clipped. */}
+      <div className="mt-1 h-4 w-full overflow-hidden">
+        <div className="flex flex-wrap justify-center gap-0.5">
+          <KeywordIcons keywords={entry.keywords} iconClass="h-4 w-4" />
         </div>
-      )}
+      </div>
       <button
         type="button"
         title={`Show ${entry.name} full screen and explain its attributes`}
