@@ -72,7 +72,7 @@ export const FACTIONS = {
 // the builder's dropdown, and still got a 23514 on the first real deck insert —
 // the faction was undraftable in production with every test green.
 // ADDING A FACTION HERE MEANS A MIGRATION TOO; see
-// supabase/migrations/20260831222000_add_tg_to_decks_faction_check.sql.
+// supabase/migrations/20260831222322_add_tg_to_decks_faction_check.sql.
 // (`cards_faction_check` is fine — it lists every FACTIONS value, not just the
 // draftable ones, which is why the 26 cards seeded cleanly.)
 export const DECK_FACTIONS = ['DWG', 'GT', 'LH', 'OW', 'SS', 'TG', 'WF'] as const
