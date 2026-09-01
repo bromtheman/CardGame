@@ -68,17 +68,25 @@ describe('vehicle_type patches (upstream OW-Built-in.js enum-key bug)', () => {
       }
     }
   })
-  it('patches all 10 affected OW cards to vehicleType "ship"', async () => {
+  it('patches the 9 affected OW ships to vehicleType "ship"', async () => {
     const { cards } = await loadSeedData()
     const names = [
       'Cauldron', 'Clydesdale', 'Halberd', 'Iron Cordon', 'Javelin',
-      'Jormangund', 'Mace', 'Mandrel', 'Partisan', 'Rook',
+      'Jormangund', 'Mace', 'Mandrel', 'Partisan',
     ]
     for (const name of names) {
       const card = cards.find((c) => c.faction === 'OW' && c.name === name)
       expect(card).toBeDefined()
       expect(card?.vehicleType).toBe('ship')
     }
+  })
+  // The tenth card the typo hit. It is a flyer, not a ship — see the evidence
+  // in VEHICLE_TYPE_PATCHES. Asserted apart from the nine so a bulk edit that
+  // flattened the map back to all-ships fails here rather than passing.
+  it('patches Rook to vehicleType "airship", not "ship"', async () => {
+    const { cards } = await loadSeedData()
+    const rook = cards.find((c) => c.faction === 'OW' && c.name === 'Rook')
+    expect(rook?.vehicleType).toBe('airship')
   })
 })
 

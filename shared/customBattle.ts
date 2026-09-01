@@ -444,7 +444,7 @@ export function buildCustomBattle(
       IsPlayerTeam: team.isPlayerTeam ?? false,
       DefaultName: false,
       MaxBlueprintsPerRow: 100,
-      RowSpacing: 200.0,
+      RowSpacing: 300.0,
       ColumnSpacing: 200.0,
       FleetColors: NEUTRAL_FLEET_COLORS,
       StartingMaterial: startingMaterialOf(team.cards),

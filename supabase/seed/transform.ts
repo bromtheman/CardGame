@@ -18,10 +18,19 @@ const SOURCE_DIR = join(dirname(fileURLToPath(import.meta.url)), 'source')
 // Upstream bug in supabase/seed/source/builtInCards/OW-Built-in.js: these 10
 // cards set `vehicleType: VEHICLE_TYPES.ship` (lowercase key), but the old
 // BE's VEHICLE_TYPES enum only has uppercase keys (SHIP, AIRSHIP, TANK,
-// PLANE, SUB), so `VEHICLE_TYPES.ship` evaluates to `undefined`. Every other
-// field on these cards (cardText, keywords, meta, type: 'vehicle') makes the
-// author's intent unambiguous: all 10 are ships. We patch it here instead of
-// editing the source file, which stays a verbatim copy of the old BE data.
+// PLANE, SUB), so `VEHICLE_TYPES.ship` evaluates to `undefined`. We patch it
+// here instead of editing the source file, which stays a verbatim copy of the
+// old BE data.
+//
+// The typo also means the source cannot be trusted on WHICH type was meant —
+// `.ship` was written on a flyer too. Rook is one: From The Depths' own
+// Neter.faction entry gives it BlueprintType 9, the air class (Eyrie, Nimbus,
+// Damacy), where the other nine carry BlueprintType 2 — as do 53 of the cards
+// already typed 'ship'. It also spawns through the air delegate at 200 m and
+// puts its lowest block at y=+3, the only one of the ten whose hull sits
+// entirely above the waterline. Airship rather than plane is a balance call:
+// 3,180 blocks at a 98,841 blueprint cost is a heavy castle-flyer, so it is
+// Judgement prey and takes Martyr's boosted attack count.
 const VEHICLE_TYPE_PATCHES: Record<string, VehicleType> = {
   'OW:Cauldron': 'ship',
   'OW:Clydesdale': 'ship',
@@ -32,7 +41,7 @@ const VEHICLE_TYPE_PATCHES: Record<string, VehicleType> = {
   'OW:Mace': 'ship',
   'OW:Mandrel': 'ship',
   'OW:Partisan': 'ship',
-  'OW:Rook': 'ship',
+  'OW:Rook': 'airship',
 }
 
 export async function loadSeedData(): Promise<{
