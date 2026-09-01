@@ -45,6 +45,12 @@ const SCOPE = [
   'npx vitest run shared',
   'supabase/seed/effectCoverage.test.ts',
   'supabase/seed/balancePass.test.ts',
+  // Wave 7's seed-backed pins. Added because that is where this wave's data
+  // assertions live — the ones that caught KEYWORDS.UPKEEP_REQUIRED seeding as
+  // `null`. It is safe to include: unlike functionSharedSync it does not fail
+  // for any edit to a shared/ file, only for a real disagreement between the
+  // engine's vocabulary and the seed's.
+  'supabase/seed/tgFaction.test.ts',
   '--exclude "**/functionSharedSync.test.ts"',
   '--exclude "**/seedDataSync.test.ts"',
   '--reporter=dot',

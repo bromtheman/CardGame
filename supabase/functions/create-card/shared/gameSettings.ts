@@ -29,6 +29,13 @@ export const HERO_POWER_DISTANCE_MOD_M = 600
 // §3.4), so one surplus vehicle costs 40 of a default 1000 HP base.
 export const ONGOING_ATTRITION_DAMAGE_PER_VEHICLE = 40_000
 
+// TG Vengeful: "deals 40k damage to the enemy base in this zone". Its OWN
+// constant rather than a reuse of ONGOING_ATTRITION_DAMAGE_PER_VEHICLE, which
+// it equals only by coincidence — the same reasoning AMBUSH_DISTANCE_M records
+// below against the hero power. Materials, so it converts through
+// BASE_DAMAGE_DIVISOR: 40k is 40 HP of a default 1000.
+export const VENGEFUL_BASE_DAMAGE = 40_000
+
 // Ambush: "position your ships 600m closer to the enemy". Its own constant
 // rather than a reuse of the hero power's: the two are equal by coincidence,
 // and Ambush deliberately does NOT spend distanceModifiedBy (spec §7.3).
@@ -49,8 +56,26 @@ export const FACTIONS = {
   OW: 'OW', SD: 'SD', WF: 'WF', GT: 'GT',
 } as const
 
-// Factions a deck may use as its base (spec §3.1)
-export const DECK_FACTIONS = ['DWG', 'GT', 'LH', 'OW', 'SS', 'WF'] as const
+// Factions a deck may use as its base (spec §3.1). TG joined in wave 7.
+//
+// ⚠ This is the DECK BUILDER's list, not a validation gate. `validateDeck`
+// (engine/deckValidation.ts) never reads it — it compares a card's faction
+// against the deck's own. The only functional reader in the repo is
+// frontend/src/pages/DecksPage.tsx, which maps it into the faction <select>,
+// so a faction missing here is seeded, visible in the catalog, and simply
+// unreachable in the builder. Nothing in the engine suite can see that; the
+// live deck-builder pass is the check.
+//
+// ⚠ AND THERE IS A THIRD COPY, IN THE DATABASE. `public.decks` carries a
+// `decks_faction_check` CHECK constraint listing the same factions, which no
+// code search finds because it is not code. Wave 7 seeded TG, confirmed it in
+// the builder's dropdown, and still got a 23514 on the first real deck insert —
+// the faction was undraftable in production with every test green.
+// ADDING A FACTION HERE MEANS A MIGRATION TOO; see
+// supabase/migrations/20260831222000_add_tg_to_decks_faction_check.sql.
+// (`cards_faction_check` is fine — it lists every FACTIONS value, not just the
+// draftable ones, which is why the 26 cards seeded cleanly.)
+export const DECK_FACTIONS = ['DWG', 'GT', 'LH', 'OW', 'SS', 'TG', 'WF'] as const
 
 export const CARD_TYPES = { VEHICLE: 'vehicle', ABILITY: 'ability' } as const
 
@@ -65,7 +90,24 @@ export const KEYWORDS = {
   SCRAPPY: 'scrappy', TEMPORARY: 'temporary', INOFFENSIVE: 'inoffensive',
   HALF_COST: 'halfCost', FRAGILE: 'fragile', STEALTHY: 'stealthy',
   MOBILE: 'mobile', ROBOTIC: 'robotic',
+  // Wave 7 (TG): "at turn start, reduce your resources this turn by 15% of
+  // this card's cost". Ten TG cards carry it.
+  UPKEEP_REQUIRED: 'upkeepRequired',
 } as const
+
+// UPKEEP_REQUIRED's rate. Charged in endTurn against the income that was just
+// SET for the incoming side, off effectiveMaterialCostOf — never
+// effectiveCostInGame, which is play-time-only and must not reach a recurring
+// charge (spec §7.3, ruling U-1).
+//
+// The rate needs no per-card tuning because it is scale-invariant (U-8):
+// income is set to floor(turnNumber) × materialsPerTurn rather than
+// accumulated, so a card is unplayable until income reaches its cost, and its
+// upkeep is therefore always ~15% of the income available on the turn it first
+// becomes playable — at any cost and at any lobby rate. Horror (70k) lands at
+// turn 1 and pays 14% of 75k; Fear (800k) lands at turn 11 and pays 14.5% of
+// 825k.
+export const UPKEEP_RATE = 0.15
 
 export const TRIGGERS = {
   ON_PLAY: 'onPlayEffect', PLAY_ON_ZONE: 'playOnZoneEffect',

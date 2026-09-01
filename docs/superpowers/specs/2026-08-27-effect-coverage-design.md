@@ -276,11 +276,12 @@ built-ins) and waves 3–4's do too, but **a choice over your own hand or deck
 would leak it**, and the private-options mechanism that would need does not
 exist. Check this before adding a choice.
 
-### 4.3 Seven dispatch points
+### 4.3 Eight dispatch points
 
 DP1–DP6 were this spec's own; **DP7 was added in wave 6**, for a card outside
-it (SS Blockade, from the 2026-08-30 balance pass). It is listed here because
-the dispatch machinery is this section's, whatever seeded the card.
+it (SS Blockade, from the 2026-08-30 balance pass), and **DP8 in wave 7**, for
+TG Vengeful. Both are listed here because the dispatch machinery is this
+section's, whatever seeded the card.
 
 | # | Point | Shape |
 |---|---|---|
@@ -291,6 +292,7 @@ the dispatch machinery is this section's, whatever seeded the card.
 | DP5 | Rest-of-turn riders | **Two homes, split by what the rider does** — this row originally predicted `state.scheduled[]` alone, and wave 5 found that serves only one of its four riders. A rider that changes how a battle or a placement in **one zone** resolves lives on `state.zoneEffects` (Ambush, Ongoing Attrition, Sub Killer); a rider that watches **one vehicle** across the turn lives on `state.scheduled[]` (Sabotage), exactly as written here. See "DP5 as wave 5 built it" below |
 | DP6 | A **vehicle** whose effect targets something outside its own zone | The two gaps recorded in `architecture.md`. `PLAY_CARD_TARGETING_CARD_IN_HAND` gains an optional `zoneId` and accepts a vehicle carrying `playOnCardEffect`: the vehicle deploys to the zone (with `additionalSpawns` and `resourceSurge`), then the effect fires, and the card is **not** `spendCard`'d. **Wave 3 built the hand direction only** — see departure 4 |
 | DP7 | A zone rider that fires when the **opponent deploys** into the zone | `dispatchDeployWatchers(game, ctx, zoneId, actor)` in `battleTriggers.ts`, called from **both** `PLAY_CARD_TO_ZONE` and `PLAY_CARD_TARGETING_CARD_IN_HAND` — the two handlers that share `deployVehicle`. Fires `state.zoneEffects` riders on that zone whose `side !== actor`, with a `BattleContext` carrying the new `phase: 'deploy'`. **Built in wave 6**; SS Blockade is the only customer. See "DP7 as wave 6 built it" below |
+| DP8 | A **hull** that reacts to a battle it is not in, at **resolve** | The second half of DP2 departure 2. `dispatchBattleResolve` gains a pass over non-participant hulls, on **both** sides and in **every** zone, whose `onBattleEffect` is registered `{ resolveBystander: true }`. `BYSTANDER_EFFECTS` cannot serve: it fires only at **lock**, only on a **forced** battle, only for the **defender**, and only in the **battle's own zone**. **Built in wave 7**; TG Vengeful is the only customer. See "DP8 as wave 7 built it" below |
 
 Two rulings fall out:
 
@@ -708,6 +710,45 @@ the same trap DP5's closing paragraph describes.
 `zoneEffects` rider on that zone — including the Blockade that just declared.
 `blockadeEffect` must no-op on any phase but `'deploy'`, or it recurses.
 
+#### DP8 as wave 7 built it
+
+TG Vengeful: *"Whenever you lose a vehicle to a fleet battle (any zone) this
+unit deals 40k damage to the enemy base in this zone."*
+
+**"Any zone" means a battle Vengeful is not in, and no existing pass reaches
+it.** DP2's bystander pass (`BYSTANDER_EFFECTS`, Terawatt) is four times too
+narrow: **lock** only, **forced** battles only, the **defending** side only, and
+the **battle's own zone** only. Vengeful needs the **resolve** phase — a loss is
+not known until then — on **every** battle, from **any** zone, on either side.
+
+**Seam:** `dispatchBattleResolve` (`battleTriggers.ts`), called from
+`DECIDE_BATTLE_REPORT` once `outcome` is computed. A second pass runs after the
+participant loop, over every zone's hulls on both sides that are not in
+`participants` and whose `onBattleEffect` is in `RESOLVE_BYSTANDER_EFFECTS`. The
+list is snapshotted before dispatching, exactly as the lock pass does.
+
+**The opt-in flag is load-bearing, not bookkeeping** — the same reason DP7's is.
+`dwgWatersEffect`'s router falls through to its claim branch on any context it
+does not recognise, so a broadcast would make it attempt a claim with no target
+zone on **every battle in the game**. Derived from registration, like
+`CATALOG_EFFECTS`, `BYSTANDER_EFFECTS` and `DEPLOY_WATCHER_EFFECTS`, so it can
+never drift from the implementations.
+
+Four rulings the card forces:
+
+- ⚠ **The context's `zoneId` is the battle's, and Vengeful needs its own.** The
+  damage lands on the enemy base in *this* zone — Vengeful's. Locate the hull
+  with `findVehicle(card.instanceId)`, the way Braveheart re-derives its own
+  zone from `payload.card` rather than stashing it.
+- **"Lose a vehicle" is per vehicle, not per battle.** Two casualties on your
+  side is 80k. `casualties.filter(c => c.side === actor)` is on the context.
+- ⚠ **A Vengeful destroyed in that same battle does not fire.** This is not
+  free: `participants` still holds a destroyed hull's entry, so the participant
+  loop *does* reach it. The `findVehicle` requirement above is what enforces it,
+  since the destruction branch has already removed the hull from `zone.cards`.
+- **It must not stamp `lastActivatedTurn`** — a card-forced consequence is not a
+  zone activation — and it **must** call `checkVictory` if the base reaches 0.
+
 ### 4.4 Battle summons
 
 `ActiveBattle` gains `summons: ZoneCardEntry[]`. Summoned combatants live only
@@ -761,6 +802,22 @@ battle-declare dispatch point, which this closes.
 Anything summoned by a forced-battle ability evaporates even when the underlying
 card is draftable: Air Strafe's two PredatorX and Orbit Flank's Orbit are battle
 summons like any other.
+
+**Wave 7 adds a third raiser: a per-hull rider.** Until now a summon was raised
+either by a participant's own trigger (The Onyx Throne, Obelisk) or by a
+forced-battle ability. TG's Havoc Factory and Mirth Factory stamp
+`meta.factoryEscort: '<card name>'` onto a *targeted friendly hull*, and
+`dispatchBattleLock` summons that card whenever the stamped hull enters a
+battle. `state.zoneEffects` could not serve, because it is per-**zone** and this
+is per-**hull**.
+
+⚠ **A per-entry stamp must be named in `discardSnapshotOf`'s strip list**, or it
+rides into `state.destroyed` and, through `reshuffleDiscard`, back into the
+deck — a hull that dies would return permanently upgraded. `factoryEscort` is
+stripped there unconditionally, exactly as `costDelta` is, and for the same
+reason. Note that a *printed* trigger key could not be handled this way, which
+is why the stamp is its own key rather than an overwrite of `onBattleEffect`:
+Obelisk and Horror carry that key as card data and must keep it.
 
 ### 4.5 Persistent per-instance cost delta
 
@@ -885,6 +942,31 @@ meta.resourceSurge = { materialsUnder: 240000, grantKeywords: ['halfCost', 'temp
 for `extraSpawns`. Chrysaor is the card that would expose a regression: its
 surged price is 200k against a `> 200k` condition, so a post-payment re-read
 flips its own condition off.
+
+**Wave 7 — TG Acceptance, and the suppressing arm confirmed.** *"If you have at
+least 150k materials, this card loses halfcost keyword and spawns a second
+acceptance."*
+
+```js
+meta.resourceSurge = { materialsAtLeast: 150000, extraSpawns: 1 }   // Acceptance
+```
+
+Two rulings, neither of which needs a code change — which is the point of
+recording them:
+
+- **The comparator is `materialsAtLeast`**, Orbit's, because the text says "at
+  least". The one-comparator-per-card rule is what lets each card keep its own
+  wording.
+- **"Loses halfcost" is price-only.** Acceptance carries no `grantKeywords`, so
+  it takes the *suppressing* arm above and `effectiveCostInGame` charges the
+  full 150k. The hull that lands still carries `HALF_COST` in `keywords`, which
+  feeds `effectiveMaterialCostOf` — so a surged Acceptance **pays 150k and still
+  hits like a 75k hull, and repairs like one.** PredatorX has had this shape
+  since §4.6 was written and wave 6's Paladin ruling answered the same question;
+  the alternative would need a keyword-*stripping* arm that does not exist.
+
+⚠ Acceptance's threshold **equals its own printed cost**, which makes it the
+second card, after Chrysaor, that the read-before-`pay()` ordering exists for.
 
 ### 4.7 Two infrastructure repairs
 
@@ -1044,7 +1126,16 @@ This supersedes the Marauder ruling recorded as item 1 in
 
 ### 7.1 Summon-only vehicles
 
-Three cards, seeded with `meta.summonOnly: true`. `deckValidation` rejects them,
+Three cards here; **wave 7 adds two more**, TG's Havoc Swarm (120k) and Mirth
+Swarm (200k) — both `plane`, both `[robotic, temporary, halfCost]`, both
+vanilla, and both raised only by a Factory's escort or by Obelisk. They are
+`summonOnly` for the reason Martyr and Parapet are, and it is a design call
+rather than a technical one: at those prices with `HALF_COST` they would be
+perfectly playable cards, and left draftable they would also count against
+`FLIER_COPY_LIMIT` in a TG deck that already holds 12 fliers among its 23
+vehicles.
+
+The original three, seeded with `meta.summonOnly: true`. `deckValidation` rejects them,
 so they cannot be drafted, but they render on the board and in the card browser
 like any other card. Stats supplied by the product owner:
 
@@ -1374,6 +1465,92 @@ with the rest.
   not "inflict damage to the enemy base" for Plunderer's purposes. A zone
   holding only Purifiers bombards for 0, which `ATTACK_ENEMY_BASE` already
   refuses with "No vehicles able to strike".
+
+Added in wave 7 (the TG faction — 26 cards outside this spec's list, plus the
+`UPKEEP_REQUIRED` keyword and the faction plumbing):
+
+- **"An AI vehicle" on TG Alarmed is `isBuiltIn === true`** — this section's
+  **first** ruling, reaffirmed rather than reopened. `OW:Garrison` prints the
+  identical phrase ("Target an AI vehicle in hand") and is implemented that way,
+  as are Air Strafe, Excalibur, Repairmen Ready and Martyr Attack. Wave 7's
+  handoff recommended reading it as the `ROBOTIC` keyword on the grounds that
+  "the engine has no AI concept"; that is false, and the reading is **rejected**
+  — decision 1 makes card text authoritative, and one printed phrase cannot mean
+  two things in one game. ⚠ Recorded consequence: in a TG deck almost every hull
+  is built-in, so Alarmed's first clause reduces to "you already hold this
+  zone". That is the price of a consistent glossary, and it was accepted
+  knowingly.
+- **TG Alarmed's sacrifice fires no `onDeathEffect`.** `sacrificeEntry` calls
+  `discardCard` directly and never `fireDeathEffect` — the deliberate split
+  behind decision 28 ("destroy" fires, "remove from play" does not). Jealousy is
+  a TG card whose entire text is a death draw, so a TG player meets this within
+  one game; it is chosen, not inherited.
+- **TG Horror's trigger is "this Horror", not "a Horror".** The sentence
+  continues "create another copy **of it**", which points back at the same hull,
+  and DP2 already dispatches per participant. The alternative reading would need
+  DP8's dispatch and is a much larger card than it looks.
+- **TG Horror's "max one spawn per zone" is per turn**, read off the board as
+  "refuse if a Horror in this zone already has `playedOnTurn ===
+  game.turnNumber`". Each `fire()` is an isolated invocation with no shared
+  scratchpad, so any counter must be read off the board; this reading needs no
+  new state.
+- **TG Nostalgia replaces battle death only.** "Whenever this **would** be
+  destroyed" is broader on its face, but `sacrificeEntry` fires no death effect,
+  so the `onDeathEffect` route could not save a sacrificed Nostalgia in any
+  case. ⚠ Three divergences from a true replacement effect are accepted and
+  recorded rather than left to be found: the death is still logged, it still
+  counts toward `destroyedCount`, and — the load-bearing one — it **still counts
+  as a loss for `battleOutcome`**, because `survivingIds` is computed before any
+  trigger runs. So a lone Nostalgia losing a battle still hands the enemy the win
+  and still writes `zone.lostBattleOnTurn`, which WF Purifier reads.
+- **TG Vengeful damages an enemy base despite being a submarine.** Card text is
+  authoritative (decision 1), and the submarine rule governs *bombardment* —
+  `baseStrikersIn`, reached only from `ATTACK_ENEMY_BASE` — not card-forced
+  damage. The Submarine glossary entry is amended to say so, so no printed rule
+  contradicts a shipped card. **An enemy `BLOCKER` does not stop it either**, for
+  the same reason: `ATTACK_ENEMY_BASE` refuses over a Blocker and this is not
+  that handler. The two must answer together or neither is defensible.
+- **TG Duel's aggressor is the Duel player**, which decides `isDefender` for
+  every DP2 trigger in that battle, and **it activates neither zone** — a forced
+  battle is not a zone activation, and Eclipse alone passes `activatesZone` per
+  its own text.
+- **A cross-zone battle records `lostBattleOnTurn` per side in that side's own
+  participant's zone.** For a single-zone battle this is byte-identical to what
+  the engine already recorded, so it is a strict generalisation rather than a
+  change, and it keeps the loss on the zone whose wreckage Purifier is reading.
+- **`UPKEEP_REQUIRED` reads `effectiveMaterialCostOf`** — the Half-Cost floor,
+  the same authority damage, repairs and in-battle resources use. **Never**
+  `effectiveCostInGame`, which is play-time-only (`costModifier`, `costDelta`,
+  surge) and must not reach a recurring charge. ⚠ No TG card carries both
+  `UPKEEP_REQUIRED` and `HALF_COST`, so the two candidates agree on every card
+  that exists; the ruling is pinned by a fixture carrying both, because no test
+  against real data can separate them. Rounding is `Math.ceil`, matching
+  `repairCostOf`, the other player-facing charge; the charge is clamped with
+  `Math.max(0, …)`; and it is paid by whoever **controls** the hull, since
+  `ownerSideOf` decides whose *deck* a card returns to, not who feeds it.
+- **The 15% rate is scale-invariant, which is why it needs no per-card tuning.**
+  Income is *set* to `floor(turnNumber) × materialsPerTurn`, never accumulated,
+  so a card costing C is unplayable until income reaches C — and its upkeep is
+  therefore always ≈15% of the income available on the turn it first becomes
+  playable, at any cost and at any lobby rate. Horror (70k) is affordable at
+  turn 1 and pays 14% of that turn's 75k; Fear (800k) is affordable at turn 11
+  and pays 14.5% of that turn's 825k. Wave 7's handoff raised "151.5k against a
+  turn-2 income of 150k" as a balance risk; both numbers are right and the
+  comparison is not, because an 800k card cannot be on the board at turn 2. The
+  warning is **withdrawn**.
+- **TG Anguish is permanently `EXEMPT`.** "It must deploy first before the
+  opponent" is player-conduct guidance for the From The Depths spawn sheet; the
+  engine has no deployment-order concept and there is nothing to fire. The same
+  judgement as SS Falcon Squadron, for the same reason.
+- **No existing card changes behaviour — only the 26 new ones.** The four
+  `[TG] …` rows in `LH-Built-in.js` keep their exact costs, keywords, card text
+  and vehicle types; none gains `UPKEEP_REQUIRED`. Their one edit is
+  `meta: { lhRoboticsPool: true }`, a descriptive tag with **no gameplay
+  effect**, and it exists solely to *preserve* current behaviour: the LH pool is
+  the query `is_built_in AND faction = 'TG'`, so seeding TG would otherwise take
+  it from 4 rows to 30 with no diff to any LH file at all. The marker sits on the
+  four rather than as an exclusion key on the 26 because it is fail-closed — a
+  future TG card joins LH's pool only if someone deliberately marks it.
 
 ### 7.4 Spawning is not playing
 

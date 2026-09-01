@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { CATALOG_EFFECTS, effectFor, registerEffect } from './registry.ts'
+import { CATALOG_EFFECTS, RESOLVE_BYSTANDER_EFFECTS, effectFor, registerEffect } from './registry.ts'
 import { choice } from './primitives.ts'
+import { KEYWORDS } from '../gameSettings.ts'
 import { inst, makeCtx, makeGame, snap, zoneEntry } from '../engine/testFixtures.ts'
 import {
   applyAction, declareForcedBattle, discardSnapshotOf, effectiveCostInGame, effectiveMaterialCostOf,
   legalZonesFor,
   joinBattle,
+  findVehicle,
+  sacrificeEntry,
 } from '../engine/index.ts'
 import type { CardInstance } from '../engine/gameInit.ts'
 import type { BattleCasualty, BattleContext, EngineContext, EngineGame } from '../engine/engineTypes.ts'
@@ -30,6 +33,10 @@ const DRAW_ONE = [
   // keywords at all, so the standing prohibition on SCRAPPY + onDeathEffect
   // (docs/claude/card-effects.md) is clear.
   'basherOnDeath',
+  // Wave 7. TG Jealousy: "When this vehicle is destroyed, draw a card".
+  // It prints BLOCKER and nothing else, so the SCRAPPY + onDeathEffect
+  // prohibition is clear here too.
+  'jealousyOnDeath',
 ]
 const CP_ONLY: [string, number][] = [
   ['bulwarkOnPlay', 2], ['maelstromOnPlay', 1], ['maceEffect', 1],
@@ -74,7 +81,7 @@ describe('grant-backed cards', () => {
 
 describe('drawFromPool-backed cards', () => {
   const catalog = [
-    snap({ name: 'TG Obsession', faction: 'TG', type: 'vehicle', materialCost: 330_000 }),
+    snap({ name: '[TG] Obsession', faction: 'TG', type: 'vehicle', materialCost: 330_000, meta: { lhRoboticsPool: true } }),
     snap({ name: 'Warbird', faction: 'GT', vehicleType: 'airship', materialCost: 190_000 }),
     snap({ name: 'Nimbus', faction: 'GT', vehicleType: 'airship', materialCost: 530_000 }),
     snap({ name: 'PredatorX', faction: 'SS', vehicleType: 'plane', materialCost: 120_000, keywords: ['halfCost', 'temporary'] }),
@@ -452,7 +459,7 @@ describe('wave 2 — activated abilities', () => {
       name: 'Spectrum', vehicleType: 'plane',
       meta: { onActivate: 'spectrumEffect', activateCpCost: 1 },
     })
-    const ctx = makeCtx({ catalog: [snap({ name: '[TG] Widget', faction: 'TG', vehicleType: 'tank' })] })
+    const ctx = makeCtx({ catalog: [snap({ name: '[TG] Widget', faction: 'TG', vehicleType: 'tank', meta: { lhRoboticsPool: true } })] })
     const res = applyAction(game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: 'v1' }, ctx)
     if (!res.ok) throw new Error(res.error)
     expect(res.game.privates.a.hand).toHaveLength(1)
@@ -529,8 +536,8 @@ describe('wave 2 — choices', () => {
     const game = makeGame({ turnNumber: 2, activePlayer: 'alice' })
     const ctx = makeCtx({
       catalog: [
-        snap({ cardId: 'tg-1', name: '[TG] Alpha', faction: 'TG', vehicleType: 'tank' }),
-        snap({ cardId: 'tg-2', name: '[TG] Beta', faction: 'TG', vehicleType: 'tank' }),
+        snap({ cardId: 'tg-1', name: '[TG] Alpha', faction: 'TG', vehicleType: 'tank', meta: { lhRoboticsPool: true } }),
+        snap({ cardId: 'tg-2', name: '[TG] Beta', faction: 'TG', vehicleType: 'tank', meta: { lhRoboticsPool: true } }),
       ],
     })
     const res = playAbility(game, inst({
@@ -4237,5 +4244,1596 @@ describe('wave 6 — mutation survivors', () => {
         makeCtx({ catalog: [wfShip('Buzzsaw', 80_000)] }),
       ).ok).toBe(false)
     })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Wave 7 — the LH "[TG] Robotics" pool is narrowed to a marker (spec §7.3).
+//
+// The pool was `faction === 'TG'`, which is a QUERY over the whole cards
+// table, not a card list. Seeding the 26-card TG faction would have taken it
+// from 4 rows to 30 — five LH cards changing behaviour with no diff to any LH
+// file at all. The four borrowed rows now carry meta.lhRoboticsPool, and BOTH
+// filters read it: drawFromPool's (Ampere/Candela/Quadrupole/Spectrum) and
+// roboticAssemblersEffect's own inline one.
+describe('wave 7 — the LH [TG] Robotics pool reads a marker, not the faction', () => {
+  const marked = (over: Parameters<typeof snap>[0] = {}) =>
+    snap({ faction: 'TG', vehicleType: 'ship', meta: { lhRoboticsPool: true }, ...over })
+  const unmarked = (over: Parameters<typeof snap>[0] = {}) =>
+    snap({ faction: 'TG', vehicleType: 'ship', ...over })
+
+  // The crisp, rng-free assertion: a catalog pool that comes up empty is a
+  // data bug rather than an empty deck, so drawFromPool returns FALSE instead
+  // of drawing. Before the marker these four TG cards were the pool.
+  it.each(['ampereOnPlay', 'candelaOnPlay', 'quadrupoleOnPlay', 'spectrumEffect'])(
+    '%s finds nothing when every TG card in the catalog is unmarked',
+    (name) => {
+      const game = makeGame()
+      const ctx = makeCtx({
+        catalog: [
+          unmarked({ name: 'Fear', materialCost: 800_000 }),
+          unmarked({ name: 'Hysteria', materialCost: 730_000 }),
+          unmarked({ name: 'Obelisk', materialCost: 40_000 }),
+        ],
+      })
+      expect(effectFor(name)!({ game, actor: 'a', card: inst(), ctx })).toBe(false)
+      expect(game.privates.a.hand).toHaveLength(0)
+    },
+  )
+
+  it.each(['ampereOnPlay', 'candelaOnPlay', 'quadrupoleOnPlay', 'spectrumEffect'])(
+    '%s draws only from the marked four, never a same-faction neighbour',
+    (name) => {
+      const game = makeGame()
+      const ctx = makeCtx({
+        catalog: [
+          unmarked({ name: 'Fear', materialCost: 800_000 }),
+          unmarked({ name: 'Hysteria', materialCost: 730_000 }),
+          marked({ name: '[TG] Fear', materialCost: 600_000 }),
+          unmarked({ name: 'Obelisk', materialCost: 40_000 }),
+        ],
+      })
+      expect(effectFor(name)!({ game, actor: 'a', card: inst(), ctx })).toBe(true)
+      expect(game.privates.a.hand.map((c) => c.name)).toEqual(['[TG] Fear'])
+    },
+  )
+
+  // ⚠ Two filters, not one. A fix applied only to drawFromPool leaves Robotic
+  // Assemblers offering every TG card in the game — and pendingEffect.options
+  // is public, so both players would scroll a 28-button dialog.
+  it('Robotic Assemblers offers exactly the marked cards', () => {
+    const game = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+    const ctx = makeCtx({
+      catalog: [
+        unmarked({ cardId: 'tg-new', name: 'Fear', materialCost: 800_000 }),
+        marked({ cardId: 'tg-b', name: '[TG] Obsession', materialCost: 330_000 }),
+        marked({ cardId: 'tg-a', name: '[TG] Amusement', materialCost: 400_000 }),
+        unmarked({ cardId: 'tg-duel', name: 'Duel', type: 'ability', vehicleType: null }),
+      ],
+    })
+    game.privates.a.hand.push(inst({
+      instanceId: 'ra1', name: 'Robotic Assemblers', type: 'ability',
+      meta: { onPlayEffect: 'roboticAssemblersEffect' },
+    }))
+    const res = applyAction(game, 'alice', { type: 'PLAY_ABILITY_CARD', instanceId: 'ra1' }, ctx)
+    if (!res.ok) throw new Error(res.error)
+    expect(res.game.state.pendingEffect?.options).toEqual([
+      { id: 'tg-a', label: '[TG] Amusement' },
+      { id: 'tg-b', label: '[TG] Obsession' },
+    ])
+  })
+
+  // The marker's VALUE, not merely its presence (guard blind spot 4). A
+  // truthy-but-wrong value would leave the pool empty and every LH pool card
+  // silently dead.
+  it('a truthy-but-wrong marker value does not join the pool', () => {
+    const game = makeGame()
+    const ctx = makeCtx({
+      catalog: [snap({ name: 'Impostor', faction: 'TG', meta: { lhRoboticsPool: 'yes' } })],
+    })
+    expect(effectFor('ampereOnPlay')!({ game, actor: 'a', card: inst(), ctx })).toBe(false)
+  })
+
+  // The marker is faction-agnostic on purpose — it is the whole rule, so the
+  // `faction: 'TG'` filter is gone rather than merely narrowed.
+  it('is the whole rule: a marked card is drawn whatever faction it prints', () => {
+    const game = makeGame()
+    const ctx = makeCtx({ catalog: [marked({ name: 'Borrowed', faction: 'LH' })] })
+    expect(effectFor('ampereOnPlay')!({ game, actor: 'a', card: inst(), ctx })).toBe(true)
+    expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Borrowed'])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Wave 7, group C — TG Fear.
+//
+// "When this vehicle is played, spawn a friendly horror into each zone."
+// sapphireScreenEffect's shape exactly.
+describe('TG Fear — a Horror into every zone (wave 7)', () => {
+  // Horror carries a battle trigger of its own in its printed meta. Wave 7
+  // seeds it in a later task; the fixture carries it now because the RULING
+  // this file pins is that spawning preserves it.
+  const horror = snap({
+    name: 'Horror', faction: 'TG', vehicleType: 'ship', materialCost: 70_000,
+    keywords: [KEYWORDS.ROBOTIC, KEYWORDS.UPKEEP_REQUIRED],
+    meta: { onBattleEffect: 't_horrorTrigger', onPlayEffect: 't_neverFires' },
+  })
+
+  const playFear = () => {
+    const card = inst({
+      name: 'Fear', faction: 'TG', vehicleType: 'ship', materialCost: 800_000,
+      keywords: [KEYWORDS.BLOCKER, KEYWORDS.ROBOTIC, KEYWORDS.UPKEEP_REQUIRED],
+      meta: { onPlayEffect: 'fearOnPlay' },
+    })
+    const game = makeGame({ privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } } })
+    game.state.resources.a.materials = 900_000
+    // Zone 1 is water — Fear is a ship, so this is its own legal deploy.
+    const r = applyAction(
+      game, 'alice',
+      { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 },
+      makeCtx({ catalog: [horror] }),
+    )
+    if (!r.ok) throw new Error(r.error)
+    return r.game
+  }
+
+  it('puts one Horror in each of the three zones, on the actor’s side', () => {
+    const game = playFear()
+    for (const zone of game.state.zones) {
+      expect(zone.cards.a.filter((c) => c.name === 'Horror')).toHaveLength(1)
+      expect(zone.cards.b).toHaveLength(0)
+    }
+  })
+
+  // §7.4: spawns bypass placement legality — biome and screen rules gate
+  // PLAYS. Horror is a ship and zone 3 is land, so this is the rule visible.
+  it('reaches the land zone a ship could never be played into', () => {
+    const land = playFear().state.zones[2]
+    expect(land.biome).toBe('land')
+    expect(land.cards.a.map((c) => c.name)).toEqual(['Horror'])
+  })
+
+  // ⚠ Spawning is not playing (§7.4), and that rule skips onPlayEffect and
+  // NOTHING ELSE. So each spawned Horror keeps its own printed battle trigger
+  // — wave 6's Nothung/Sacrilego ruling again, and almost certainly intended:
+  // Fear names Horror rather than a vanilla hull for a reason.
+  it('each Horror keeps its own printed battle trigger', () => {
+    for (const zone of playFear().state.zones) {
+      // Found by NAME, not by index: PLAY_CARD_TO_ZONE places the played hull
+      // before effects fire, so zone 1's cards.a[0] is Fear itself.
+      const spawned = zone.cards.a.find((c) => c.name === 'Horror')!
+      expect(spawned.meta.onBattleEffect).toBe('t_horrorTrigger')
+    }
+  })
+
+  it('does NOT fire the spawned Horrors’ own onPlayEffect', () => {
+    // t_neverFires is registered nowhere, so had spawning fired it,
+    // noteUnimplemented-style logging would be the only trace — assert the
+    // absence of any note naming it, and that Fear itself resolved.
+    const game = playFear()
+    expect(game.state.log.join(' ')).not.toContain('t_neverFires')
+  })
+
+  it('spawns the Horrors at full strength, keeping their printed keywords', () => {
+    const spawned = playFear().state.zones[0].cards.a.find((c) => c.name === 'Horror')!
+    expect(spawned.keywords).toContain(KEYWORDS.ROBOTIC)
+    expect(spawned.keywords).toContain(KEYWORDS.UPKEEP_REQUIRED)
+  })
+
+  it('gives every Horror its own instanceId', () => {
+    const ids = playFear().state.zones.map((z) => z.cards.a.find((c) => c.name === 'Horror')!.instanceId)
+    expect(new Set(ids).size).toBe(3)
+  })
+
+  // ⚠ Verified at runtime rather than by reading the source: makeCtx hands
+  // every unit test a catalog, so a missing flag is invisible here and shows
+  // up only as a dead card in production.
+  it('is registered as needing the catalog', () => {
+    expect(CATALOG_EFFECTS.has('fearOnPlay')).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Wave 7, group C — TG Obelisk.
+//
+// "Whenever this vehicle participates in a fleet battle, spawn a temporary
+// Mirth swarm to fight on your side in the battlefield."
+//
+// A BATTLE SUMMON, not a board spawn (spec §4.4): summonHulls + joinBattle,
+// never zone.cards. It evaporates on report approval regardless of HP.
+describe('TG Obelisk — a Mirth Swarm battle summon (wave 7)', () => {
+  const mirthSwarm = snap({
+    name: 'Mirth Swarm', faction: 'TG', vehicleType: 'plane', materialCost: 200_000,
+    keywords: [KEYWORDS.ROBOTIC, KEYWORDS.TEMPORARY, KEYWORDS.HALF_COST],
+    meta: { summonOnly: true },
+  })
+  const obeliskCtx = () => makeCtx({ catalog: [mirthSwarm] })
+
+  const obeliskEntry = (over = {}) => zoneEntry({
+    instanceId: 'ob1', name: 'Obelisk', faction: 'TG', vehicleType: 'sub',
+    materialCost: 40_000, keywords: [KEYWORDS.STEALTHY],
+    meta: { onBattleEffect: 'obeliskBattle' }, playedOnTurn: 1, ...over,
+  })
+
+  // A forced battle is the shortest route to a locked battle with a chosen
+  // roster, and it exercises the same dispatchBattleLock participant pass an
+  // ordinary fleet attack does.
+  const fight = (aggressor: 'a' | 'b') => {
+    const game = makeGame({ turnNumber: 3, activePlayer: 'alice' })
+    game.state.zones[0].cards.a.push(obeliskEntry())
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe1', name: 'Foe', playedOnTurn: 1 }))
+    const ctx = obeliskCtx()
+    const ok = declareForcedBattle(game, ctx, {
+      zoneId: 1,
+      aggressor,
+      attackerIds: aggressor === 'a' ? ['ob1'] : ['foe1'],
+      defenderIds: aggressor === 'a' ? ['foe1'] : ['ob1'],
+      cause: 'Test',
+    })
+    if (!ok) throw new Error('battle not declared')
+    return game
+  }
+
+  it('summons one Mirth Swarm onto its own side at lock', () => {
+    const game = fight('a')
+    const battle = game.state.activeBattle!
+    expect(battle.summons.map((s) => s.name)).toEqual(['Mirth Swarm'])
+    // Membership in a side's id list is the whole of "which side it joined"
+    // (decision 18).
+    expect(battle.attackerIds).toContain(battle.summons[0].instanceId)
+    expect(battle.defenderIds).not.toContain(battle.summons[0].instanceId)
+  })
+
+  // "Participates in a fleet battle" reads to offensive AND defensive battles,
+  // and — per §7.3's Catshark ruling — to forced ones. So there is
+  // deliberately no isDefender guard.
+  it('fires on a battle it is DEFENDING as readily as one it attacks', () => {
+    const game = fight('b')
+    const battle = game.state.activeBattle!
+    expect(battle.summons).toHaveLength(1)
+    expect(battle.defenderIds).toContain(battle.summons[0].instanceId)
+  })
+
+  // ⚠ DP2 fires the same onBattleEffect key at RESOLVE too. Harbringer is the
+  // worked example of the guard; without it Obelisk would try to summon into a
+  // battle that no longer exists.
+  it('does nothing at the resolve phase', () => {
+    const game = makeGame({ turnNumber: 3 })
+    const entry = obeliskEntry()
+    game.state.zones[0].cards.a.push(entry)
+    const resolveCtx: BattleContext = {
+      phase: 'resolve', zoneId: 1, isDefender: false, isParticipant: true,
+      forced: false, survived: true, won: true, casualties: [],
+    }
+    expect(effectFor('obeliskBattle')!({
+      game, actor: 'a', card: entry, ctx: obeliskCtx(), battle: resolveCtx,
+    })).toBe(true)
+    expect(game.state.activeBattle).toBeNull()
+  })
+
+  // A battle summon NEVER enters zone.cards — that is the whole of what makes
+  // it evaporate on report approval rather than die (spec §4.4).
+  it('never puts the Swarm on the board', () => {
+    const game = fight('a')
+    for (const zone of game.state.zones) {
+      expect(zone.cards.a.map((c) => c.name)).not.toContain('Mirth Swarm')
+      expect(zone.cards.b.map((c) => c.name)).not.toContain('Mirth Swarm')
+    }
+  })
+
+  // ✅ Mirth Swarm already prints TEMPORARY, so the word in Obelisk's card
+  // text is decorative and no keyword grant is needed. Asserted rather than
+  // assumed, because a grant would have been the obvious thing to write.
+  it('needs no TEMPORARY grant — the Swarm already prints it', () => {
+    const summon = fight('a').state.activeBattle!.summons[0]
+    expect(summon.keywords).toContain(KEYWORDS.TEMPORARY)
+  })
+
+  it('is registered as needing the catalog', () => {
+    expect(CATALOG_EFFECTS.has('obeliskBattle')).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Wave 7, group C — TG Hysteria.
+//
+// "When this vehicle is played, you may target any enemy vehicle on the board
+// and give it INOFFENSIVE keyword."
+//
+// ⚠ NOT a grantKeywords composition. grantKeywords reads
+// payload.targetInstanceId, which RESOLVE_PENDING_EFFECT never sets — so
+// composing the two would suspend correctly, resolve, and then silently do
+// nothing.
+describe('TG Hysteria — INOFFENSIVE onto any enemy vehicle (wave 7)', () => {
+  const hysteria = () => inst({
+    instanceId: 'hys1', name: 'Hysteria', faction: 'TG', vehicleType: 'ship',
+    materialCost: 730_000, keywords: [KEYWORDS.BLOCKER, KEYWORDS.ROBOTIC],
+    meta: { onPlayEffect: 'hysteriaOnPlay' },
+  })
+
+  // Enemies spread across TWO zones — the card says "any enemy vehicle on the
+  // board", so the options must not be scoped to the played zone.
+  const armed = () => {
+    const card = hysteria()
+    const game = makeGame({
+      turnNumber: 3, activePlayer: 'alice',
+      privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } },
+    })
+    game.state.resources.a.materials = 900_000
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'far1', name: 'Far Foe', playedOnTurn: 1 }))
+    game.state.zones[1].cards.b.push(zoneEntry({ instanceId: 'near1', name: 'Near Foe', playedOnTurn: 1 }))
+    return { game, card }
+  }
+
+  const play = (game: EngineGame, card: CardInstance, zoneId = 1) => {
+    const r = applyAction(game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    return r.game
+  }
+
+  it('offers every enemy vehicle on the board, not just the played zone', () => {
+    const { game, card } = armed()
+    const after = play(game, card)
+    expect(after.state.pendingEffect?.effect).toBe('hysteriaOnPlay')
+    expect(after.state.pendingEffect?.options?.map((o) => o.id).sort()).toEqual(['far1', 'near1'])
+  })
+
+  it('grants INOFFENSIVE to the chosen hull, and to no other', () => {
+    const { game, card } = armed()
+    const suspended = play(game, card)
+    const done = applyAction(suspended, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'near1' }, makeCtx())
+    if (!done.ok) throw new Error(done.error)
+    expect(findVehicle(done.game.state, 'near1')!.entry.keywords).toContain(KEYWORDS.INOFFENSIVE)
+    expect(findVehicle(done.game.state, 'far1')!.entry.keywords).not.toContain(KEYWORDS.INOFFENSIVE)
+    expect(done.game.state.pendingEffect).toBeNull()
+  })
+
+  it('is idempotent on a hull that already prints INOFFENSIVE', () => {
+    const { game, card } = armed()
+    findVehicle(game.state, 'near1')!.entry.keywords.push(KEYWORDS.INOFFENSIVE)
+    const done = applyAction(
+      play(game, card), 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'near1' }, makeCtx(),
+    )
+    if (!done.ok) throw new Error(done.error)
+    const kw = findVehicle(done.game.state, 'near1')!.entry.keywords
+    expect(kw.filter((k) => k === KEYWORDS.INOFFENSIVE)).toHaveLength(1)
+  })
+
+  // "You may" — choice() calls resolve(payload, null) when the options are
+  // empty, so a board with no enemy vehicle must not suspend AND must not fail.
+  it('resolves without suspending when there is no enemy vehicle anywhere', () => {
+    const card = hysteria()
+    const game = makeGame({
+      turnNumber: 3, activePlayer: 'alice',
+      privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } },
+    })
+    game.state.resources.a.materials = 900_000
+    const after = play(game, card)
+    expect(after.state.pendingEffect).toBeNull()
+    expect(after.state.zones[0].cards.a.map((c) => c.name)).toContain('Hysteria')
+  })
+
+  // The target may leave the board while the dialog sits open — applyAction
+  // admits nothing that could move it today, but the re-check is what keeps
+  // that true if the freeze is ever relaxed.
+  it('refuses cleanly when the chosen hull has left the board', () => {
+    const { game, card } = armed()
+    const suspended = play(game, card)
+    suspended.state.zones[1].cards.b = []
+    const done = applyAction(suspended, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'near1' }, makeCtx())
+    expect(done).toMatchObject({ ok: false, status: 400 })
+  })
+
+  // resolution.targetInstanceId is client-supplied and unvalidated. choiceId
+  // is the only channel, and choice() has already checked it against
+  // pending.options before resolve ever runs.
+  it('ignores resolution.targetInstanceId entirely', () => {
+    const { game, card } = armed()
+    const suspended = play(game, card)
+    const done = applyAction(suspended, 'alice', {
+      type: 'RESOLVE_PENDING_EFFECT', choiceId: 'near1', targetInstanceId: 'far1',
+    }, makeCtx())
+    if (!done.ok) throw new Error(done.error)
+    expect(findVehicle(done.game.state, 'near1')!.entry.keywords).toContain(KEYWORDS.INOFFENSIVE)
+    expect(findVehicle(done.game.state, 'far1')!.entry.keywords).not.toContain(KEYWORDS.INOFFENSIVE)
+  })
+
+  it('never targets the actor’s own hulls', () => {
+    const { game, card } = armed()
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'mine1', name: 'Mine', playedOnTurn: 1 }))
+    const after = play(game, card)
+    expect(after.state.pendingEffect?.options?.map((o) => o.id)).not.toContain('mine1')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Wave 7 — TG Alarmed's clause 2: "When this vehicle is played, sacrifice a
+// target friendly AI vehicle in this zone."
+//
+// A death trigger that would be observable IF a sacrifice fired one. It does
+// not (ruling D-2), and this stand-in is how that is asserted rather than
+// assumed. t_-prefixed so G4 skips it (docs/claude/testing.md).
+registerEffect('t_deathWatch', ({ game }) => {
+  game.state.log.push('t_deathWatch fired')
+  return true
+})
+
+describe('TG Alarmed — sacrifice a friendly AI vehicle (wave 7)', () => {
+  const alarmedCard = () => inst({
+    instanceId: 'al1', name: 'Alarmed', faction: 'TG', vehicleType: 'airship',
+    materialCost: 230_000, keywords: [KEYWORDS.ROBOTIC, KEYWORDS.UPKEEP_REQUIRED],
+    meta: { deployRequiresAiVehicle: true, onPlayEffect: 'alarmedOnPlay' },
+  })
+
+  // Zone 1 holds two of the actor's built-ins, zone 2 one more — the card says
+  // "in this zone", so zone 2's must never be offered.
+  const armed = () => {
+    const card = alarmedCard()
+    const game = makeGame({
+      turnNumber: 3, activePlayer: 'alice',
+      privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } },
+    })
+    game.state.resources.a.materials = 500_000
+    game.state.zones[0].cards.a.push(
+      zoneEntry({ instanceId: 'ai1', name: 'Ally One', isBuiltIn: true, playedOnTurn: 1 }),
+      zoneEntry({ instanceId: 'ai2', name: 'Ally Two', isBuiltIn: true, playedOnTurn: 1 }),
+    )
+    game.state.zones[1].cards.a.push(
+      zoneEntry({ instanceId: 'far1', name: 'Far Ally', isBuiltIn: true, playedOnTurn: 1 }),
+    )
+    return { game, card }
+  }
+
+  const play = (game: EngineGame, card: CardInstance) => {
+    const r = applyAction(game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    return r.game
+  }
+
+  it('offers the actor’s own AI vehicles in the played zone', () => {
+    const { game, card } = armed()
+    const after = play(game, card)
+    expect(after.state.pendingEffect?.options?.map((o) => o.id).sort()).toEqual(['ai1', 'ai2'])
+  })
+
+  // ⚠ The card's most likely bug. PLAY_CARD_TO_ZONE places the hull BEFORE
+  // effects fire, so Alarmed is already in zone.cards[actor] — and it is
+  // itself built-in, so a naive read would offer it as its own sacrifice.
+  it('never offers Alarmed itself', () => {
+    const { game, card } = armed()
+    expect(play(game, card).state.pendingEffect?.options?.map((o) => o.id)).not.toContain('al1')
+  })
+
+  it('never offers a vehicle in another zone', () => {
+    const { game, card } = armed()
+    expect(play(game, card).state.pendingEffect?.options?.map((o) => o.id)).not.toContain('far1')
+  })
+
+  it('never offers an enemy vehicle, or the actor’s own player-made design', () => {
+    const { game, card } = armed()
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe1', isBuiltIn: true, playedOnTurn: 1 }))
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'mine-custom', isBuiltIn: false, playedOnTurn: 1 }))
+    const ids = play(game, card).state.pendingEffect?.options?.map((o) => o.id) ?? []
+    expect(ids).not.toContain('foe1')
+    expect(ids).not.toContain('mine-custom')
+  })
+
+  it('takes the chosen hull off the board and into its owner’s discard', () => {
+    const { game, card } = armed()
+    const done = applyAction(play(game, card), 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'ai2' }, makeCtx())
+    if (!done.ok) throw new Error(done.error)
+    expect(done.game.state.zones[0].cards.a.map((c) => c.instanceId)).not.toContain('ai2')
+    expect(done.game.state.destroyed.a.map((c) => c.name)).toContain('Ally Two')
+    // Alarmed itself stays on the board — it was played, not spent.
+    expect(done.game.state.zones[0].cards.a.map((c) => c.instanceId)).toContain('al1')
+  })
+
+  // ⚠ Ruling D-2. sacrificeEntry calls discardCard directly and never
+  // fireDeathEffect — the deliberate split behind decision 28 ("destroy"
+  // fires, "remove from play" does not). Jealousy is a TG card whose entire
+  // text is a death draw, so a TG player meets this within one game.
+  it('D-2: does NOT fire the sacrificed hull’s onDeathEffect', () => {
+    const { game, card } = armed()
+    findVehicle(game.state, 'ai2')!.entry.meta = { onDeathEffect: 't_deathWatch' }
+    const done = applyAction(play(game, card), 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'ai2' }, makeCtx())
+    if (!done.ok) throw new Error(done.error)
+    expect(done.game.state.log.join(' ')).not.toContain('t_deathWatch fired')
+  })
+
+  // ✅ sacrificeEntry routes through discardCard, the single exit out of play,
+  // so a captured copy is destroyed rather than filed into anyone's discard.
+  it('destroys a captured copy rather than filing it into either discard', () => {
+    const { game, card } = armed()
+    findVehicle(game.state, 'ai2')!.entry.meta = { capturedCopy: true }
+    const done = applyAction(play(game, card), 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'ai2' }, makeCtx())
+    if (!done.ok) throw new Error(done.error)
+    expect(done.game.state.destroyed.a.map((c) => c.name)).not.toContain('Ally Two')
+    expect(done.game.state.destroyed.b.map((c) => c.name)).not.toContain('Ally Two')
+  })
+
+  // A Curiosity-style additionalSpawns copy is placed by the same call, so it
+  // must be excluded for the same reason Alarmed itself is.
+  it('never offers an additionalSpawns copy this play just placed', () => {
+    const card = inst({
+      instanceId: 'al2', name: 'Alarmed', faction: 'TG', vehicleType: 'airship',
+      materialCost: 230_000,
+      meta: { deployRequiresAiVehicle: true, onPlayEffect: 'alarmedOnPlay', additionalSpawns: 1 },
+    })
+    const game = makeGame({
+      turnNumber: 3, activePlayer: 'alice',
+      privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } },
+    })
+    game.state.resources.a.materials = 500_000
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'ai1', isBuiltIn: true, playedOnTurn: 1 }))
+    const after = play(game, card)
+    expect(after.state.pendingEffect?.options?.map((o) => o.id)).toEqual(['ai1'])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Wave 7, group D — TG Horror.
+//
+// "Whenever a horror survives a fleet battle, create anther copy of it in this
+// zone. Max one spawn per zone." (`anther` is the card's own typo; cardText is
+// data, and it is reproduced verbatim rather than silently corrected.)
+//
+// ⚠ Ruling D-3: "a horror" is read as THIS Horror. The sentence continues
+// "create another copy OF IT", which points back at the same hull, and DP2
+// already dispatches per participant.
+// ⚠ Ruling D-4: "max one spawn per zone" is per TURN, read off the board as
+// "a Horror in this zone already has playedOnTurn === game.turnNumber". Each
+// fire() is an isolated invocation with no shared scratchpad, so any counter
+// has to be read off the board; this reading needs no new state.
+describe('TG Horror — a self-copy on surviving a battle (wave 7)', () => {
+  const horrorEntry = (over = {}) => zoneEntry({
+    instanceId: 'h1', name: 'Horror', faction: 'TG', vehicleType: 'ship',
+    materialCost: 70_000, keywords: [KEYWORDS.ROBOTIC, KEYWORDS.UPKEEP_REQUIRED],
+    meta: { onBattleEffect: 'horrorBattle' }, playedOnTurn: 1, ...over,
+  })
+
+  const resolveCtx = (over: Partial<BattleContext> = {}): BattleContext => ({
+    phase: 'resolve', zoneId: 1, isDefender: false, isParticipant: true,
+    forced: false, survived: true, won: true, casualties: [], ...over,
+  })
+
+  const fire = (game: EngineGame, entry: ReturnType<typeof horrorEntry>, battle = resolveCtx()) =>
+    effectFor('horrorBattle')!({ game, actor: 'a', card: entry, ctx: makeCtx(), battle })
+
+  it('copies itself into its own zone on surviving', () => {
+    const game = makeGame({ turnNumber: 3 })
+    const entry = horrorEntry()
+    game.state.zones[0].cards.a.push(entry)
+    expect(fire(game, entry)).toBe(true)
+    expect(game.state.zones[0].cards.a.map((c) => c.name)).toEqual(['Horror', 'Horror'])
+  })
+
+  it('does nothing when it did not survive', () => {
+    const game = makeGame({ turnNumber: 3 })
+    const entry = horrorEntry()
+    game.state.zones[0].cards.a.push(entry)
+    expect(fire(game, entry, resolveCtx({ survived: false }))).toBe(true)
+    expect(game.state.zones[0].cards.a).toHaveLength(1)
+  })
+
+  it('does nothing at the lock phase', () => {
+    const game = makeGame({ turnNumber: 3 })
+    const entry = horrorEntry()
+    game.state.zones[0].cards.a.push(entry)
+    expect(fire(game, entry, resolveCtx({ phase: 'lock', survived: false }))).toBe(true)
+    expect(game.state.zones[0].cards.a).toHaveLength(1)
+  })
+
+  // D-3: the copy lands in the SURVIVOR's zone, which is re-derived from the
+  // hull rather than taken from battle.zoneId.
+  it('D-3: copies into the surviving hull’s own zone', () => {
+    const game = makeGame({ turnNumber: 3 })
+    const entry = horrorEntry()
+    game.state.zones[2].cards.a.push(entry)
+    expect(fire(game, entry, resolveCtx({ zoneId: 1 }))).toBe(true)
+    expect(game.state.zones[2].cards.a).toHaveLength(2)
+    expect(game.state.zones[0].cards.a).toHaveLength(0)
+  })
+
+  it('D-4: a second survival in the same zone on the same turn spawns nothing', () => {
+    const game = makeGame({ turnNumber: 3 })
+    const entry = horrorEntry()
+    game.state.zones[0].cards.a.push(entry)
+    expect(fire(game, entry)).toBe(true)
+    expect(fire(game, entry)).toBe(true)
+    expect(game.state.zones[0].cards.a).toHaveLength(2)
+  })
+
+  it('D-4: the cap lifts on the next turn', () => {
+    const game = makeGame({ turnNumber: 3 })
+    const entry = horrorEntry()
+    game.state.zones[0].cards.a.push(entry)
+    fire(game, entry)
+    game.turnNumber = 4
+    expect(fire(game, entry)).toBe(true)
+    expect(game.state.zones[0].cards.a).toHaveLength(3)
+  })
+
+  it('D-4: the cap is per zone, so another zone still spawns this turn', () => {
+    const game = makeGame({ turnNumber: 3 })
+    const first = horrorEntry()
+    const second = horrorEntry({ instanceId: 'h2' })
+    game.state.zones[0].cards.a.push(first)
+    game.state.zones[1].cards.a.push(second)
+    fire(game, first)
+    expect(fire(game, second)).toBe(true)
+    expect(game.state.zones[0].cards.a).toHaveLength(2)
+    expect(game.state.zones[1].cards.a).toHaveLength(2)
+  })
+
+  // Copying the ENTRY rather than minting from the catalog is what carries
+  // granted keywords across — clydesdaleEffect and loggerheadOnDeath are the
+  // precedents.
+  it('the copy carries keywords GRANTED to the survivor, not just printed ones', () => {
+    const game = makeGame({ turnNumber: 3 })
+    const entry = horrorEntry({ keywords: [KEYWORDS.ROBOTIC, KEYWORDS.SCRAPPY] })
+    game.state.zones[0].cards.a.push(entry)
+    fire(game, entry)
+    expect(game.state.zones[0].cards.a[1].keywords).toContain(KEYWORDS.SCRAPPY)
+  })
+
+  // ⚠ Every copy-minting effect runs the source meta through copyMeta, or the
+  // new hull inherits the phantom stamp and is destroyed the moment it leaves
+  // play — the captor would never keep the Horror it spawned.
+  it('runs the source meta through copyMeta, so a captured Horror’s copy is a real card', () => {
+    const game = makeGame({ turnNumber: 3 })
+    const entry = horrorEntry({ meta: { onBattleEffect: 'horrorBattle', capturedCopy: true } })
+    game.state.zones[0].cards.a.push(entry)
+    fire(game, entry)
+    const copy = game.state.zones[0].cards.a[1]
+    expect(copy.meta.capturedCopy).toBeUndefined()
+    expect(copy.meta.onBattleEffect).toBe('horrorBattle')
+  })
+
+  it('stamps the copy with this turn and a fresh instanceId', () => {
+    const game = makeGame({ turnNumber: 3 })
+    const entry = horrorEntry()
+    game.state.zones[0].cards.a.push(entry)
+    fire(game, entry)
+    const copy = game.state.zones[0].cards.a[1]
+    expect(copy.playedOnTurn).toBe(3)
+    expect(copy.movedOnTurn).toBeNull()
+    expect(copy.activatedOnTurn).toBeNull()
+    expect(copy.instanceId).not.toBe('h1')
+  })
+
+  it('does nothing when the hull has left the board', () => {
+    const game = makeGame({ turnNumber: 3 })
+    expect(fire(game, horrorEntry())).toBe(true)
+    expect(game.state.zones[0].cards.a).toHaveLength(0)
+  })
+
+  // ✅ It copies the ENTRY, so it never reads ctx.catalog — and so, unlike
+  // Fear and Obelisk, it must NOT be registered as needing one. Asserted
+  // rather than commented, because the claim is easy to get wrong either way.
+  it('does not need the catalog', () => {
+    expect(CATALOG_EFFECTS.has('horrorBattle')).toBe(false)
+  })
+
+  // End to end through a real battle, so the DP2 resolve dispatch itself is
+  // exercised rather than only the effect body.
+  it('fires from a real DECIDE_BATTLE_REPORT', () => {
+    const game = makeGame({ turnNumber: 3, activePlayer: 'alice' })
+    game.state.zones[0].cards.a.push(horrorEntry())
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe1', name: 'Foe', playedOnTurn: 1 }))
+    const ctx = makeCtx()
+    if (!declareForcedBattle(game, ctx, {
+      zoneId: 1, aggressor: 'a', attackerIds: ['h1'], defenderIds: ['foe1'], cause: 'Test',
+    })) throw new Error('battle not declared')
+    const submitted = applyAction(game, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT', results: { h1: 100, foe1: 0 }, repairs: [],
+    }, ctx)
+    if (!submitted.ok) throw new Error(submitted.error)
+    const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, ctx)
+    if (!decided.ok) throw new Error(decided.error)
+    expect(decided.game.state.zones[0].cards.a.filter((c) => c.name === 'Horror')).toHaveLength(2)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Wave 7, group E — TG Nostalgia.
+//
+// "Whenever this would be destroyed, put it back into your hand."
+//
+// The engine has never had a replacement effect. DECIDE_BATTLE_REPORT's
+// resolution loop removes from zone.cards, calls discardCard and pushes to
+// destroyedEntries, and only AFTERWARDS runs fireDeathEffect — nothing in the
+// engine can say "instead of". So this is route (a): an onDeathEffect that
+// UNDOES the discard, built on the discardIndexOf/sameSnapshot machinery
+// reviveEntry already uses. Route (b), a real pre-destruction hook, would have
+// touched the single most load-bearing loop in the engine.
+//
+// ⚠ The divergences from a true replacement are real, and are pinned below
+// rather than left to be discovered.
+describe('TG Nostalgia — back to hand instead of the discard (wave 7)', () => {
+  const nostalgia = (over = {}) => zoneEntry({
+    instanceId: 'nos1', name: 'Nostalgia', faction: 'TG', vehicleType: 'ship',
+    materialCost: 90_000, keywords: [KEYWORDS.ROBOTIC, KEYWORDS.UPKEEP_REQUIRED],
+    meta: { onDeathEffect: 'nostalgiaOnDeath' }, playedOnTurn: 1, ...over,
+  })
+
+  // A real battle, lost: Nostalgia at 0%, the enemy at 100%.
+  const loseBattle = (entry = nostalgia()) => {
+    const game = makeGame({ turnNumber: 3, activePlayer: 'alice' })
+    game.state.zones[0].cards.a.push(entry)
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe1', name: 'Foe', playedOnTurn: 1 }))
+    const ctx = makeCtx()
+    if (!declareForcedBattle(game, ctx, {
+      zoneId: 1, aggressor: 'a', attackerIds: [entry.instanceId], defenderIds: ['foe1'], cause: 'Test',
+    })) throw new Error('battle not declared')
+    const submitted = applyAction(game, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT', results: { [entry.instanceId]: 0, foe1: 100 }, repairs: [],
+    }, ctx)
+    if (!submitted.ok) throw new Error(submitted.error)
+    const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, ctx)
+    if (!decided.ok) throw new Error(decided.error)
+    return decided.game
+  }
+
+  it('ends up in its controller’s hand rather than the discard', () => {
+    const game = loseBattle()
+    expect(game.privates.a.hand.map((c) => c.name)).toContain('Nostalgia')
+    expect(game.state.destroyed.a.map((c) => c.name)).not.toContain('Nostalgia')
+    expect(game.state.zones[0].cards.a).toHaveLength(0)
+  })
+
+  // Checklist item 5: a direct push into a private hand must resync the public
+  // count by hand — drawCard does it for you, this does not.
+  it('resyncs state.counts', () => {
+    const game = loseBattle()
+    expect(game.state.counts.a.hand).toBe(game.privates.a.hand.length)
+  })
+
+  it('comes back with a fresh instanceId and no per-entry stamps', () => {
+    const game = loseBattle()
+    const returned = game.privates.a.hand.find((c) => c.name === 'Nostalgia')!
+    expect(returned.instanceId).not.toBe('nos1')
+    // Rebuilt from the discard snapshot, which already has the stamps stripped.
+    expect((returned as Record<string, unknown>).playedOnTurn).toBeUndefined()
+    expect((returned as Record<string, unknown>).movedOnTurn).toBeUndefined()
+  })
+
+  // Nostalgia's mechanism is route (a): UNDO the discard. A captured copy
+  // never makes a discard entry to undo — discardCard destroys it outright —
+  // so returnToHand finds nothing and the copy is simply gone. No special
+  // case implements this; it falls out of the single exit.
+  it('a captured Nostalgia copy dies for good — there is no discard entry to undo', () => {
+    const game = loseBattle(nostalgia({ meta: { onDeathEffect: 'nostalgiaOnDeath', capturedCopy: true } }))
+    expect(game.privates.a.hand.map((c) => c.name)).not.toContain('Nostalgia')
+    expect(game.state.destroyed.a.map((c) => c.name)).not.toContain('Nostalgia')
+    expect(game.state.destroyed.b.map((c) => c.name)).not.toContain('Nostalgia')
+    expect(game.state.zones[0].cards.a).toHaveLength(0)
+  })
+
+  // ⚠ THE THREE DIVERGENCES. Route (a) undoes the discard and nothing else, so
+  // everything the resolution loop had already decided still stands.
+  it('divergence 1: the death is still logged', () => {
+    expect(loseBattle().state.log.join(' ')).toContain('Nostalgia was destroyed')
+  })
+
+  it('divergence 2: it still counts toward destroyedCount', () => {
+    expect(loseBattle().state.log.join(' ')).toContain('Battle resolved — 1 vehicle(s) lost')
+  })
+
+  // The load-bearing one: survivingIds is computed BEFORE any trigger runs, so
+  // a lone Nostalgia losing a battle still hands the enemy the win and still
+  // writes zone.lostBattleOnTurn — which WF Purifier deploys off.
+  it('divergence 3: it still counts as a LOSS for battleOutcome', () => {
+    const game = loseBattle()
+    expect(game.state.zones[0].lostBattleOnTurn.a).toBe(3)
+    expect(game.state.zones[0].lostBattleOnTurn.b).toBeNull()
+  })
+
+  // ⚠ Ruling E-1: battle death only. "Whenever this WOULD be destroyed" is
+  // broader on its face, but sacrificeEntry calls discardCard directly and
+  // never fireDeathEffect, so route (a) could not save a sacrificed Nostalgia
+  // in any case. Scoped and stated rather than left ambiguous.
+  it('E-1: a SACRIFICED Nostalgia is not saved', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zones[0].cards.a.push(nostalgia())
+    expect(sacrificeEntry(game, 'a', 'nos1', 1)).toBe(true)
+    expect(game.state.destroyed.a.map((c) => c.name)).toContain('Nostalgia')
+    expect(game.privates.a.hand).toHaveLength(0)
+  })
+
+  // ✅ Nostalgia prints no SCRAPPY, so checklist item 10 is satisfied — and
+  // that rule exists for exactly this shape. Its owner still CHOOSES whether
+  // to pay the 80-90% repair; repairing means it survives and no trigger
+  // fires, which is correct.
+  it('does not fire when the hull survives on a repair', () => {
+    const entry = nostalgia()
+    const game = makeGame({ turnNumber: 3, activePlayer: 'alice' })
+    game.state.resources.a.materials = 500_000
+    game.state.zones[0].cards.a.push(entry)
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe1', name: 'Foe', playedOnTurn: 1 }))
+    const ctx = makeCtx()
+    declareForcedBattle(game, ctx, {
+      zoneId: 1, aggressor: 'a', attackerIds: ['nos1'], defenderIds: ['foe1'], cause: 'Test',
+    })
+    const submitted = applyAction(game, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT', results: { nos1: 85, foe1: 100 }, repairs: ['nos1'],
+    }, ctx)
+    if (!submitted.ok) throw new Error(submitted.error)
+    const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, ctx)
+    if (!decided.ok) throw new Error(decided.error)
+    expect(decided.game.state.zones[0].cards.a.map((c) => c.name)).toContain('Nostalgia')
+    expect(decided.game.privates.a.hand).toHaveLength(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Wave 7, group E — TG Vengeful, and DP8.
+//
+// "Whenever you lose a vehicle to a fleet battle (any zone) this unit deals
+// 40k damage to the enemy base in this zone."
+//
+// "Any zone" means a battle Vengeful is NOT in, and no existing pass reaches
+// it. BYSTANDER_EFFECTS (Terawatt) is four times too narrow: lock only, forced
+// battles only, the defending side only, and the battle's own zone only.
+// Vengeful needs the RESOLVE phase — a loss is not known until then — on EVERY
+// battle, from ANY zone, on either side. That is DP8.
+describe('TG Vengeful — DP8, a resolve-phase bystander (wave 7)', () => {
+  const vengeful = (over = {}) => zoneEntry({
+    instanceId: 'ven1', name: 'Vengeful', faction: 'TG', vehicleType: 'sub',
+    materialCost: 160_000, meta: { onBattleEffect: 'vengefulBattle' }, playedOnTurn: 1, ...over,
+  })
+
+  // A battle in zone 1 that alice loses `losses` hulls to, with Vengeful
+  // sitting in whichever zone the caller names.
+  const battleLosing = (losses: number, vengefulZone: number) => {
+    const game = makeGame({ turnNumber: 3, activePlayer: 'alice' })
+    const ids: string[] = []
+    for (let i = 0; i < losses; i++) {
+      const id = `doomed${i}`
+      ids.push(id)
+      game.state.zones[0].cards.a.push(zoneEntry({ instanceId: id, name: `Doomed ${i}`, playedOnTurn: 1 }))
+    }
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe1', name: 'Foe', playedOnTurn: 1 }))
+    game.state.zones[vengefulZone - 1].cards.a.push(vengeful())
+    const ctx = makeCtx()
+    if (!declareForcedBattle(game, ctx, {
+      zoneId: 1, aggressor: 'a', attackerIds: ids, defenderIds: ['foe1'], cause: 'Test',
+    })) throw new Error('battle not declared')
+    const results: Record<string, number> = { foe1: 100 }
+    for (const id of ids) results[id] = 0
+    const submitted = applyAction(game, 'alice', { type: 'SUBMIT_BATTLE_REPORT', results, repairs: [] }, ctx)
+    if (!submitted.ok) throw new Error(submitted.error)
+    const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, ctx)
+    if (!decided.ok) throw new Error(decided.error)
+    return decided.game
+  }
+
+  // The whole point of the new dispatch: Vengeful is in zone 2, the battle is
+  // in zone 1, and it still fires.
+  it('fires on a battle in ANOTHER zone', () => {
+    const game = battleLosing(1, 2)
+    // 40k / BASE_DAMAGE_DIVISOR = 40 HP, and it lands on the enemy base in
+    // VENGEFUL's zone, not the battle's.
+    expect(game.state.zones[1].baseHp.b).toBe(960)
+    expect(game.state.zones[0].baseHp.b).toBe(1000)
+  })
+
+  // ⚠ The context's zoneId is the BATTLE's. Vengeful needs its own, so it
+  // re-derives it with findVehicle the way Braveheart does.
+  it('damages the base in Vengeful’s zone, never the battle’s', () => {
+    const game = battleLosing(1, 3)
+    expect(game.state.zones[2].baseHp.b).toBe(960)
+    expect(game.state.zones[0].baseHp.b).toBe(1000)
+  })
+
+  // ⚠ Ruling E-2: per vehicle lost, not per battle. The literal reading, and
+  // `casualties` is on the context.
+  it('E-2: two casualties deal 80, not 40', () => {
+    expect(battleLosing(2, 2).state.zones[1].baseHp.b).toBe(920)
+  })
+
+  it('does nothing when the actor lost no vehicle', () => {
+    const game = makeGame({ turnNumber: 3, activePlayer: 'alice' })
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'atk1', name: 'Attacker', playedOnTurn: 1 }))
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe1', name: 'Foe', playedOnTurn: 1 }))
+    game.state.zones[1].cards.a.push(vengeful())
+    const ctx = makeCtx()
+    declareForcedBattle(game, ctx, {
+      zoneId: 1, aggressor: 'a', attackerIds: ['atk1'], defenderIds: ['foe1'], cause: 'Test',
+    })
+    const submitted = applyAction(game, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT', results: { atk1: 100, foe1: 0 }, repairs: [],
+    }, ctx)
+    if (!submitted.ok) throw new Error(submitted.error)
+    const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, ctx)
+    if (!decided.ok) throw new Error(decided.error)
+    expect(decided.game.state.zones[1].baseHp.b).toBe(1000)
+  })
+
+  // Only the ENEMY's losses are the enemy's problem: bob losing a hull must
+  // not fire alice's Vengeful.
+  it('counts only the actor’s own casualties', () => {
+    const game = makeGame({ turnNumber: 3, activePlayer: 'alice' })
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'atk1', name: 'Attacker', playedOnTurn: 1 }))
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe1', name: 'Foe', playedOnTurn: 1 }))
+    game.state.zones[1].cards.a.push(vengeful())
+    const ctx = makeCtx()
+    declareForcedBattle(game, ctx, {
+      zoneId: 1, aggressor: 'a', attackerIds: ['atk1'], defenderIds: ['foe1'], cause: 'Test',
+    })
+    const submitted = applyAction(game, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT', results: { atk1: 100, foe1: 0 }, repairs: [],
+    }, ctx)
+    if (!submitted.ok) throw new Error(submitted.error)
+    const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, ctx)
+    if (!decided.ok) throw new Error(decided.error)
+    expect(decided.game.state.zones[1].baseHp.b).toBe(1000)
+  })
+
+  // A Vengeful that is IN the battle and survives is reached by the ordinary
+  // participant pass, so an ally dying beside it still fires it — and it must
+  // not be double-fired by the bystander pass on top.
+  it('fires exactly once for a Vengeful fighting in the battle itself', () => {
+    const game = battleLosing(1, 1)
+    expect(game.state.zones[0].baseHp.b).toBe(960)
+  })
+
+  // ⚠ Ruling E-2b. `participants` still holds a destroyed hull's entry when
+  // the resolve dispatch runs, so this is NOT free — the findVehicle guard is
+  // what enforces it.
+  it('E-2b: a Vengeful destroyed in that same battle fires nothing', () => {
+    const game = makeGame({ turnNumber: 3, activePlayer: 'alice' })
+    game.state.zones[0].cards.a.push(vengeful())
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe1', name: 'Foe', playedOnTurn: 1 }))
+    const ctx = makeCtx()
+    declareForcedBattle(game, ctx, {
+      zoneId: 1, aggressor: 'a', attackerIds: ['ven1'], defenderIds: ['foe1'], cause: 'Test',
+    })
+    const submitted = applyAction(game, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT', results: { ven1: 0, foe1: 100 }, repairs: [],
+    }, ctx)
+    if (!submitted.ok) throw new Error(submitted.error)
+    const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, ctx)
+    if (!decided.ok) throw new Error(decided.error)
+    expect(decided.game.state.zones[0].baseHp.b).toBe(1000)
+  })
+
+  // ⚠ Ruling E-3. baseStrikersIn excludes subs and the Submarine glossary says
+  // a sub "can never damage an enemy base" — but that rule governs BOMBARDMENT
+  // (ATTACK_ENEMY_BASE), and this is card-forced damage. Card text is
+  // authoritative (decision 1). The glossary is amended to match.
+  it('E-3: fires despite Vengeful being a submarine', () => {
+    const game = battleLosing(1, 2)
+    expect(findVehicle(game.state, 'ven1')!.entry.vehicleType).toBe('sub')
+    expect(game.state.zones[1].baseHp.b).toBe(960)
+  })
+
+  // ⚠ Ruling E-4, and it must answer the same way E-3 does or neither is
+  // defensible: ATTACK_ENEMY_BASE refuses over a Blocker, and this is not that
+  // handler.
+  it('E-4: fires despite an enemy Blocker in Vengeful’s zone', () => {
+    const game = makeGame({ turnNumber: 3, activePlayer: 'alice' })
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'doomed0', name: 'Doomed', playedOnTurn: 1 }))
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe1', name: 'Foe', playedOnTurn: 1 }))
+    game.state.zones[1].cards.a.push(vengeful())
+    game.state.zones[1].cards.b.push(zoneEntry({ name: 'Wall', keywords: [KEYWORDS.BLOCKER], playedOnTurn: 1 }))
+    const ctx = makeCtx()
+    declareForcedBattle(game, ctx, {
+      zoneId: 1, aggressor: 'a', attackerIds: ['doomed0'], defenderIds: ['foe1'], cause: 'Test',
+    })
+    const submitted = applyAction(game, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT', results: { doomed0: 0, foe1: 100 }, repairs: [],
+    }, ctx)
+    if (!submitted.ok) throw new Error(submitted.error)
+    const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, ctx)
+    if (!decided.ok) throw new Error(decided.error)
+    expect(decided.game.state.zones[1].baseHp.b).toBe(960)
+  })
+
+  // A card-forced consequence is not a zone activation — Eclipse alone stamps
+  // it, and only from its own text.
+  it('does not stamp lastActivatedTurn', () => {
+    expect(battleLosing(1, 2).state.zones[1].lastActivatedTurn).toBeNull()
+  })
+
+  it('calls checkVictory when a second base falls', () => {
+    const game = makeGame({ turnNumber: 3, activePlayer: 'alice' })
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'doomed0', name: 'Doomed', playedOnTurn: 1 }))
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe1', name: 'Foe', playedOnTurn: 1 }))
+    game.state.zones[1].cards.a.push(vengeful())
+    game.state.zones[1].baseHp.b = 40  // exactly one Vengeful hit left
+    game.state.zones[2].baseHp.b = 0   // one zone already lost
+    const ctx = makeCtx()
+    declareForcedBattle(game, ctx, {
+      zoneId: 1, aggressor: 'a', attackerIds: ['doomed0'], defenderIds: ['foe1'], cause: 'Test',
+    })
+    const submitted = applyAction(game, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT', results: { doomed0: 0, foe1: 100 }, repairs: [],
+    }, ctx)
+    if (!submitted.ok) throw new Error(submitted.error)
+    const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, ctx)
+    if (!decided.ok) throw new Error(decided.error)
+    expect(decided.game.state.zones[1].baseHp.b).toBe(0)
+    expect(decided.game.status).toBe('complete')
+  })
+
+  // ⚠ The opt-in flag is load-bearing, not bookkeeping — for exactly DP7's
+  // reason: dwgWatersEffect's router falls through to its claim branch on any
+  // context it does not recognise, so a broadcast would make it attempt a
+  // claim with no target zone on EVERY battle in the game.
+  it('dispatches only to registered members', () => {
+    expect(RESOLVE_BYSTANDER_EFFECTS.has('vengefulBattle')).toBe(true)
+    expect(RESOLVE_BYSTANDER_EFFECTS.has('dwgWatersEffect')).toBe(false)
+    expect(RESOLVE_BYSTANDER_EFFECTS.has('terawattJoin')).toBe(false)
+  })
+
+  it('leaves a non-member’s battle trigger untouched by the bystander pass', () => {
+    const game = makeGame({ turnNumber: 3, activePlayer: 'alice' })
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'doomed0', name: 'Doomed', playedOnTurn: 1 }))
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe1', name: 'Foe', playedOnTurn: 1 }))
+    // A non-participant carrying a NON-member battle trigger, in another zone.
+    game.state.zones[1].cards.a.push(zoneEntry({
+      instanceId: 'by1', name: 'Bystander', meta: { onBattleEffect: 't_deathWatch' }, playedOnTurn: 1,
+    }))
+    const ctx = makeCtx()
+    declareForcedBattle(game, ctx, {
+      zoneId: 1, aggressor: 'a', attackerIds: ['doomed0'], defenderIds: ['foe1'], cause: 'Test',
+    })
+    const submitted = applyAction(game, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT', results: { doomed0: 0, foe1: 100 }, repairs: [],
+    }, ctx)
+    if (!submitted.ok) throw new Error(submitted.error)
+    const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, ctx)
+    if (!decided.ok) throw new Error(decided.error)
+    expect(decided.game.state.log.join(' ')).not.toContain('t_deathWatch fired')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Wave 7, group E — TG Havoc Factory and Mirth Factory.
+//
+// "Target friendly robotic vehicle. Whenever that vehicle is engaged in a
+// fleet combat, spawn a Havoc/Mirth swarm to fight along side it."
+//
+// state.zoneEffects is per-ZONE; this is per-HULL, which is new. The target is
+// a live ZoneCardEntry with its own meta, so the trigger is STAMPED onto it as
+// meta.factoryEscort — and the value is the FACTORY'S OWN REGISTRY NAME, which
+// is what makes three separate things work at once (see tgEffects.ts).
+describe('TG Havoc/Mirth Factory — a rider on a hull (wave 7)', () => {
+  const swarm = (name: string) => snap({
+    name, faction: 'TG', vehicleType: 'plane', materialCost: name === 'Havoc Swarm' ? 120_000 : 200_000,
+    keywords: [KEYWORDS.ROBOTIC, KEYWORDS.TEMPORARY, KEYWORDS.HALF_COST],
+    meta: { summonOnly: true },
+  })
+  const factoryCtx = () => makeCtx({ catalog: [swarm('Havoc Swarm'), swarm('Mirth Swarm')] })
+
+  const factoryCard = (which: 'Havoc' | 'Mirth') => inst({
+    instanceId: `f-${which}`, name: `${which} Factory`, faction: 'TG', type: 'ability',
+    vehicleType: null, materialCost: which === 'Havoc' ? 120_000 : 200_000,
+    meta: { playOnVehicleEffect: `${which.toLowerCase()}FactoryEffect` },
+  })
+
+  const robotic = (over = {}) => zoneEntry({
+    instanceId: 'bot1', name: 'Obsession', faction: 'TG', vehicleType: 'ship',
+    keywords: [KEYWORDS.ROBOTIC], playedOnTurn: 1, ...over,
+  })
+
+  // Play a Factory onto a target and return the result, un-thrown.
+  const playOnto = (targetId: string, which: 'Havoc' | 'Mirth' = 'Havoc', setup?: (g: EngineGame) => void) => {
+    const card = factoryCard(which)
+    const game = makeGame({
+      turnNumber: 3, activePlayer: 'alice',
+      privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } },
+    })
+    game.state.resources.a.materials = 500_000
+    game.state.zones[0].cards.a.push(robotic())
+    setup?.(game)
+    return applyAction(game, 'alice', {
+      type: 'PLAY_CARD_TARGETING_CARD_ON_FIELD', instanceId: card.instanceId, targetInstanceId: targetId,
+    }, factoryCtx())
+  }
+
+  it('stamps its own registry name onto the targeted hull', () => {
+    const r = playOnto('bot1', 'Havoc')
+    if (!r.ok) throw new Error(r.error)
+    expect(findVehicle(r.game.state, 'bot1')!.entry.meta.factoryEscort).toBe('havocFactoryEffect')
+  })
+
+  it('Mirth Factory stamps its own name, not Havoc’s', () => {
+    const r = playOnto('bot1', 'Mirth')
+    if (!r.ok) throw new Error(r.error)
+    expect(findVehicle(r.game.state, 'bot1')!.entry.meta.factoryEscort).toBe('mirthFactoryEffect')
+  })
+
+  // ⚠ Ruling E-5. PLAY_CARD_TARGETING_CARD_ON_FIELD checks only
+  // findVehicle(targetInstanceId) — NOT ownership — so without this the card
+  // could be played onto an enemy hull, handing the opponent a free escort.
+  it('E-5: refuses an enemy hull', () => {
+    const r = playOnto('foe1', 'Havoc', (g) => {
+      g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe1', keywords: [KEYWORDS.ROBOTIC], playedOnTurn: 1 }))
+    })
+    expect(r).toMatchObject({ ok: false, status: 400 })
+  })
+
+  it('E-5: refuses a friendly hull that is not ROBOTIC', () => {
+    const r = playOnto('plain1', 'Havoc', (g) => {
+      g.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'plain1', keywords: [], playedOnTurn: 1 }))
+    })
+    expect(r).toMatchObject({ ok: false, status: 400 })
+  })
+
+  // Fight the stamped hull and return the locked battle.
+  const fightWith = (entry: ReturnType<typeof robotic>, aggressor: 'a' | 'b' = 'a') => {
+    const game = makeGame({ turnNumber: 3, activePlayer: 'alice' })
+    game.state.zones[0].cards.a.push(entry)
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe1', name: 'Foe', playedOnTurn: 1 }))
+    const ctx = factoryCtx()
+    if (!declareForcedBattle(game, ctx, {
+      zoneId: 1,
+      aggressor,
+      attackerIds: aggressor === 'a' ? [entry.instanceId] : ['foe1'],
+      defenderIds: aggressor === 'a' ? ['foe1'] : [entry.instanceId],
+      cause: 'Test',
+    })) throw new Error('battle not declared')
+    return game
+  }
+
+  it('summons its swarm when the stamped hull enters a battle', () => {
+    const game = fightWith(robotic({ meta: { factoryEscort: 'havocFactoryEffect' } }))
+    const battle = game.state.activeBattle!
+    expect(battle.summons.map((s) => s.name)).toEqual(['Havoc Swarm'])
+    expect(battle.attackerIds).toContain(battle.summons[0].instanceId)
+  })
+
+  it('fights alongside on a DEFENSIVE battle too', () => {
+    const game = fightWith(robotic({ meta: { factoryEscort: 'mirthFactoryEffect' } }), 'b')
+    const battle = game.state.activeBattle!
+    expect(battle.summons.map((s) => s.name)).toEqual(['Mirth Swarm'])
+    expect(battle.defenderIds).toContain(battle.summons[0].instanceId)
+  })
+
+  it('never puts the swarm on the board', () => {
+    const game = fightWith(robotic({ meta: { factoryEscort: 'havocFactoryEffect' } }))
+    for (const zone of game.state.zones) {
+      expect(zone.cards.a.map((c) => c.name)).not.toContain('Havoc Swarm')
+    }
+  })
+
+  // ⚠ The collision the handoff's stamp-onBattleEffect design would have had
+  // to REFUSE. A distinct key means a hull can carry both its own printed
+  // battle trigger and an escort, and both fire.
+  it('coexists with the hull’s OWN printed battle trigger', () => {
+    const game = fightWith(robotic({
+      name: 'Obelisk', vehicleType: 'sub', keywords: [KEYWORDS.ROBOTIC, KEYWORDS.STEALTHY],
+      meta: { onBattleEffect: 'obeliskBattle', factoryEscort: 'havocFactoryEffect' },
+    }))
+    const names = game.state.activeBattle!.summons.map((s) => s.name).sort()
+    expect(names).toEqual(['Havoc Swarm', 'Mirth Swarm'])
+  })
+
+  // ⚠ THE BUG MOST LIKELY TO BE MISSED. discardSnapshotOf's own comment says
+  // "Every per-entry stamp must be named here. TypeScript does NOT catch one
+  // you forget" — an unstripped stamp rides into state.destroyed and, through
+  // reshuffleDiscard, back into the deck: a Factory'd hull that dies would
+  // return PERMANENTLY upgraded, and again on every later death.
+  it('the stamp does NOT ride into the discard', () => {
+    const entry = robotic({ meta: { factoryEscort: 'havocFactoryEffect' } })
+    const snapshot = discardSnapshotOf(entry, 'a')
+    expect(snapshot.meta.factoryEscort).toBeUndefined()
+  })
+
+  it('a Horror copy does not inherit an escort', () => {
+    const game = makeGame({ turnNumber: 3 })
+    const entry = zoneEntry({
+      instanceId: 'h1', name: 'Horror', faction: 'TG', vehicleType: 'ship',
+      keywords: [KEYWORDS.ROBOTIC],
+      meta: { onBattleEffect: 'horrorBattle', factoryEscort: 'havocFactoryEffect' },
+      playedOnTurn: 1,
+    })
+    game.state.zones[0].cards.a.push(entry)
+    effectFor('horrorBattle')!({
+      game, actor: 'a', card: entry, ctx: makeCtx(),
+      battle: {
+        phase: 'resolve', zoneId: 1, isDefender: false, isParticipant: true,
+        forced: false, survived: true, won: true, casualties: [],
+      },
+    })
+    expect(game.state.zones[0].cards.a[1].meta.factoryEscort).toBeUndefined()
+    // Its own printed trigger still rides across.
+    expect(game.state.zones[0].cards.a[1].meta.onBattleEffect).toBe('horrorBattle')
+  })
+
+  // ⚠ The escort fires from a hull whose FACTORY CARD was spent turns ago, so
+  // nothing in play names the effect under a trigger key. The probe
+  // (game-action/index.ts) scans every meta VALUE for a CATALOG_EFFECTS
+  // member regardless of key — which is exactly why the stamp's value is the
+  // registry name rather than the swarm's card name. Without both halves the
+  // catalog is never loaded and the escort dies in production only.
+  it('both factory effects need the catalog', () => {
+    expect(CATALOG_EFFECTS.has('havocFactoryEffect')).toBe(true)
+    expect(CATALOG_EFFECTS.has('mirthFactoryEffect')).toBe(true)
+  })
+
+  it('the stamped value is a name the catalog probe recognises', () => {
+    const entry = robotic({ meta: { factoryEscort: 'havocFactoryEffect' } })
+    const wantsCatalog = Object.values(entry.meta).some(
+      (v) => typeof v === 'string' && CATALOG_EFFECTS.has(v.trim()),
+    )
+    expect(wantsCatalog).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Wave 7 — the cross-zone battle TG Duel needs.
+//
+// ActiveBattle carries ONE zoneId, and four load-bearing sites assumed a
+// battle happens in exactly one zone. Each becomes a find-by-ID instead of a
+// find-by-ZONE; findVehicle already does board-wide lookup, so the change is
+// bounded. `crossZone` is OPT-IN, mirroring `activatesZone` which Eclipse
+// alone passes, so every existing caller keeps the guard it had.
+//
+// Every case below is written twice: the cross-zone behaviour, and a
+// single-zone regression asserting the old behaviour is byte-identical.
+describe('cross-zone forced battles (wave 7)', () => {
+  // alice's hull in zone 1, bob's in zone 2.
+  const split = () => {
+    const game = makeGame({ turnNumber: 3, activePlayer: 'alice' })
+    game.state.zones[0].cards.a.push(zoneEntry({
+      instanceId: 'mine', name: 'Mine', materialCost: 100_000, playedOnTurn: 1,
+    }))
+    game.state.zones[1].cards.b.push(zoneEntry({
+      instanceId: 'theirs', name: 'Theirs', materialCost: 100_000, playedOnTurn: 1,
+    }))
+    return game
+  }
+
+  const declare = (game: EngineGame, crossZone: boolean) => declareForcedBattle(game, makeCtx(), {
+    zoneId: 1, aggressor: 'a', attackerIds: ['mine'], defenderIds: ['theirs'],
+    cause: 'Duel', crossZone,
+  })
+
+  // SITE 1 — declareForcedBattle's onField check.
+  it('site 1: refuses an away-zone defender WITHOUT the opt-in', () => {
+    const game = split()
+    expect(declare(game, false)).toBe(false)
+    expect(game.state.activeBattle).toBeNull()
+  })
+
+  it('site 1: accepts it WITH the opt-in', () => {
+    const game = split()
+    expect(declare(game, true)).toBe(true)
+    expect(game.state.activeBattle?.defenderIds).toEqual(['theirs'])
+  })
+
+  it('site 1 regression: an id on NEITHER side is still refused, opt-in or not', () => {
+    const game = split()
+    expect(declareForcedBattle(game, makeCtx(), {
+      zoneId: 1, aggressor: 'a', attackerIds: ['mine'], defenderIds: ['ghost'],
+      cause: 'Duel', crossZone: true,
+    })).toBe(false)
+  })
+
+  it('site 1 regression: a hull on the WRONG side is still refused', () => {
+    const game = split()
+    // 'mine' belongs to a, so listing it as b's defender must fail even
+    // cross-zone: the check is find-by-id, not skip-the-check.
+    expect(declareForcedBattle(game, makeCtx(), {
+      zoneId: 1, aggressor: 'a', attackerIds: ['mine'], defenderIds: ['mine'],
+      cause: 'Duel', crossZone: true,
+    })).toBe(false)
+  })
+
+  // SITE 2 — lockRoster. Without the fallback the away hull's DP2 lock
+  // triggers never fire.
+  it('site 2: the away hull’s lock trigger fires', () => {
+    const game = split()
+    findVehicle(game.state, 'theirs')!.entry.meta = { onBattleEffect: 't_deathWatch' }
+    declare(game, true)
+    expect(game.state.log.join(' ')).toContain('t_deathWatch fired')
+  })
+
+  // SITE 3 — participantsOf. Without the fallback the away hull misses the
+  // roster, falls through to the summon map, and is SILENTLY DROPPED from the
+  // report — the report would then reject as not covering every vehicle.
+  it('site 3: the report covers both hulls', () => {
+    const game = split()
+    declare(game, true)
+    const r = applyAction(game, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT', results: { mine: 100, theirs: 0 }, repairs: [],
+    }, makeCtx())
+    expect(r.ok).toBe(true)
+  })
+
+  // SITE 4 — the destruction branch. Removing from the BATTLE's zone would
+  // leave a destroyed away hull standing on the board.
+  it('site 4: a destroyed away hull leaves its OWN zone', () => {
+    const game = split()
+    declare(game, true)
+    const submitted = applyAction(game, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT', results: { mine: 100, theirs: 0 }, repairs: [],
+    }, makeCtx())
+    if (!submitted.ok) throw new Error(submitted.error)
+    const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, makeCtx())
+    if (!decided.ok) throw new Error(decided.error)
+    expect(decided.game.state.zones[1].cards.b).toHaveLength(0)
+    expect(decided.game.state.destroyed.b.map((c) => c.name)).toContain('Theirs')
+  })
+
+  it('site 4 regression: a single-zone battle still removes from that zone', () => {
+    const game = makeGame({ turnNumber: 3, activePlayer: 'alice' })
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'mine', name: 'Mine', playedOnTurn: 1 }))
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'theirs', name: 'Theirs', playedOnTurn: 1 }))
+    declareForcedBattle(game, makeCtx(), {
+      zoneId: 1, aggressor: 'a', attackerIds: ['mine'], defenderIds: ['theirs'], cause: 'Test',
+    })
+    const submitted = applyAction(game, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT', results: { mine: 100, theirs: 0 }, repairs: [],
+    }, makeCtx())
+    if (!submitted.ok) throw new Error(submitted.error)
+    const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, makeCtx())
+    if (!decided.ok) throw new Error(decided.error)
+    expect(decided.game.state.zones[0].cards.b).toHaveLength(0)
+    expect(decided.game.state.destroyed.b.map((c) => c.name)).toContain('Theirs')
+  })
+
+  // SITE 5 / ruling E-9 — lostBattleOnTurn is recorded per side in that SIDE's
+  // own participant's zone. WF Purifier deploys off it, and the loser's
+  // wreckage is in their own zone, not their opponent's.
+  it('E-9: the loss is recorded in the loser’s own zone', () => {
+    const game = split()
+    declare(game, true)
+    const submitted = applyAction(game, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT', results: { mine: 100, theirs: 0 }, repairs: [],
+    }, makeCtx())
+    if (!submitted.ok) throw new Error(submitted.error)
+    const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, makeCtx())
+    if (!decided.ok) throw new Error(decided.error)
+    // bob lost, and bob's hull was in zone 2.
+    expect(decided.game.state.zones[1].lostBattleOnTurn.b).toBe(3)
+    expect(decided.game.state.zones[0].lostBattleOnTurn.b).toBeNull()
+    expect(decided.game.state.zones[1].lostBattleOnTurn.a).toBeNull()
+  })
+
+  it('E-9 regression: a single-zone battle records exactly what it always did', () => {
+    const game = makeGame({ turnNumber: 3, activePlayer: 'alice' })
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'mine', name: 'Mine', playedOnTurn: 1 }))
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'theirs', name: 'Theirs', playedOnTurn: 1 }))
+    declareForcedBattle(game, makeCtx(), {
+      zoneId: 1, aggressor: 'a', attackerIds: ['mine'], defenderIds: ['theirs'], cause: 'Test',
+    })
+    const submitted = applyAction(game, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT', results: { mine: 100, theirs: 0 }, repairs: [],
+    }, makeCtx())
+    if (!submitted.ok) throw new Error(submitted.error)
+    const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, makeCtx())
+    if (!decided.ok) throw new Error(decided.error)
+    expect(decided.game.state.zones[0].lostBattleOnTurn).toEqual({ a: null, b: 3 })
+    expect(decided.game.state.zones[1].lostBattleOnTurn).toEqual({ a: null, b: null })
+  })
+
+  it('neither zone is activated by a duel (E-8)', () => {
+    const game = split()
+    declare(game, true)
+    expect(game.state.zones[0].lastActivatedTurn).toBeNull()
+    expect(game.state.zones[1].lastActivatedTurn).toBeNull()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Wave 7, group E — TG Duel, the card the cross-zone battle exists for.
+describe('TG Duel — a cross-zone 1v1 (wave 7)', () => {
+  const duelCard = () => inst({
+    instanceId: 'duel1', name: 'Duel', faction: 'TG', type: 'ability',
+    vehicleType: null, materialCost: 0, meta: { onPlayEffect: 'duelEffect' },
+  })
+
+  // alice holds hulls in zones 1 and 3; bob holds one in zone 2.
+  const armed = () => {
+    const card = duelCard()
+    const game = makeGame({
+      turnNumber: 3, activePlayer: 'alice',
+      privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } },
+    })
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'mine1', name: 'Mine One', playedOnTurn: 1 }))
+    game.state.zones[2].cards.a.push(zoneEntry({ instanceId: 'mine2', name: 'Mine Two', playedOnTurn: 1 }))
+    game.state.zones[1].cards.b.push(zoneEntry({ instanceId: 'foe1', name: 'Foe', playedOnTurn: 1 }))
+    return { game, card }
+  }
+
+  const play = (game: EngineGame, card: CardInstance) => {
+    const r = applyAction(game, 'alice', { type: 'PLAY_ABILITY_CARD', instanceId: card.instanceId }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    return r.game
+  }
+
+  const answer = (game: EngineGame, choiceId: string) => {
+    const r = applyAction(game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    return r.game
+  }
+
+  it('hop 1 offers the actor own vehicles across the whole board', () => {
+    const { game, card } = armed()
+    const after = play(game, card)
+    expect(after.state.pendingEffect?.options?.map((o) => o.id).sort()).toEqual(['mine1', 'mine2'])
+  })
+
+  it('hop 2 offers every enemy vehicle, and stashes the hop-1 pick', () => {
+    const { game, card } = armed()
+    const hop2 = answer(play(game, card), 'mine2')
+    expect(hop2.state.pendingEffect?.options?.map((o) => o.id)).toEqual(['foe1'])
+    expect(hop2.state.pendingEffect?.data?.friendlyId).toBe('mine2')
+  })
+
+  it('locks a battle between two hulls in DIFFERENT zones', () => {
+    const { game, card } = armed()
+    const done = answer(answer(play(game, card), 'mine2'), 'foe1')
+    const battle = done.state.activeBattle!
+    expect(battle.attackerIds).toEqual(['mine2'])
+    expect(battle.defenderIds).toEqual(['foe1'])
+    // The battle home zone is the DUELLING player own hull's — zone 3.
+    expect(battle.zoneId).toBe(3)
+  })
+
+  // E-7: the aggressor is the Duel player, which decides isDefender for every
+  // DP2 trigger in that battle.
+  it('E-7: the Duel player is the aggressor', () => {
+    const { game, card } = armed()
+    const done = answer(answer(play(game, card), 'mine1'), 'foe1')
+    expect(done.state.activeBattle?.aggressor).toBe('a')
+  })
+
+  // E-8: a forced battle is not a zone activation. Eclipse alone stamps it.
+  it('E-8: activates neither zone', () => {
+    const { game, card } = armed()
+    const done = answer(answer(play(game, card), 'mine2'), 'foe1')
+    for (const zone of done.state.zones) expect(zone.lastActivatedTurn).toBeNull()
+  })
+
+  // The tempting shortcut is wrong and is worth pinning against: bringing the
+  // enemy hull in via battle.summons looks like it fits, but a summon
+  // EVAPORATES on report approval regardless of HP (spec 4.4) — no death, no
+  // discard, no destroyedEntries. That would make the enemy hull unkillable,
+  // defeating the entire card.
+  it('the enemy hull is a real combatant, not a summon', () => {
+    const { game, card } = armed()
+    const done = answer(answer(play(game, card), 'mine2'), 'foe1')
+    expect(done.state.activeBattle?.summons).toEqual([])
+  })
+
+  it('the duelled enemy hull can actually be destroyed', () => {
+    const { game, card } = armed()
+    const locked = answer(answer(play(game, card), 'mine2'), 'foe1')
+    const submitted = applyAction(locked, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT', results: { mine2: 100, foe1: 0 }, repairs: [],
+    }, makeCtx())
+    if (!submitted.ok) throw new Error(submitted.error)
+    const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, makeCtx())
+    if (!decided.ok) throw new Error(decided.error)
+    expect(decided.game.state.zones[1].cards.b).toHaveLength(0)
+    expect(decided.game.state.destroyed.b.map((c) => c.name)).toContain('Foe')
+  })
+
+  // resolution.targetInstanceId is client-supplied and unvalidated; the chain
+  // reads only choiceId and its own stashed data.
+  it('ignores resolution.targetInstanceId on both hops', () => {
+    const { game, card } = armed()
+    const hop2 = applyAction(play(game, card), 'alice', {
+      type: 'RESOLVE_PENDING_EFFECT', choiceId: 'mine2', targetInstanceId: 'mine1',
+    }, makeCtx())
+    if (!hop2.ok) throw new Error(hop2.error)
+    expect(hop2.game.state.pendingEffect?.data?.friendlyId).toBe('mine2')
+  })
+
+  it('refuses cleanly when the hop-1 hull left the board before hop 2', () => {
+    const { game, card } = armed()
+    const hop2 = answer(play(game, card), 'mine2')
+    hop2.state.zones[2].cards.a = []
+    const r = applyAction(hop2, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'foe1' }, makeCtx())
+    expect(r).toMatchObject({ ok: false, status: 400 })
+  })
+
+  it('fizzles rather than failing when the actor has no vehicle at all', () => {
+    const card = duelCard()
+    const game = makeGame({
+      turnNumber: 3, activePlayer: 'alice',
+      privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } },
+    })
+    const after = play(game, card)
+    expect(after.state.pendingEffect).toBeNull()
+    expect(after.state.activeBattle).toBeNull()
+  })
+
+  it('fizzles when there is no enemy vehicle to challenge', () => {
+    const card = duelCard()
+    const game = makeGame({
+      turnNumber: 3, activePlayer: 'alice',
+      privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } },
+    })
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'mine1', name: 'Mine', playedOnTurn: 1 }))
+    const done = answer(play(game, card), 'mine1')
+    expect(done.state.pendingEffect).toBeNull()
+    expect(done.state.activeBattle).toBeNull()
+  })
+
+  it('works for two hulls in the SAME zone too', () => {
+    const card = duelCard()
+    const game = makeGame({
+      turnNumber: 3, activePlayer: 'alice',
+      privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } },
+    })
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'mine1', name: 'Mine', playedOnTurn: 1 }))
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe1', name: 'Foe', playedOnTurn: 1 }))
+    const done = answer(answer(play(game, card), 'mine1'), 'foe1')
+    expect(done.state.activeBattle?.zoneId).toBe(1)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Wave 7, ruling E-10 — found by the late re-read, not by building the card.
+//
+// Duel's friendly pick becomes attackerIds[0] of a forced battle, and spec
+// §7.3's Gang Up ruling is explicit: "Inoffensive means 'cannot attack', and a
+// forced battle is not licence to break that". Duel is exactly Gang Up's
+// shape — the actor choosing their own attacker — so it must exclude
+// Inoffensive hulls too.
+//
+// Live-reachable rather than theoretical: TG Hysteria grants INOFFENSIVE to an
+// ENEMY vehicle, so in any game facing a TG deck one of your own hulls can
+// carry it, and Duel would otherwise send it to attack.
+describe('TG Duel — E-10, an Inoffensive hull cannot be sent to duel', () => {
+  const duelCard = () => inst({
+    instanceId: 'duel1', name: 'Duel', faction: 'TG', type: 'ability',
+    vehicleType: null, materialCost: 0, meta: { onPlayEffect: 'duelEffect' },
+  })
+
+  const armed = () => {
+    const card = duelCard()
+    const game = makeGame({
+      turnNumber: 3, activePlayer: 'alice',
+      privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } },
+    })
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'able', name: 'Able', playedOnTurn: 1 }))
+    game.state.zones[0].cards.a.push(zoneEntry({
+      instanceId: 'meek', name: 'Meek', keywords: [KEYWORDS.INOFFENSIVE], playedOnTurn: 1,
+    }))
+    game.state.zones[1].cards.b.push(zoneEntry({ instanceId: 'foe1', name: 'Foe', playedOnTurn: 1 }))
+    return { game, card }
+  }
+
+  it('does not offer an Inoffensive hull at hop 1', () => {
+    const { game, card } = armed()
+    const r = applyAction(game, 'alice', { type: 'PLAY_ABILITY_CARD', instanceId: card.instanceId }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.pendingEffect?.options?.map((o) => o.id)).toEqual(['able'])
+  })
+
+  it('refuses one smuggled past the dialog', () => {
+    const { game, card } = armed()
+    const played = applyAction(game, 'alice', { type: 'PLAY_ABILITY_CARD', instanceId: card.instanceId }, makeCtx())
+    if (!played.ok) throw new Error(played.error)
+    // choice() validates choiceId against pending.options, so reaching
+    // resolveDuel with 'meek' needs the hull to have GAINED Inoffensive after
+    // the offer — which is what the resolve-time re-check is for.
+    const hop1 = applyAction(played.game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'able' }, makeCtx())
+    if (!hop1.ok) throw new Error(hop1.error)
+    findVehicle(hop1.game.state, 'able')!.entry.keywords.push(KEYWORDS.INOFFENSIVE)
+    const r = applyAction(hop1.game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'foe1' }, makeCtx())
+    expect(r).toMatchObject({ ok: false, status: 400 })
+  })
+
+  // Inoffensive means "cannot attack. It can still defend" — so the ENEMY
+  // target is deliberately unfiltered, matching Gang Up's single named
+  // defender.
+  it('still allows an Inoffensive ENEMY to be duelled', () => {
+    const { game, card } = armed()
+    findVehicle(game.state, 'foe1')!.entry.keywords.push(KEYWORDS.INOFFENSIVE)
+    const played = applyAction(game, 'alice', { type: 'PLAY_ABILITY_CARD', instanceId: card.instanceId }, makeCtx())
+    if (!played.ok) throw new Error(played.error)
+    const hop1 = applyAction(played.game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'able' }, makeCtx())
+    if (!hop1.ok) throw new Error(hop1.error)
+    expect(hop1.game.state.pendingEffect?.options?.map((o) => o.id)).toEqual(['foe1'])
+    const done = applyAction(hop1.game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'foe1' }, makeCtx())
+    if (!done.ok) throw new Error(done.error)
+    expect(done.game.state.activeBattle?.defenderIds).toEqual(['foe1'])
   })
 })

@@ -15,6 +15,7 @@
     "engine/gameInit.ts",
     "engine/engineTypes.ts",
     "engine/gameEngine.ts",
+    "engine/costs.ts",
     "engine/placement.ts",
     "engine/activate.ts",
     "engine/pendingEffect.ts",
@@ -30,6 +31,7 @@
     "effects/owEffects.ts",
     "effects/ssEffects.ts",
     "effects/lhEffects.ts",
-    "effects/wfEffects.ts"
+    "effects/wfEffects.ts",
+    "effects/tgEffects.ts"
   ]
 }

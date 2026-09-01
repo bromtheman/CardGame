@@ -1207,3 +1207,184 @@ describe('deployRequiresBattleLoss — an unnormalized zone', () => {
     expect(legalZonesFor(g.state, 'a', inst({ vehicleType: 'ship' }), 4)).toEqual([1, 2])
   })
 })
+
+// ---------------------------------------------------------------------------
+// Wave 7, group B — two TG cards that are pure DATA and name no registry
+// effect at all, exactly as Buzzsaw and Veles do (spec §4.8).
+//
+// The literals here are tied to the real seeded rows by
+// supabase/seed/tgFaction.test.ts, which asserts the cards carry these exact
+// objects. Neither half is enough alone: this file proves the engine reads the
+// shape, that one proves the card carries it.
+const CURIOSITY_META = { additionalSpawns: 1 }
+const ACCEPTANCE_META = { resourceSurge: { materialsAtLeast: 150_000, extraSpawns: 1 } }
+
+describe('TG Curiosity — additionalSpawns (wave 7)', () => {
+  // "Whenever this vehicle is played into a zone, spawn a second curiosity
+  // into that zone too."
+  const play = (zoneId: number) => {
+    const card = inst({
+      name: 'Curiosity', vehicleType: 'airship', materialCost: 80_000, meta: CURIOSITY_META,
+    })
+    const game = makeGame({ privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } } })
+    game.state.resources.a.materials = 200_000
+    const r = applyAction(game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    return r.game
+  }
+
+  it('lands two hulls in the played zone for one payment', () => {
+    const game = play(1)
+    expect(game.state.zones[0].cards.a).toHaveLength(2)
+    expect(game.state.resources.a.materials).toBe(120_000)
+  })
+
+  it('puts the copy in the SAME zone, never spread across the board', () => {
+    const game = play(2)
+    expect(game.state.zones[1].cards.a).toHaveLength(2)
+    expect(game.state.zones[0].cards.a).toHaveLength(0)
+    expect(game.state.zones[2].cards.a).toHaveLength(0)
+  })
+
+  // ✅ No infinite loop, and no guard to go looking for: deployVehicle is the
+  // only reader of additionalSpawns, and the copies it mints never pass back
+  // through it — so the inherited key on a copy never fires again.
+  it('does not cascade: the copy inherits the key but spawns nothing itself', () => {
+    const game = play(1)
+    const hulls = game.state.zones[0].cards.a
+    expect(hulls).toHaveLength(2)
+    expect(hulls[1].meta.additionalSpawns).toBe(1)
+  })
+
+  it('gives the copy its own instanceId', () => {
+    const [first, second] = play(1).state.zones[0].cards.a
+    expect(second.instanceId).not.toBe(first.instanceId)
+  })
+})
+
+describe('TG Acceptance — resourceSurge, the suppressing arm (wave 7)', () => {
+  // "If you have at least 150k materials, this card loses halfcost keyword and
+  // spawns a second acceptance." The comparator is materialsAtLeast (Orbit's),
+  // because the text says "at least" — §4.6 keeps exactly one per card so each
+  // card's own wording survives.
+  const deploy = (materials: number) => {
+    const card = inst({
+      name: 'Acceptance', vehicleType: 'plane', materialCost: 150_000,
+      keywords: [KEYWORDS.HALF_COST, KEYWORDS.TEMPORARY], meta: ACCEPTANCE_META,
+    })
+    const game = makeGame({ privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } } })
+    game.state.resources.a.materials = materials
+    const r = applyAction(game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    return r.game
+  }
+
+  it('at exactly 150k: full price, two hulls', () => {
+    const game = deploy(150_000)
+    expect(game.state.zones[0].cards.a).toHaveLength(2)
+    expect(game.state.resources.a.materials).toBe(0)
+  })
+
+  it('at 149,999: half price, one hull', () => {
+    const game = deploy(149_999)
+    expect(game.state.zones[0].cards.a).toHaveLength(1)
+    expect(game.state.resources.a.materials).toBe(74_999)
+  })
+
+  // ⚠ Ruling A-1, and the assertion most likely to be wrong. The suppression
+  // is PRICE-ONLY: the hull on the board keeps HALF_COST, which feeds
+  // effectiveMaterialCostOf and so its base damage and its repair bill. So a
+  // surged Acceptance pays 150k and still hits like a 75k hull. PredatorX has
+  // this shape already and wave 6's ruling B-7 answered it for Paladin; the
+  // alternative would need a keyword-stripping arm that does not exist.
+  it('A-1: the landed hulls keep HALF_COST — suppression is price-only', () => {
+    const game = deploy(150_000)
+    for (const entry of game.state.zones[0].cards.a) {
+      expect(entry.keywords).toContain(KEYWORDS.HALF_COST)
+      expect(effectiveMaterialCostOf(entry)).toBe(75_000)
+    }
+  })
+
+  // ✅ The exact case the read-before-pay() ordering exists for (Chrysaor was
+  // the first): Acceptance's threshold EQUALS its own printed cost, so a
+  // post-payment re-read would flip its own condition off between pricing and
+  // spawning, charging 150k and landing one hull.
+  it('reads the surge before payment, so paying for itself cannot cancel it', () => {
+    const game = deploy(150_000)
+    expect(game.state.resources.a.materials).toBe(0)
+    expect(game.state.zones[0].cards.a).toHaveLength(2)
+  })
+
+  it('both hulls are Temporary, so the pair is culled at the next turn start', () => {
+    const game = deploy(150_000)
+    for (const entry of game.state.zones[0].cards.a) {
+      expect(entry.keywords).toContain(KEYWORDS.TEMPORARY)
+    }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Wave 7 — TG Alarmed's clause 1: "Can only play this into a zone in which you
+// control a AI vehicle."
+//
+// Purifier's shape exactly: a seeded data key read by a predicate that NARROWS
+// the legal set rather than removing zones from it.
+//
+// ⚠ Ruling D-1: "an AI vehicle" is `isBuiltIn === true`. This is spec §7.3's
+// FIRST ruling, reaffirmed rather than reopened — OW:Garrison prints the
+// identical phrase ("Target an AI vehicle in hand") and is implemented that
+// way, as are Air Strafe, Excalibur, Repairmen Ready and Martyr Attack. Wave
+// 7's handoff recommended the ROBOTIC keyword instead, on the grounds that the
+// engine has no AI concept; it has had one since wave 1.
+describe('deployRequiresAiVehicle — TG Alarmed (wave 7)', () => {
+  const alarmed = () => inst({
+    name: 'Alarmed', faction: 'TG', vehicleType: 'airship', materialCost: 230_000,
+    keywords: [KEYWORDS.ROBOTIC, KEYWORDS.UPKEEP_REQUIRED],
+    meta: { deployRequiresAiVehicle: true, onPlayEffect: 'alarmedOnPlay' },
+  })
+
+  it('admits only zones where the actor controls a built-in vehicle', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zones[1].cards.a.push(zoneEntry({ isBuiltIn: true, playedOnTurn: 1 }))
+    expect(legalZonesFor(game.state, 'a', alarmed(), 3)).toEqual([2])
+  })
+
+  // "AI" is isBuiltIn, so a player's own custom design does NOT satisfy it.
+  // This is the assertion that separates ruling D-1 from the alternative.
+  it('a player-made vehicle does not qualify', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zones[0].cards.a.push(zoneEntry({ isBuiltIn: false, playedOnTurn: 1 }))
+    expect(legalZonesFor(game.state, 'a', alarmed(), 3)).toEqual([])
+  })
+
+  // "YOU control" — the enemy's hulls are not yours, however AI they are.
+  it('an enemy built-in does not qualify', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zones[0].cards.b.push(zoneEntry({ isBuiltIn: true, playedOnTurn: 1 }))
+    expect(legalZonesFor(game.state, 'a', alarmed(), 3)).toEqual([])
+  })
+
+  it('admits several zones at once when several qualify', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zones[0].cards.a.push(zoneEntry({ isBuiltIn: true, playedOnTurn: 1 }))
+    game.state.zones[2].cards.a.push(zoneEntry({ isBuiltIn: true, playedOnTurn: 1 }))
+    expect(legalZonesFor(game.state, 'a', alarmed(), 3)).toEqual([1, 3])
+  })
+
+  it('leaves a card without the key completely unrestricted', () => {
+    const game = makeGame({ turnNumber: 3 })
+    const plain = inst({ vehicleType: 'airship' })
+    expect(legalZonesFor(game.state, 'a', plain, 3)).toEqual([1, 2, 3])
+  })
+
+  it('refuses the play outright when no zone qualifies', () => {
+    const card = alarmed()
+    const game = makeGame({
+      turnNumber: 3, activePlayer: 'alice',
+      privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } },
+    })
+    game.state.resources.a.materials = 500_000
+    const r = applyAction(game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx())
+    expect(r).toMatchObject({ ok: false, status: 400 })
+  })
+})

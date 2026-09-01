@@ -3,8 +3,12 @@ import type { CardInstance, SnapshotCard, ZoneEffect } from './gameInit.ts'
 import type {
   BattleCasualty, BattleContext, EngineContext, EngineGame, Side, ZoneCardEntry,
 } from './engineTypes.ts'
-import { discardCard, discardSnapshotOf, otherSide, zoneById } from './gameEngine.ts'
-import { BYSTANDER_EFFECTS, DEPLOY_WATCHER_EFFECTS, effectFor, effectName } from '../effects/registry.ts'
+import {
+  discardCard, discardSnapshotOf, findVehicle, otherSide, zoneById,
+} from './gameEngine.ts'
+import {
+  BYSTANDER_EFFECTS, DEPLOY_WATCHER_EFFECTS, RESOLVE_BYSTANDER_EFFECTS, effectFor, effectName,
+} from '../effects/registry.ts'
 
 // DP2 (spec §4.3, and its seven "DP2 departure" subsections). This module owns
 // the whole battle-trigger dispatch and registers no handler of its own: the
@@ -14,6 +18,17 @@ import { BYSTANDER_EFFECTS, DEPLOY_WATCHER_EFFECTS, effectFor, effectName } from
 // Unlike every dispatch point before it, DP2's three keys were named on zero
 // seeded cards when wave 4 opened, so the wave authored the dispatch and the
 // seed data together.
+
+// The per-entry meta key a Havoc/Mirth Factory stamps onto its target (wave
+// 7). Deliberately OUTSIDE TRIGGERS, so G3 never inspects it and HandBar needs
+// no change; its VALUE is the Factory effect's own registry name, which is what
+// makes the game-action catalog probe load a catalog for it — that probe scans
+// every meta value for a CATALOG_EFFECTS member regardless of key, and the
+// Factory card itself was spent turns ago.
+//
+// ⚠ It is a per-instance stamp, so it MUST be named in discardSnapshotOf's
+// strip list — see the comment there.
+export const FACTORY_ESCORT_KEY = 'factoryEscort'
 
 export interface BattleParticipant { entry: ZoneCardEntry; side: Side }
 export interface BattleOutcome { wonBy: Record<Side, boolean>; survived: Set<string> }
@@ -77,8 +92,15 @@ function lockRoster(game: EngineGame): BattleParticipant[] {
   const roster: BattleParticipant[] = []
   const collect = (ids: string[], side: Side) => {
     for (const id of ids) {
+      // Zone first, then the summon map, then BOARD-WIDE (wave 7): a
+      // cross-zone battle's away hull is on the board but not in this zone,
+      // and without the last fallback its DP2 lock triggers never fire. The
+      // side check keeps it exact — an id is only ever collected for the side
+      // whose list named it.
+      const away = findVehicle(game.state, id)
       const entry = (zone.cards[side] as ZoneCardEntry[]).find((c) => c.instanceId === id) ??
-        summons.get(id)
+        summons.get(id) ??
+        (away?.side === side ? away.entry : undefined)
       if (entry) roster.push({ entry, side })
     }
   }
@@ -114,7 +136,18 @@ export function dispatchBattleLock(game: EngineGame, ctx: EngineContext, forced:
   })
 
   for (const { entry, side } of lockRoster(game)) {
-    fire(game, ctx, entry, side, TRIGGERS.ON_BATTLE_EFFECT, context(side !== battle.aggressor, true))
+    const own = context(side !== battle.aggressor, true)
+    fire(game, ctx, entry, side, TRIGGERS.ON_BATTLE_EFFECT, own)
+    // Wave 7's per-HULL rider (spec §4.4). state.zoneEffects is per-ZONE, so
+    // the Factories stamp their own registry name onto the targeted hull under
+    // meta.factoryEscort, and it is dispatched here by the same `fire` — a
+    // custom meta key rather than a TRIGGERS one, which is the whole of what
+    // lets a hull carry BOTH its own printed battle trigger and an escort.
+    // (The handoff's alternative — overwriting onBattleEffect — would have had
+    // to refuse a target that already carried one, and could never have been
+    // stripped in discardSnapshotOf, because Obelisk and Horror carry that key
+    // as card data.)
+    fire(game, ctx, entry, side, FACTORY_ESCORT_KEY, own)
   }
 
   if (forced) {
@@ -253,6 +286,41 @@ export function dispatchBattleResolve(
       ? TRIGGERS.ON_BATTLE_VICTORY
       : outcome.wonBy[otherSide(side)] ? TRIGGERS.ON_BATTLE_DEFEAT : null
     if (sugar) fire(game, ctx, entry, side, sugar, context)
+  }
+
+  // DP8 (spec §4.3, "DP8 as wave 7 built it"). The second half of DP2
+  // departure 2: a hull that reacts to a battle it is NOT in, at RESOLVE.
+  //
+  // dispatchBattleLock's bystander pass cannot serve it — that one fires only
+  // at lock, only on a forced battle, only for the defending side, and only in
+  // the battle's own zone. TG Vengeful's "whenever you lose a vehicle to a
+  // fleet battle (ANY zone)" needs all four widened at once.
+  //
+  // Snapshotted before dispatching, exactly as the lock pass is and for the
+  // same reason: an effect that puts a hull on the board must not then be
+  // reached by this same loop.
+  //
+  // Membership in RESOLVE_BYSTANDER_EFFECTS is the whole gate. Broadcasting
+  // would hand dwgWatersEffect a context its router does not recognise, and it
+  // falls through to its claim branch — a spurious claim attempt with no
+  // target zone on every battle in the game.
+  const bystanders: { entry: ZoneCardEntry; side: Side }[] = []
+  for (const zone of game.state.zones) {
+    for (const side of ['a', 'b'] as Side[]) {
+      for (const entry of zone.cards[side] as ZoneCardEntry[]) {
+        if (participants.has(entry.instanceId)) continue
+        const name = effectName(entry, TRIGGERS.ON_BATTLE_EFFECT)
+        if (name !== null && RESOLVE_BYSTANDER_EFFECTS.has(name)) bystanders.push({ entry, side })
+      }
+    }
+  }
+  for (const { entry, side } of bystanders) {
+    fire(game, ctx, entry, side, TRIGGERS.ON_BATTLE_EFFECT, {
+      // zoneId is the BATTLE's, not the bystander's — an effect that needs its
+      // own re-derives it with findVehicle, the way Braveheart does.
+      phase: 'resolve', zoneId, isDefender: side !== aggressor, isParticipant: false,
+      forced: false, survived: false, won: outcome.wonBy[side], casualties,
+    })
   }
 }
 
@@ -402,6 +470,45 @@ export function reviveEntry(
   if (index < 0) return false
   game.state.destroyed[side].splice(index, 1)
   zone.cards[side].push(entry)
+  return true
+}
+
+// reviveEntry's sibling, and wave 7's answer to TG Nostalgia: "whenever this
+// would be destroyed, put it back into your hand."
+//
+// The engine has no replacement effects. DECIDE_BATTLE_REPORT's resolution
+// loop removes from zone.cards, calls discardCard and pushes to
+// destroyedEntries, and only AFTERWARDS runs fireDeathEffect — so nothing can
+// say "instead of". This UNDOES the discard rather than preventing it, which
+// is why three consequences survive and are recorded in spec §7.3:
+//
+//   * the death is still logged;
+//   * it still counts toward destroyedCount;
+//   * it still counts as a LOSS for battleOutcome, because survivingIds is
+//     computed before any trigger runs. So a lone Nostalgia losing a battle
+//     still hands the enemy the win and still writes zone.lostBattleOnTurn,
+//     which WF Purifier deploys off.
+//
+// The card goes to the CONTROLLER's hand — that is whose hand "your hand" is,
+// and under the copy model it is the only pile involved. A fresh instanceId is
+// minted because SnapshotCard carries none, exactly as reshuffleDiscard does.
+//
+// A CAPTURED copy can never come back this way, and needs no special case to
+// stop it: discardCard destroys it instead of filing a snapshot, so
+// discardIndexOf finds nothing and this returns false. A Nostalgia you copied
+// off the enemy deck dies once and is gone.
+//
+// Returns false without touching anything when the snapshot is not there,
+// matching reviveEntry's contract.
+export function returnToHand(
+  game: EngineGame, side: Side, entry: ZoneCardEntry, ctx: EngineContext,
+): boolean {
+  const index = discardIndexOf(game, side, entry)
+  if (index < 0) return false
+  const [snapshot] = game.state.destroyed[side].splice(index, 1)
+  game.privates[side].hand.push({ ...snapshot, instanceId: ctx.newId() })
+  // Checklist item 5: a direct push must resync the public count by hand.
+  game.state.counts[side].hand = game.privates[side].hand.length
   return true
 }
 

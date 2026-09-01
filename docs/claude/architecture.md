@@ -78,6 +78,44 @@ frontend (supabase-js) ──invoke──> edge function ──applyAction──
     last). The continuation now receives the same `BattleContext`, which is
     what stopped it re-deriving its win from a declare-time roster that
     Terawatt's join could make stale.
+  - **DP8, the resolve-phase bystander pass (wave 7).** After the participant
+    loop, `dispatchBattleResolve` runs a second pass over hulls that are NOT in
+    the battle, on **both** sides and in **every** zone, whose `onBattleEffect`
+    is registered `{ resolveBystander: true }`. TG Vengeful ("whenever you lose
+    a vehicle to a fleet battle — *any zone*") is the only member.
+    `BYSTANDER_EFFECTS` could not serve it: that pass is lock-only,
+    forced-only, defender-only and same-zone-only. The opt-in is load-bearing
+    for DP7's reason — `dwgWatersEffect`'s router falls through to its claim
+    branch on any context it does not recognise, so a broadcast would attempt a
+    claim with no target zone on every battle in the game.
+    ⚠ The context's `zoneId` is the BATTLE's. An effect that needs its own zone
+    re-derives it with `findVehicle`, as Braveheart does.
+    ⚠ `participants` still holds a DESTROYED hull's entry at resolve, so the
+    participant pass reaches a hull that just died. An effect that must not
+    fire for one needs its own `findVehicle` guard (Vengeful's ruling E-2b).
+
+- **A per-hull battle rider (wave 7).** `state.zoneEffects` is per-ZONE; TG's
+  Havoc/Mirth Factory needed per-HULL, so it stamps `meta.factoryEscort` onto
+  the targeted entry and `dispatchBattleLock` dispatches it with the same
+  `fire` helper the printed triggers use — a custom meta key rather than a
+  `TRIGGERS` one. Three consequences worth knowing before writing the next one:
+  the value is the **effect's own registry name**, because `game-action`'s
+  catalog probe scans every meta VALUE for a `CATALOG_EFFECTS` member
+  regardless of key and the Factory card is spent long before the escort fires;
+  a distinct key lets a hull carry both its own printed trigger and an escort
+  (Obelisk does); and it **must** be named in `discardSnapshotOf`'s strip list,
+  which `onBattleEffect` never could be, because Obelisk and Horror carry that
+  key as card data.
+
+- **A cross-zone battle (wave 7).** `ActiveBattle` still carries one `zoneId`
+  — the battle's home zone — and TG Duel's away hull is resolved by **id**
+  instead. Four sites do a find-by-id fallback: `declareForcedBattle`'s
+  `onField` check, `lockRoster`, `participantsOf`, and the destruction branch's
+  zone removal. `crossZone` is **opt-in** on `declareForcedBattle`, mirroring
+  `activatesZone`, so every other caller keeps its same-zone guard.
+  `lostBattleOnTurn` is recorded per side in that side's own participant's
+  zone, captured **before** the destruction loop — by the recording point a
+  dead hull is off the board and `findVehicle` can no longer place it.
   - **`ATTACK_ENEMY_BASE`** dispatches `onBattleVictory` for exactly the hulls
     `baseStrikersIn` says dealt damage, so Plunderer's one sentence stays one
     implementation. It also offers the defender's zone riders an interception

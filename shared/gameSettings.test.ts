@@ -8,7 +8,7 @@ describe('gameSettings', () => {
   it('has spec defaults', () => {
     expect(DECK_SIZE).toBe(20)
     expect(UNIQUE_COPY_LIMIT).toBe(2)
-    expect(DECK_FACTIONS).toEqual(['DWG', 'GT', 'LH', 'OW', 'SS', 'WF'])
+    expect(DECK_FACTIONS).toEqual(['DWG', 'GT', 'LH', 'OW', 'SS', 'TG', 'WF'])
   })
   it('defaults income to 75k per turn, inside the lobby-selectable range', () => {
     expect(MATERIALS_PER_TURN).toBe(75_000)
