@@ -92,6 +92,13 @@ because income is **set** to `floor(turnNumber) × rate` rather than
 accumulated, so it only ever rises — a low threshold must be spent into and a
 high one waited for.
 
+`scripts/smoke-battle-report.mjs` is the newest one and covers the fourth edge
+function, `battle-report`, which no unit test and no `tsc` run can reach at all.
+Run it after any deploy of that function: it is the only check that a caller
+with **no Supabase session** can still post a result, that a battle token is
+single use, and that the numbers the FtD mod prefills satisfy a real
+`SUBMIT_BATTLE_REPORT` unedited.
+
 `scripts/smoke-wave4.mjs` is the worked, working example — and it is meant to be
 **reused**, not read as history. Point its `required` deck lists at the cards a
 wave needs and it does the rest: signs in both QA accounts from

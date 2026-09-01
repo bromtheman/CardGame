@@ -15,6 +15,7 @@
 //     not filesystem paths — no drive, no extension. That is what makes it safe
 //     to generate these server-side for a machine we know nothing about.
 
+import { BATTLE_REPORT_WIRE_VERSION } from './battleReport.ts'
 import { FACTIONS, VEHICLE_TYPES } from './gameSettings.ts'
 
 /** Root of the blueprints FtD ships with, as they are addressed inside a battle file. */
@@ -99,6 +100,14 @@ export interface BattleCard {
    * team's in-battle resource pool. Omitted means the card contributes nothing.
    */
   materialCost?: number
+  /**
+   * The card's `instanceId` in the game state.
+   *
+   * Only read when a `cardGame` block is requested, where it is REQUIRED: it is
+   * what lets the mod map a vehicle it watched die back to the card that died.
+   * Nothing in the `.customBattle` schema itself carries it.
+   */
+  instanceId?: string
 }
 
 export interface BattleTeamInput {
@@ -108,6 +117,14 @@ export interface BattleTeamInput {
   isPlayerTeam?: boolean
   /** The side that declared the battle. Its hulls spawn turned around — see ATTACKER_SPAWN_ANGLE_DEG. */
   isAttacker?: boolean
+  /**
+   * Which side of the card game this team is, `'a'` or `'b'`.
+   *
+   * Only read when a `cardGame` block is requested, where it is REQUIRED —
+   * the mod reports a winning TEAM index, and this is what turns that back
+   * into a side the card game understands.
+   */
+  side?: string
 }
 
 export class BlueprintResolutionError extends Error {
@@ -171,6 +188,44 @@ interface CustomBattleTeamJson {
   StartingMaterial: number
 }
 
+/**
+ * One vehicle in the `CardGame` block, positionally paired with the blueprint
+ * at the same index of the same team's `Blueprints` array.
+ */
+export interface CardGameVehicleJson {
+  InstanceId: string
+  Name: string
+}
+
+export interface CardGameTeamJson {
+  Side: string
+  Vehicles: CardGameVehicleJson[]
+}
+
+/**
+ * The card game's own block, embedded in the battle file.
+ *
+ * FtD's Newtonsoft deserialiser ignores members it does not know, so this rides
+ * along inside the one file the OS association already opens — no sidecar, and
+ * so no second download for Chrome to raise its "Download multiple files"
+ * prompt over (a prompt the player can silently deny, leaving the mod with no
+ * token and nothing to report).
+ *
+ * `Token` is a short-lived, single-use bearer credential scoped to one game,
+ * one battle and one submitting player. It is NOT a Supabase session: it
+ * authorises exactly one call to the `battle-report` function's `submit` op
+ * and nothing else. See `shared/battleReport.ts`.
+ */
+export interface CardGameJson {
+  Version: number
+  Endpoint: string
+  GameId: string
+  ZoneId: number
+  BattleKey: string
+  Token: string
+  Teams: CardGameTeamJson[]
+}
+
 export interface CustomBattleFile {
   Teams: CustomBattleTeamJson[]
   Rules: unknown
@@ -182,6 +237,15 @@ export interface CustomBattleFile {
   MaterialsPerTeam: number
   ResourceDrop: number
   SpawnDistanceBetweenTeams: number
+  /**
+   * Present only when `buildCustomBattle` was given a `cardGame` option.
+   *
+   * ⚠ This is the ONE top-level key that is not in the schema FtD itself
+   * writes, which is why `customBattle.test.ts`'s parity test excludes it by
+   * name rather than having had its assertion deleted. Keep that exclusion
+   * narrow: every OTHER top-level key must still match a real saved file.
+   */
+  CardGame?: CardGameJson
 }
 
 const NEUTRAL_FLEET_COLORS = ['0,0,0,0', '0,0,0,0', '0,0,0,0', '0,0,0,0']
@@ -290,6 +354,63 @@ export interface BuildCustomBattleOptions {
   spawnDistanceBetweenTeams?: number
   /** Starting material per team. 0 disables resource play. */
   materialsPerTeam?: number
+  /**
+   * Emit the `CardGame` block, so a mod inside FtD can report the outcome back.
+   *
+   * Omit it and the file is byte-identical to what this module produced before
+   * the block existed — which is what keeps a hand-run match, and every test
+   * that does not care about reporting, unaffected.
+   *
+   * Requires `side` on every team and `instanceId` on every card; both throw if
+   * missing, because a block that is silently short an id would hand the mod a
+   * vehicle it cannot name.
+   */
+  cardGame?: {
+    endpoint: string
+    gameId: string
+    zoneId: number
+    battleKey: string
+    token: string
+  }
+}
+
+/**
+ * Build the `CardGame` block from the SAME team array that produced `Blueprints`.
+ *
+ * That shared source is the whole point: `CardGame.Teams[i].Vehicles[j]`
+ * describes `Teams[i].Blueprints[j]` because both are `team.cards[j]`, so the
+ * index parity the mod relies on is structural rather than something a comment
+ * asks a future editor to preserve. If you ever filter one list and not the
+ * other, that guarantee is gone — `customBattle.test.ts` has a test pinned to
+ * exactly this.
+ */
+function buildCardGameBlock(
+  teams: BattleTeamInput[], spec: NonNullable<BuildCustomBattleOptions['cardGame']>,
+): CardGameJson {
+  return {
+    Version: BATTLE_REPORT_WIRE_VERSION,
+    Endpoint: spec.endpoint,
+    GameId: spec.gameId,
+    ZoneId: spec.zoneId,
+    BattleKey: spec.battleKey,
+    Token: spec.token,
+    Teams: teams.map((team) => {
+      if (!team.side) {
+        throw new Error(`Team "${team.name}" needs a \`side\` to appear in the CardGame block.`)
+      }
+      return {
+        Side: team.side,
+        Vehicles: team.cards.map((card) => {
+          if (!card.instanceId) {
+            throw new Error(
+              `Card "${card.name}" needs an \`instanceId\` to appear in the CardGame block.`,
+            )
+          }
+          return { InstanceId: card.instanceId, Name: card.name }
+        }),
+      }
+    }),
+  }
 }
 
 /**
@@ -342,6 +463,11 @@ export function buildCustomBattle(
     MaterialsPerTeam: options.materialsPerTeam ?? 0.0,
     ResourceDrop: 0.0,
     SpawnDistanceBetweenTeams: options.spawnDistanceBetweenTeams ?? 1000.0,
+    // Spread rather than assigned, so a file built without the option carries
+    // no `CardGame` key at all instead of an explicit `undefined` —
+    // JSON.stringify drops both, but the object shape is what the parity test
+    // and every existing caller actually compare.
+    ...(options.cardGame ? { CardGame: buildCardGameBlock(teams, options.cardGame) } : {}),
   }
 }
 

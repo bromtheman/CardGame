@@ -3,6 +3,7 @@ import type { PublicGameState } from '@shared/engine/gameInit'
 import { BlueprintResolutionError, buildCustomBattle, serializeCustomBattle } from '@shared/customBattle'
 
 import { battleTeams } from './battleTeams'
+import { issueBattleToken } from './ftdReporting'
 
 // TS drops the `if (!battle) return null` narrowing inside onLaunch, so the
 // battle is passed in rather than closed over — that is what keeps this file
@@ -45,13 +46,24 @@ function playerFacingError(e: unknown): string {
  * see scripts/register-custombattle-association.ps1.
  *
  * Neither team is marked IsPlayerTeam, so the match runs as a spectated AI fight and
- * the card game stays the thing being played. Results are reported back by hand.
+ * the card game stays the thing being played.
  *
  * `battleTeams` builds the two fleets — including the spawn altitudes, attacker
  * rotation and in-battle resources the overlay's spawn sheet already quotes.
+ *
+ * Before building the file this mints a single-use battle token and embeds it,
+ * with the (team, vehicle) -> instanceId map, in the file's `CardGame` block.
+ * A mod inside the game uses it to report the outcome back, which PREFILLS the
+ * report form — it never submits it, and the other captain still approves.
+ * Results can still be typed in by hand; the block only makes that optional.
+ *
+ * The mint is what makes this async, and it is deliberately in the download
+ * path rather than at battle declaration: one live token per player per game,
+ * created at the moment a player actually takes the file away.
  */
-export function LaunchInFtdButton({ state }: { state: PublicGameState }) {
+export function LaunchInFtdButton({ state, gameId }: { state: PublicGameState; gameId: string }) {
   const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
   const battle = state.activeBattle
   if (!battle) return null
 
@@ -60,19 +72,35 @@ export function LaunchInFtdButton({ state }: { state: PublicGameState }) {
   // ends the instant it starts.
   const bothSidesCrewed = teams.every((team) => team.cards.length > 0)
 
-  function onLaunch(currentBattle: Battle) {
+  async function onLaunch(currentBattle: Battle) {
+    setBusy(true)
     try {
+      const issued = await issueBattleToken(gameId)
       const file = buildCustomBattle(teams, {
         // The card game already decided the engagement range; reuse it rather
         // than dropping the fleets at FtD's 1000m default.
         spawnDistanceBetweenTeams: currentBattle.distanceM,
+        // Embedded rather than downloaded beside the battle file: a second
+        // download raises Chrome's "Download multiple files" prompt, which a
+        // player can deny silently, leaving the mod with no token and no way
+        // to say so. FtD's Newtonsoft reader ignores members it does not know.
+        cardGame: {
+          endpoint: issued.endpoint,
+          gameId,
+          zoneId: currentBattle.zoneId,
+          battleKey: issued.battleKey,
+          token: issued.token,
+        },
       })
       downloadText(`zone-${currentBattle.zoneId}-battle.customBattle`, serializeCustomBattle(file))
       setError(null)
     } catch (e) {
-      // Almost always an unmapped blueprint. Surface it rather than downloading
-      // a file that would load with a vehicle quietly missing.
+      // Either an unmapped blueprint or a failed token mint. Surface it rather
+      // than downloading a file that would load with a vehicle quietly missing,
+      // or one whose mod can never report back.
       setError(playerFacingError(e))
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -80,8 +108,8 @@ export function LaunchInFtdButton({ state }: { state: PublicGameState }) {
     <div className="flex flex-col items-end gap-1">
       <button
         type="button"
-        disabled={!bothSidesCrewed}
-        onClick={() => onLaunch(battle)}
+        disabled={!bothSidesCrewed || busy}
+        onClick={() => { void onLaunch(battle) }}
         title={
           bothSidesCrewed
             ? 'Download this battle as a From The Depths custom battle'
@@ -89,7 +117,7 @@ export function LaunchInFtdButton({ state }: { state: PublicGameState }) {
         }
         className="rounded border border-brass-400 px-3 py-1.5 text-sm font-bold text-brass-400 disabled:opacity-50"
       >
-        Fight in FtD
+        {busy ? 'Preparing…' : 'Fight in FtD'}
       </button>
       {error && <p className="max-w-xs text-right text-xs text-red-400">{error}</p>}
     </div>
