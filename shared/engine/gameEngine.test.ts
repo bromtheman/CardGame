@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { KEYWORDS, LOG_MAX_ENTRIES } from '../gameSettings'
-import { applyAction, effectiveCostInGame, normalizeState } from './index'
+import { applyAction, copyMeta, discardCard, effectiveCostInGame, normalizeState } from './index'
 import { takeFromEnemyDeck } from '../effects/primitives.ts'
 import type { PublicGameState } from './gameInit.ts'
 import type { ZoneCardEntry } from './engineTypes.ts'
@@ -418,9 +418,10 @@ describe('summon-only cards', () => {
 })
 
 describe('captured cards', () => {
-  // Temporary despawn is the third exit a captured card can take (battle
-  // death and ability spend are the other two) — all three go home.
-  it("despawns a captured Temporary vehicle into its OWNER's discard", () => {
+  // Temporary despawn is the third exit a captured copy can take (battle death
+  // and ability spend are the other two). All three run through discardCard,
+  // so all three destroy it — see 'discardCard destroys captured copies'.
+  it('leaves the original drawable while the copy despawns', () => {
     const g = makeGame()
     g.privates.b.deck.push(
       inst({ name: 'Loaned Skiff', keywords: ['temporary'] }),
@@ -432,38 +433,12 @@ describe('captured cards', () => {
     g.privates.a.hand = []
     const r = applyAction(g, 'alice', { type: 'END_TURN' }, makeCtx())
     if (!r.ok) throw new Error(r.error)
-    expect(r.game.state.destroyed.b.map((c) => c.name)).toEqual(['Loaned Skiff'])
     expect(r.game.state.destroyed.a).toHaveLength(0)
-  })
-
-  // Marauder's own stamp (dwgEffects.ts marauderOnPlay), layered on top of
-  // takeFromEnemyDeck's ownerSide — this is the ORIGINAL costDelta consumer
-  // and the path discardCard already handled correctly before wave 3's
-  // Excalibur fix. Pinned here so the unconditional costDelta strip below
-  // cannot regress it back to a captor-side no-op.
-  it("strips BOTH costDelta and ownerSide from a captured card going home (Marauder)", () => {
-    const g = makeGame()
-    // A second, un-captured filler card keeps b's deck non-empty after the
-    // capture below — otherwise END_TURN's own draw-for-incoming-side step
-    // (b draws next, since alice/side a is ending her turn) would reshuffle
-    // and immediately re-draw the very card this test is inspecting,
-    // draining state.destroyed.b before the assertions ever see it.
-    g.privates.b.deck.push(
-      inst({ name: 'Loaned Hull', keywords: ['temporary'], materialCost: 200_000 }),
-      inst({ name: 'Bob Draws This Instead' }),
-    )
-    g.state.counts.b.deck = 2
-    takeFromEnemyDeck(g, 'a', makeCtx())
-    const taken = g.privates.a.hand[0]
-    taken.meta = { ...taken.meta, costDelta: -50_000 } // Marauder's 50k discount
-    g.state.zones[0].cards.a.push(zoneEntry({ ...taken, playedOnTurn: 2 }))
-    g.privates.a.hand = []
-    const r = applyAction(g, 'alice', { type: 'END_TURN' }, makeCtx())
-    if (!r.ok) throw new Error(r.error)
-    expect(r.game.state.destroyed.b).toHaveLength(1)
-    expect(r.game.state.destroyed.b[0].name).toBe('Loaned Hull')
-    expect(r.game.state.destroyed.b[0].meta).not.toHaveProperty('costDelta')
-    expect(r.game.state.destroyed.b[0].meta).not.toHaveProperty('ownerSide')
+    expect(r.game.state.destroyed.b).toHaveLength(0)
+    // b drew one card on the incoming turn; Loaned Skiff is still theirs,
+    // in hand or still in deck.
+    expect(r.game.privates.b.deck.concat(r.game.privates.b.hand).map((c) => c.name))
+      .toContain('Loaned Skiff')
   })
 })
 
@@ -745,6 +720,55 @@ describe('normalizeState — lostBattleOnTurn', () => {
   })
 })
 
+// A captured copy is a phantom: it never came out of anyone's deck, so it has
+// no home to go to. discardCard destroys it outright, the same shape as the
+// summonOnly guard — both exist to keep a card out of a deck's back door.
+describe('discardCard destroys captured copies (copy model)', () => {
+  it('files a captured copy into NEITHER discard pile', () => {
+    const g = makeGame()
+    g.privates.b.deck.push(inst({ name: 'Loot', type: 'vehicle', materialCost: 200_000 }))
+    takeFromEnemyDeck(g, 'a', makeCtx())
+    discardCard(g, 'a', g.privates.a.hand[0])
+    expect(g.state.destroyed.a).toHaveLength(0)
+    expect(g.state.destroyed.b).toHaveLength(0)
+  })
+
+  it('a captured copy dying on the board vanishes; the original stays in the enemy deck', () => {
+    const g = makeGame()
+    g.privates.b.deck.push(
+      inst({ name: 'Loot', type: 'vehicle', keywords: ['temporary'], materialCost: 200_000 }),
+      inst({ name: 'Bob Draws This Instead' }),
+    )
+    g.state.counts.b.deck = 2
+    takeFromEnemyDeck(g, 'a', makeCtx())
+    g.state.zones[0].cards.a.push(zoneEntry({ ...g.privates.a.hand[0], playedOnTurn: 2 }))
+    g.privates.a.hand = []
+    const r = applyAction(g, 'alice', { type: 'END_TURN' }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.destroyed.a.map((c) => c.name)).not.toContain('Loot')
+    expect(r.game.state.destroyed.b.map((c) => c.name)).not.toContain('Loot')
+    expect(r.game.state.zones[0].cards.a).toHaveLength(0)
+    // the original is still Bob's to draw
+    expect(r.game.privates.b.deck.concat(r.game.privates.b.hand).map((c) => c.name))
+      .toContain('Loot')
+  })
+
+  it('an ordinary card is unaffected — it still reaches its own discard', () => {
+    const g = makeGame()
+    discardCard(g, 'a', inst({ name: 'Mine' }))
+    expect(g.state.destroyed.a.map((c) => c.name)).toEqual(['Mine'])
+    expect(g.state.destroyed.b).toHaveLength(0)
+  })
+})
+
+describe('copyMeta strips capturedCopy', () => {
+  it('a hull minted off a captured copy is a real card for its minter', () => {
+    expect(copyMeta({ capturedCopy: true, additionalSpawns: 1 }))
+      .toEqual({ additionalSpawns: 1 })
+  })
+})
+
+
 // ---------------------------------------------------------------------------
 // Wave 7 — UPKEEP_REQUIRED (spec §7.3, rulings U-0 … U-8).
 //
@@ -785,10 +809,11 @@ describe('END_TURN upkeep (wave 7)', () => {
     expect(r.game.state.resources.b.materials).toBe(TURN_INCOME - 31500)
   })
 
-  it('U-4: a captured hull is fed by its CONTROLLER, not its owner', () => {
+  it('U-4: a captured copy is fed by whoever controls it', () => {
     const g = makeGame()
-    // ownerSide 'a' decides whose DECK it returns to, never who pays for it.
-    g.state.zones[0].cards.b.push(upkeepHull({ meta: { ownerSide: 'a' } }))
+    // The capture stamp decides what happens when the hull LEAVES play, never
+    // who feeds it while it is on the board.
+    g.state.zones[0].cards.b.push(upkeepHull({ meta: { capturedCopy: true } }))
     const r = applyAction(g, 'alice', { type: 'END_TURN' }, makeCtx())
     if (!r.ok) throw new Error(r.error)
     expect(r.game.state.resources.b.materials).toBe(TURN_INCOME - 10500)

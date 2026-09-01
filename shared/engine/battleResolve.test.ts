@@ -1,5 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import { applyAction, effectFor, repairCostOf } from './index'
+import {
+  applyAction, battleParticipants, declareForcedBattle, effectFor, joinBattle, repairCostOf,
+} from './index'
 import { registerEffect } from '../effects/registry.ts'
 import type { ZoneCardEntry } from './engineTypes.ts'
 import { inst, makeCtx, makeGame, zoneEntry } from './testFixtures'
@@ -443,21 +445,24 @@ function capturedInBattle() {
 }
 
 describe('captured cards', () => {
-  it("sends a vehicle taken from the enemy deck to its OWNER's discard when it dies", () => {
+  it('destroys a copy killed in battle — it reaches neither discard', () => {
     const game = capturedInBattle()
-    expect(game.state.destroyed.b.map((c) => c.name)).toEqual(['Ironclad'])
     expect(game.state.destroyed.a).toHaveLength(0)
+    expect(game.state.destroyed.b).toHaveLength(0)
   })
 
-  it("does not send the raider's cost discount home with it", () => {
+  it("leaves the raider's discount with the copy it died on", () => {
     const game = capturedInBattle()
-    expect(game.state.destroyed.b[0].meta.costDelta).toBeUndefined()
+    expect(game.state.destroyed.b).toHaveLength(0)
+    expect(game.privates.b.deck[0].meta.costDelta).toBeUndefined()
   })
-  it('puts it back where its owner can draw it again', () => {
+
+  it('never took the original, so its owner can still draw it', () => {
     const game = capturedInBattle()
     const r = applyAction(game, 'alice', { type: 'END_TURN' }, makeCtx())
     if (!r.ok) throw new Error(r.error)
-    // bob's deck was empty — the recycled Ironclad is the card he draws
+    // bob's deck held only the Ironclad the whole time — the copy never
+    // removed it, so it is still the card he draws
     expect(r.game.privates.b.hand.map((c) => c.name)).toEqual(['Ironclad'])
   })
 })
@@ -882,5 +887,80 @@ describe('lostBattleOnTurn — the record DECIDE_BATTLE_REPORT writes', () => {
     g.state.zones[0].lostBattleOnTurn = { a: null, b: 1 }
     const after = resolve({ [atk.instanceId]: 100, [def.instanceId]: 0 }, g)
     expect(after.state.zones[0].lostBattleOnTurn.b).toBe(3)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The battle roster, exported so there is exactly ONE of it.
+//
+// ⚠ THIS EXISTS BECAUSE OF A LIVE BUG. BattleOverlay.tsx used to carry a
+// hand-written MIRROR of participantsOf, with a comment warning that "a
+// divergence here would silently show a different battle than the engine
+// resolves". Wave 7 added a board-wide fallback to the engine's copy for TG
+// Duel's cross-zone battle and did not update the mirror — so a duelled
+// away-zone hull was missing from the overlay AND from the report the overlay
+// builds, which the engine then rejected as not covering every vehicle. The
+// battle could never be reported and the game was stuck.
+//
+// The frontend now imports this function instead of mirroring it.
+describe('battleParticipants — one roster, shared with the frontend', () => {
+  const split = () => {
+    const game = makeGame({ turnNumber: 3, activePlayer: 'alice' })
+    game.state.zones[1].cards.a.push(zoneEntry({
+      instanceId: 'obelisk', name: 'Obelisk', keywords: ['stealthy'], playedOnTurn: 1,
+    }))
+    game.state.zones[2].cards.b.push(zoneEntry({
+      instanceId: 'raker', name: 'Earth Raker', playedOnTurn: 1,
+    }))
+    return game
+  }
+
+  it('includes an away-zone defender', () => {
+    const game = split()
+    if (!declareForcedBattle(game, makeCtx(), {
+      zoneId: 2, aggressor: 'a', attackerIds: ['obelisk'], defenderIds: ['raker'],
+      cause: 'Duel', crossZone: true,
+    })) throw new Error('battle not declared')
+    const roster = battleParticipants(game.state)
+    expect([...roster.keys()].sort()).toEqual(['obelisk', 'raker'])
+    expect(roster.get('raker')?.side).toBe('b')
+    expect(roster.get('raker')?.entry.name).toBe('Earth Raker')
+  })
+
+  it('still resolves an ordinary single-zone battle unchanged', () => {
+    const game = makeGame({ turnNumber: 3, activePlayer: 'alice' })
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'mine', name: 'Mine', playedOnTurn: 1 }))
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'theirs', name: 'Theirs', playedOnTurn: 1 }))
+    declareForcedBattle(game, makeCtx(), {
+      zoneId: 1, aggressor: 'a', attackerIds: ['mine'], defenderIds: ['theirs'], cause: 'Test',
+    })
+    const roster = battleParticipants(game.state)
+    expect([...roster.keys()].sort()).toEqual(['mine', 'theirs'])
+  })
+
+  // The whole point: the report the frontend builds must cover exactly what
+  // the engine resolves, or SUBMIT_BATTLE_REPORT 400s and the game is stuck.
+  it('covers exactly what SUBMIT_BATTLE_REPORT demands, cross-zone', () => {
+    const game = split()
+    declareForcedBattle(game, makeCtx(), {
+      zoneId: 2, aggressor: 'a', attackerIds: ['obelisk'], defenderIds: ['raker'],
+      cause: 'Duel', crossZone: true,
+    })
+    const results = Object.fromEntries([...battleParticipants(game.state).keys()].map((id) => [id, 100]))
+    const r = applyAction(game, 'alice', { type: 'SUBMIT_BATTLE_REPORT', results, repairs: [] }, makeCtx())
+    expect(r).toMatchObject({ ok: true })
+  })
+
+  it('still finds battle summons, which are in no zone at all', () => {
+    const game = split()
+    declareForcedBattle(game, makeCtx(), {
+      zoneId: 2, aggressor: 'a', attackerIds: ['obelisk'], defenderIds: ['raker'],
+      cause: 'Duel', crossZone: true,
+    })
+    const swarm = zoneEntry({ instanceId: 'swarm1', name: 'Mirth Swarm', playedOnTurn: 3 })
+    joinBattle(game, 'a', 'swarm1', swarm)
+    const roster = battleParticipants(game.state)
+    expect(roster.get('swarm1')?.side).toBe('a')
+    expect([...roster.keys()].sort()).toEqual(['obelisk', 'raker', 'swarm1'])
   })
 })

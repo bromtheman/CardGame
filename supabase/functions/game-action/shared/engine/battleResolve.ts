@@ -2,6 +2,7 @@ import {
   KEYWORDS, REPAIR_COST_RATE, REPAIR_WINDOW_MIN_PERCENT, SURVIVE_HP_PERCENT,
 } from '../gameSettings.ts'
 import type { ApplyResult, BattleCasualty, EngineGame, Side, ZoneCardEntry } from './engineTypes.ts'
+import type { PublicGameState } from './gameInit.ts'
 import { discardCard, err, findVehicle, otherSide, registerHandler, zoneById } from './gameEngine.ts'
 import { effectiveMaterialCostOf } from './placement.ts'
 import { effectFor } from '../effects/registry.ts'
@@ -84,9 +85,23 @@ function validateRepairChoices(
 // never reach zone.cards. A summon carries no side field — membership in
 // attackerIds/defenderIds decides it, so a listed id that misses the zone
 // lookup falls back to the summon map with the side its own list implies.
-function participantsOf(game: EngineGame): Map<string, { entry: ZoneCardEntry; side: Side }> {
-  const battle = game.state.activeBattle!
-  const zone = zoneById(game.state, battle.zoneId)!
+// ⚠ EXPORTED, and it must stay that way. `BattleOverlay.tsx` used to carry a
+// hand-written MIRROR of this function, with a comment warning that a
+// divergence "would silently show a different battle than the engine
+// resolves". Wave 7 added the board-wide fallback below for TG Duel's
+// cross-zone battle and did not update that mirror — so a duelled away-zone
+// hull was missing from the overlay AND from the report the overlay builds,
+// which this file then rejected as not covering every vehicle. The battle
+// could not be reported at all and the game was stuck.
+//
+// The frontend now imports this. Do not re-create a second copy: the roster the
+// UI shows and the roster the engine resolves have to be the same object, and a
+// comment asking for that was not enough.
+export function battleParticipants(
+  state: PublicGameState,
+): Map<string, { entry: ZoneCardEntry; side: Side }> {
+  const battle = state.activeBattle!
+  const zone = zoneById(state, battle.zoneId)!
   const summonMap = new Map<string, ZoneCardEntry>(
     battle.summons.map((s) => [s.instanceId, s as ZoneCardEntry]),
   )
@@ -102,7 +117,7 @@ function participantsOf(game: EngineGame): Map<string, { entry: ZoneCardEntry; s
       if (entry) { map.set(id, { entry, side }); continue }
       const summon = summonMap.get(id)
       if (summon) { map.set(id, { entry: summon, side }); continue }
-      const away = findVehicle(game.state, id)
+      const away = findVehicle(state, id)
       if (away?.side === side) map.set(id, { entry: away.entry, side })
     }
   }
@@ -110,6 +125,8 @@ function participantsOf(game: EngineGame): Map<string, { entry: ZoneCardEntry; s
   collect(battle.defenderIds, battle.aggressor === 'a' ? 'b' : 'a')
   return map
 }
+
+const participantsOf = (game: EngineGame) => battleParticipants(game.state)
 
 registerHandler('SUBMIT_BATTLE_REPORT', (game, actor, action) => {
   if (action.type !== 'SUBMIT_BATTLE_REPORT') return err(400, 'Bad action')

@@ -81,3 +81,24 @@ your side; `awaitingResponse` → yours iff `aggressor` isn't your side; otherwi
 `active_player === me`. (Known accepted quirk: the post-declare/pre-report
 `activeBattle` phase is attributed to the active player though either may
 submit.) Query key is `['games']`.
+
+## ⚠ Never mirror engine logic — import it
+
+`BattleOverlay.tsx` used to carry a hand-written copy of `battleResolve.ts`'s
+`participantsOf`, because the engine did not export it. Its own comment asked
+whoever changed the engine's version to change the copy too.
+
+That was not enough. Wave 7 added a board-wide fallback to the engine for TG
+Duel's cross-zone battle and left the mirror behind, so a duelled away-zone hull
+vanished from the overlay **and from the report the overlay builds** — which the
+engine then rejected as not covering every vehicle. The battle could not be
+reported at any HP, and the players abandoned the game.
+
+The frontend already imports `autoRepairIds`, `repairCostOf`,
+`effectiveMaterialCostOf`, `validateDeck` and `legalZonesFor` from
+`@shared/engine`. If you find yourself re-deriving something the engine already
+computes — a roster, a legality rule, a price — **export it and import it**. A
+comment asking two copies to stay in sync is not a mechanism.
+
+The specific trap: the overlay both DISPLAYS the battle and BUILDS the report,
+so a roster divergence is not cosmetic. It makes the game unplayable.

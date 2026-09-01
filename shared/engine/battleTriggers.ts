@@ -4,7 +4,7 @@ import type {
   BattleCasualty, BattleContext, EngineContext, EngineGame, Side, ZoneCardEntry,
 } from './engineTypes.ts'
 import {
-  discardCard, discardSnapshotOf, findVehicle, otherSide, ownerSideOf, zoneById,
+  discardCard, discardSnapshotOf, findVehicle, otherSide, zoneById,
 } from './gameEngine.ts'
 import {
   BYSTANDER_EFFECTS, DEPLOY_WATCHER_EFFECTS, RESOLVE_BYSTANDER_EFFECTS, effectFor, effectName,
@@ -444,8 +444,8 @@ function sameSnapshot(a: SnapshotCard, b: SnapshotCard): boolean {
 }
 
 function discardIndexOf(game: EngineGame, side: Side, entry: ZoneCardEntry): number {
-  const pile = game.state.destroyed[ownerSideOf(entry, side)]
-  const wanted = discardSnapshotOf(entry, side)
+  const pile = game.state.destroyed[side]
+  const wanted = discardSnapshotOf(entry)
   const exact = pile.findIndex((c) => sameSnapshot(c, wanted))
   return exact >= 0 ? exact : pile.findIndex((c) => c.cardId === entry.cardId)
 }
@@ -468,7 +468,7 @@ export function reviveEntry(
   if (!zone) return false
   const index = discardIndexOf(game, side, entry)
   if (index < 0) return false
-  game.state.destroyed[ownerSideOf(entry, side)].splice(index, 1)
+  game.state.destroyed[side].splice(index, 1)
   zone.cards[side].push(entry)
   return true
 }
@@ -489,29 +489,24 @@ export function reviveEntry(
 //     still hands the enemy the win and still writes zone.lostBattleOnTurn,
 //     which WF Purifier deploys off.
 //
-// The card goes to the CONTROLLER's hand (that is whose hand "your hand" is),
-// while the snapshot is pulled from its OWNER's discard — so a captured hull
-// keeps its ownerSide stamp and still goes home the next time it leaves play.
-// A fresh instanceId is minted because SnapshotCard carries none, exactly as
-// reshuffleDiscard does.
+// The card goes to the CONTROLLER's hand — that is whose hand "your hand" is,
+// and under the copy model it is the only pile involved. A fresh instanceId is
+// minted because SnapshotCard carries none, exactly as reshuffleDiscard does.
+//
+// A CAPTURED copy can never come back this way, and needs no special case to
+// stop it: discardCard destroys it instead of filing a snapshot, so
+// discardIndexOf finds nothing and this returns false. A Nostalgia you copied
+// off the enemy deck dies once and is gone.
 //
 // Returns false without touching anything when the snapshot is not there,
 // matching reviveEntry's contract.
 export function returnToHand(
   game: EngineGame, side: Side, entry: ZoneCardEntry, ctx: EngineContext,
 ): boolean {
-  const owner = ownerSideOf(entry, side)
   const index = discardIndexOf(game, side, entry)
   if (index < 0) return false
-  const [snapshot] = game.state.destroyed[owner].splice(index, 1)
-  // ⚠ discardSnapshotOf STRIPS meta.ownerSide when it files a captured card
-  // into its owner's pile — correct there, because a card sitting in its
-  // owner's discard is home and no longer on loan. Here it is not home: it is
-  // going back to the CAPTOR's hand, still borrowed. Re-stamping is what keeps
-  // a capture a loan; without it the card would later be filed under the
-  // captor and permanently leave the deck it was built into.
-  const meta = owner !== side ? { ...snapshot.meta, ownerSide: owner } : snapshot.meta
-  game.privates[side].hand.push({ ...snapshot, meta, instanceId: ctx.newId() })
+  const [snapshot] = game.state.destroyed[side].splice(index, 1)
+  game.privates[side].hand.push({ ...snapshot, instanceId: ctx.newId() })
   // Checklist item 5: a direct push must resync the public count by hand.
   game.state.counts[side].hand = game.privates[side].hand.length
   return true

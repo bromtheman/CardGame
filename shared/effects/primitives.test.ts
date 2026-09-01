@@ -29,19 +29,19 @@ describe('grant', () => {
     expect(game.state.resources.a.cp).toBe(4)
   })
 
-  it('draws from the enemy deck without naming the card, syncing both sides', () => {
+  it('copies from the enemy deck without naming the card, leaving their count alone', () => {
     const game = makeGame()
     game.privates.b.deck.push(inst({ name: 'Enemy Secret' }))
     game.state.counts.b.deck = 1
     expect(grant({ draw: 1, from: 'enemy' })({ game, actor: 'a', card: inst(), ctx: makeCtx() })).toBe(true)
     expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Enemy Secret'])
-    expect(game.privates.b.deck).toHaveLength(0)
+    expect(game.privates.b.deck.map((c) => c.name)).toEqual(['Enemy Secret'])
     expect(game.state.counts.a.hand).toBe(1)
-    expect(game.state.counts.b.deck).toBe(0)
+    expect(game.state.counts.b.deck).toBe(1)
     expect(game.state.log.join(' ')).not.toContain('Enemy Secret')
   })
 
-  it('mints a fresh instanceId for a card taken from the enemy deck', () => {
+  it('mints a fresh instanceId for a copy taken from the enemy deck', () => {
     const game = makeGame()
     game.privates.b.deck.push(inst({ name: 'Enemy Secret', instanceId: 'enemy-1' }))
     grant({ draw: 1, from: 'enemy' })({ game, actor: 'a', card: inst(), ctx: makeCtx() })
@@ -56,7 +56,7 @@ describe('grant', () => {
 })
 
 describe('takeFromEnemyDeck', () => {
-  it('takes the topmost card matching the filter, leaving the rest in order', () => {
+  it('copies the topmost card matching the filter, leaving the deck untouched', () => {
     const game = makeGame()
     game.privates.b.deck.push(
       inst({ name: 'Ability', type: 'ability' }),
@@ -66,7 +66,7 @@ describe('takeFromEnemyDeck', () => {
     const ok = takeFromEnemyDeck(game, 'a', makeCtx(), (c) => c.type === 'vehicle')
     expect(ok).toBe(true)
     expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Ship'])
-    expect(game.privates.b.deck.map((c) => c.name)).toEqual(['Ability', 'Ship Two'])
+    expect(game.privates.b.deck.map((c) => c.name)).toEqual(['Ability', 'Ship', 'Ship Two'])
   })
 })
 
@@ -399,5 +399,49 @@ describe('enemyVehicleOptions', () => {
     game.state.zones[0].cards.b.push(foeOne)
     game.state.zones[2].cards.b.push(foeElsewhere)
     expect(enemyVehicleOptions(game, 'a', null).map((o) => o.id)).toEqual(['foe-1', 'foe-3'])
+  })
+})
+
+// The capture model (2026-08-31): an enemy-deck draw COPIES. The original
+// never leaves the enemy's deck, so they can still draw it; the copy is
+// stamped `capturedCopy` and is destroyed outright when it leaves play
+// (shared/engine/gameEngine.ts discardCard). Replaces the "on loan" model,
+// where the card was spliced out and later went home via the enemy's discard.
+describe('takeFromEnemyDeck — copy model', () => {
+  it('leaves the original in the enemy deck, so the enemy can still draw it', () => {
+    const game = makeGame()
+    game.privates.b.deck.push(inst({ name: 'Loot', type: 'vehicle' }))
+    takeFromEnemyDeck(game, 'a', makeCtx())
+    expect(game.privates.b.deck.map((c) => c.name)).toEqual(['Loot'])
+  })
+
+  it('leaves the enemy public deck count untouched — nothing left their deck', () => {
+    const game = makeGame()
+    game.privates.b.deck.push(inst({ name: 'Loot' }), inst({ name: 'Filler' }))
+    game.state.counts.b.deck = 2
+    takeFromEnemyDeck(game, 'a', makeCtx())
+    expect(game.state.counts.b.deck).toBe(2)
+    expect(game.state.counts.a.hand).toBe(1)
+  })
+
+  it('stamps the copy capturedCopy rather than ownerSide', () => {
+    const game = makeGame()
+    game.privates.b.deck.push(inst({ name: 'Loot', instanceId: 'enemy-1' }))
+    takeFromEnemyDeck(game, 'a', makeCtx())
+    const copy = game.privates.a.hand[0]
+    expect(copy.meta.capturedCopy).toBe(true)
+    expect(copy.meta).not.toHaveProperty('ownerSide')
+    expect(copy.instanceId).not.toBe('enemy-1')
+  })
+
+  it('repeats: capturing twice yields two copies and leaves the deck intact', () => {
+    const game = makeGame()
+    const ctx = makeCtx()
+    game.privates.b.deck.push(inst({ name: 'Loot', type: 'vehicle' }))
+    takeFromEnemyDeck(game, 'a', ctx)
+    takeFromEnemyDeck(game, 'a', ctx)
+    expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Loot', 'Loot'])
+    expect(game.privates.b.deck.map((c) => c.name)).toEqual(['Loot'])
+    expect(game.privates.a.hand[0].instanceId).not.toBe(game.privates.a.hand[1].instanceId)
   })
 })

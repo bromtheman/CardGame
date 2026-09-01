@@ -1,7 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type { BattleContext, EngineGame, Side, ZoneCardEntry } from './engineTypes.ts'
 import {
-  battleOutcome, canRevive, discardSnapshotOf, dispatchBaseAttackVictory, dispatchBattleLock,
+  battleOutcome, canRevive, discardCard, discardSnapshotOf, dispatchBaseAttackVictory, dispatchBattleLock,
   dispatchBattleResolve, dispatchZoneActivation, reviveEntry, sacrificeEntry,
 } from './index.ts'
 import type { BattleParticipant } from './index.ts'
@@ -356,7 +356,7 @@ describe('reviveEntry', () => {
     const g = makeGame()
     const dead = zoneEntry({ name: 'Halberd' })
     // Two identical copies died; reviving one must leave the other in place.
-    g.state.destroyed.a.push(discardSnapshotOf(dead, 'a'), discardSnapshotOf(dead, 'a'))
+    g.state.destroyed.a.push(discardSnapshotOf(dead), discardSnapshotOf(dead))
     expect(reviveEntry(g, 'a', dead, 1)).toBe(true)
     expect(g.state.zones[0].cards.a.map((c) => c.instanceId)).toEqual([dead.instanceId])
     expect(g.state.destroyed.a).toHaveLength(1)
@@ -365,7 +365,7 @@ describe('reviveEntry', () => {
   it('files the revival against the zone the entry belongs to', () => {
     const g = makeGame()
     const dead = zoneEntry({ name: 'Halberd' })
-    g.state.destroyed.b.push(discardSnapshotOf(dead, 'b'))
+    g.state.destroyed.b.push(discardSnapshotOf(dead))
     expect(reviveEntry(g, 'b', dead, 2)).toBe(true)
     expect(g.state.zones[1].cards.b).toHaveLength(1)
     expect(g.state.zones[0].cards.b).toHaveLength(0)
@@ -375,23 +375,25 @@ describe('reviveEntry', () => {
     const g = makeGame()
     const dead = zoneEntry({ name: 'Halberd' })
     const other = zoneEntry({ name: 'Jormangund' })
-    g.state.destroyed.a.push(discardSnapshotOf(other, 'a'))
+    g.state.destroyed.a.push(discardSnapshotOf(other))
     expect(reviveEntry(g, 'a', dead, 1)).toBe(false)
     expect(g.state.zones[0].cards.a).toHaveLength(0)
     expect(g.state.destroyed.a).toHaveLength(1)
   })
 
-  // A captured card's discard is filed under its owner (gameEngine.ownerSideOf),
-  // so its revival must look there rather than under whoever was flying it.
-  it('pulls a captured hull back out of its owner pile, not its controller pile', () => {
+  // A captured copy is destroyed on its way out of play rather than filed
+  // into a discard, so there is nothing to revive it from. canRevive says so
+  // up front, which is what keeps the player from being offered a choice
+  // whose only working answer is Decline.
+  it('refuses to revive a captured copy — it reached no pile to come back from', () => {
     const g = makeGame()
-    const dead = zoneEntry({ name: 'Loaner', meta: { ownerSide: 'b' } })
-    // discardCard strips ownerSide on the way home, so the pile holds the
-    // stripped form — the revive has to rebuild the same derivation to match.
-    g.state.destroyed.b.push(discardSnapshotOf(dead, 'a'))
-    expect(reviveEntry(g, 'a', dead, 1)).toBe(true)
+    const dead = zoneEntry({ name: 'Loaner', meta: { capturedCopy: true } })
+    discardCard(g, 'a', dead)
+    expect(g.state.destroyed.a).toHaveLength(0)
     expect(g.state.destroyed.b).toHaveLength(0)
-    expect(g.state.zones[0].cards.a).toHaveLength(1)
+    expect(canRevive(g, 'a', dead)).toBe(false)
+    expect(reviveEntry(g, 'a', dead, 1)).toBe(false)
+    expect(g.state.zones[0].cards.a).toHaveLength(0)
   })
 
   // Two snapshots of one card are NOT interchangeable: repairmenReadyEffect
@@ -402,7 +404,7 @@ describe('reviveEntry', () => {
     const g = makeGame()
     const plain = zoneEntry({ name: 'Cyclone', cardId: 'cyclone' })
     const scrappy: typeof plain = { ...plain, instanceId: 'scrappy-1', keywords: ['scrappy'] }
-    g.state.destroyed.a.push(discardSnapshotOf(plain, 'a'), discardSnapshotOf(scrappy, 'a'))
+    g.state.destroyed.a.push(discardSnapshotOf(plain), discardSnapshotOf(scrappy))
     expect(reviveEntry(g, 'a', scrappy, 1)).toBe(true)
     expect(g.state.zones[0].cards.a[0].keywords).toEqual(['scrappy'])
     // The plain copy is what must be left behind.
@@ -413,7 +415,7 @@ describe('reviveEntry', () => {
   it('canRevive agrees with reviveEntry, before and after the pile empties', () => {
     const g = makeGame()
     const dead = zoneEntry({ name: 'Halberd' })
-    g.state.destroyed.a.push(discardSnapshotOf(dead, 'a'))
+    g.state.destroyed.a.push(discardSnapshotOf(dead))
     expect(canRevive(g, 'a', dead)).toBe(true)
     // What a death trigger's draw does to the pile: reshuffleDiscard empties
     // the whole discard into the deck, and the casualty becomes unrevivable.
@@ -434,15 +436,15 @@ describe('sacrificeEntry', () => {
   })
 
   // It routes through discardCard, so both of that function's rules hold: a
-  // captured hull goes home rather than being confiscated…
-  it('sends a captured hull home to its owner', () => {
+  // captured copy is destroyed rather than filed anywhere…
+  it('destroys a captured copy rather than filing it into either pile', () => {
     const g = makeGame()
-    const hull = zoneEntry({ name: 'Loaner', meta: { ownerSide: 'b' } })
+    const hull = zoneEntry({ name: 'Loaner', meta: { capturedCopy: true } })
     g.state.zones[0].cards.a.push(hull)
     expect(sacrificeEntry(g, 'a', hull.instanceId, 1)).toBe(true)
+    expect(g.state.zones[0].cards.a).toEqual([])
     expect(g.state.destroyed.a).toEqual([])
-    expect(g.state.destroyed.b.map((c) => c.name)).toEqual(['Loaner'])
-    expect(g.state.destroyed.b[0].meta.ownerSide).toBeUndefined()
+    expect(g.state.destroyed.b).toEqual([])
   })
 
   // …and a summon-only hull never reaches a discard at all, because that is a

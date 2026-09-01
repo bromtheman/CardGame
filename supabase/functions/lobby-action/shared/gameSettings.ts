@@ -65,6 +65,16 @@ export const FACTIONS = {
 // so a faction missing here is seeded, visible in the catalog, and simply
 // unreachable in the builder. Nothing in the engine suite can see that; the
 // live deck-builder pass is the check.
+//
+// ⚠ AND THERE IS A THIRD COPY, IN THE DATABASE. `public.decks` carries a
+// `decks_faction_check` CHECK constraint listing the same factions, which no
+// code search finds because it is not code. Wave 7 seeded TG, confirmed it in
+// the builder's dropdown, and still got a 23514 on the first real deck insert —
+// the faction was undraftable in production with every test green.
+// ADDING A FACTION HERE MEANS A MIGRATION TOO; see
+// supabase/migrations/20260831222000_add_tg_to_decks_faction_check.sql.
+// (`cards_faction_check` is fine — it lists every FACTIONS value, not just the
+// draftable ones, which is why the 26 cards seeded cleanly.)
 export const DECK_FACTIONS = ['DWG', 'GT', 'LH', 'OW', 'SS', 'TG', 'WF'] as const
 
 export const CARD_TYPES = { VEHICLE: 'vehicle', ABILITY: 'ability' } as const
