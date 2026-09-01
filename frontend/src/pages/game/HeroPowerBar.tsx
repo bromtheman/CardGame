@@ -155,7 +155,9 @@ export function HeroPowerBar({
   }
 
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-2 rounded border border-ocean-600 bg-ocean-900/40 p-2">
+    // shrink-0: this is fixed chrome in GameBoardPage's column, and must not
+    // be squeezed when the board wants room.
+    <div className="mx-auto mt-2 flex w-full max-w-6xl shrink-0 flex-wrap items-center gap-2 rounded border border-ocean-600 bg-ocean-900/40 px-2 py-1">
       <span className="text-xs font-bold uppercase tracking-wide text-ocean-300">Hero powers</span>
 
       <div className="relative">

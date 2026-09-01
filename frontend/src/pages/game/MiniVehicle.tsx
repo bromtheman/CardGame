@@ -85,9 +85,15 @@ export function MiniVehicle({
           use
         </button>
       )}
-      <img src={icon} alt={entry.vehicleType ?? entry.type} className="h-8 w-8 opacity-80" />
-      <span className="mt-1 w-full truncate font-display text-[13px]">{entry.name}</span>
-      <span className="rounded-full bg-ocean-900 px-2 py-0.5 text-[11px] font-bold text-parchment-100">
+      {/* Every line box below is pinned with an explicit `leading-*`. The chip
+          has to fit SLOT_HEIGHT_CLASS exactly (see laneLayout's budget
+          arithmetic), and a bare `text-[13px]` leaves its line height to the
+          font's own metrics — which differ between the display face and the
+          fallback, so the chip measured one height with Lobster loaded and
+          another during the swap. */}
+      <img src={icon} alt={entry.vehicleType ?? entry.type} className="h-6 w-6 opacity-80" />
+      <span className="mt-1 w-full truncate font-display text-[13px] leading-4">{entry.name}</span>
+      <span className="rounded-full bg-ocean-900 px-1.5 text-[11px] font-bold leading-4 text-parchment-100">
         {shortHandNumber(effectiveMaterialCostOf(entry))}
       </span>
       {/* Always rendered, even empty, and at a FIXED height: a chip whose
@@ -96,7 +102,7 @@ export function MiniVehicle({
           hidden here (and only here) so a hull that picks up extra keywords
           in play — Flyby and Paladin both grant two — cannot grow the row.
           The "?" affordance opens the full card for anything clipped. */}
-      <div className="mt-1 h-4 w-full overflow-hidden">
+      <div className="mt-0.5 h-4 w-full overflow-hidden">
         <div className="flex flex-wrap justify-center gap-0.5">
           <KeywordIcons keywords={entry.keywords} iconClass="h-4 w-4" />
         </div>

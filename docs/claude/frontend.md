@@ -73,6 +73,52 @@ hand-roll channels.
 - Costs shown to the player use `effectiveCostInGame` (typed over
   `PublicGameState` precisely so the client can call it).
 
+### The board fits ONE viewport — don't let a change take that back
+
+`GameBoardPage` is a fixed-height column (`h-[100dvh]`) that never scrolls, so
+the hand, hero powers and resource figures cannot fall off the bottom. Four
+rules keep that true; each one cost a real bug to learn:
+
+- **The board is the only flexible row.** The command strip, hero power bar and
+  hand rail are all `shrink-0`; the board carries `min-h-0 flex-1
+  overflow-y-auto`. Without `min-h-0` a flex child refuses to shrink below its
+  content and pushes the hand off-screen again. On a window too short for the
+  budgeted layout the board scrolls internally — that is the intended graceful
+  failure, and the hand must never be what gives.
+- **`overflow-clip`, never `overflow-hidden`, on `<main>`.** A hidden box is
+  still a scroll container. Focusing a hand card scrolled it and carried the
+  command strip off the top with no way back. `clip` creates no scroll
+  container at all.
+- **The heights are budgeted arithmetic, not eyeballing.** `laneLayout.ts`
+  (`LANE_HEIGHT_BUDGET_PX`) and `handFanLayout.ts` (`HAND_RAIL_BUDGET_PX`) hold
+  the two dominant rows to a budget, and their tests fail if a chip or card
+  grows past it. Each Tailwind class there has a `_PX` twin — change them
+  together. Measured: 432px of fixed chrome plus a 486px zone panel, so the
+  board fits whole at **918px** of viewport height and scrolls internally below
+  it. Re-measure rather than trusting that figure after any change to the
+  chrome rows — and measure the PANEL, not the board box: grid items stretch to
+  fill the row, so `board.scrollHeight` just echoes the viewport when there is
+  slack.
+- **The fan's geometry is capped** (`MAX_ANGLE_DEG`, `MAX_ARC_DROP`). Sweep and
+  arc grow with hand size — the arc quadratically — and an 18-card hand ran to
+  ±34° and a 116px drop, which overflowed `<main>`. Cards are positioned at
+  `FAN_FLOOR - arcY`, measured up from the rail's floor, so a rotated card's
+  lower corner still clears the bottom of the screen.
+
+The hand rail is the one full-bleed row; every row above it re-applies
+`mx-auto w-full max-w-6xl`. That is what puts End turn and the log toggle in
+the actual screen corners, clear of the fan — whose outer cards bulge well past
+its nominal edge once rotated.
+
+A zone panel carries **no title row**: no zone number, no biome word. The biome
+reads from `BIOME_TINT` + `BIOME_BORDER` alone, so those are load-bearing now —
+don't weaken them back toward the old 10% washes, and keep the `title` and
+`sr-only` biome labels, which are the only non-colour cue left. The row's two
+useful tenants were rehomed, both into rows that already existed: the `LaneCount`
+badges onto their own side's HP bar, the zone-effect badges onto the front line
+(fixed `h-5` with or without them, so a zone effect appearing cannot shove that
+zone's lanes out of line with its neighbours').
+
 ## My Games (`src/lib/games.ts`)
 
 `isMyMove(g, me)` classifies whose move it is and MUST keep handling
