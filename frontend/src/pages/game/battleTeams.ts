@@ -16,6 +16,17 @@ import { CARD_TYPES } from '@shared/gameSettings'
  * what the overlay's spawn sheet shows — so the resources FtD hands each team are
  * the ones the players were already told they get.
  *
+ * **The aggressor-first order is load-bearing**, not merely cosmetic: the FtD
+ * mod reports a winning TEAM index, and `sideForTeamIndex` in
+ * `shared/battleReport.ts` turns index 0 back into the aggressor's side on the
+ * strength of this ordering. Swap these two and a reported win changes sides.
+ *
+ * Each card carries its `instanceId` and each team its `side`. That is what the
+ * `.customBattle` file's `CardGame` block is built from — the mod knows a hull
+ * only as (team index, vehicle index), and matching on NAME cannot work because
+ * two copies of one ship collide. The block is built from this same array, so
+ * the index pairing is structural rather than asserted (`buildCardGameBlock`).
+ *
  * Requires `state.activeBattle`.
  */
 export function battleTeams(state: PublicGameState): BattleTeamInput[] {
@@ -29,17 +40,20 @@ export function battleTeams(state: PublicGameState): BattleTeamInput[] {
         faction: p.entry.faction,
         vehicleType: p.entry.vehicleType,
         materialCost: effectiveMaterialCostOf(p.entry),
+        instanceId: p.entry.instanceId,
       }))
 
   const defender = otherSide(battle.aggressor)
   return [
     {
       name: `${state.factions[battle.aggressor]} (attacking)`,
+      side: battle.aggressor,
       cards: fleetOn(battle.aggressor),
       isAttacker: true,
     },
     {
       name: `${state.factions[defender]} (defending)`,
+      side: defender,
       cards: fleetOn(defender),
       isAttacker: false,
     },

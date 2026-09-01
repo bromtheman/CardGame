@@ -92,8 +92,13 @@ the port it actually bound to — see "Browser verification" above.
 Project "FtD Card Game", ref `wpgsjnjnvykxavaxibld`. There is no local
 `supabase start`: DB work goes through the Supabase MCP tools (`execute_sql`,
 `apply_migration`, `get_edge_function`, …). **Function deploys do not** — see
-below. Edge functions (`game-action`, `lobby-action`, `create-card`) are
-deployed with `verify_jwt: false` and do their own auth + CORS.
+below. Edge functions (`game-action`, `lobby-action`, `create-card`,
+`battle-report`) are deployed with `verify_jwt: false` and do their own auth +
+CORS. `battle-report` is the exception to "auth" meaning a user JWT: its
+`submit` op is called by a C# mod inside From The Depths, which has no Supabase
+session, and authenticates with a single-use battle token instead. It stores a
+report PREFILL and changes no game state — a human still submits and the
+opponent still approves. Never extend it into either.
 Details: docs/claude/supabase.md.
 
 ## Deploying edge functions

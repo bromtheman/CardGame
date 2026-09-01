@@ -1,0 +1,16 @@
+# Normalise line endings.
+#
+# The working tree is CRLF but every blob in HEAD is LF, so without this git
+# reports all 256 tracked files as modified and any `git add -A` sweeps a
+# whitespace-only rewrite of the whole repo into the commit.
+#
+# `text=auto eol=lf` makes git normalise to LF on the way into the index and
+# leave the working tree alone. CRLF files then compare equal to their LF blobs
+# and drop out of `git status` on their own — no renormalise commit needed.
+* text=auto eol=lf
+
+# Keep these exactly as they are on disk.
+*.png binary
+*.ico binary
+*.blueprint binary
+*.customBattle -text
