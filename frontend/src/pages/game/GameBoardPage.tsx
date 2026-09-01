@@ -328,22 +328,6 @@ export function GameBoardPage() {
         </div>
       )}
 
-      <HeroPowerBar
-        state={state}
-        mySide={mySide}
-        isMyTurn={isMyTurn}
-        isActive={isActive}
-        send={send}
-        busy={busy}
-        hand={hand}
-        moveMode={moveMode}
-        onStartRapidRedeployment={onStartRapidRedeployment}
-        onCancelMove={onCancelMove}
-        swapMode={swapMode}
-        onStartBoardingParty={onStartBoardingParty}
-        onCancelSwap={onCancelSwap}
-      />
-
       {/* The one flexible row. `min-h-0` is what lets it actually shrink — a
           flex child's default `min-height: auto` refuses to go below its
           content, which would push the hand rail back off the bottom and undo
@@ -351,7 +335,12 @@ export function GameBoardPage() {
           for a window too short even for the budgeted layout (a phone, or a
           half-height window): the board gives, never the hand. */}
       <div className="mt-2 min-h-0 flex-1 overflow-y-auto">
-      <div className="mx-auto grid w-full max-w-6xl grid-cols-1 gap-4 md:grid-cols-3">
+      {/* `min-h-full`, so the panels fill the board box rather than leaving its
+          leftover height as a void beneath them — that void read as a fat gap
+          above the hero powers while every actual margin here is 8px. `min-h`
+          and not `h`: on a viewport too short for the panels the grid still
+          grows past the box and the board scrolls, instead of squashing them. */}
+      <div className="mx-auto grid min-h-full w-full max-w-6xl grid-cols-1 gap-4 md:grid-cols-3">
         {state.zones.map((zone) => (
           <BoardZone
             key={zone.id}
@@ -392,6 +381,25 @@ export function GameBoardPage() {
         ))}
       </div>
       </div>
+
+      {/* Below the board, not above it: hero powers, the hand and End turn are
+          all things the player DOES, so they sit together in the bottom half
+          of the screen rather than straddling the board. */}
+      <HeroPowerBar
+        state={state}
+        mySide={mySide}
+        isMyTurn={isMyTurn}
+        isActive={isActive}
+        send={send}
+        busy={busy}
+        hand={hand}
+        moveMode={moveMode}
+        onStartRapidRedeployment={onStartRapidRedeployment}
+        onCancelMove={onCancelMove}
+        swapMode={swapMode}
+        onStartBoardingParty={onStartBoardingParty}
+        onCancelSwap={onCancelSwap}
+      />
 
       <HandBar
         hand={hand}
