@@ -59,16 +59,35 @@ function Find-GameExe {
         }
     }
 
-    foreach ($r in $roots) {
-        $exe = Join-Path $r 'From The Depths.exe'
-        if (Test-Path $exe) { return $exe }
+    # The folder has spaces but the executable does not: it ships as
+    # From_The_Depths.exe. Both spellings are probed, then any other exe in the
+    # game root as a last resort, so a rename in a future build doesn't break this.
+    $exeNames = @('From_The_Depths.exe', 'From The Depths.exe')
+
+    foreach ($r in ($roots | Where-Object { $_ -and (Test-Path $_) })) {
+        foreach ($n in $exeNames) {
+            $exe = Join-Path $r $n
+            if (Test-Path $exe) { return $exe }
+        }
+        $found = Get-ChildItem -Path $r -Filter *.exe -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -ne 'UnityCrashHandler64.exe' } |
+            Select-Object -First 1
+        if ($found) { return $found.FullName }
     }
     return $null
 }
 
 $exe = Find-GameExe
 if (-not $exe) {
-    throw "Could not find 'From The Depths.exe'. Re-run with -GamePath '<folder containing the exe>'."
+    $hint = ""
+    if ($GamePath -and (Test-Path $GamePath)) {
+        $names = (Get-ChildItem -Path $GamePath -Filter *.exe -File -ErrorAction SilentlyContinue |
+            Select-Object -ExpandProperty Name) -join ", "
+        $hint = if ($names) { "  Executables in that folder: $names" }
+                else { "  No .exe found directly in that folder." }
+    }
+    throw ("Could not find the From The Depths executable. " +
+           "Re-run with -GamePath '<folder containing the exe>'.$hint")
 }
 
 New-Item -Path $extKey -Force | Out-Null
