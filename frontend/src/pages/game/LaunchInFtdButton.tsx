@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import type { PublicGameState } from '@shared/engine/gameInit'
-import type { Side } from '@shared/engine/engineTypes'
-import { battleParticipants, otherSide } from '@shared/engine/index'
 import { BlueprintResolutionError, buildCustomBattle, serializeCustomBattle } from '@shared/customBattle'
-import { CARD_TYPES } from '@shared/gameSettings'
 
+import { battleTeams } from './battleTeams'
+
+// TS drops the `if (!battle) return null` narrowing inside onLaunch, so the
+// battle is passed in rather than closed over — that is what keeps this file
+// free of non-null assertions.
 type Battle = NonNullable<PublicGameState['activeBattle']>
 
 function downloadText(filename: string, text: string) {
@@ -45,39 +47,26 @@ function playerFacingError(e: unknown): string {
  * Neither team is marked IsPlayerTeam, so the match runs as a spectated AI fight and
  * the card game stays the thing being played. Results are reported back by hand.
  *
- * The roster comes from the engine's own `battleParticipants`, not a local
- * reconstruction — BattleOverlay learned that lesson the hard way in wave 7, when a
- * hand-written mirror silently dropped TG Duel's cross-zone hull.
+ * `battleTeams` builds the two fleets — including the spawn altitudes, attacker
+ * rotation and in-battle resources the overlay's spawn sheet already quotes.
  */
 export function LaunchInFtdButton({ state }: { state: PublicGameState }) {
   const [error, setError] = useState<string | null>(null)
   const battle = state.activeBattle
   if (!battle) return null
 
-  const participants = [...battleParticipants(state).values()]
-  const vehiclesOn = (side: Side) =>
-    participants
-      .filter((p) => p.side === side && p.entry.type === CARD_TYPES.VEHICLE)
-      .map((p) => ({ name: p.entry.name, faction: p.entry.faction }))
-
-  const defenderSide = otherSide(battle.aggressor)
-  const attackers = vehiclesOn(battle.aggressor)
-  const defenders = vehiclesOn(defenderSide)
+  const teams = battleTeams(state)
   // FtD needs something on both sides; an empty team produces a battle that
   // ends the instant it starts.
-  const bothSidesCrewed = attackers.length > 0 && defenders.length > 0
+  const bothSidesCrewed = teams.every((team) => team.cards.length > 0)
 
   function onLaunch(currentBattle: Battle) {
     try {
-      const file = buildCustomBattle(
-        [
-          { name: `${state.factions[currentBattle.aggressor]} (attacking)`, cards: attackers },
-          { name: `${state.factions[defenderSide]} (defending)`, cards: defenders },
-        ],
+      const file = buildCustomBattle(teams, {
         // The card game already decided the engagement range; reuse it rather
         // than dropping the fleets at FtD's 1000m default.
-        { spawnDistanceBetweenTeams: currentBattle.distanceM },
-      )
+        spawnDistanceBetweenTeams: currentBattle.distanceM,
+      })
       downloadText(`zone-${currentBattle.zoneId}-battle.customBattle`, serializeCustomBattle(file))
       setError(null)
     } catch (e) {

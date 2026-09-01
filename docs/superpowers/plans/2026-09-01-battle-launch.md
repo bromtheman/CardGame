@@ -39,6 +39,7 @@ makes server-side generation safe: the same file works on any install, on any dr
 | `scripts/verify-blueprint-mapping.mjs` | Checks every vehicle card resolves to a real blueprint file |
 | `scripts/register-custombattle-association.ps1` | One-time per-player file association (HKCU, no admin) |
 | `frontend/src/pages/game/LaunchInFtdButton.tsx` | "Fight in FtD" button, rendered by `BattleOverlay` |
+| `frontend/src/pages/game/battleTeams.ts` | Turns the active battle into the two fleets, with costs/types/roles |
 
 `shared/customBattle.ts` is not in `supabase/functions/shared-manifest.json`. Add it
 there and run `npm run functions:sync` only if an edge function needs to generate
@@ -54,6 +55,18 @@ SmartScreen.
 **v2 — one click.** Register an `ftd://` URI scheme pointing at a small helper that
 writes the file and launches the game. Strictly nicer, but it means shipping an
 executable to every player. Not worth it before v1 proves the pipeline.
+
+## How the fight is staged
+
+Four things the generated file sets up, so the fight matches the spawn sheet the
+overlay already shows the players:
+
+| | Value | Why |
+|---|---|---|
+| Aircraft altitude | `SpawnAltitude: 80` for planes and airships | Spec §3.5's spawn sheet. Everything else spawns at the surface. |
+| Attacker heading | `SpawnAngle: 180` on the aggressor's hulls | Both fleets otherwise spawn facing the same way. Turning the attacker around leaves the defenders already pointed at it — the advantage defending is meant to carry. |
+| In-battle resources | `StartingMaterial` per team = 2 × Σ ⌊cost × 10%⌋ | Spec §3.5 pays per vehicle; FtD only has a per-team pool. Doubling compensates for the pooling. Floored per craft so it matches the figure the overlay quotes. |
+| Material symmetry | `SymmetricMaterial: false` | The one value that deliberately differs from the saved fixture — the two teams' pools are derived from their own fleets, so they genuinely differ. |
 
 ## Open questions
 
@@ -85,11 +98,17 @@ executable to every player. Not worth it before v1 proves the pipeline.
 
 ## Next steps
 
-1. Run `node scripts/verify-blueprint-mapping.mjs` on a machine with the game installed
+1. **Spawn distance.** The generator writes the site's distance into
+   `SpawnDistanceBetweenTeams` — verified by dumping a file — and the top-level keys
+   match a real save exactly, so if the game still spawns at its own default the field
+   is not the one FtD reads on load. Re-check against a freshly generated file before
+   chasing it further.
+2. Run `node scripts/verify-blueprint-mapping.mjs` on a machine with the game installed
    and confirm every override target resolves to a real file.
-2. Register the association once (`scripts/register-custombattle-association.ps1`), then
+3. Register the association once (`scripts/register-custombattle-association.ps1`), then
    download a battle from the site and check it opens the game.
-3. Play one match end to end and confirm the vehicles that spawn match the cards played.
-4. Check the transparent `FleetColors` (`'0,0,0,0'`) look right in game. It is the one
-   value in the generated file not transcribed from a real save, so it is the most
-   likely thing to look wrong.
+4. Play one match end to end and confirm the vehicles that spawn match the cards played,
+   and that the staging table above holds: aircraft at 80 m, the attacking fleet facing
+   away, and each team holding its own material pool.
+5. Check the transparent `FleetColors` (`'0,0,0,0'`) look right in game. Along with
+   `SymmetricMaterial`, it is one of the few values not transcribed from a real save.
