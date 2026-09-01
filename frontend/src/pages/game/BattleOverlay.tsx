@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import type { PublicGameState } from '@shared/engine/gameInit'
 import type { GameAction, Side, ZoneCardEntry } from '@shared/engine/engineTypes'
 import {
@@ -14,6 +14,7 @@ import { LaunchInFtdButton } from './LaunchInFtdButton'
 import { applyPrefill, prefillSummary, winnerLabel } from './ftdPrefill'
 import type { FtdPrefill } from './ftdPrefill'
 import { useFtdResultQuery } from './ftdReporting'
+import { splitRosterBySide } from './reportTeams'
 
 type Battle = NonNullable<PublicGameState['activeBattle']>
 type Report = NonNullable<PublicGameState['pendingReport']>
@@ -90,6 +91,28 @@ function FleetColumn({ title, entries, mySide }: { title: string; entries: Parti
   )
 }
 
+// Every panel below lists vehicles by name, and two captains routinely field
+// the *same* hull — a merged list leaves you unable to tell which "Abactor"
+// just died. So all three split the roster the same way: your ships left of a
+// rule, theirs right of it. On a narrow screen the columns stack and the rule
+// becomes the horizontal one above "Their ships".
+const TEAM_GRID = 'grid grid-cols-1 gap-4 sm:grid-cols-2'
+const THEIR_COLUMN = 'border-t border-ocean-600/50 pt-3 sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0'
+
+function TeamColumn({ title, empty, className = '', children }: {
+  title: string
+  empty: boolean
+  className?: string
+  children: ReactNode
+}) {
+  return (
+    <div className={`min-w-0 ${className}`}>
+      <p className="font-bold text-parchment-100">{title}</p>
+      {empty ? <p className="mt-1 text-sm text-ocean-300">No vehicles.</p> : children}
+    </div>
+  )
+}
+
 function ReportForm({
   participants, results, repairs, state, mySide, busy, onHpChange, onToggleRepair, onSubmit,
 }: {
@@ -114,88 +137,102 @@ function ReportForm({
   // excluded from the roster handed in, matching DECIDE_BATTLE_REPORT
   // (spec §4.4) — autoRepairIds must never see one.
   const autoIds = autoRepairIds(participants.filter((p) => !p.isSummon), results)
+  const { mine: myShips, theirs: theirShips } = splitRosterBySide(participants, mySide)
+
+  // One row builder for both columns: which side a hull is on already decides
+  // everything that differs (whose checkbox is live, who pays), so the split is
+  // purely presentational and the two tables cannot fall out of step.
+  const rowFor = ({ entry, side, isSummon }: Participant) => {
+    const hp = results[entry.instanceId] ?? 100
+    const fragile = entry.keywords.includes(KEYWORDS.FRAGILE)
+    const inBand = hp >= REPAIR_WINDOW_MIN_PERCENT && hp < SURVIVE_HP_PERCENT
+    const mine = side === mySide
+    const isAuto = autoIds.includes(entry.instanceId)
+    // A summon's repair checkbox must stay disabled (spec §4.4): the
+    // engine rejects a summon repair with a 400, so an enabled
+    // control would be a trap producing an error the player can't
+    // act on.
+    const repairable = inBand && !fragile && mine && !isAuto && !isSummon
+    // "Their captain decides" implies a pending decision — only true
+    // where a repair decision could genuinely be made. Otherwise (out
+    // of band, Fragile, summoned, or already auto-repaired) show a
+    // neutral dash.
+    const theirsToDecide = inBand && !fragile && !mine && !isAuto && !isSummon
+    const cost = repairCostOf(entry)
+    const checked = repairs.includes(entry.instanceId)
+    // Running per-side total of currently-checked repairs (plus this
+    // one's own cost when it isn't checked yet) — checking several
+    // repairs on the same side can exceed materials even when each
+    // is individually affordable.
+    const projectedOwed = owedBySide[side] + (checked ? 0 : cost)
+    const affordable = state.resources[side].materials >= projectedOwed
+    return (
+      <tr key={entry.instanceId} className="border-t border-ocean-600/30">
+        <td className="py-1 pr-2 text-parchment-100">
+          {entry.name}
+          {isSummon && <span className="ml-1 text-xs text-ocean-300/60">(summoned)</span>}
+        </td>
+        <td className="py-1 pr-2">
+          <input
+            type="number"
+            min={0}
+            max={100}
+            value={hp}
+            onChange={(e) => {
+              const raw = e.target.value
+              const v = raw === '' ? 0 : Number(raw)
+              if (!Number.isNaN(v)) onHpChange(entry.instanceId, Math.max(0, Math.min(100, v)))
+            }}
+            className="w-16 rounded border border-ocean-600 bg-ocean-950 px-1 py-0.5 text-parchment-100"
+          />
+        </td>
+        <td className="py-1">
+          {isAuto ? (
+            <span className="text-xs text-brass-400">Auto-repaired (free)</span>
+          ) : !mine ? (
+            <span className="text-xs text-ocean-300/60">
+              {theirsToDecide ? 'Their captain decides' : '—'}
+            </span>
+          ) : (
+            <label className={`flex items-center gap-1 ${repairable ? '' : 'opacity-40'}`}>
+              <input
+                type="checkbox"
+                disabled={!repairable}
+                checked={repairs.includes(entry.instanceId)}
+                onChange={() => onToggleRepair(entry.instanceId)}
+              />
+              <span className={`text-xs ${affordable ? 'text-ocean-300' : 'text-red-400'}`}>
+                {shortHandNumber(cost)} ({side.toUpperCase()} pays{affordable ? '' : ' — cannot afford'})
+              </span>
+            </label>
+          )}
+        </td>
+      </tr>
+    )
+  }
+
+  const tableOf = (entries: Participant[]) => (
+    <table className="mt-1 w-full text-sm">
+      <thead>
+        <tr className="text-left text-ocean-300">
+          <th className="pb-1 font-normal">Vehicle</th>
+          <th className="pb-1 font-normal">HP %</th>
+          <th className="pb-1 font-normal">Repair</th>
+        </tr>
+      </thead>
+      <tbody>{entries.map((p) => rowFor(p))}</tbody>
+    </table>
+  )
+
   return (
     <div className="mt-4 border-t border-ocean-600/50 pt-3">
       <h3 className="font-display text-lg">Battle report</h3>
-      <table className="mt-2 w-full text-sm">
-        <thead>
-          <tr className="text-left text-ocean-300">
-            <th className="pb-1 font-normal">Vehicle</th>
-            <th className="pb-1 font-normal">HP %</th>
-            <th className="pb-1 font-normal">Repair</th>
-          </tr>
-        </thead>
-        <tbody>
-          {participants.map(({ entry, side, isSummon }) => {
-            const hp = results[entry.instanceId] ?? 100
-            const fragile = entry.keywords.includes(KEYWORDS.FRAGILE)
-            const inBand = hp >= REPAIR_WINDOW_MIN_PERCENT && hp < SURVIVE_HP_PERCENT
-            const mine = side === mySide
-            const isAuto = autoIds.includes(entry.instanceId)
-            // A summon's repair checkbox must stay disabled (spec §4.4): the
-            // engine rejects a summon repair with a 400, so an enabled
-            // control would be a trap producing an error the player can't
-            // act on.
-            const repairable = inBand && !fragile && mine && !isAuto && !isSummon
-            // "Their captain decides" implies a pending decision — only true
-            // where a repair decision could genuinely be made. Otherwise (out
-            // of band, Fragile, summoned, or already auto-repaired) show a
-            // neutral dash.
-            const theirsToDecide = inBand && !fragile && !mine && !isAuto && !isSummon
-            const cost = repairCostOf(entry)
-            const checked = repairs.includes(entry.instanceId)
-            // Running per-side total of currently-checked repairs (plus this
-            // one's own cost when it isn't checked yet) — checking several
-            // repairs on the same side can exceed materials even when each
-            // is individually affordable.
-            const projectedOwed = owedBySide[side] + (checked ? 0 : cost)
-            const affordable = state.resources[side].materials >= projectedOwed
-            return (
-              <tr key={entry.instanceId} className="border-t border-ocean-600/30">
-                <td className="py-1 pr-2 text-parchment-100">
-                  {entry.name}
-                  {isSummon && <span className="ml-1 text-xs text-ocean-300/60">(summoned)</span>}
-                </td>
-                <td className="py-1 pr-2">
-                  <input
-                    type="number"
-                    min={0}
-                    max={100}
-                    value={hp}
-                    onChange={(e) => {
-                      const raw = e.target.value
-                      const v = raw === '' ? 0 : Number(raw)
-                      if (!Number.isNaN(v)) onHpChange(entry.instanceId, Math.max(0, Math.min(100, v)))
-                    }}
-                    className="w-16 rounded border border-ocean-600 bg-ocean-950 px-1 py-0.5 text-parchment-100"
-                  />
-                </td>
-                <td className="py-1">
-                  {isAuto ? (
-                    <span className="text-xs text-brass-400">Auto-repaired (free)</span>
-                  ) : !mine ? (
-                    <span className="text-xs text-ocean-300/60">
-                      {theirsToDecide ? 'Their captain decides' : '—'}
-                    </span>
-                  ) : (
-                    <label className={`flex items-center gap-1 ${repairable ? '' : 'opacity-40'}`}>
-                      <input
-                        type="checkbox"
-                        disabled={!repairable}
-                        checked={repairs.includes(entry.instanceId)}
-                        onChange={() => onToggleRepair(entry.instanceId)}
-                      />
-                      <span className={`text-xs ${affordable ? 'text-ocean-300' : 'text-red-400'}`}>
-                        {shortHandNumber(cost)} ({side.toUpperCase()} pays{affordable ? '' : ' — cannot afford'})
-                      </span>
-                    </label>
-                  )}
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
+      <div className={`mt-2 ${TEAM_GRID}`}>
+        <TeamColumn title="Your ships" empty={myShips.length === 0}>{tableOf(myShips)}</TeamColumn>
+        <TeamColumn title="Their ships" empty={theirShips.length === 0} className={THEIR_COLUMN}>
+          {tableOf(theirShips)}
+        </TeamColumn>
+      </div>
       <button
         disabled={busy}
         onClick={onSubmit}
@@ -226,57 +263,68 @@ function DecisionPanel({
     const p = participants.find((x) => x.entry.instanceId === id)
     if (p) owed[p.side] += repairCostOf(p.entry)
   }
+  const { mine: myShips, theirs: theirShips } = splitRosterBySide(participants, mySide)
+
+  const itemFor = ({ entry, side, isSummon }: Participant) => {
+    const hp = report.results[entry.instanceId] ?? 0
+    const isAuto = auto.includes(entry.instanceId)
+    const repaired = report.repairs.includes(entry.instanceId) || myRepairs.includes(entry.instanceId)
+    // A summon evaporates regardless of HP (spec §4.4) — "Survives" or
+    // "Destroyed" would both misstate what actually happens to it, so
+    // this bypasses outcomeLabel entirely rather than teaching it a
+    // third HP-independent case.
+    const { label, survives } = isSummon
+      ? { label: 'Summoned — evaporates', survives: false }
+      : outcomeLabel(entry, hp, repaired, isAuto)
+    const inBand = hp >= REPAIR_WINDOW_MIN_PERCENT && hp < SURVIVE_HP_PERCENT
+    // A summon's repair checkbox must stay disabled (spec §4.4): the
+    // engine rejects a summon repair with a 400, so an enabled control
+    // would be a trap producing an error the player can't act on.
+    const canChoose =
+      side === mySide && inBand && !isAuto && !entry.keywords.includes(KEYWORDS.FRAGILE) && !isSummon
+    return (
+      <li key={entry.instanceId} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded border border-ocean-600 bg-ocean-950/60 px-2 py-1">
+        <span className="text-parchment-100">
+          {entry.name}{isSummon ? ' (summoned)' : ''} — {hp}%
+        </span>
+        <span className="flex items-center gap-3">
+          {canChoose && (
+            <label className="flex items-center gap-1 text-xs text-ocean-300">
+              <input
+                type="checkbox"
+                checked={myRepairs.includes(entry.instanceId)}
+                onChange={() =>
+                  setMyRepairs((rs) =>
+                    rs.includes(entry.instanceId)
+                      ? rs.filter((x) => x !== entry.instanceId)
+                      : [...rs, entry.instanceId],
+                  )
+                }
+              />
+              Repair ({shortHandNumber(repairCostOf(entry))})
+            </label>
+          )}
+          <span className={isSummon ? 'text-ocean-300' : survives ? 'text-brass-400' : 'text-red-400'}>
+            {label}
+          </span>
+        </span>
+      </li>
+    )
+  }
+
+  const listOf = (entries: Participant[]) => (
+    <ul className="mt-1 space-y-1 text-sm">{entries.map((p) => itemFor(p))}</ul>
+  )
+
   return (
     <div className="mt-4 border-t border-ocean-600/50 pt-3">
       <h3 className="font-display text-lg">Report from player {report.submittedBy.toUpperCase()} — review outcomes</h3>
-      <ul className="mt-2 space-y-1 text-sm">
-        {participants.map(({ entry, side, isSummon }) => {
-          const hp = report.results[entry.instanceId] ?? 0
-          const isAuto = auto.includes(entry.instanceId)
-          const repaired = report.repairs.includes(entry.instanceId) || myRepairs.includes(entry.instanceId)
-          // A summon evaporates regardless of HP (spec §4.4) — "Survives" or
-          // "Destroyed" would both misstate what actually happens to it, so
-          // this bypasses outcomeLabel entirely rather than teaching it a
-          // third HP-independent case.
-          const { label, survives } = isSummon
-            ? { label: 'Summoned — evaporates', survives: false }
-            : outcomeLabel(entry, hp, repaired, isAuto)
-          const inBand = hp >= REPAIR_WINDOW_MIN_PERCENT && hp < SURVIVE_HP_PERCENT
-          // A summon's repair checkbox must stay disabled (spec §4.4): the
-          // engine rejects a summon repair with a 400, so an enabled control
-          // would be a trap producing an error the player can't act on.
-          const canChoose =
-            side === mySide && inBand && !isAuto && !entry.keywords.includes(KEYWORDS.FRAGILE) && !isSummon
-          return (
-            <li key={entry.instanceId} className="flex items-center justify-between rounded border border-ocean-600 bg-ocean-950/60 px-2 py-1">
-              <span className="text-parchment-100">
-                {entry.name}{isSummon ? ' (summoned)' : ''} — {hp}%
-              </span>
-              <span className="flex items-center gap-3">
-                {canChoose && (
-                  <label className="flex items-center gap-1 text-xs text-ocean-300">
-                    <input
-                      type="checkbox"
-                      checked={myRepairs.includes(entry.instanceId)}
-                      onChange={() =>
-                        setMyRepairs((rs) =>
-                          rs.includes(entry.instanceId)
-                            ? rs.filter((x) => x !== entry.instanceId)
-                            : [...rs, entry.instanceId],
-                        )
-                      }
-                    />
-                    Repair ({shortHandNumber(repairCostOf(entry))})
-                  </label>
-                )}
-                <span className={isSummon ? 'text-ocean-300' : survives ? 'text-brass-400' : 'text-red-400'}>
-                  {label}
-                </span>
-              </span>
-            </li>
-          )
-        })}
-      </ul>
+      <div className={`mt-2 ${TEAM_GRID}`}>
+        <TeamColumn title="Your ships" empty={myShips.length === 0}>{listOf(myShips)}</TeamColumn>
+        <TeamColumn title="Their ships" empty={theirShips.length === 0} className={THEIR_COLUMN}>
+          {listOf(theirShips)}
+        </TeamColumn>
+      </div>
       {(['a', 'b'] as Side[]).map((side) =>
         owed[side] > state.resources[side].materials ? (
           <p key={side} className="mt-2 text-xs text-red-400">
@@ -304,18 +352,29 @@ function DecisionPanel({
   )
 }
 
-function WaitingNotice({ participants, report }: { participants: Participant[]; report: Report }) {
+function WaitingNotice({
+  participants, report, mySide,
+}: { participants: Participant[]; report: Report; mySide: Side }) {
+  const { mine: myShips, theirs: theirShips } = splitRosterBySide(participants, mySide)
+  const listOf = (entries: Participant[]) => (
+    <ul className="mt-1 space-y-1 text-sm text-ocean-300">
+      {entries.map(({ entry, isSummon }) => (
+        <li key={entry.instanceId}>
+          {entry.name}{isSummon ? ' (summoned)' : ''} — {report.results[entry.instanceId] ?? 0}%
+          {report.repairs.includes(entry.instanceId) ? ' (repair requested)' : ''}
+        </li>
+      ))}
+    </ul>
+  )
   return (
     <div className="mt-4 border-t border-ocean-600/50 pt-3">
       <p className="font-bold text-brass-400">Report submitted — waiting for the other captain to approve or reject.</p>
-      <ul className="mt-2 space-y-1 text-sm text-ocean-300">
-        {participants.map(({ entry, isSummon }) => (
-          <li key={entry.instanceId}>
-            {entry.name}{isSummon ? ' (summoned)' : ''} — {report.results[entry.instanceId] ?? 0}%
-            {report.repairs.includes(entry.instanceId) ? ' (repair requested)' : ''}
-          </li>
-        ))}
-      </ul>
+      <div className={`mt-2 ${TEAM_GRID}`}>
+        <TeamColumn title="Your ships" empty={myShips.length === 0}>{listOf(myShips)}</TeamColumn>
+        <TeamColumn title="Their ships" empty={theirShips.length === 0} className={THEIR_COLUMN}>
+          {listOf(theirShips)}
+        </TeamColumn>
+      </div>
     </div>
   )
 }
@@ -536,7 +595,7 @@ export function BattleOverlay({
 
         {report ? (
           report.submittedBy === mySide ? (
-            <WaitingNotice participants={participants} report={report} />
+            <WaitingNotice participants={participants} report={report} mySide={mySide} />
           ) : (
             <DecisionPanel participants={participants} report={report} state={state} mySide={mySide} busy={busy} onDecide={onDecide} />
           )
