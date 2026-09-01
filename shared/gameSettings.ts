@@ -114,6 +114,23 @@ export const MAX_CUSTOM_CARDS_PER_PLAYER = 50
 export const LOG_MAX_ENTRIES = 200 // capped action log (spec §3) — oldest entries drop first
 
 export const ADDITIONAL_SPAWNS_CAP = 10
+
+// Max vehicles one player may have on their own side of ONE zone. Per zone
+// SIDE, not per board and not per zone: your eight and the enemy's eight are
+// independent, and a full zone 1 says nothing about zone 2.
+//
+// Enforced on the two routes a player CHOOSES to fill a zone with — playing
+// (legalZonesFor) and moving (moveEntry). Spawns, revives and Boarding Party's
+// swap deliberately bypass it, the same latitude spec §7.4 already gives them
+// against every other placement rule ("spawning is not playing"); the swap is
+// net-zero per side anyway.
+//
+// A play whose additionalSpawns would overshoot lands what FITS rather than
+// being refused, so one free slot is the whole condition for playability.
+// That is what keeps legalZonesFor from re-deriving the surge count, which it
+// could not read correctly anyway: the count depends on materials as they
+// stood BEFORE payment (see PLAY_CARD_TO_ZONE's ordering comment).
+export const MAX_VEHICLES_PER_ZONE_SIDE = 8
 export const DOUBLE_UP_MAX_COST = 400_000
 // All for the Cause: "If the vehicle costed more than 250k, summon two
 // instead." Printed materialCost, strictly greater — the same authority every

@@ -1,6 +1,6 @@
 import {
   CHANGE_ORDER_DELAY_TURNS, HERO_POWER_DISTANCE_MOD_M, KEYWORDS,
-  SPAWN_DISTANCE_MAX_M, SPAWN_DISTANCE_MIN_M,
+  MAX_VEHICLES_PER_ZONE_SIDE, SPAWN_DISTANCE_MAX_M, SPAWN_DISTANCE_MIN_M,
 } from '../gameSettings.ts'
 import type { ApplyResult, EngineGame, Side, ZoneCardEntry } from './engineTypes.ts'
 import {
@@ -95,6 +95,18 @@ export function moveEntry(game: EngineGame, actor: Side, instanceId: string, zon
   if (!target || target.id === found.zone.id) return err(400, 'Pick a different zone')
   if (!biomeAllows(found.entry.vehicleType, target.biome)) {
     return err(400, `${found.entry.name} cannot operate in ${target.biome}`)
+  }
+  // The move half of the zone-side cap (gameSettings.MAX_VEHICLES_PER_ZONE_SIDE).
+  // Without it a player could deploy into a spare zone and walk hulls into a
+  // full one, which is the cap in name only.
+  //
+  // Reads the DESTINATION, and does so BEFORE the source removal below — so a
+  // side sitting at the cap can still move hulls OUT, which a check written
+  // against the source (or run after the splice) would have frozen in place.
+  // moveEntry is the single chokepoint for MOVE_VEHICLE and [GT] Monsoon
+  // alike, so both are covered by this one gate.
+  if (target.cards[actor].length >= MAX_VEHICLES_PER_ZONE_SIDE) {
+    return err(400, `Zone ${zoneId} already holds your ${MAX_VEHICLES_PER_ZONE_SIDE}-vehicle limit`)
   }
   found.zone.cards[actor] = found.zone.cards[actor].filter((c) => c.instanceId !== instanceId)
   const entry: ZoneCardEntry = { ...found.entry, movedOnTurn: stampMove ? game.turnNumber : found.entry.movedOnTurn }
