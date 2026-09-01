@@ -13,6 +13,7 @@ import { useGameActions } from './useGameActions'
 import { BoardZone } from './BoardZone'
 import { zoneEffectBadges } from './zoneEffectBadges'
 import { HandBar } from './HandBar'
+import { HAND_RAIL_H } from './handFanLayout'
 import { ZoneActions } from './ZoneActions'
 import { StealthyResponseBar } from './StealthyResponseBar'
 import { BattleOverlay } from './BattleOverlay'
@@ -36,12 +37,17 @@ export function GameBoardPage() {
   const [swapMode, setSwapMode] = useState<SwapMode | null>(null)
   const [liftedCard, setLiftedCard] = useState<CardInstance | null>(null)
   const [confirmingConcede, setConfirmingConcede] = useState(false)
+  const [logOpen, setLogOpen] = useState(false)
   const logRef = useRef<HTMLDivElement>(null)
 
   const state = game?.state as unknown as PublicGameState | undefined
+  // `logOpen` is a dependency, not just log length: the drawer is unmounted
+  // while closed, so the ref is null and this no-ops for every line written in
+  // the meantime. Without it, reopening the drawer shows an old scroll
+  // position with the newest lines below the fold.
   useEffect(() => {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight
-  }, [state?.log.length])
+  }, [state?.log.length, logOpen])
 
   if (isLoading) return <main className="p-8 text-center">Loading game…</main>
   if (!game || !state) {
@@ -223,7 +229,21 @@ export function GameBoardPage() {
   }
 
   return (
-    <main className="mx-auto max-w-6xl p-6">
+    // A fixed-height column that never scrolls. The command strip, hero
+    // powers and hand rail are all `shrink-0`, so the board is the only row
+    // that can give up height — which is what guarantees the hand, the powers
+    // and the materials figures are on screen at every window size, instead of
+    // being the things that fall off the bottom when the board grows.
+    // Full-bleed rather than a centred max-w-6xl column: the hand rail needs
+    // the whole viewport so End turn and the log toggle can sit in the actual
+    // screen corners, clear of the fan. Every row ABOVE the rail re-applies
+    // `mx-auto w-full max-w-6xl` for itself, so only the rail is full width.
+    // `overflow-clip`, NOT `overflow-hidden`: a hidden box is still a SCROLL
+    // container, just one without visible bars. Focusing a hand card (tabbing,
+    // or a click) scrolled it and carried the command strip off the top of the
+    // screen, with no way for the player to bring it back. `clip` creates no
+    // scroll container at all, so that cannot happen.
+    <main className="relative flex h-[100dvh] w-full flex-col overflow-clip px-4 py-3">
       {isActive && (
         <StealthyResponseBar
           // The idle fallback is namespaced. These two are SIBLINGS, and both
@@ -262,57 +282,47 @@ export function GameBoardPage() {
           busy={busy}
         />
       )}
-      {/* Sticky because the board is taller than a viewport: the resource
-          figures were scrolling out of view at exactly the moment a player
-          looks at their hand to decide what they can afford. z-20 keeps it
-          under the lifted hand card (z-50), so a raised card passes over it. */}
-      <header className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-3 rounded border border-ocean-600 bg-ocean-900/95 p-4 backdrop-blur">
-        <div>
-          <h1 className="font-display text-2xl">vs {names?.get(opponentId) ?? '…'}</h1>
-          <p className="text-sm text-ocean-300">Turn {String(game.turn_number)}</p>
-        </div>
+      {/* One line rather than the four-block band this used to be. It no
+          longer needs `sticky` either: the page itself cannot scroll now, so
+          the resource figures can't slide out of view at the moment a player
+          looks at their hand to decide what they can afford. The site NavBar
+          is hidden on this route (App.tsx), so the back link stands in for it. */}
+      <header className="mx-auto flex w-full max-w-6xl shrink-0 flex-wrap items-center gap-x-4 gap-y-1 rounded border border-ocean-600 bg-ocean-900/95 px-3 py-1.5">
+        <Link to="/games" title="Back to your battles" className="text-sm text-ocean-300 hover:text-brass-400">
+          ← Games
+        </Link>
+        <h1 className="font-display text-lg leading-tight">vs {names?.get(opponentId) ?? '…'}</h1>
+        <span className="text-sm text-ocean-300">Turn {String(game.turn_number)}</span>
         <span
-          className={`rounded-full px-3 py-1 font-bold ${
+          className={`rounded-full px-2.5 py-0.5 text-sm font-bold ${
             isMyTurn ? 'bg-brass-400 text-ocean-950' : 'bg-ocean-800 text-ocean-300'
           }`}
         >
           {isMyTurn ? 'Your turn' : 'Their turn'}
         </span>
-        <div className="flex flex-wrap items-center gap-5">
+        <div className="ml-auto flex items-center gap-4">
           <span
-            className={`flex items-center gap-2 text-2xl font-bold ${
+            className={`flex items-center gap-1.5 text-xl font-bold ${
               liftedUnaffordable ? 'text-red-400' : 'text-brass-400'
             }`}
             title={`${state.resources[mySide].materials.toLocaleString()} materials`}
           >
-            <img src={ironIcon} alt="materials" className="h-6 w-6" />
+            <img src={ironIcon} alt="materials" className="h-5 w-5" />
             {shortHandNumber(state.resources[mySide].materials)}
           </span>
-          <span className="text-2xl font-bold text-brass-400">
+          <span className="text-xl font-bold text-brass-400">
             {state.resources[mySide].cp}
-            <span className="ml-1 text-sm font-normal text-ocean-300">CP</span>
+            <span className="ml-1 text-xs font-normal text-ocean-300">CP</span>
           </span>
-          <span className="flex flex-col border-l border-ocean-600 pl-5 text-xs text-ocean-300/60">
+          <span className="flex flex-col border-l border-ocean-600 pl-4 text-[11px] leading-tight text-ocean-300/60">
             <span>Opponent hand: {state.counts[theirSide].hand}</span>
             <span>Opponent deck: {state.counts[theirSide].deck}</span>
           </span>
         </div>
-        <div className="flex gap-2">
-          <button
-            disabled={busy || !isMyTurn || !isActive}
-            onClick={onEndTurn}
-            className="rounded bg-brass-400 px-4 py-2 font-bold text-ocean-950 disabled:opacity-50"
-          >
-            End turn
-          </button>
-          <button disabled={busy || !isActive} onClick={onConcede} className="text-red-400 underline disabled:opacity-50">
-            Concede
-          </button>
-        </div>
       </header>
 
       {state.alertCard && (
-        <div className="mt-3 rounded border border-brass-400 bg-ocean-900/60 p-2 text-center text-sm font-bold text-brass-400">
+        <div className="mx-auto mt-1 w-full max-w-6xl shrink-0 rounded border border-brass-400 bg-ocean-900/60 px-2 py-1 text-center text-sm font-bold text-brass-400">
           ⚠ {state.alertCard.name} revealed by {state.alertCard.side === mySide ? 'you' : 'your opponent'} — effect in
           progress
         </div>
@@ -334,7 +344,14 @@ export function GameBoardPage() {
         onCancelSwap={onCancelSwap}
       />
 
-      <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
+      {/* The one flexible row. `min-h-0` is what lets it actually shrink — a
+          flex child's default `min-height: auto` refuses to go below its
+          content, which would push the hand rail back off the bottom and undo
+          the whole arrangement. The internal scroll is the graceful failure
+          for a window too short even for the budgeted layout (a phone, or a
+          half-height window): the board gives, never the hand. */}
+      <div className="mt-2 min-h-0 flex-1 overflow-y-auto">
+      <div className="mx-auto grid w-full max-w-6xl grid-cols-1 gap-4 md:grid-cols-3">
         {state.zones.map((zone) => (
           <BoardZone
             key={zone.id}
@@ -374,6 +391,7 @@ export function GameBoardPage() {
           </BoardZone>
         ))}
       </div>
+      </div>
 
       <HandBar
         hand={hand}
@@ -391,15 +409,56 @@ export function GameBoardPage() {
         swapMode={swapMode}
         cancelBoardModes={cancelAllModes}
         onLiftedChange={setLiftedCard}
+        leading={
+          <button
+            onClick={() => setLogOpen((v) => !v)}
+            aria-expanded={logOpen}
+            title="Show or hide the battle log"
+            className={`rounded border px-3 py-1.5 text-sm font-bold ${
+              logOpen ? 'border-brass-400 bg-brass-400/20 text-brass-400' : 'border-ocean-600 text-parchment-100'
+            }`}
+          >
+            📜 Battle log
+          </button>
+        }
+        trailing={
+          <div className="flex items-center gap-3">
+            <button disabled={busy || !isActive} onClick={onConcede} className="text-sm text-red-400 underline disabled:opacity-50">
+              Concede
+            </button>
+            <button
+              disabled={busy || !isMyTurn || !isActive}
+              onClick={onEndTurn}
+              className="rounded bg-brass-400 px-4 py-2 font-bold text-ocean-950 disabled:opacity-50"
+            >
+              End turn
+            </button>
+          </div>
+        }
       />
 
-      <h2 className="mt-4 font-display text-xl">Battle log</h2>
-      <div ref={logRef} className="mt-1 h-40 overflow-y-auto rounded border border-ocean-600 bg-ocean-950/60 p-2 text-sm text-ocean-300">
-        {state.log.slice(-30).map((entry, i) => <p key={i}>{entry}</p>)}
-      </div>
+      {/* A drawer rather than a permanent block: at 200px of heading plus box
+          it was the single largest thing on the page that nobody needs in
+          view to take a turn. It floats over the board's bottom-left corner,
+          clear of the hand rail below it. */}
+      {logOpen && (
+        <div
+          className="absolute left-4 z-40 w-[28rem] rounded border border-ocean-600 bg-ocean-950/95 p-2 shadow-plank backdrop-blur"
+          style={{ bottom: HAND_RAIL_H + 20 }}
+        >
+          <p className="mb-1 font-display text-sm text-ocean-300">Battle log</p>
+          <div ref={logRef} className="max-h-56 overflow-y-auto text-sm text-ocean-300">
+            {state.log.slice(-30).map((entry, i) => <p key={i}>{entry}</p>)}
+          </div>
+        </div>
+      )}
 
+      {/* Lifted clear of the hand rail so it cannot cover End turn. */}
       {error && (
-        <div className="fixed bottom-4 right-4 z-40 max-w-sm rounded border border-red-400 bg-ocean-950 p-3 text-red-300 shadow-plank">
+        <div
+          className="fixed right-4 z-40 max-w-sm rounded border border-red-400 bg-ocean-950 p-3 text-red-300 shadow-plank"
+          style={{ bottom: HAND_RAIL_H + 20 }}
+        >
           {error}
         </div>
       )}

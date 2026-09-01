@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
-  RENDERED_CARD_W, WRAPPER_INSET, fanLayout, fanSpan, fanStep,
+  FAN_FLOOR, HAND_RAIL_BUDGET_PX, HAND_RAIL_H, MAX_ANGLE_DEG, MAX_ARC_DROP, MAX_STEP_RATIO,
+  RENDERED_CARD_H, RENDERED_CARD_W, ROTATION_BULGE,
+  WRAPPER_INSET, fanLayout, fanSpan, fanStep,
 } from './handFanLayout'
 
-const WIDTH = 1104 // max-w-6xl (1152) minus the page's p-6 padding
+const WIDTH = 1104 // max-w-6xl (1152) minus the page's px-6 padding
 
 describe('fanStep', () => {
   it('is zero for an empty or single-card hand', () => {
@@ -11,11 +13,63 @@ describe('fanStep', () => {
     expect(fanStep(1, WIDTH)).toBe(0)
   })
   it('caps the spread on a small hand so it stays a fan, not a spaced-out row', () => {
-    // (1104 - 210) / 4 = 223.5 available, but the ratio cap is 0.55 * 210
-    expect(fanStep(5, WIDTH)).toBeCloseTo(115.5, 5)
+    // Derived, not a literal: this assertion is about WHICH of the two terms
+    // wins, and a hardcoded px figure silently stops testing that the moment
+    // REST_SCALE moves.
+    const share = (WIDTH - RENDERED_CARD_W) / 4
+    expect(MAX_STEP_RATIO * RENDERED_CARD_W).toBeLessThan(share)
+    expect(fanStep(5, WIDTH)).toBeCloseTo(MAX_STEP_RATIO * RENDERED_CARD_W, 5)
   })
   it('compresses a large hand to exactly fill the container', () => {
     expect(fanStep(12, WIDTH)).toBeCloseTo((WIDTH - RENDERED_CARD_W) / 11, 5)
+  })
+})
+
+describe('the fan stays inside its box at any hand size', () => {
+  // The page no longer scrolls, so an unbounded fan does not just look
+  // dramatic — it overflows <main>, and a scrollable <main> lets a focused
+  // card carry the command strip off the top of the screen.
+  const SIZES = [1, 2, 5, 8, 12, 20, 40]
+
+  it('never tilts a card past the sweep cap', () => {
+    for (const n of SIZES) {
+      for (const s of fanLayout(n, WIDTH)) {
+        expect(Math.abs(s.angleDeg)).toBeLessThanOrEqual(MAX_ANGLE_DEG)
+      }
+    }
+  })
+  it('never drops a card past the arc cap', () => {
+    for (const n of SIZES) {
+      for (const s of fanLayout(n, WIDTH)) {
+        expect(s.arcY).toBeLessThanOrEqual(MAX_ARC_DROP)
+      }
+    }
+  })
+  it('keeps every card clear of the rail floor, bulge included', () => {
+    // A card rotated about its bottom centre dips ROTATION_BULGE below its own
+    // bottom edge; `bottom` must leave at least that much beneath it.
+    for (const n of SIZES) {
+      for (const s of fanLayout(n, WIDTH)) {
+        expect(s.bottom).toBeGreaterThanOrEqual(ROTATION_BULGE)
+      }
+    }
+  })
+  it('keeps the tallest card inside the rail', () => {
+    for (const n of SIZES) {
+      for (const s of fanLayout(n, WIDTH)) {
+        expect(s.bottom + RENDERED_CARD_H).toBeLessThanOrEqual(HAND_RAIL_H)
+      }
+    }
+  })
+})
+
+describe('the hand rail', () => {
+  // The vertical half of "the hand fits on screen"; fanSpan below is the
+  // horizontal half. laneLayout.test.ts holds the board to the same kind of
+  // budget — between them, the battle screen fits one viewport by arithmetic
+  // rather than by having been eyeballed once.
+  it('rests inside the one-screen budget', () => {
+    expect(HAND_RAIL_H).toBeLessThanOrEqual(HAND_RAIL_BUDGET_PX)
   })
 })
 
@@ -42,7 +96,8 @@ describe('fanLayout', () => {
     // inset further left because it is a full CARD_W box scaled about its
     // bottom centre.
     const expectedLeft = (WIDTH - RENDERED_CARD_W) / 2 - WRAPPER_INSET
-    expect(fanLayout(1, WIDTH)).toEqual([{ left: expectedLeft, angleDeg: 0, arcY: 0 }])
+    // No arc drop, so it rests at the fan's full floor.
+    expect(fanLayout(1, WIDTH)).toEqual([{ left: expectedLeft, angleDeg: 0, arcY: 0, bottom: FAN_FLOOR }])
   })
   it('advances left monotonically', () => {
     const slots = fanLayout(7, WIDTH)

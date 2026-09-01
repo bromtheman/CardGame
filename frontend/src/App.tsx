@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react'
-import { Route, Routes } from 'react-router-dom'
+import { Route, Routes, useMatch } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { AuthProvider, useAuth } from './lib/auth'
 import { supabase } from './lib/supabaseClient'
@@ -49,9 +49,16 @@ function UserMenu() {
 }
 
 export default function App() {
+  // The battle board is the one route that owns the whole viewport: it is a
+  // fixed-height column sized so the board, hand, hero powers and resource
+  // figures all fit without scrolling, and the NavBar's ~65px is the
+  // difference between that fitting on a 1080p screen and not. The board's own
+  // command strip carries a "← Games" link in its place.
+  const onGameBoard = useMatch('/game/:id') !== null
+
   return (
     <AuthProvider>
-      <NavBar right={<UserMenu />} />
+      {!onGameBoard && <NavBar right={<UserMenu />} />}
       <Suspense fallback={<main className="p-12 text-center font-display text-2xl text-ocean-300">Charting a course…</main>}>
         <Routes>
           <Route path="/login" element={<LoginPage />} />

@@ -22,13 +22,29 @@ const ZONE_EFFECT_ICONS: Record<ZoneEffectIcon, string> = {
   shield: shieldIcon,
 }
 
+// With the biome word gone from the panel, these ARE the biome readout — so
+// they carry more contrast than the near-invisible 10% washes they replace. A
+// tinted border does most of the work: a low-opacity fill over a dark navy page
+// barely registers, an edge colour reads at a glance. Deliberately weaker than
+// the solid brass border + ring that marks a legal drop target, so a land zone
+// is never mistaken for a highlighted one.
 const BIOME_TINT: Record<string, string> = {
-  [ZONE_TYPES.WATER]: 'bg-ocean-600/20',
-  [ZONE_TYPES.BEACH]: 'bg-parchment-300/10',
-  [ZONE_TYPES.LAND]: 'bg-brass-400/10',
+  [ZONE_TYPES.WATER]: 'bg-ocean-600/30',
+  [ZONE_TYPES.BEACH]: 'bg-parchment-300/20',
+  [ZONE_TYPES.LAND]: 'bg-brass-400/20',
 }
 
-function HpBar({ label, hp, max, own = true }: { label: string; hp: number; max: number; own?: boolean }) {
+const BIOME_BORDER: Record<string, string> = {
+  [ZONE_TYPES.WATER]: 'border-ocean-300/50',
+  [ZONE_TYPES.BEACH]: 'border-parchment-300/60',
+  [ZONE_TYPES.LAND]: 'border-brass-400/45',
+}
+
+function HpBar({ label, hp, max, own = true, badge }: {
+  label: string; hp: number; max: number; own?: boolean
+  /** That side's LaneCount — it rides the HP row rather than paying for one. */
+  badge?: ReactNode
+}) {
   const clamped = Math.max(0, hp)
   const pct = max > 0 ? Math.max(0, Math.min(100, (clamped / max) * 100)) : 0
   const low = pct < 25
@@ -36,18 +52,20 @@ function HpBar({ label, hp, max, own = true }: { label: string; hp: number; max:
   // own/enemy convention the zone badges below use. Either goes red once the
   // base is nearly down — that matters to both players, whoever benefits.
   const fill = low ? 'bg-red-500' : own ? 'bg-brass-400' : 'bg-ocean-300'
+  // Label, bar and figures share ONE line rather than stacking. Two bars per
+  // panel at 24px each cost the board 48px of the height the viewport-fit pass
+  // was trying to find; inline they cost 32, and read no worse for it.
   return (
-    <div className="w-full">
-      <div className="flex justify-between text-xs text-ocean-300">
-        <span>{label}</span>
-        <span>{shortHandNumber(clamped)} / {shortHandNumber(max)}</span>
-      </div>
-      <div className="h-2 w-full overflow-hidden rounded bg-ocean-950">
+    <div className="flex w-full items-center gap-2 text-[11px] leading-4 text-ocean-300">
+      <span className="shrink-0">{label}</span>
+      <div className="h-2 min-w-0 flex-1 overflow-hidden rounded bg-ocean-950">
         <div
           className={`h-full transition-all duration-500 ${fill}`}
           style={{ width: `${pct}%` }}
         />
       </div>
+      <span className="shrink-0 tabular-nums">{shortHandNumber(clamped)} / {shortHandNumber(max)}</span>
+      {badge}
     </div>
   )
 }
@@ -131,11 +149,21 @@ function VehicleLane({
 // opacity now reads as one more grid line instead of as the boundary between
 // the two fleets. Brass to match the board's own accent, with a centre
 // diamond so the midpoint is unmistakable even on an empty zone.
-function FrontLine() {
+// It also now carries the zone's persistent effect markers. They used to sit in
+// a title row above the panel; that row is gone, and a zone-wide marker belongs
+// on the zone's own centre line as well as anywhere. With no markers this is
+// just the divider, at its original height.
+function FrontLine({ badges }: { badges: ZoneEffectBadge[] }) {
+  const bare = badges.length === 0
   return (
-    <div aria-hidden className="flex items-center gap-2 py-1">
+    // FIXED h-5, badges or not. A row that grew when a zone effect appeared
+    // would shove that zone's lanes down while its neighbours' stayed put —
+    // the same height jump the fixed-slot lane grid exists to prevent.
+    <div aria-hidden={bare} className="flex h-5 items-center gap-2">
       <span className="h-px flex-1 bg-brass-400/30" />
-      <span className="h-1.5 w-1.5 rotate-45 border border-brass-400/70" />
+      {bare
+        ? <span className="h-1.5 w-1.5 rotate-45 border border-brass-400/70" />
+        : <ZoneEffectBadges badges={badges} />}
       <span className="h-px flex-1 bg-brass-400/30" />
     </div>
   )
@@ -148,7 +176,9 @@ function LaneCount({ count, mine }: { count: number; mine: boolean }) {
   return (
     <span
       title={`${mine ? 'Your' : "Opponent's"} vehicles in this zone (limit ${MAX_VEHICLES_PER_ZONE_SIDE})`}
-      className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold tabular-nums ${
+      // leading-4 with no vertical padding: it rides a 16px HP row now, and a
+      // taller badge would grow that row for every zone on the board.
+      className={`inline-flex shrink-0 items-center rounded px-1.5 text-[10px] font-semibold leading-4 tabular-nums ${
         full ? 'bg-red-500/20 text-red-400' : 'bg-ocean-950/60 text-ocean-300'
       }`}
     >
@@ -231,27 +261,35 @@ export function BoardZone({
   return (
     <section
       onClick={onZoneClick}
-      className={`flex flex-col gap-2 rounded border p-3 ${BIOME_TINT[zone.biome] ?? 'bg-ocean-900/20'} ${
-        highlighted ? 'cursor-pointer border-brass-400 ring-2 ring-brass-400' : 'border-ocean-600'
+      // The title row is gone entirely — zone number, biome word and all. The
+      // number was furniture (players point at zones, they don't name them),
+      // and the biome now reads from the panel's own tint and border. Its two
+      // useful tenants moved rather than died: the occupancy counts onto the HP
+      // rows, the effect markers onto the front line. That is 26px of the
+      // board's height back, per panel.
+      title={`${zone.biome} zone`}
+      className={`flex flex-col gap-1.5 rounded border p-2 ${BIOME_TINT[zone.biome] ?? 'bg-ocean-900/20'} ${
+        highlighted
+          ? 'cursor-pointer border-brass-400 ring-2 ring-brass-400'
+          : BIOME_BORDER[zone.biome] ?? 'border-ocean-600'
       }`}
     >
-      <div className="flex flex-wrap items-center gap-2">
-        <p className="font-display text-lg">
-          Zone {zone.id} <span className="text-sm capitalize text-ocean-300">({zone.biome})</span>
-        </p>
-        <ZoneEffectBadges badges={zoneEffectBadgeList ?? []} />
-        {/* Both sides' occupancy, ordered enemy-then-own to match the panel
-            below it. Counts are public state, like base HP. */}
-        <span className="ml-auto flex items-center gap-1">
-          <LaneCount count={zone.cards[theirSide].length} mine={false} />
-          <LaneCount count={zone.cards[mySide].length} mine />
-        </span>
-      </div>
+      {/* Colour alone is not an accessible readout, and the tint is the only
+          visible biome cue left. The `title` above covers a hover; this covers
+          a screen reader. Neither costs a pixel. */}
+      <span className="sr-only">{zone.biome} zone</span>
       {/* Both bases, mirroring the zone's own layout: the enemy above their
           vehicles, yours below yours. Base HP is public state and losing two
           zones loses the game, so a player cannot judge the board without
-          seeing how close the opponent's base is to falling. */}
-      <HpBar label="Enemy base" hp={zone.baseHp[theirSide]} max={maxBaseHp} own={false} />
+          seeing how close the opponent's base is to falling. Each carries its
+          own side's occupancy count. */}
+      <HpBar
+        label="Enemy base"
+        hp={zone.baseHp[theirSide]}
+        max={maxBaseHp}
+        own={false}
+        badge={<LaneCount count={zone.cards[theirSide].length} mine={false} />}
+      />
       <VehicleLane
         entries={zone.cards[theirSide] as ZoneCardEntry[]}
         renderEntry={(c) => {
@@ -272,7 +310,7 @@ export function BoardZone({
           )
         }}
       />
-      <FrontLine />
+      <FrontLine badges={zoneEffectBadgeList ?? []} />
       <VehicleLane
         entries={zone.cards[mySide] as ZoneCardEntry[]}
         renderEntry={(c) => {
@@ -313,7 +351,12 @@ export function BoardZone({
           )
         }}
       />
-      <HpBar label="Your base" hp={zone.baseHp[mySide]} max={maxBaseHp} />
+      <HpBar
+        label="Your base"
+        hp={zone.baseHp[mySide]}
+        max={maxBaseHp}
+        badge={<LaneCount count={zone.cards[mySide].length} mine />}
+      />
       {children && (
         <div onClick={(e) => e.stopPropagation()}>
           {children}

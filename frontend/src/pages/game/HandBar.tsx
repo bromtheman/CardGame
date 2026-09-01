@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import type { CardInstance, PublicGameState } from '@shared/engine/gameInit'
 import type { GameAction, Side } from '@shared/engine/engineTypes'
 import { effectiveCostInGame, effectName, legalZonesFor } from '@shared/engine/index'
@@ -9,7 +9,7 @@ import { PhysicalCard } from '../../components/PhysicalCard'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
 import type { MoveMode, SwapMode } from './HeroPowerBar'
 import {
-  CARD_H, CARD_W, RENDERED_CARD_H, REST_SCALE, fanLayout,
+  CARD_H, CARD_W, HAND_RAIL_H, REST_SCALE, fanLayout,
 } from './handFanLayout'
 
 // A card "has an effect" if any of its meta trigger keys (or costModifier)
@@ -62,6 +62,8 @@ export function HandBar({
   swapMode,
   cancelBoardModes,
   onLiftedChange,
+  leading,
+  trailing,
 }: {
   hand: CardInstance[]
   state: PublicGameState
@@ -86,6 +88,11 @@ export function HandBar({
   // Fires whenever the hovered/focused card changes, so GameBoardPage can
   // tint the materials readout when the lifted card is unaffordable.
   onLiftedChange: (card: CardInstance | null) => void
+  // The rail's two flanks. A five-card fan uses barely half the row, so the
+  // ends are dead space that the battle log toggle (left) and End turn /
+  // Concede (right) now occupy instead of costing the page their own row.
+  leading?: ReactNode
+  trailing?: ReactNode
 }) {
   const [handTargeting, setHandTargeting] = useState<CardInstance | null>(null)
   const [confirmingNoEffectPlay, setConfirmingNoEffectPlay] = useState<CardInstance | null>(null)
@@ -213,14 +220,43 @@ export function HandBar({
     setHandTargeting(null)
   }
 
+  // The three targeting modes are mutually exclusive, so at most one hint is
+  // ever live. It floats above the rail rather than sitting under it: the rail
+  // is a fixed-height row in a page that no longer scrolls, so a hint that
+  // took layout height would push the fan up and clip the cards.
+  const hint = placingCard
+    ? `Choose a highlighted zone for ${placingCard.name}, or click the card again to cancel.`
+    : fieldTargeting
+      ? `Choose a vehicle on the board to target with ${fieldTargeting.name}, or click its Play button again to cancel.`
+      : handTargeting
+        ? `Choose another card in hand to target with ${handTargeting.name}, or click it again to cancel.`
+        : null
+
   return (
-    <div className="mt-4">
-      <h2 className="font-display text-xl">Your hand</h2>
+    <div className="-mx-4 mt-2 flex shrink-0 items-end gap-3">
+      {/* The rail is the one full-bleed row on the page — everything above it
+          is capped at max-w-6xl. `grow basis-0` makes the two flanks share all
+          the leftover viewport, which pushes the controls into the true screen
+          corners and keeps the fan centred between them. That distance is the
+          point: the fan's outermost cards are rotated by up to ~34°, and a
+          rotated card's bounding box is far wider than its face, so it bulges
+          ~60px past the fan's own edge. Flanks that merely reserved a button's
+          width put End turn underneath that bulge.
+
+          `shrink-0` on the flanks and `min-w-0` on the fan settle who gives way
+          on a narrow window: the fan compresses (which it is built to do),
+          never the controls. */}
+      <div className="flex shrink-0 grow basis-0 items-end justify-start pl-4">{leading}</div>
       <div
         ref={fanRef}
-        className="relative mt-2"
-        style={{ height: RENDERED_CARD_H + 16 }}
+        className="relative w-full min-w-0 max-w-5xl"
+        style={{ height: HAND_RAIL_H }}
       >
+        {hint && (
+          <p className="pointer-events-none absolute inset-x-0 bottom-full z-40 mb-1 text-center text-sm text-brass-400">
+            {hint}
+          </p>
+        )}
         {fanLayout(hand.length, fanWidth).map((slot, i) => {
           const c = hand[i]
           const effectiveCost = effectiveCostInGame(state, mySide, c)
@@ -264,7 +300,7 @@ export function HandBar({
                 // with two overlapping cards they alternated. Scaling from a
                 // fixed origin cannot do that, because every point inside the
                 // resting card is still inside the grown one.
-                bottom: -slot.arcY,
+                bottom: slot.bottom,
                 width: CARD_W,
                 height: CARD_H,
                 zIndex: lifted ? 50 : i,
@@ -343,23 +379,11 @@ export function HandBar({
             </div>
           )
         })}
-        {hand.length === 0 && <p className="text-ocean-300">Your hand is empty.</p>}
+        {hand.length === 0 && (
+          <p className="absolute inset-x-0 bottom-8 text-center text-ocean-300">Your hand is empty.</p>
+        )}
       </div>
-      {placingCard && (
-        <p className="mt-1 text-sm text-brass-400">
-          Choose a highlighted zone for {placingCard.name}, or click the card again to cancel.
-        </p>
-      )}
-      {fieldTargeting && (
-        <p className="mt-1 text-sm text-brass-400">
-          Choose a vehicle on the board to target with {fieldTargeting.name}, or click its Play button again to cancel.
-        </p>
-      )}
-      {handTargeting && (
-        <p className="mt-1 text-sm text-brass-400">
-          Choose another card in hand to target with {handTargeting.name}, or click it again to cancel.
-        </p>
-      )}
+      <div className="flex shrink-0 grow basis-0 items-end justify-end pr-4">{trailing}</div>
       <ConfirmDialog
         open={confirmingNoEffectPlay !== null}
         title={`Play ${confirmingNoEffectPlay?.name ?? ''}?`}
