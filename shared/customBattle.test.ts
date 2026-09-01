@@ -11,7 +11,7 @@ import {
   resolveBlueprintPath,
   serializeCustomBattle,
 } from './customBattle.ts'
-import { FACTIONS } from './gameSettings.ts'
+import { FACTIONS, VEHICLE_TYPES } from './gameSettings.ts'
 
 const marauder = { name: 'Marauder', faction: FACTIONS.DWG }
 const bulwark = { name: 'Bulwark', faction: FACTIONS.OW }
@@ -135,6 +135,69 @@ describe('buildCustomBattle', () => {
     )
     expect(file.SpawnDistanceBetweenTeams).toBe(2500)
     expect(file.MaterialsPerTeam).toBe(100000)
+  })
+
+  it('gives each team twice the in-battle resources its own fleet earns', () => {
+    // Spec §3.5 pays in-battle resources per vehicle, at 10% of its material
+    // cost. FtD has no per-craft pool — only StartingMaterial per team — so the
+    // per-craft total is doubled to compensate.
+    const file = buildCustomBattle([
+      { name: 'a', cards: [{ ...marauder, materialCost: 100_000 }, { ...bulwark, materialCost: 55_000 }] },
+      { name: 'b', cards: [{ ...bulwark, materialCost: 30_000 }] },
+    ])
+    // (floor(100000 * 0.1) + floor(55000 * 0.1)) * 2
+    expect(file.Teams[0]!.StartingMaterial).toBe(31_000)
+    expect(file.Teams[1]!.StartingMaterial).toBe(6_000)
+  })
+
+  it('counts a card carrying no material cost as contributing nothing', () => {
+    const file = buildCustomBattle([
+      { name: 'a', cards: [marauder, { ...bulwark, materialCost: 20_000 }] },
+      { name: 'b', cards: [bulwark] },
+    ])
+    expect(file.Teams[0]!.StartingMaterial).toBe(4_000)
+    expect(file.Teams[1]!.StartingMaterial).toBe(0)
+  })
+
+  it('gives each team its own material pool rather than a symmetric one', () => {
+    const file = buildCustomBattle([
+      { name: 'a', cards: [{ ...marauder, materialCost: 100_000 }] },
+      { name: 'b', cards: [{ ...bulwark, materialCost: 30_000 }] },
+    ])
+    expect(file.SymmetricMaterial).toBe(false)
+  })
+
+  it('turns the attacking fleet around so the defenders start facing it', () => {
+    const file = buildCustomBattle([
+      { name: 'a', cards: [marauder], isAttacker: true },
+      { name: 'b', cards: [bulwark] },
+    ])
+    expect(file.Teams[0]!.Blueprints[0]!.SpawnAngle).toBe(180)
+    expect(file.Teams[1]!.Blueprints[0]!.SpawnAngle).toBe(0)
+  })
+
+  it('spawns aircraft at 80 m and everything else at the surface', () => {
+    // Spec §3.5: "surface vessels/subs at surface, aircraft at 80 m, land
+    // vehicles on land".
+    const file = buildCustomBattle([
+      {
+        name: 'air',
+        cards: [
+          { name: 'Zephyr', faction: 'GT', vehicleType: VEHICLE_TYPES.PLANE },
+          { name: 'Monsoon', faction: 'GT', vehicleType: VEHICLE_TYPES.AIRSHIP },
+        ],
+      },
+      {
+        name: 'surface',
+        cards: [
+          { ...marauder, vehicleType: VEHICLE_TYPES.SHIP },
+          { ...bulwark, vehicleType: VEHICLE_TYPES.SUB },
+          { name: 'Land Marauder', faction: 'DWG', vehicleType: VEHICLE_TYPES.TANK },
+        ],
+      },
+    ])
+    expect(file.Teams[0]!.Blueprints.map((b) => b.SpawnAltitude)).toEqual([80, 80])
+    expect(file.Teams[1]!.Blueprints.map((b) => b.SpawnAltitude)).toEqual([0, 0, 0])
   })
 
   it('reproduces the Newtonsoft $type discriminators the game requires', () => {

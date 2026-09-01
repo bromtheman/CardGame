@@ -15,7 +15,7 @@
 //     not filesystem paths — no drive, no extension. That is what makes it safe
 //     to generate these server-side for a machine we know nothing about.
 
-import { FACTIONS } from './gameSettings.ts'
+import { FACTIONS, IN_BATTLE_RESOURCE_RATE, VEHICLE_TYPES } from './gameSettings.ts'
 
 /** Root of the blueprints FtD ships with, as they are addressed inside a battle file. */
 export const BUILT_IN_BLUEPRINT_ROOT = 'Built In/Neter'
@@ -88,6 +88,17 @@ export interface BattleCard {
    * The Onyx Throne → OnyxThrone, Land Marauder → Land_Marauder, Flying Squirrel → FlyingSquirrel).
    */
   blueprintId?: string | null
+  /**
+   * The card's vehicle type, deciding spawn altitude. Aircraft start at
+   * AIRCRAFT_SPAWN_ALTITUDE_M; everything else at the surface.
+   */
+  vehicleType?: string | null
+  /**
+   * EFFECTIVE material cost — HALF_COST already applied, i.e. what
+   * `effectiveMaterialCostOf` returns and what the spawn sheet shows. Feeds the
+   * team's in-battle resource pool. Omitted means the card contributes nothing.
+   */
+  materialCost?: number
 }
 
 export interface BattleTeamInput {
@@ -95,6 +106,8 @@ export interface BattleTeamInput {
   cards: BattleCard[]
   /** Exactly one team should be the player's, or the match runs as a spectated AI fight. */
   isPlayerTeam?: boolean
+  /** The side that declared the battle. Its hulls spawn turned around — see ATTACKER_SPAWN_ANGLE_DEG. */
+  isAttacker?: boolean
 }
 
 export class BlueprintResolutionError extends Error {
@@ -172,6 +185,47 @@ export interface CustomBattleFile {
 }
 
 const NEUTRAL_FLEET_COLORS = ['0,0,0,0', '0,0,0,0', '0,0,0,0', '0,0,0,0']
+
+/** Spec §3.5's spawn sheet: "surface vessels/subs at surface, aircraft at 80 m". */
+export const AIRCRAFT_SPAWN_ALTITUDE_M = 80
+
+/**
+ * Yaw applied to every hull on the attacking side, in degrees.
+ *
+ * Both fleets otherwise spawn facing the same way. Turning the attacker around
+ * leaves the defenders already pointed at the incoming fleet while the attacker
+ * has to come about — the standing advantage defending is meant to carry.
+ */
+export const ATTACKER_SPAWN_ANGLE_DEG = 180
+
+/**
+ * Spec §3.5 awards in-battle resources per vehicle, at IN_BATTLE_RESOURCE_RATE
+ * of its material cost. FtD has no per-craft pool — StartingMaterial is per
+ * TEAM — so the per-craft total is doubled to compensate for the pooling.
+ */
+export const TEAM_RESOURCE_MULTIPLIER = 2
+
+const AIRBORNE_VEHICLE_TYPES: readonly string[] = [VEHICLE_TYPES.AIRSHIP, VEHICLE_TYPES.PLANE]
+
+function spawnAltitudeOf(card: BattleCard): number {
+  const airborne = card.vehicleType != null && AIRBORNE_VEHICLE_TYPES.includes(card.vehicleType)
+  return airborne ? AIRCRAFT_SPAWN_ALTITUDE_M : 0.0
+}
+
+/**
+ * The team's in-battle resource pool.
+ *
+ * Floors per craft before summing, so this matches the per-vehicle figure the
+ * battle overlay's spawn sheet shows a player rather than drifting by a
+ * rounding step from it.
+ */
+function startingMaterialOf(cards: BattleCard[]): number {
+  const perCraftTotal = cards.reduce(
+    (total, card) => total + Math.floor((card.materialCost ?? 0) * IN_BATTLE_RESOURCE_RATE),
+    0,
+  )
+  return perCraftTotal * TEAM_RESOURCE_MULTIPLIER
+}
 
 /**
  * Default rules block, transcribed verbatim from a battle saved in game.
@@ -267,8 +321,8 @@ export function buildCustomBattle(
         return {
           _fileName: path,
           IsInFtd: true,
-          SpawnAngle: 0.0,
-          SpawnAltitude: 0.0,
+          SpawnAngle: team.isAttacker ? ATTACKER_SPAWN_ANGLE_DEG : 0.0,
+          SpawnAltitude: spawnAltitudeOf(card),
           FileName: path,
         }
       }),
@@ -279,14 +333,19 @@ export function buildCustomBattle(
       RowSpacing: 200.0,
       ColumnSpacing: 200.0,
       FleetColors: NEUTRAL_FLEET_COLORS,
-      StartingMaterial: 0.0,
+      StartingMaterial: startingMaterialOf(team.cards),
     })),
     Rules: defaultRules(),
     BlueprintSpawnAngleDefault: 0.0,
     BlueprintSpawnAltitudeDefault: 0.0,
     BoardSectionEast: 0.0,
     BoardSectionNorth: 0.0,
-    SymmetricMaterial: true,
+    // The one value here that deliberately differs from the saved fixture. Each
+    // team's StartingMaterial is derived from its own fleet, so the two sides
+    // genuinely differ; "symmetric" would be a claim that they do not. The save
+    // this schema came from had 0 material on both sides, so it never exercised
+    // this either way.
+    SymmetricMaterial: false,
     MaterialsPerTeam: options.materialsPerTeam ?? 0.0,
     ResourceDrop: 0.0,
     SpawnDistanceBetweenTeams: options.spawnDistanceBetweenTeams ?? 1000.0,
