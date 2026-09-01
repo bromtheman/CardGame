@@ -435,24 +435,41 @@ alongside the registered `costModifier` and, like it, never reaches
 
 ## Captured cards
 
-`takeFromEnemyDeck` (Marauder, Paddlegun, Plunderer clause 2) moves one card out
-of the opponent's deck and stamps `meta.ownerSide` with the side it came from.
-That stamp is what makes a capture a loan rather than a confiscation:
-`discardCard` — the single exit for every card leaving play (battle death,
-Temporary despawn, ability spend, Change Order) — files the card under
-`ownerSideOf(card, controller)`, so it lands in its owner's discard and
-reshuffles back into the deck it was built for. Route any new exit through
-`discardCard`; pushing to `state.destroyed` directly re-opens the hole, and a
-steal every turn grinds the opponent's deck away for good.
+⚠ **The capture model changed on 2026-08-31.** It used to be a *loan*: the card
+was spliced out of the opponent's deck, stamped `meta.ownerSide`, and sent home
+to that owner's discard when it left play. It is now a **copy**, described
+below. `ownerSide` and `ownerSideOf` no longer exist. The loan model is still
+described in the 2026-08-27 effect-coverage design spec (§9.1 and the
+`discardSnapshotOf` notes) — that spec is a record of the wave that shipped it,
+not current behaviour.
 
-Two rules keep the stamp honest:
+`takeFromEnemyDeck` (Marauder, Paddlegun, Plunderer clause 2) **copies** one
+card out of the opponent's deck and stamps the copy `meta.capturedCopy: true`.
+The original never moves, so:
 
-- **A card going home drops the captor's stamps** (`ownerSide`, `costDelta`).
-  Marauder's −50k belongs to the raid, not to the card; riding home it would
-  leave the owner permanently discounted on their own card, and re-stack on the
-  next capture. Printed meta (`additionalSpawns`, …) is card data and stays.
-- **A minted copy is not the captured card.** Exactly one card left the enemy
-  deck, so exactly one goes back; the extra hulls belong to whoever conjured
-  them. Every effect that clones an instance (`additionalSpawns` extras,
-  `clydesdaleEffect`, `loggerheadOnDeath`) passes the source meta through
-  `copyMeta`. New copy-minting effects must do the same.
+- the opponent can still draw it, and their public `counts[side].deck` does not
+  change — the log line ("takes a card from the enemy deck") is the only public
+  signal that a capture happened;
+- the capture repeats freely, and can even take the same card twice;
+- a captured copy is a phantom with no deck to go home to. `discardCard` — the
+  single exit for every card leaving play (battle death, Temporary despawn,
+  ability spend, Change Order) — **destroys it** rather than filing it, exactly
+  as it does a `summonOnly` hull, and for the same reason: a discard is a
+  deck's back door, and filing a phantom there would mint a card that never
+  existed. Route any new exit through `discardCard`; pushing to
+  `state.destroyed` directly re-opens the hole.
+
+Consequences that fall out of "it is never in a pile":
+
+- **A captured copy cannot be revived or recalled.** `canRevive` reports false
+  for it, so a revive choice never offers it, and Recurring Threat can never
+  remember one.
+- **A minted copy is NOT a captured copy.** The extra hulls belong to whoever
+  conjured them and must survive leaving play, so every effect that clones an
+  instance (`additionalSpawns` extras, `clydesdaleEffect`, `loggerheadOnDeath`)
+  passes the source meta through `copyMeta`, which strips `capturedCopy`. New
+  copy-minting effects must do the same.
+- **`costDelta` is still dropped from every card leaving play**, captured or
+  not — that strip is Excalibur's, not the capture model's. Marauder's −50k
+  belongs to the raid, and a card that keeps it would re-stack the discount on
+  every reuse. Printed meta (`additionalSpawns`, …) is card data and stays.

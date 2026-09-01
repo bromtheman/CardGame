@@ -443,21 +443,24 @@ function capturedInBattle() {
 }
 
 describe('captured cards', () => {
-  it("sends a vehicle taken from the enemy deck to its OWNER's discard when it dies", () => {
+  it('destroys a copy killed in battle — it reaches neither discard', () => {
     const game = capturedInBattle()
-    expect(game.state.destroyed.b.map((c) => c.name)).toEqual(['Ironclad'])
     expect(game.state.destroyed.a).toHaveLength(0)
+    expect(game.state.destroyed.b).toHaveLength(0)
   })
 
-  it("does not send the raider's cost discount home with it", () => {
+  it("leaves the raider's discount with the copy it died on", () => {
     const game = capturedInBattle()
-    expect(game.state.destroyed.b[0].meta.costDelta).toBeUndefined()
+    expect(game.state.destroyed.b).toHaveLength(0)
+    expect(game.privates.b.deck[0].meta.costDelta).toBeUndefined()
   })
-  it('puts it back where its owner can draw it again', () => {
+
+  it('never took the original, so its owner can still draw it', () => {
     const game = capturedInBattle()
     const r = applyAction(game, 'alice', { type: 'END_TURN' }, makeCtx())
     if (!r.ok) throw new Error(r.error)
-    // bob's deck was empty — the recycled Ironclad is the card he draws
+    // bob's deck held only the Ironclad the whole time — the copy never
+    // removed it, so it is still the card he draws
     expect(r.game.privates.b.hand.map((c) => c.name)).toEqual(['Ironclad'])
   })
 })

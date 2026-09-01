@@ -40,6 +40,12 @@ export function findVehicle(state: PublicGameState, instanceId: string) {
 export const isSummonOnly = (card: { meta: Record<string, unknown> }): boolean =>
   card.meta.summonOnly === true
 
+// A copy taken out of the enemy deck (Marauder, Paddlegun, Plunderer). The
+// original never moved, so this card has no deck to go home to: it is
+// destroyed when it leaves play. Stamped by takeFromEnemyDeck.
+export const isCapturedCopy = (card: { meta: Record<string, unknown> }): boolean =>
+  card.meta.capturedCopy === true
+
 export const battleFrozen = (state: PublicGameState): boolean =>
   state.awaitingResponse !== null || state.activeBattle !== null || state.pendingReport !== null
 
@@ -175,72 +181,52 @@ export function drawCard(game: EngineGame, side: Side, ctx: EngineContext): void
   game.state.counts[side] = { hand: priv.hand.length, deck: priv.deck.length }
 }
 
-// Which side's discard — and so which side's deck — a card belongs to. A card
-// taken out of the enemy deck (Marauder, Paddlegun, Plunderer) carries
-// `meta.ownerSide`: it is on loan to whoever captured it, and it goes home
-// when it leaves play. Everything else belongs to the side holding it.
-export function ownerSideOf(card: { meta: Record<string, unknown> }, controller: Side): Side {
-  const owner = card.meta.ownerSide
-  return owner === 'a' || owner === 'b' ? owner : controller
-}
-
-// A copy minted off a captured card is a new hull, not the captured card:
-// exactly one card left the enemy deck, so exactly one goes back. Every
-// mint-a-copy effect runs the source card's meta through this, or the copy
-// would go home to a deck it never came out of.
+// A hull minted off a captured copy is a card of the minter's own — it is not
+// itself a capture, so it survives leaving play and reaches its minter's
+// discard like anything else. Every mint-a-copy effect runs the source card's
+// meta through this, or the new hull would inherit the phantom stamp and be
+// destroyed on its way out.
 export function copyMeta(meta: Record<string, unknown>): Record<string, unknown> {
-  if (!('ownerSide' in meta)) return meta
-  const { ownerSide: _ownerSide, ...rest } = meta
+  if (!('capturedCopy' in meta)) return meta
+  const { capturedCopy: _capturedCopy, ...rest } = meta
   return rest
 }
 
-// The one exit every card leaving play takes: into its OWNER's discard, which
-// reshuffleDiscard later feeds back into that owner's deck. Routing a captured
-// card into its captor's pile instead would delete it from its owner's deck
-// for the rest of the game — a steal every turn would grind that deck away.
-//
-// Two stamps are dropped here, for two different reasons. `costDelta` (spec
-// §4.5: a per-instance delta) comes off UNCONDITIONALLY, for every card
-// leaving play, captured or not — reshuffleDiscard mints a fresh instanceId
-// for every returning card, so the instance the delta belonged to no longer
-// exists. Excalibur is the case that makes this matter even without a
-// capture: it discounts a vehicle in the OWNER's own hand, so a conditional
-// strip (only when owner !== controller) would leave that owner permanently
-// discounted on their own card once it dies and reshuffles back — and
-// stacking again on reuse. `ownerSide` is a different concern — whose deck a
-// card goes home to — so it is stripped only when the card is actually going
-// home to an owner other than its controller; a card that was never captured
-// carries no `ownerSide` to strip. Printed meta (`additionalSpawns` and
-// friends) is card data and stays.
 // The snapshot form a card takes on its way out of play: per-entry stamps
-// removed, captor stamps stripped. Extracted so exactly one derivation exists —
-// discardCard writes it, and reviveEntry (shared/engine/battleTriggers.ts)
-// rebuilds it to find which pile entry belongs to a hull it is bringing back.
-// A second, drifting copy of this logic would let a revive remove the wrong
-// snapshot.
-export function discardSnapshotOf(card: CardInstance, controller: Side): SnapshotCard {
+// removed. Extracted so exactly one derivation exists — discardCard writes it,
+// and reviveEntry (shared/engine/battleTriggers.ts) rebuilds it to find which
+// pile entry belongs to a hull it is bringing back. A second, drifting copy of
+// this logic would let a revive remove the wrong snapshot.
+//
+// It takes no side, because a card leaving play only ever reaches its own
+// controller's discard. `costDelta` (spec §4.5: a per-instance delta) is
+// dropped here for every card — reshuffleDiscard mints a fresh instanceId for
+// every returning card, so the instance the delta belonged to no longer
+// exists. Excalibur is the case that makes this matter: it discounts a vehicle
+// in its owner's own hand, so leaving the stamp on would make that owner
+// permanently discounted on their own card once it dies and reshuffles back —
+// and stack again on every reuse. Printed meta (`additionalSpawns` and
+// friends) is card data and stays.
+export function discardSnapshotOf(card: CardInstance): SnapshotCard {
   // Every per-entry stamp must be named here. TypeScript does NOT catch one you
   // forget — extra properties in a rest spread are legal — so it would ride
   // into state.destroyed and, via reshuffleDiscard, into a deck.
   const {
     instanceId: _instanceId, playedOnTurn: _p, movedOnTurn: _m, activatedOnTurn: _a, ...snapshot
   } = card as ZoneCardEntry
-  const owner = ownerSideOf(card, controller)
   const { costDelta: _costDelta, ...withoutCostDelta } = snapshot.meta
   snapshot.meta = withoutCostDelta
-  if (owner !== controller) {
-    const { ownerSide: _ownerSide, ...meta } = snapshot.meta
-    snapshot.meta = meta
-  }
   return snapshot as SnapshotCard
 }
 
 export function discardCard(game: EngineGame, controller: Side, card: CardInstance): void {
-  // Summon-only cards are spawned, never drafted (spec §7.1). They must never
-  // reach a discard, because that is a deck's back door. This is the single
-  // exit out of play, so guarding it here covers every path at once.
-  if (isSummonOnly(card)) return
-  game.state.destroyed[ownerSideOf(card, controller)].push(discardSnapshotOf(card, controller))
+  // Two kinds of card must never reach a discard, because that is a deck's
+  // back door. Summon-only cards are spawned, never drafted (spec §7.1). A
+  // captured copy was never in the captor's deck and never left its owner's,
+  // so filing it anywhere would mint a card that did not exist. This is the
+  // single exit out of play, so guarding both here covers every path at once.
+  if (isSummonOnly(card) || isCapturedCopy(card)) return
+  game.state.destroyed[controller].push(discardSnapshotOf(card))
 }
 
 export function checkVictory(game: EngineGame): void {

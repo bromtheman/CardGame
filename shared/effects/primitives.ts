@@ -6,9 +6,9 @@ import { drawCard, findVehicle, otherSide } from '../engine/gameEngine.ts'
 import { canRevive, reviveEntry, sacrificeEntry } from '../engine/battleTriggers.ts'
 import type { EffectFn, EffectPayload } from './registry.ts'
 
-// Move one card from the enemy's deck into the actor's hand. The log line
-// must not name it — it is going into a hidden hand. A fresh instanceId is
-// minted because the card is changing owners.
+// Copy one card out of the enemy's deck into the actor's hand. The log line
+// must not name it — it is going into a hidden hand. The copy gets a fresh
+// instanceId; the original is left where it is.
 export function takeFromEnemyDeck(
   game: EngineGame, actor: Side, ctx: EngineContext,
   filter?: (card: CardInstance) => boolean,
@@ -20,15 +20,19 @@ export function takeFromEnemyDeck(
     game.state.log.push(`Player ${actor.toUpperCase()} finds nothing to take from the enemy deck`)
     return true
   }
-  const [card] = deck.splice(index, 1)
-  // Stamped with where it came from: a captured card is on loan, and every
-  // exit out of play (discardCard) sends it home to the deck it was built
-  // into instead of confiscating it into the captor's.
+  const card = deck[index]
+  // A capture COPIES. The original stays in the deck it was built into, so its
+  // owner can still draw it and a repeated steal cannot grind their deck away.
+  // The copy is a phantom with no home: `capturedCopy` tells discardCard
+  // (shared/engine/gameEngine.ts) to destroy it outright when it leaves play,
+  // rather than file it into a discard — which is a deck's back door.
   game.privates[actor].hand.push({
-    ...card, instanceId: ctx.newId(), meta: { ...card.meta, ownerSide: enemy },
+    ...card, instanceId: ctx.newId(), meta: { ...card.meta, capturedCopy: true },
   })
+  // Only the captor's hand count moves. The enemy's deck count is deliberately
+  // left alone because nothing left their deck — so the capture is invisible
+  // in the public counts, and the log line below is its only public signal.
   game.state.counts[actor].hand = game.privates[actor].hand.length
-  game.state.counts[enemy].deck = deck.length
   game.state.log.push(`Player ${actor.toUpperCase()} takes a card from the enemy deck`)
   return true
 }

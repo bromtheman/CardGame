@@ -635,16 +635,18 @@ describe('wave 2 — board spawns', () => {
 })
 
 describe('clydesdaleEffect on a captured hull', () => {
-  it('spawns its second hull for the captor, not the deck it came from', () => {
+  // The captured copy stays a phantom; the hull it spawns is the captor's own
+  // card and must not inherit the stamp, or it would evaporate on death too.
+  it('spawns its second hull unstamped, while the captured copy keeps its stamp', () => {
     const card = inst({
       name: 'Clydesdale', vehicleType: 'ship', materialCost: 0,
-      meta: { onPlayEffect: 'clydesdaleEffect', ownerSide: 'b' },
+      meta: { onPlayEffect: 'clydesdaleEffect', capturedCopy: true },
     })
     const game = makeGame({ privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } } })
     const r = applyAction(game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx())
     if (!r.ok) throw new Error(r.error)
     const hulls = r.game.state.zones[0].cards.a
-    expect(hulls.map((c) => c.meta.ownerSide)).toEqual(['b', undefined])
+    expect(hulls.map((c) => c.meta.capturedCopy)).toEqual([true, undefined])
   })
 })
 
@@ -1772,7 +1774,7 @@ describe('wave 4 — battle triggers at resolve', () => {
   // Puts `entry` in the discard exactly as DECIDE_BATTLE_REPORT would, so a
   // revive has a real snapshot to pull back out.
   function bury(game: EngineGame, side: 'a' | 'b', entry: ReturnType<typeof zoneEntry>) {
-    game.state.destroyed[side].push(discardSnapshotOf(entry, side))
+    game.state.destroyed[side].push(discardSnapshotOf(entry))
   }
 
   describe('sacrilegoBattle', () => {

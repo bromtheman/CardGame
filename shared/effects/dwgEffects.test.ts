@@ -5,7 +5,7 @@ import { inst, makeCtx, makeGame, snap, zoneEntry } from '../engine/testFixtures
 import { applyAction, declareForcedBattle } from '../engine/index.ts'
 
 describe('marauderOnPlay', () => {
-  it('takes a vehicle from the enemy deck and discounts it by 50k', () => {
+  it('skips past a non-vehicle to the first vehicle, without naming it in the log', () => {
     const game = makeGame()
     game.privates.b.deck.push(
       inst({ name: 'Enemy Ability', type: 'ability' }),
@@ -15,8 +15,6 @@ describe('marauderOnPlay', () => {
     const ok = effectFor('marauderOnPlay')!({ game, actor: 'a', card: inst(), ctx: makeCtx() })
     expect(ok).toBe(true)
     expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Enemy Ship'])
-    expect(game.privates.a.hand[0].meta.costDelta).toBe(-50_000)
-    expect(game.state.counts.b.deck).toBe(1)
     expect(game.state.log.join(' ')).not.toContain('Enemy Ship')
   })
 
@@ -873,19 +871,65 @@ describe('DWG Waters clauses 2 and 3', () => {
   })
 })
 
+// The whole loop the copy model exists to support, walked end to end: capture,
+// play, lose the copy, capture again — with the enemy's own card never leaving
+// their deck at any point. The unit tests pin each step; this pins that the
+// steps compose and that the cycle is repeatable.
+describe('the capture loop repeats, and the enemy keeps their card throughout', () => {
+  it('survives capture → play → death → capture again', () => {
+    const ctx = makeCtx()
+    const game = makeGame()
+    game.privates.b.deck.push(
+      inst({ name: 'Loot', type: 'vehicle', keywords: ['temporary'], materialCost: 10_000 }),
+      inst({ name: 'Filler', type: 'vehicle', materialCost: 10_000 }),
+    )
+    game.state.counts.b.deck = 2
+    const marauder = () =>
+      effectFor('marauderOnPlay')!({ game, actor: 'a', card: inst(), ctx })
+    const deckOfB = () => game.privates.b.deck.map((c) => c.name)
+
+    // 1. capture
+    marauder()
+    expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Loot'])
+    expect(deckOfB()).toEqual(['Loot', 'Filler'])   // 2. the original never moved
+
+    // 3. play the copy, then let Temporary cull it at end of turn
+    const copy = game.privates.a.hand.pop()!
+    game.state.counts.a.hand = 0
+    game.state.zones[0].cards.a.push(zoneEntry({ ...copy, playedOnTurn: 2 }))
+    const r = applyAction(game, 'alice', { type: 'END_TURN' }, ctx)
+    if (!r.ok) throw new Error(r.error)
+
+    // 4. the copy is gone from the board and from BOTH discards
+    expect(r.game.state.zones[0].cards.a).toEqual([])
+    expect(r.game.state.destroyed.a).toEqual([])
+    expect(r.game.state.destroyed.b).toEqual([])
+
+    // 5. bob DRAWS the very card alice copied — the capture never denied it
+    //    to him, which is the whole point of the copy model
+    const again = r.game
+    expect(again.privates.b.hand.map((c) => c.name)).toEqual(['Loot'])
+    expect(again.privates.b.deck.map((c) => c.name)).toEqual(['Filler'])
+
+    // 6. and the loop runs again, off whatever is left of his deck
+    expect(effectFor('marauderOnPlay')!({ game: again, actor: 'a', card: inst(), ctx })).toBe(true)
+    expect(again.privates.a.hand.map((c) => c.name)).toEqual(['Filler'])
+    expect(again.privates.b.deck.map((c) => c.name)).toEqual(['Filler'])
+  })
+})
+
 describe('captured cards mint copies for their captor', () => {
-  // A copy is a new hull, not the captured card: exactly one card left the
-  // enemy deck and exactly one goes back. A copy that inherited the capture
-  // stamp would hand the free Loggerhead to the raided player's discard the
-  // moment it died.
+  // A hull minted off a captured copy is a card of the minter's own. A copy
+  // that inherited the phantom stamp would be destroyed the moment it left
+  // play, so the captor would never get the free Loggerhead back.
   it('shuffles the free Loggerhead copy in unstamped', () => {
     const game = makeGame()
     const dying = zoneEntry({
-      name: 'Loggerhead', materialCost: 80_000, meta: { ownerSide: 'b' },
+      name: 'Loggerhead', materialCost: 80_000, meta: { capturedCopy: true },
     })
     effectFor('loggerheadOnDeath')!({ game, actor: 'a', card: dying, ctx: makeCtx() })
     expect(game.privates.a.deck).toHaveLength(1)
-    expect(game.privates.a.deck[0].meta.ownerSide).toBeUndefined()
+    expect(game.privates.a.deck[0].meta.capturedCopy).toBeUndefined()
   })
 })
 
@@ -1072,5 +1116,48 @@ describe('wave 5 — Ongoing Attrition', () => {
     const r = applyAction(struck.game, 'alice', { type: 'END_TURN' }, attritionCtx())
     if (!r.ok) throw new Error(r.error)
     expect(r.game.privates.a.hand).toHaveLength(0)
+  })
+})
+
+// All three enemy-deck effects go through takeFromEnemyDeck, so all three
+// inherit the copy model. Pinned per card so a future branch in one of them
+// cannot quietly revert to moving the card.
+describe('enemy-deck capture is a copy, for all three cards', () => {
+  it('marauderOnPlay copies a vehicle, discounts it 50k, and leaves the deck intact', () => {
+    const game = makeGame()
+    game.privates.b.deck.push(
+      inst({ name: 'Enemy Ability', type: 'ability' }),
+      inst({ name: 'Enemy Ship', type: 'vehicle', materialCost: 200_000 }),
+    )
+    game.state.counts.b.deck = 2
+    effectFor('marauderOnPlay')!({ game, actor: 'a', card: inst(), ctx: makeCtx() })
+    expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Enemy Ship'])
+    expect(game.privates.a.hand[0].meta.costDelta).toBe(-50_000)
+    expect(game.privates.a.hand[0].meta.capturedCopy).toBe(true)
+    expect(game.privates.b.deck.map((c) => c.name)).toEqual(['Enemy Ability', 'Enemy Ship'])
+    expect(game.state.counts.b.deck).toBe(2)
+  })
+
+  it('paddlegunEffect copies, leaving the deck intact', () => {
+    const game = makeGame()
+    game.privates.b.deck.push(inst({ name: 'Enemy Secret' }))
+    game.state.counts.b.deck = 1
+    effectFor('paddlegunEffect')!({ game, actor: 'a', card: inst(), ctx: makeCtx() })
+    expect(game.privates.a.hand[0].meta.capturedCopy).toBe(true)
+    expect(game.privates.b.deck.map((c) => c.name)).toEqual(['Enemy Secret'])
+    expect(game.state.counts.b.deck).toBe(1)
+  })
+
+  it('plundererRaid copies, leaving the deck intact', () => {
+    const game = makeGame()
+    game.privates.b.deck.push(inst({ name: 'Enemy Secret' }))
+    game.state.counts.b.deck = 1
+    effectFor('plundererRaid')!({
+      game, actor: 'a', card: inst(), ctx: makeCtx(),
+      battle: { survived: true, won: true, zoneId: 1 },
+    })
+    expect(game.privates.a.hand[0].meta.capturedCopy).toBe(true)
+    expect(game.privates.b.deck.map((c) => c.name)).toEqual(['Enemy Secret'])
+    expect(game.state.counts.b.deck).toBe(1)
   })
 })

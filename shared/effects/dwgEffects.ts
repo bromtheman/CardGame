@@ -231,8 +231,9 @@ const RECURRING_THREAT = 'recurringThreatEffect'
 // is_built_in only: a name-based lookup would fail for exactly the custom
 // hulls a DWG player is likeliest to have designed. The stored value is
 // discardSnapshotOf — the one derivation discardCard itself writes — so the
-// remembered hull arrives already stripped of costDelta and of a captor's
-// ownerSide.
+// remembered hull arrives already stripped of costDelta. A captured copy can
+// never be remembered here at all: discardCard destroys it instead of filing
+// a snapshot, so it has no wreck to call back.
 //
 // { needsCatalog: true } is still required, and not for the summon: the rider
 // dispatch mints this card's own payload card from ctx.catalog by name.
@@ -261,9 +262,9 @@ const recurringThreatOffer = choice({
     // The battle may have gone while the choice sat open.
     if (!battle || battle.zoneId !== zoneId) return false
     // No copyMeta here, and that is deliberate rather than an omission: the
-    // stored snapshot came from discardSnapshotOf, which already stripped a
-    // captor's ownerSide (and costDelta) on the way in. A second strip would
-    // be unreachable code no test could tell from its absence.
+    // stored snapshot came from discardSnapshotOf, and a captured copy never
+    // reaches that function — discardCard destroys it first — so no
+    // capturedCopy stamp can be present to strip.
     const hull = mintHull(game, ctx, snapshot)
     if (!joinBattle(game, actor, hull.instanceId, hull)) return false
     game.state.log.push(`${card.name} calls ${hull.name} back to the fight in zone ${zoneId}`)
@@ -308,7 +309,7 @@ function recurringThreatPlay(payload: EffectPayload): boolean {
   game.state.zoneEffects.push({
     effect: RECURRING_THREAT, zoneId: zone.id, side: actor, cardName: card.name,
     setOnTurn: game.turnNumber, // no expiresOnTurn: "for the rest of the game"
-    data: { summon: discardSnapshotOf(entry, actor) },
+    data: { summon: discardSnapshotOf(entry) },
   })
   discardCard(game, actor, entry)
   game.state.log.push(

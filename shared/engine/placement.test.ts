@@ -806,10 +806,10 @@ describe('resourceSurge — the extra hull', () => {
 })
 
 describe('captured cards', () => {
-  // Paddlegun takes whatever sits on top of the enemy deck, abilities
+  // Paddlegun copies whatever sits on top of the enemy deck, abilities
   // included, and an ability leaves play down a different exit than a
-  // vehicle (spendCard, not a battle death). It is on loan just the same.
-  it("spends a captured ability card into its OWNER's discard", () => {
+  // vehicle (spendCard, not a battle death). It is destroyed just the same.
+  it('spends a captured ability copy into neither discard, leaving the original', () => {
     const g = makeGame()
     g.privates.b.deck.push(inst({ name: 'Enemy Order', type: 'ability', vehicleType: null, materialCost: 0 }))
     g.state.counts.b.deck = 1
@@ -817,13 +817,14 @@ describe('captured cards', () => {
     const card = g.privates.a.hand[0]
     const r = applyAction(g, 'alice', { type: 'PLAY_ABILITY_CARD', instanceId: card.instanceId }, makeCtx())
     if (!r.ok) throw new Error(r.error)
-    expect(r.game.state.destroyed.b.map((c) => c.name)).toEqual(['Enemy Order'])
     expect(r.game.state.destroyed.a).toHaveLength(0)
+    expect(r.game.state.destroyed.b).toHaveLength(0)
+    expect(r.game.privates.b.deck.map((c) => c.name)).toEqual(['Enemy Order'])
   })
 })
 
 describe('captured cards spawn hulls for their captor', () => {
-  it("keeps a captured card's own hull on loan but not the extras it spawns", () => {
+  it("keeps the captured copy's stamp on its own hull but not on the extras", () => {
     const g = makeGame()
     g.privates.b.deck.push(inst({
       name: 'Swarm', vehicleType: 'ship', materialCost: 0, meta: { additionalSpawns: 1 },
@@ -835,7 +836,7 @@ describe('captured cards spawn hulls for their captor', () => {
     if (!r.ok) throw new Error(r.error)
     const hulls = r.game.state.zones[0].cards.a
     expect(hulls).toHaveLength(2)
-    expect(hulls.map((c) => c.meta.ownerSide)).toEqual(['b', undefined])
+    expect(hulls.map((c) => c.meta.capturedCopy)).toEqual([true, undefined])
   })
 })
 

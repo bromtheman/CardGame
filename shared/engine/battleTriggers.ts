@@ -3,7 +3,7 @@ import type { CardInstance, SnapshotCard, ZoneEffect } from './gameInit.ts'
 import type {
   BattleCasualty, BattleContext, EngineContext, EngineGame, Side, ZoneCardEntry,
 } from './engineTypes.ts'
-import { discardCard, discardSnapshotOf, otherSide, ownerSideOf, zoneById } from './gameEngine.ts'
+import { discardCard, discardSnapshotOf, otherSide, zoneById } from './gameEngine.ts'
 import { BYSTANDER_EFFECTS, DEPLOY_WATCHER_EFFECTS, effectFor, effectName } from '../effects/registry.ts'
 
 // DP2 (spec §4.3, and its seven "DP2 departure" subsections). This module owns
@@ -376,8 +376,8 @@ function sameSnapshot(a: SnapshotCard, b: SnapshotCard): boolean {
 }
 
 function discardIndexOf(game: EngineGame, side: Side, entry: ZoneCardEntry): number {
-  const pile = game.state.destroyed[ownerSideOf(entry, side)]
-  const wanted = discardSnapshotOf(entry, side)
+  const pile = game.state.destroyed[side]
+  const wanted = discardSnapshotOf(entry)
   const exact = pile.findIndex((c) => sameSnapshot(c, wanted))
   return exact >= 0 ? exact : pile.findIndex((c) => c.cardId === entry.cardId)
 }
@@ -400,7 +400,7 @@ export function reviveEntry(
   if (!zone) return false
   const index = discardIndexOf(game, side, entry)
   if (index < 0) return false
-  game.state.destroyed[ownerSideOf(entry, side)].splice(index, 1)
+  game.state.destroyed[side].splice(index, 1)
   zone.cards[side].push(entry)
   return true
 }
