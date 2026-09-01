@@ -37,9 +37,10 @@ export function effectiveMaterialCostOf(card: { materialCost: number; keywords: 
 //   U-2  `Math.ceil`, matching repairCostOf, the other player-facing charge.
 //        Every real card's 15% is exact to the hundred, so this too is pinned
 //        by a fixture rather than by data.
-//   U-4  whoever CONTROLS the hull pays. `ownerSideOf` decides whose DECK a
-//        captured card returns to, never who feeds it. Battle summons never
-//        enter zone.cards and so never appear here at all (spec §4.4).
+//   U-4  whoever CONTROLS the hull pays. `capturedCopy` decides what happens
+//        when a captured card LEAVES play, never who feeds it while it is on
+//        the board. Battle summons never enter zone.cards and so never appear
+//        here at all (spec §4.4).
 //
 // Returns the gross total; the caller owns the clamp (U-3).
 export function upkeepOwedBy(state: PublicGameState, side: Side): number {

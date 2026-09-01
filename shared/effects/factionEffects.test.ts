@@ -642,16 +642,18 @@ describe('wave 2 — board spawns', () => {
 })
 
 describe('clydesdaleEffect on a captured hull', () => {
-  it('spawns its second hull for the captor, not the deck it came from', () => {
+  // The captured copy stays a phantom; the hull it spawns is the captor's own
+  // card and must not inherit the stamp, or it would evaporate on death too.
+  it('spawns its second hull unstamped, while the captured copy keeps its stamp', () => {
     const card = inst({
       name: 'Clydesdale', vehicleType: 'ship', materialCost: 0,
-      meta: { onPlayEffect: 'clydesdaleEffect', ownerSide: 'b' },
+      meta: { onPlayEffect: 'clydesdaleEffect', capturedCopy: true },
     })
     const game = makeGame({ privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } } })
     const r = applyAction(game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx())
     if (!r.ok) throw new Error(r.error)
     const hulls = r.game.state.zones[0].cards.a
-    expect(hulls.map((c) => c.meta.ownerSide)).toEqual(['b', undefined])
+    expect(hulls.map((c) => c.meta.capturedCopy)).toEqual([true, undefined])
   })
 })
 
@@ -1779,7 +1781,7 @@ describe('wave 4 — battle triggers at resolve', () => {
   // Puts `entry` in the discard exactly as DECIDE_BATTLE_REPORT would, so a
   // revive has a real snapshot to pull back out.
   function bury(game: EngineGame, side: 'a' | 'b', entry: ReturnType<typeof zoneEntry>) {
-    game.state.destroyed[side].push(discardSnapshotOf(entry, side))
+    game.state.destroyed[side].push(discardSnapshotOf(entry))
   }
 
   describe('sacrilegoBattle', () => {
@@ -4739,14 +4741,14 @@ describe('TG Alarmed — sacrifice a friendly AI vehicle (wave 7)', () => {
   })
 
   // ✅ sacrificeEntry routes through discardCard, the single exit out of play,
-  // so a captured hull still goes home to the deck it came from.
-  it('sends a captured hull home to its owner’s discard', () => {
+  // so a captured copy is destroyed rather than filed into anyone's discard.
+  it('destroys a captured copy rather than filing it into either discard', () => {
     const { game, card } = armed()
-    findVehicle(game.state, 'ai2')!.entry.meta = { ownerSide: 'b' }
+    findVehicle(game.state, 'ai2')!.entry.meta = { capturedCopy: true }
     const done = applyAction(play(game, card), 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'ai2' }, makeCtx())
     if (!done.ok) throw new Error(done.error)
-    expect(done.game.state.destroyed.b.map((c) => c.name)).toContain('Ally Two')
     expect(done.game.state.destroyed.a.map((c) => c.name)).not.toContain('Ally Two')
+    expect(done.game.state.destroyed.b.map((c) => c.name)).not.toContain('Ally Two')
   })
 
   // A Curiosity-style additionalSpawns copy is placed by the same call, so it
@@ -4874,15 +4876,16 @@ describe('TG Horror — a self-copy on surviving a battle (wave 7)', () => {
     expect(game.state.zones[0].cards.a[1].keywords).toContain(KEYWORDS.SCRAPPY)
   })
 
-  // ⚠ Every copy-minting effect runs the source meta through copyMeta, or a
-  // captured hull's copy goes home to a deck it never came from.
-  it('runs the source meta through copyMeta, so a captured Horror’s copy is not on loan', () => {
+  // ⚠ Every copy-minting effect runs the source meta through copyMeta, or the
+  // new hull inherits the phantom stamp and is destroyed the moment it leaves
+  // play — the captor would never keep the Horror it spawned.
+  it('runs the source meta through copyMeta, so a captured Horror’s copy is a real card', () => {
     const game = makeGame({ turnNumber: 3 })
-    const entry = horrorEntry({ meta: { onBattleEffect: 'horrorBattle', ownerSide: 'b' } })
+    const entry = horrorEntry({ meta: { onBattleEffect: 'horrorBattle', capturedCopy: true } })
     game.state.zones[0].cards.a.push(entry)
     fire(game, entry)
     const copy = game.state.zones[0].cards.a[1]
-    expect(copy.meta.ownerSide).toBeUndefined()
+    expect(copy.meta.capturedCopy).toBeUndefined()
     expect(copy.meta.onBattleEffect).toBe('horrorBattle')
   })
 
@@ -4994,11 +4997,16 @@ describe('TG Nostalgia — back to hand instead of the discard (wave 7)', () => 
     expect((returned as Record<string, unknown>).movedOnTurn).toBeUndefined()
   })
 
-  it('a captured Nostalgia keeps its ownerSide, so it still goes home later', () => {
-    const game = loseBattle(nostalgia({ meta: { onDeathEffect: 'nostalgiaOnDeath', ownerSide: 'b' } }))
-    const returned = game.privates.a.hand.find((c) => c.name === 'Nostalgia')
-    expect(returned?.meta.ownerSide).toBe('b')
+  // Nostalgia's mechanism is route (a): UNDO the discard. A captured copy
+  // never makes a discard entry to undo — discardCard destroys it outright —
+  // so returnToHand finds nothing and the copy is simply gone. No special
+  // case implements this; it falls out of the single exit.
+  it('a captured Nostalgia copy dies for good — there is no discard entry to undo', () => {
+    const game = loseBattle(nostalgia({ meta: { onDeathEffect: 'nostalgiaOnDeath', capturedCopy: true } }))
+    expect(game.privates.a.hand.map((c) => c.name)).not.toContain('Nostalgia')
+    expect(game.state.destroyed.a.map((c) => c.name)).not.toContain('Nostalgia')
     expect(game.state.destroyed.b.map((c) => c.name)).not.toContain('Nostalgia')
+    expect(game.state.zones[0].cards.a).toHaveLength(0)
   })
 
   // ⚠ THE THREE DIVERGENCES. Route (a) undoes the discard and nothing else, so
