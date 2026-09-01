@@ -10,6 +10,8 @@ import {
 } from '@shared/gameSettings'
 import { shortHandNumber } from '@shared/format'
 
+import { LaunchInFtdButton } from './LaunchInFtdButton'
+
 type Battle = NonNullable<PublicGameState['activeBattle']>
 type Report = NonNullable<PublicGameState['pendingReport']>
 interface Participant { entry: ZoneCardEntry; side: Side; isSummon: boolean }
@@ -394,10 +396,13 @@ export function BattleOverlay({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ocean-950/80 p-4">
       <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-xl border-2 border-brass-400 bg-ocean-900 p-6 shadow-plank">
-        <h2 className="font-display text-2xl">
-          Fleet battle — Zone {battle.zoneId}
-          {zone && <span className="text-base capitalize text-ocean-300"> ({zone.biome})</span>}
-        </h2>
+        <div className="flex items-start justify-between gap-4">
+          <h2 className="font-display text-2xl">
+            Fleet battle — Zone {battle.zoneId}
+            {zone && <span className="text-base capitalize text-ocean-300"> ({zone.biome})</span>}
+          </h2>
+          <LaunchInFtdButton state={state} />
+        </div>
         <p className="mt-1 text-sm text-ocean-300">
           Spawn distance: <span className="font-bold text-parchment-100">{battle.distanceM} m</span>
         </p>
