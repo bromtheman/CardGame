@@ -9,14 +9,35 @@ Game", ref `wpgsjnjnvykxavaxibld`, operated through the Supabase MCP tools
 
 ## Edge functions
 
-Three functions, all deployed with `verify_jwt: false` — each does its own
-`getUser()` auth check and CORS handling in code. Do not "fix" that flag.
+Four functions, all deployed with `verify_jwt: false` — each does its own
+CORS handling in code, and three of them their own `getUser()` auth check. Do
+not "fix" that flag.
 
 | Function | Role |
 |---|---|
 | `game-action` | All in-game actions: auth → body/version validation → `normalizeState` → conditional catalog probe → `applyAction` → `apply_action_tx` RPC |
 | `lobby-action` | JOIN/LEAVE/START; START validates decks, builds initial game state, stamps `factions` |
 | `create-card` | Custom card creation with validation + image handling |
+| `battle-report` | Prefill from the FtD mod: `issue`/`fetch` (browser, JWT) and `submit` (the mod, **token only**) |
+
+- ⚠ **`battle-report` is the one function where a caller with no Supabase
+  session is expected.** Its `submit` op deliberately never calls
+  `auth.getUser()` — a C# mod inside From The Depths has no session and must
+  never be given one. It authenticates with a hashed, single-use,
+  battle-scoped token minted by `issue` and embedded in the generated
+  `.customBattle`. Every way a token can fail answers with **one opaque 401**,
+  so an unauthenticated caller cannot probe which tokens exist; do not make
+  those messages more specific.
+
+  It **stores a prefill and changes no game state**, which is the property the
+  whole design rests on: a human still submits, and the other captain still
+  approves (`DECIDE_BATTLE_REPORT`'s `actor === report.submittedBy` 403). Do
+  not extend it into submitting or approving. Background:
+  `docs/superpowers/plans/2026-09-01-battle-result-reporting.md`.
+
+  It syncs ONE shared file (`battleReport.ts`) because it dispatches no action
+  and so needs neither registry — which is also why it does not know the
+  battle roster, and does not need to.
 
 - Version-check contract: client sends `expectedVersion`; RPC returns `null` on
   mismatch → function returns **409** → client refetches. Errors come back as
@@ -72,7 +93,9 @@ and refreshed by `npm run functions:sync`
 - Engine internals (`engineTypes.ts`, `gameEngine.ts`, `placement.ts`, battle
   modules, `effects/*`) sync into **game-action only**. `lobby-action` gets just
   settings/types/deckValidation/gameInit — so `gameInit.ts` must never import
-  `engineTypes.ts`.
+  `engineTypes.ts`. `battle-report` gets `battleReport.ts` alone, which is why
+  that module imports nothing at all — not even `gameSettings.ts`. Adding an
+  import to it drags a whole subtree into that function's payload.
 - Adding a shared file an edge function needs? Add it to the manifest, run the
   sync, commit both.
 

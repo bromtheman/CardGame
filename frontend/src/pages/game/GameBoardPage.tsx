@@ -272,6 +272,7 @@ export function GameBoardPage() {
           mySide={mySide}
           send={send}
           busy={busy}
+          gameId={game.id}
         />
       )}
       {isActive && state.pendingEffect && (

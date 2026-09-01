@@ -26,3 +26,6 @@ verify_jwt = false
 
 [functions.create-card]
 verify_jwt = false
+
+[functions.battle-report]
+verify_jwt = false

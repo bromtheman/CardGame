@@ -33,5 +33,6 @@
     "effects/lhEffects.ts",
     "effects/wfEffects.ts",
     "effects/tgEffects.ts"
-  ]
+  ],
+  "battle-report": ["battleReport.ts"]
 }

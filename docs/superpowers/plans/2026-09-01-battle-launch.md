@@ -3,11 +3,20 @@
 **Status:** generator, blueprint mapping and the in-game export button are all done.
 Remaining: run one match end to end.
 
+**The return half is built too** — see
+[2026-09-01-battle-result-reporting.md](2026-09-01-battle-result-reporting.md).
+A C# mod reads the outcome at battle end and posts it to a `battle-report` edge
+function, which PREFILLS the report form; a human still submits and the other
+captain still approves. That is also where the generated file's extra top-level
+`CardGame` block comes from, and why `buildCustomBattle` now wants an
+`instanceId` per card and a `side` per team.
+
 ## What we're building
 
 A player finishes setting up a match on the site, clicks one thing, and From The
-Depths opens with both sides' vehicles already spawned in a custom battle. Battle
-results are reported back manually for now — nothing reads the outcome.
+Depths opens with both sides' vehicles already spawned in a custom battle.
+Results can always be typed in by hand; the mod described in the companion plan
+above only makes that optional.
 
 ## Why there is no mod
 

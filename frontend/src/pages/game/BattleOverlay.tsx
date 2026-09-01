@@ -11,6 +11,9 @@ import {
 import { shortHandNumber } from '@shared/format'
 
 import { LaunchInFtdButton } from './LaunchInFtdButton'
+import { applyPrefill, prefillSummary, winnerLabel } from './ftdPrefill'
+import type { FtdPrefill } from './ftdPrefill'
+import { useFtdResultQuery } from './ftdReporting'
 import { splitRosterBySide } from './reportTeams'
 
 type Battle = NonNullable<PublicGameState['activeBattle']>
@@ -376,6 +379,53 @@ function WaitingNotice({
   )
 }
 
+/**
+ * What the From The Depths mod reported, offered as a prefill.
+ *
+ * Deliberately a banner with a button rather than an automatic fill. The
+ * numbers still go through a human and then through the opponent's approval —
+ * that approval (DECIDE_BATTLE_REPORT's `actor === report.submittedBy` 403) is
+ * the only thing making a reported result trustworthy, and nothing on this path
+ * may route around it.
+ */
+function FtdResultBanner({
+  prefill, note, factionOf, onApply,
+}: {
+  prefill: FtdPrefill
+  note: string | null
+  factionOf: (side: string) => string
+  onApply: () => void
+}) {
+  const winner = winnerLabel(prefill, factionOf)
+  const count = Object.keys(prefill.results ?? {}).length
+  return (
+    <div className="mt-4 rounded border border-brass-400/60 bg-ocean-950/60 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-sm font-bold text-brass-400">
+            From The Depths reported this battle
+          </p>
+          <p className="text-xs text-ocean-300">
+            {count} vehicle(s){winner ? ` — ${winner}` : ''}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onApply}
+          className="rounded bg-brass-400 px-3 py-1 text-sm font-bold text-ocean-950"
+        >
+          Fill in the report
+        </button>
+      </div>
+      {note && <p className="mt-2 text-xs text-ocean-300">{note}</p>}
+      <p className="mt-2 text-xs text-ocean-300">
+        Check the numbers before submitting — a vehicle the game removed mid-fight is reported
+        at 0%, and your opponent still has to approve the report.
+      </p>
+    </div>
+  )
+}
+
 // Modal that takes over the board whenever a fleet battle is active: the
 // spawn sheet (what to spawn in FTD, at what distance, altitude guidance,
 // robotic conduct notes, end conditions), the Tactical Positioning distance
@@ -385,12 +435,13 @@ function WaitingNotice({
 // component (via a key on the battle's identity) whenever a *new* battle
 // starts, so this local form state never leaks from one battle into another.
 export function BattleOverlay({
-  state, mySide, send, busy,
+  state, mySide, send, busy, gameId,
 }: {
   state: PublicGameState
   mySide: Side
   send: (action: GameAction) => Promise<void>
   busy: boolean
+  gameId: string
 }) {
   const battle = state.activeBattle
   const participants = battle ? participantsOf(state, battle) : []
@@ -399,6 +450,13 @@ export function BattleOverlay({
   )
   const [repairs, setRepairs] = useState<string[]>([])
   const [deltaInput, setDeltaInput] = useState(0)
+  const [prefillNote, setPrefillNote] = useState<string | null>(null)
+  // Only asked for while there is a battle and no report yet — once a report is
+  // pending there is nothing left to prefill. Hooks run before the early return
+  // below, so this is called unconditionally and gated by `enabled`.
+  const { data: ftdResult } = useFtdResultQuery(
+    gameId, state.activeBattle !== null && state.pendingReport === null,
+  )
 
   if (!battle) return null
 
@@ -418,6 +476,34 @@ export function BattleOverlay({
 
   function onToggleRepair(id: string) {
     setRepairs((rs) => (rs.includes(id) ? rs.filter((x) => x !== id) : [...rs, id]))
+  }
+
+  /**
+   * Fill the form in from what the mod reported.
+   *
+   * Explicit rather than automatic: the numbers are a starting point a captain
+   * checks, not an answer. FtD's cleanup rules despawn a badly damaged hull
+   * before its alive fraction reaches zero, so a ship that limped out of the
+   * fight can arrive here as a 0 — see `hpFromVehicle` in
+   * `shared/battleReport.ts`. Auto-applying would also stamp over numbers a
+   * player was midway through typing.
+   */
+  function onApplyFtdResult(prefill: FtdPrefill) {
+    const app = applyPrefill(results, prefill, participants.map((p) => p.entry.instanceId))
+    setResults(app.results)
+    // Same rule onHpChange enforces: a repair pick only stands while its hull
+    // is still in the band and not Fragile. New HP numbers can move a hull out
+    // of both, and a stale pick would be stripped by SUBMIT_BATTLE_REPORT's
+    // validation instead of here, as a 400.
+    setRepairs((rs) => rs.filter((id) => {
+      const hp = app.results[id]
+      if (hp === undefined) return false
+      const p = participants.find((x) => x.entry.instanceId === id)
+      if (!p || p.entry.keywords.includes(KEYWORDS.FRAGILE)) return false
+      return hp >= REPAIR_WINDOW_MIN_PERCENT && hp < SURVIVE_HP_PERCENT
+    }))
+    setPrefillNote(prefillSummary(app, (id) =>
+      participants.find((x) => x.entry.instanceId === id)?.entry.name ?? id))
   }
 
   async function onSubmitReport() {
@@ -460,7 +546,7 @@ export function BattleOverlay({
             Fleet battle — Zone {battle.zoneId}
             {zone && <span className="text-base capitalize text-ocean-300"> ({zone.biome})</span>}
           </h2>
-          <LaunchInFtdButton state={state} />
+          <LaunchInFtdButton state={state} gameId={gameId} />
         </div>
         <p className="mt-1 text-sm text-ocean-300">
           Spawn distance: <span className="font-bold text-parchment-100">{battle.distanceM} m</span>
@@ -514,17 +600,27 @@ export function BattleOverlay({
             <DecisionPanel participants={participants} report={report} state={state} mySide={mySide} busy={busy} onDecide={onDecide} />
           )
         ) : (
-          <ReportForm
-            participants={participants}
-            results={results}
-            repairs={repairs}
-            state={state}
-            mySide={mySide}
-            busy={busy}
-            onHpChange={onHpChange}
-            onToggleRepair={onToggleRepair}
-            onSubmit={onSubmitReport}
-          />
+          <>
+            {ftdResult && (
+              <FtdResultBanner
+                prefill={ftdResult}
+                note={prefillNote}
+                factionOf={(side) => state.factions[side as Side]}
+                onApply={() => onApplyFtdResult(ftdResult)}
+              />
+            )}
+            <ReportForm
+              participants={participants}
+              results={results}
+              repairs={repairs}
+              state={state}
+              mySide={mySide}
+              busy={busy}
+              onHpChange={onHpChange}
+              onToggleRepair={onToggleRepair}
+              onSubmit={onSubmitReport}
+            />
+          </>
         )}
       </div>
     </div>

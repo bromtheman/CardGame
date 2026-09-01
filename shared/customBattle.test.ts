@@ -11,10 +11,19 @@ import {
   resolveBlueprintPath,
   serializeCustomBattle,
 } from './customBattle.ts'
+import { BATTLE_REPORT_WIRE_VERSION } from './battleReport.ts'
 import { FACTIONS, VEHICLE_TYPES } from './gameSettings.ts'
 
 const marauder = { name: 'Marauder', faction: FACTIONS.DWG }
 const bulwark = { name: 'Bulwark', faction: FACTIONS.OW }
+
+const cardGameSpec = {
+  endpoint: 'https://example.supabase.co/functions/v1/battle-report',
+  gameId: '11111111-2222-3333-4444-555555555555',
+  zoneId: 2,
+  battleKey: '2|a|i-1|i-2',
+  token: 'tok_example',
+}
 
 describe('resolveBlueprintPath', () => {
   it('derives the path from faction and card name', () => {
@@ -235,6 +244,15 @@ const gameSaved = JSON.parse(
 
 const keysOf = (o: unknown): string[] => Object.keys(o as object).sort()
 
+// `CardGame` is ours, not the game's — the one top-level key deliberately not
+// in a file FtD saved (FtD's Newtonsoft reader ignores members it does not
+// know, which is what makes embedding it safe). It is excluded BY NAME rather
+// than by weakening the assertion to a subset check, so every other top-level
+// key must still match the real save exactly and a second stowaway key fails
+// this suite.
+const schemaKeysOf = (o: unknown): string[] =>
+  keysOf(o).filter((k) => k !== 'CardGame')
+
 describe('parity with a file saved by the game', () => {
   const generated = buildCustomBattle([
     { name: 'Team 1', cards: [marauder] },
@@ -242,7 +260,24 @@ describe('parity with a file saved by the game', () => {
   ])
 
   it('has the same top-level keys', () => {
+    expect(schemaKeysOf(generated)).toEqual(keysOf(gameSaved))
+  })
+
+  it('emits no CardGame key at all unless one was asked for', () => {
+    expect('CardGame' in generated).toBe(false)
     expect(keysOf(generated)).toEqual(keysOf(gameSaved))
+  })
+
+  it('still matches the saved schema when the CardGame block IS present', () => {
+    const withBlock = buildCustomBattle(
+      [
+        { name: 'Team 1', side: 'a', cards: [{ ...marauder, instanceId: 'i-1' }] },
+        { name: 'Team 2', side: 'b', cards: [{ ...bulwark, instanceId: 'i-2' }] },
+      ],
+      { cardGame: cardGameSpec },
+    )
+    expect(schemaKeysOf(withBlock)).toEqual(keysOf(gameSaved))
+    expect(keysOf(withBlock)).toEqual([...keysOf(gameSaved), 'CardGame'].sort())
   })
 
   it('has the same team and blueprint keys', () => {
@@ -261,5 +296,93 @@ describe('parity with a file saved by the game', () => {
     const theirs = (gameSaved.Teams as { Blueprints: { FileName: string }[] }[])
     expect(generated.Teams[0]!.Blueprints[0]!.FileName).toBe(theirs[0]!.Blueprints[0]!.FileName)
     expect(generated.Teams[1]!.Blueprints[0]!.FileName).toBe(theirs[1]!.Blueprints[0]!.FileName)
+  })
+})
+
+// The block the FtD mod reads. Its contract with the mod is positional —
+// CardGame.Teams[i].Vehicles[j] describes Teams[i].Blueprints[j] — so these
+// tests are less about the shape than about that pairing surviving a future
+// edit to either list.
+describe('the CardGame block', () => {
+  const teams = [
+    {
+      name: 'DWG (attacking)', side: 'a', isAttacker: true,
+      cards: [
+        { ...marauder, instanceId: 'i-1' },
+        { name: 'Buccaneer', faction: FACTIONS.DWG, instanceId: 'i-2' },
+      ],
+    },
+    { name: 'OW (defending)', side: 'b', cards: [{ ...bulwark, instanceId: 'i-3' }] },
+  ]
+
+  it('carries the identity the mod needs to report back', () => {
+    const file = buildCustomBattle(teams, { cardGame: cardGameSpec })
+    expect(file.CardGame).toMatchObject({
+      Version: BATTLE_REPORT_WIRE_VERSION,
+      Endpoint: cardGameSpec.endpoint,
+      GameId: cardGameSpec.gameId,
+      ZoneId: 2,
+      BattleKey: cardGameSpec.battleKey,
+      Token: 'tok_example',
+    })
+  })
+
+  it('pairs every vehicle with the blueprint at the same index of the same team', () => {
+    const file = buildCustomBattle(teams, { cardGame: cardGameSpec })
+    const block = file.CardGame!
+    expect(block.Teams).toHaveLength(file.Teams.length)
+    file.Teams.forEach((team, i) => {
+      const mirror = block.Teams[i]!
+      expect(mirror.Vehicles).toHaveLength(team.Blueprints.length)
+      team.Blueprints.forEach((bp, j) => {
+        const vehicle = mirror.Vehicles[j]!
+        // The blueprint path is derived from the card's name, so a name that
+        // does not appear in its own team's blueprint path at the same index
+        // means the two lists have drifted apart.
+        expect(resolveBlueprintPath(teams[i]!.cards[j]!)).toBe(bp.FileName)
+        expect(vehicle.Name).toBe(teams[i]!.cards[j]!.name)
+        expect(vehicle.InstanceId).toBe(teams[i]!.cards[j]!.instanceId)
+      })
+    })
+  })
+
+  it('records each team\'s side, so a winning team index maps back to a side', () => {
+    const block = buildCustomBattle(teams, { cardGame: cardGameSpec }).CardGame!
+    expect(block.Teams.map((t) => t.Side)).toEqual(['a', 'b'])
+  })
+
+  it('keeps two copies of one ship apart by instanceId, which name alone cannot', () => {
+    // The reason the block exists at all: two Marauders collide by name.
+    const doubled = [
+      {
+        name: 'DWG', side: 'a',
+        cards: [{ ...marauder, instanceId: 'i-1' }, { ...marauder, instanceId: 'i-2' }],
+      },
+      { name: 'OW', side: 'b', cards: [{ ...bulwark, instanceId: 'i-3' }] },
+    ]
+    const block = buildCustomBattle(doubled, { cardGame: cardGameSpec }).CardGame!
+    expect(block.Teams[0]!.Vehicles.map((v) => v.InstanceId)).toEqual(['i-1', 'i-2'])
+    expect(block.Teams[0]!.Vehicles.map((v) => v.Name)).toEqual(['Marauder', 'Marauder'])
+  })
+
+  it('refuses to emit a block for a card with no instanceId', () => {
+    const missing = [
+      { name: 'DWG', side: 'a', cards: [marauder] },
+      { name: 'OW', side: 'b', cards: [{ ...bulwark, instanceId: 'i-3' }] },
+    ]
+    expect(() => buildCustomBattle(missing, { cardGame: cardGameSpec })).toThrow(/Marauder/)
+  })
+
+  it('refuses to emit a block for a team with no side', () => {
+    const missing = [
+      { name: 'DWG', cards: [{ ...marauder, instanceId: 'i-1' }] },
+      { name: 'OW', side: 'b', cards: [{ ...bulwark, instanceId: 'i-3' }] },
+    ]
+    expect(() => buildCustomBattle(missing, { cardGame: cardGameSpec })).toThrow(/DWG/)
+  })
+
+  it('survives serialisation as ordinary JSON', () => {
+    const text = serializeCustomBattle(buildCustomBattle(teams, { cardGame: cardGameSpec }))
+    expect(JSON.parse(text).CardGame.Teams[0].Vehicles[0].InstanceId).toBe('i-1')
   })
 })
