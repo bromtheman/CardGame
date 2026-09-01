@@ -169,8 +169,11 @@ export function HeroPowerBar({
         >
           Salvage (1 CP)
         </button>
+        {/* Opens UPWARD over the board. The bar sits below the board now, so a
+            `top-full` popover would drop into the hand rail and be cut off by
+            the page's `overflow-clip`. Same for the faction picker below. */}
         {salvageOpen && (
-          <div className="absolute left-0 top-full z-30 mt-1 w-56 rounded border border-brass-400 bg-ocean-900 p-2 shadow-plank">
+          <div className="absolute bottom-full left-0 z-30 mb-1 max-h-64 w-56 overflow-y-auto rounded border border-brass-400 bg-ocean-900 p-2 shadow-plank">
             {myDestroyedVehicles.length === 0 && <p className="text-xs text-ocean-300">No destroyed vehicles.</p>}
             {myDestroyedVehicles.map((c, i) => (
               <button
@@ -228,7 +231,7 @@ export function HeroPowerBar({
             {factionPowerInfo.label} (1 CP)
           </button>
           {factionPickerOpen && factionPowerInfo.power !== 'boardingParty' && (
-            <div className="absolute left-0 top-full z-30 mt-1 w-64 rounded border border-brass-400 bg-ocean-900 p-2 shadow-plank">
+            <div className="absolute bottom-full left-0 z-30 mb-1 max-h-64 w-64 overflow-y-auto rounded border border-brass-400 bg-ocean-900 p-2 shadow-plank">
               {eligibleFactionCards.length === 0 && <p className="text-xs text-ocean-300">No eligible cards in hand.</p>}
               {eligibleFactionCards.map((c) => (
                 <button

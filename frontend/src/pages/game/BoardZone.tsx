@@ -291,6 +291,12 @@ export function BoardZone({
         badge={<LaneCount count={zone.cards[theirSide].length} mine={false} />}
       />
       <VehicleLane
+        // `grow shrink-0`: the two lanes split whatever height the panel has
+        // spare, so a tall viewport gives the fleets more room instead of
+        // leaving a dead band at the panel's foot. They never shrink, so a
+        // short viewport scrolls the board rather than squashing a chip.
+        // `content-center` keeps the slot rows centred in the taller box.
+        className="grow shrink-0 content-center"
         entries={zone.cards[theirSide] as ZoneCardEntry[]}
         renderEntry={(c) => {
           const swapEnemyEligible = !!swapPickEnemyMode && c.vehicleType === VEHICLE_TYPES.SHIP
@@ -312,6 +318,7 @@ export function BoardZone({
       />
       <FrontLine badges={zoneEffectBadgeList ?? []} />
       <VehicleLane
+        className="grow shrink-0 content-center"
         entries={zone.cards[mySide] as ZoneCardEntry[]}
         renderEntry={(c) => {
           const mobileEligible = !!canMoveVehicles && c.keywords.includes(KEYWORDS.MOBILE) && c.movedOnTurn !== turnNumber
