@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import type { PublicGameState } from '@shared/engine/gameInit'
 import type { GameAction, Side, ZoneCardEntry } from '@shared/engine/engineTypes'
-import { autoRepairIds, effectiveMaterialCostOf, otherSide, repairCostOf } from '@shared/engine/index'
+import {
+  autoRepairIds, battleParticipants, effectiveMaterialCostOf, otherSide, repairCostOf,
+} from '@shared/engine/index'
 import {
   HERO_POWER_DISTANCE_MOD_M, IN_BATTLE_RESOURCE_RATE, KEYWORDS,
   REPAIR_WINDOW_MIN_PERCENT, SURVIVE_HP_PERCENT,
@@ -12,39 +14,23 @@ type Battle = NonNullable<PublicGameState['activeBattle']>
 type Report = NonNullable<PublicGameState['pendingReport']>
 interface Participant { entry: ZoneCardEntry; side: Side; isSummon: boolean }
 
-// Mirrors battleResolve.ts's private participantsOf() — the engine doesn't
-// export it, so we rebuild the same {entry, side} pairs from the zone's card
-// lists, falling back to the battle's summons (spec §4.4): a summon carries
-// no side field of its own, so an id in attackerIds that misses the zone
-// lookup belongs to the aggressor, one in defenderIds to the defender —
-// membership in each list decides it, exactly as the engine's version does.
-// A divergence here would silently show a different battle than the engine
-// resolves, so mirror battleResolve.ts's participantsOf exactly if it changes.
+// ⚠ THIS USED TO BE A HAND-WRITTEN MIRROR of battleResolve.ts's participantsOf,
+// carrying a comment asking whoever changed the engine's copy to change this
+// one too. That comment was not enough: wave 7 added a board-wide fallback to
+// the engine for TG Duel's cross-zone battle and left this behind, so a duelled
+// away-zone hull vanished from the overlay AND from the report this component
+// builds — which the engine then rejected as not covering every vehicle,
+// leaving the battle unreportable and the game stuck.
+//
+// It now calls the engine's own exported function, so the roster the UI shows
+// and the roster the engine resolves cannot diverge. Do not reintroduce a copy.
+// `isSummon` is the only thing added here, and it is derived from the same
+// battle.summons list the engine reads (spec §4.4).
 function participantsOf(state: PublicGameState, battle: Battle): Participant[] {
-  const zone = state.zones.find((z) => z.id === battle.zoneId)
-  if (!zone) return []
-  const defenderSide = otherSide(battle.aggressor)
-  const summonMap = new Map<string, ZoneCardEntry>(
-    (battle.summons as ZoneCardEntry[]).map((s) => [s.instanceId, s]),
-  )
-  // Same `side` feeds both the on-field hit and the summon fallback — a
-  // summon carries no side of its own, so list membership alone decides it.
-  function resolve(ids: string[], onFieldCards: ZoneCardEntry[], side: Side): Participant[] {
-    const out: Participant[] = []
-    for (const id of ids) {
-      const entry = onFieldCards.find((c) => c.instanceId === id)
-      if (entry) {
-        out.push({ entry, side, isSummon: false })
-        continue
-      }
-      const summon = summonMap.get(id)
-      if (summon) out.push({ entry: summon, side, isSummon: true })
-    }
-    return out
-  }
-  const attackers = resolve(battle.attackerIds, zone.cards[battle.aggressor] as ZoneCardEntry[], battle.aggressor)
-  const defenders = resolve(battle.defenderIds, zone.cards[defenderSide] as ZoneCardEntry[], defenderSide)
-  return [...attackers, ...defenders]
+  const summonIds = new Set(battle.summons.map((s) => s.instanceId))
+  return [...battleParticipants(state).values()].map(({ entry, side }) => ({
+    entry, side, isSummon: summonIds.has(entry.instanceId),
+  }))
 }
 
 function outcomeLabel(

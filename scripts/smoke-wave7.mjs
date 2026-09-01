@@ -152,10 +152,18 @@ const games = []
     const one = state.zones[1].cards[aSide].find((c) => c.name === 'Horror')
     step('each spawned Horror kept its printed onBattleEffect',
       one?.meta?.onBattleEffect === 'horrorBattle', JSON.stringify(one?.meta ?? {}))
-    // A Horror is a SHIP, and zone 3 is normally land — spawns bypass
-    // placement legality (spec §7.4), which only a real board shows.
-    step('a Horror reached a zone a ship could not be PLAYED into',
-      horrors[2] === 1, `zone 3 biome ${state.zones[2].biome}`)
+    // §7.4's spawns-bypass-placement-legality is only OBSERVABLE when a zone
+    // forbids the spawned hull's type. The default lobby is three WATER zones,
+    // where a ship is legal everywhere — so assert it only where it means
+    // something, and say so plainly when it does not.
+    const illegal = state.zones.filter((z) => z.biome === 'land')
+    if (illegal.length === 0) {
+      console.log('  n/a   spawns-bypass-legality not exercised — every zone in this lobby is water')
+    } else {
+      step('a Horror reached a land zone a ship could not be PLAYED into',
+        illegal.every((z) => z.cards[aSide].some((c) => c.name === 'Horror')),
+        `land zones: ${illegal.map((z) => z.id).join(', ')}`)
+    }
   }
 
   // ---- upkeep: the keyword that did not exist a day ago -------------------
@@ -164,8 +172,11 @@ const games = []
     const before = (await g.load(p1)).state.resources[aSide].materials
     await g.passTo(p2)
     await g.passTo(p1)
-    const after = (await g.load(p1)).state
-    const income = Math.floor(after.turnNumber) * 300_000
+    // turnNumber is a column on the game ROW (snake_case), not a field of
+    // state — reading it off state gives NaN and the assertion says nothing.
+    const row = await g.load(p1)
+    const after = row.state
+    const income = Math.floor(row.turn_number) * 300_000
     step('upkeep was charged at the turn start',
       after.resources[aSide].materials === income - 151_500,
       `income ${income}, held ${after.resources[aSide].materials}, expected ${income - 151_500}`)
