@@ -137,17 +137,16 @@ describe('buildCustomBattle', () => {
     expect(file.MaterialsPerTeam).toBe(100000)
   })
 
-  it('gives each team twice the in-battle resources its own fleet earns', () => {
-    // Spec §3.5 pays in-battle resources per vehicle, at 10% of its material
-    // cost. FtD has no per-craft pool — only StartingMaterial per team — so the
-    // per-craft total is doubled to compensate.
+  it('gives each team the full build cost of its own fleet as material', () => {
+    // Deliberately NOT spec §3.5's 10% per vehicle: FtD pools material per team
+    // rather than per craft, and a tenth split across a whole fleet was too
+    // small to spend. See startingMaterialOf.
     const file = buildCustomBattle([
       { name: 'a', cards: [{ ...marauder, materialCost: 100_000 }, { ...bulwark, materialCost: 55_000 }] },
       { name: 'b', cards: [{ ...bulwark, materialCost: 30_000 }] },
     ])
-    // (floor(100000 * 0.1) + floor(55000 * 0.1)) * 2
-    expect(file.Teams[0]!.StartingMaterial).toBe(31_000)
-    expect(file.Teams[1]!.StartingMaterial).toBe(6_000)
+    expect(file.Teams[0]!.StartingMaterial).toBe(155_000)
+    expect(file.Teams[1]!.StartingMaterial).toBe(30_000)
   })
 
   it('counts a card carrying no material cost as contributing nothing', () => {
@@ -155,7 +154,7 @@ describe('buildCustomBattle', () => {
       { name: 'a', cards: [marauder, { ...bulwark, materialCost: 20_000 }] },
       { name: 'b', cards: [bulwark] },
     ])
-    expect(file.Teams[0]!.StartingMaterial).toBe(4_000)
+    expect(file.Teams[0]!.StartingMaterial).toBe(20_000)
     expect(file.Teams[1]!.StartingMaterial).toBe(0)
   })
 

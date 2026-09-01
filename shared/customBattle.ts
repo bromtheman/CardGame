@@ -15,7 +15,7 @@
 //     not filesystem paths — no drive, no extension. That is what makes it safe
 //     to generate these server-side for a machine we know nothing about.
 
-import { FACTIONS, IN_BATTLE_RESOURCE_RATE, VEHICLE_TYPES } from './gameSettings.ts'
+import { FACTIONS, VEHICLE_TYPES } from './gameSettings.ts'
 
 /** Root of the blueprints FtD ships with, as they are addressed inside a battle file. */
 export const BUILT_IN_BLUEPRINT_ROOT = 'Built In/Neter'
@@ -198,13 +198,6 @@ export const AIRCRAFT_SPAWN_ALTITUDE_M = 80
  */
 export const ATTACKER_SPAWN_ANGLE_DEG = 180
 
-/**
- * Spec §3.5 awards in-battle resources per vehicle, at IN_BATTLE_RESOURCE_RATE
- * of its material cost. FtD has no per-craft pool — StartingMaterial is per
- * TEAM — so the per-craft total is doubled to compensate for the pooling.
- */
-export const TEAM_RESOURCE_MULTIPLIER = 2
-
 const AIRBORNE_VEHICLE_TYPES: readonly string[] = [VEHICLE_TYPES.AIRSHIP, VEHICLE_TYPES.PLANE]
 
 function spawnAltitudeOf(card: BattleCard): number {
@@ -213,18 +206,18 @@ function spawnAltitudeOf(card: BattleCard): number {
 }
 
 /**
- * The team's in-battle resource pool.
+ * The team's in-battle resource pool: the full build cost of its own fleet.
  *
- * Floors per craft before summing, so this matches the per-vehicle figure the
- * battle overlay's spawn sheet shows a player rather than drifting by a
- * rounding step from it.
+ * Deliberately NOT spec §3.5's IN_BATTLE_RESOURCE_RATE (10% per vehicle), which
+ * the overlay's spawn sheet still quotes for a hand-run match. FtD pools material
+ * per TEAM rather than per craft, and a tenth spread across a whole fleet was too
+ * small to spend, so the exported battle hands over the full cost instead.
+ *
+ * Reads the EFFECTIVE cost, so a Half Cost hull contributes its halved figure —
+ * the same number printed on its card in the overlay.
  */
 function startingMaterialOf(cards: BattleCard[]): number {
-  const perCraftTotal = cards.reduce(
-    (total, card) => total + Math.floor((card.materialCost ?? 0) * IN_BATTLE_RESOURCE_RATE),
-    0,
-  )
-  return perCraftTotal * TEAM_RESOURCE_MULTIPLIER
+  return cards.reduce((total, card) => total + (card.materialCost ?? 0), 0)
 }
 
 /**
