@@ -335,6 +335,11 @@ export const owVehicles = [
         keywords: [KEYWORDS.SUB_SCREEN],
         meta: {
             [TRIGGERS.ON_DEATH]: 'halberdOnDeath',
+            // Retired by the 2026-09-02 balance pass. The row stays here on purpose: it
+            // keeps being upserted, so in-flight games and unedited decks still resolve
+            // the snapshot. `retired: true` is what makes it undraftable from here on.
+            // See docs/superpowers/specs/2026-09-02-balance-pass-design.md §2.1.
+            retired: true,
         }
     },
     {
