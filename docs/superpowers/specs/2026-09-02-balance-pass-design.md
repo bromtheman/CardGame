@@ -78,6 +78,13 @@ the rows would break 25 saved decks at game start rather than at deck edit.
 Keeping the row upserted means all 28 active games finish normally and the deck
 stays repairable by its owner.
 
+**Wave 0 flips all five cards, not the faction waves.** Retirement is one
+coherent change — the five rows, the three exclusions, the two orphan-causing
+retirements and the deck affordance all describe a single state of the world,
+and splitting them across five branches would ship the affordance in one deploy
+and the breakage in another. The faction waves therefore do not touch their
+retired card at all; they own only their new and updated cards.
+
 ⚠ A data key's VALUE is never checked by any guard — only its presence
 (`docs/claude/card-effects.md`, blind spot 4). Wave 0 therefore adds a
 seed-backed assertion that all five rows carry `retired === true`, and an
@@ -226,17 +233,26 @@ Under R-1 the cap is **derived, not stored** — no new persistent state.
 
 ## 5. Orphans, dead rules and dead constants
 
-Five registry names lose their last card. All five **stay registered** with a
-`DELIBERATE_ORPHANS` justification — a game dealt before this pass carries a
-frozen snapshot still naming them — and none may ever be reused:
+**Only two effects are actually orphaned, not five.** Retirement keeps the row
+in the seed (§2.1), so a retired card still names its implementation in
+`loadSeedData()` — and G4 asks exactly that question: *does any seeded card name
+this implementation?* `halberdOnDeath`, `dryadBattle` and `harbringerBattle`
+therefore keep a naming card, G4 stays green, and **they need no
+`DELIBERATE_ORPHANS` entry**. Adding one would trip that map's own stale-entry
+assertion. That is the correct outcome as well as the convenient one: those
+cards are still reachable from 28 in-flight games and 25 unedited decks.
 
-| Name | Orphaned by |
-|---|---|
-| `bulwarkOnPlay` | OW Bulwark's text and meta cleared |
-| `halberdOnDeath` | OW Halberd retired |
-| `dryadBattle` | SS Dryad retired |
-| `harbringerBattle` | WF Harbringer retired |
-| `victoriaActivate` | SS Victoria reworked to an on-play effect |
+The two genuine orphans are caused by a **text rewrite**, where the card
+survives but drops the meta key:
+
+| Name | Orphaned by | Wave |
+|---|---|---|
+| `bulwarkOnPlay` | OW Bulwark's text and meta cleared | OW |
+| `victoriaActivate` | SS Victoria reworked to an on-play effect | SS |
+
+Both **stay registered** with a `DELIBERATE_ORPHANS` justification — a game
+dealt before this pass carries a frozen snapshot still naming them — and
+neither may ever be reused (R-6).
 
 Two engine rules lose their last carrying card and are **kept, commented**
 (R-8): `defensiveOmission`'s `unlessShipOrTank` arm (Buzzsaw and Veles both
@@ -244,8 +260,13 @@ drop the key) and `deployRequiresBattleLoss` with its per-zone battle-loss
 tracking (Purifier drops it).
 
 Four constants lose their last reader and are **deleted** (R-8):
-`MARAUDER_DISCOUNT`, `SACRILEGO_HP_BOOST`, `PURIFIER_LOSS_WINDOW_TURNS`,
-`HARBRINGER_GUEST_MAX_COST`.
+`MARAUDER_DISCOUNT` (DWG), `SACRILEGO_HP_BOOST` (SS),
+`PURIFIER_LOSS_WINDOW_TURNS` and `HARBRINGER_GUEST_MAX_COST` (both WF).
+
+⚠ `HARBRINGER_GUEST_MAX_COST` has a second reader beyond `harbringerBattle`:
+`balancePass.test.ts` asserts the pool it defines ("Harbringer draws from
+exactly the WF ships at or under 100k"), and that assertion also breaks when
+Buzzsaw and Earth Raker move. WF's wave owns both. See §7.2.
 
 ## 6. Per-faction inventory
 
@@ -279,7 +300,7 @@ blocks repair, `SCRAPPY` makes repair free, and `autoRepairIds` checks
 | The Onyx Throne | text wording only | data |
 | Eyrie | 780k→575k, bp 781362→809000, `halfCost+blocker` → `blocker+fragile` | data |
 | Rook | `vehicleType: 'airship'` now stated in source | data; **remove the now-inert `OW:Rook` entry from `VEHICLE_TYPE_PATCHES`** in `transform.ts` and move its reasoning comment onto the card |
-| Halberd | retired | `retired: true`; orphan `halberdOnDeath` |
+| Halberd | retired | **Wave 0** (§2.1) — OW's wave does not touch it |
 
 ### 6.3 WF — 1 new, 12 updated, 1 retired
 
@@ -297,7 +318,7 @@ blocks repair, `SCRAPPY` makes repair free, and `autoRepairIds` checks
 | Earth Raker | "When this is played, draw a card" | new `earthRakerOnPlay` |
 | Purifier | 760k→750k; drops the deploy prerequisite, keeps `noBaseDamage`, gains "enemy spawns first" | drop `deployRequiresBattleLoss`; `deployOrder: 'last'` |
 | Judgement | activation becomes free | `activateCpCost: 0` — data. `parsePrice` accepts 0 and `BoardZone` gates on `typeof === 'number'`, so the button survives; assert both |
-| Harbringer | retired | `retired: true`; orphan `harbringerBattle`; delete `HARBRINGER_GUEST_MAX_COST` |
+| Harbringer | retired | **Wave 0** (§2.1). WF's wave still deletes `HARBRINGER_GUEST_MAX_COST`, whose last reader goes with it |
 
 WF also flips `TG:Anguish` to `deployOrder: 'first'` and removes it from
 `EXEMPT`, because WF owns the mechanic. That is the one edit WF makes to
@@ -323,7 +344,7 @@ Data only: Jealousy 400k→375k, Obsession 330k→300k, Euphoria 580k→300k, An
 Factory 200k→60k (+text casing), Fear 800k→500k, Nostalgia 90k→75k `−UPKEEP`,
 Alarmed 230k→**0** `−UPKEEP`, Horror `−UPKEEP`, **Obelisk `sub`→`ship`**.
 
-Retired: Amusement, Acceptance.
+Retired: Amusement and Acceptance — both **Wave 0** (§2.1); TG's wave does not touch them.
 
 ⚠ **Obelisk's type change moves it out of `SUB_COPY_LIMIT` accounting.** A deck
 at the 6-sub limit that holds Obelisk silently gains headroom. Harmless, but
@@ -362,7 +383,7 @@ Data only: Iron Maiden 170k→150k, Asphodel 470k→400k `+STEALTHY`, Wolin
 270k→250k, Mobula 600k→500k, Balmung 630k→620k, Chrysaor (100k→75k, surge
 thresholds 200k→150k and costDelta 100k→75k).
 
-Retired: Dryad. Orphan `dryadBattle`; delete `SACRILEGO_HP_BOOST`.
+Retired: Dryad — **Wave 0** (§2.1). SS's wave still deletes `SACRILEGO_HP_BOOST`, orphaned by Sacrilego's rework rather than by the retirement.
 
 ## 7. Testing and verification
 
@@ -397,7 +418,25 @@ of the three touches `ctx.catalog`. **A unit test cannot catch a missing
 runs the effect against an empty one and 400s on every real play. Each wave
 verifies its effects appear in `CATALOG_EFFECTS` before it closes.
 
-### 7.2 Close-out
+### 7.2 Four existing assertions this pass invalidates
+
+`supabase/seed/balancePass.test.ts` pins the 2026-08-30 numbers, and four of its
+assertions describe cards this pass changes. They are **expected failures, not
+regressions** — each is updated in place by the wave that causes it (§2.3), and
+a wave that meets one unprepared will waste time treating it as a bug:
+
+| Assertion | Broken by | Wave |
+|---|---|---|
+| "Paladin surges UNDER 240k, granting halfCost and temporary" | Paladin drops `resourceSurge` entirely | SS |
+| "Victoria carries the 200k material price its text prints" | Victoria's activated ability is replaced by an on-play effect | SS |
+| "Judgement carries the 1cp price its text prints" | `activateCpCost` moves 1 → 0 | WF |
+| "Harbringer draws from exactly the WF ships at or under 100k" | Harbringer retired; Buzzsaw 80k→75k and Earth Raker both sit in the asserted pool | WF |
+
+The Harbringer one is deleted rather than updated — its subject is retired and
+its constant is going with it (§5). The other three are rewritten to the new
+values.
+
+### 7.3 Close-out
 
 Each wave names what it did **not** finish rather than declaring itself
 complete, and confirms `KNOWN_GAPS` is still empty (§1.1). After the final
