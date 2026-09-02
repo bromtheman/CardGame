@@ -214,6 +214,12 @@ Under R-1 the cap is **derived, not stored** — no new persistent state.
 - Data key `slotDenial: 3` on the card, so the next card wanting the mechanic
   needs no engine edit. This is the reasoning `drawOnExpiry` and
   `blocksFaction` already record: a rule, not an effect-name check.
+- **`slotDenial` must go in `DATA_EFFECT_KEYS`, and that is forced, not
+  stylistic.** Tiger Shark has card text, names no effect and carries only this
+  key, so G2's `silent` check flags it. The only other escapes would be a
+  `KNOWN_GAPS` entry (§1.1 forbids one) or an `EXEMPT` entry (which would be a
+  lie — the rule is real and the engine enforces it). `aircraftLock` is the
+  exact precedent.
 - New `zoneCapFor(state, side, zoneId)` returns
   `MAX_VEHICLES_PER_ZONE_SIDE − max(slotDenial of live enemy hulls in that zone)`.
   **`max`, not `sum`** — that is what "does not stack" means, and it makes a
@@ -229,19 +235,50 @@ Under R-1 the cap is **derived, not stored** — no new persistent state.
 
 ### 4.2 Hand-residence stamp (SS wave, Tyr)
 
-- `handEnteredTurn?: number` on `CardInstance`.
+- `handEnteredTurn?: number` on `CardInstance`, which is declared in
+  **`shared/engine/gameInit.ts:30`** — not `engineTypes.ts`.
 - `tyrCostModifier` returns `−TYR_HAND_DISCOUNT × floor(turnNumber − handEnteredTurn)`
-  with `TYR_HAND_DISCOUNT = 60_000`. The floor at zero is already applied by
-  `effectiveCostInGame`'s existing `Math.max(0, …)`; do not re-clamp.
+  with `TYR_HAND_DISCOUNT = 60_000`.
 - **The risk is a hand-entry path that forgets to stamp** — it yields a Tyr that
   is silently never discounted, with every test green. So the stamp goes in one
   `putInHand(game, side, card)` helper and the direct `hand.push` sites convert
   to it. This is the shape `drawCard` already uses to keep `state.counts[side]`
   in sync, and it inherits that resync for free.
-- A test asserts every hand-entry path stamps: initial deal (`gameInit`),
-  `drawCard`, and each effect that pushes directly (`reservesEffect`,
-  `loggerheadOnDeath`, `balmungOnPlay`, and this pass's `slasherOnPlay` and
-  `buzzsawOnPlay`).
+
+⚠ **`CostModifierFn` cannot express this as it stands.** Its signature is
+`(state: PublicGameState, side: Side, card: CardInstance) => number`, and
+`PublicGameState` carries **no turn number** — `turnNumber` lives on
+`EngineGame`. Tyr is the first cost modifier that needs it, so the SS wave
+widens `CostModifierFn` and `effectiveCostInGame` to take it. There are four
+`effectiveCostInGame` call sites (`placement.ts` ×2, `lhEffects.ts`, plus the
+declaration) and every one already holds a turn number.
+
+⚠ **The missing-stamp case is a live-game NaN bug, so its guard is mandatory
+rather than defensive.** Hands live in `game_players` rows, outside
+`PublicGameState` and therefore outside `normalizeState`'s reach — so every card
+in every one of the 28 in-flight hands has **no stamp and never will get one**.
+`turnNumber - undefined` is `NaN`; `Math.max(0, NaN)` is `NaN`, not 0. A NaN
+price makes Tyr both unaffordable and, if it were ever paid, writes NaN into the
+payer's materials. Treat a missing stamp as "entered this turn" (zero discount)
+explicitly, and pin it with a test built from a stamp-less hand.
+
+⚠ **`handEnteredTurn` lands on `ZoneCardEntry` too**, which extends
+`CardInstance` — so it must be named in `discardSnapshotOf`
+(`gameEngine.ts:211`), whose own comment says "Every per-entry stamp must be
+named here. TypeScript does NOT catch one you forget". Left off, it rides into
+`state.destroyed` and back into a deck through `reshuffleDiscard`. This is
+`factoryEscort`'s bug exactly.
+
+⚠ **There are ten hand-entry sites, not five, and one this section previously
+named is not one of them.** `loggerheadOnDeath` pushes to the owner's **deck**
+(`dwgEffects.ts:71-84`); converting it would stamp a deck card. The real list,
+by grep for `hand.push`: `gameEngine.ts:180` (the deal) and `:395`,
+`primitives.ts:29` (`grant`) and `:146`/`:164` (both `drawFromPool` branches),
+`dwgEffects.ts:100` (`reservesEffect`), `lhEffects.ts:91`
+(`roboticAssemblersEffect`), `ssEffects.ts:54` (`balmungOnPlay`),
+`battleTriggers.ts:509`, and `heroPowers.ts:171` (`salvage`) — plus this pass's
+own `slasherOnPlay` and `buzzsawOnPlay`. Derive the list by grep at
+implementation time rather than trusting this one.
 
 ### 4.3 Battle deploy order (WF wave)
 
