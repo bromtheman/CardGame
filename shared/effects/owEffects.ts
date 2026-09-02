@@ -280,6 +280,13 @@ const TREBUCHET = 'trebuchetEffect'
 // terminates provably — `chainIds` is fixed at chain start, every iteration
 // requires destroying one of them, so the eligible list strictly shrinks.
 //
+// Since wave 7 the Dryad replacement JOINS the duel instead of watching it
+// (spec §4.4), which independently starves that loop — Trebuchet has to
+// destroy the replacement to win at all, so the population it faces cannot
+// outgrow what it kills. `chainIds` is still the load-bearing bound and must
+// not be removed on the strength of that: a future card that spawns a
+// non-combatant mid-chain would meet only the frozen list.
+//
 // `chainIds === null` means "this IS the chain start": take the zone as it
 // stands and freeze it.
 function trebuchetChoiceFor(chainIds: string[] | null) {
