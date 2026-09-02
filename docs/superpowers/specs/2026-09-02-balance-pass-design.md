@@ -65,10 +65,13 @@ Three exclusions, all of which must land together:
    message has to say so or 25 deck owners cannot tell what changed.
 2. `DeckBuilderPage` drops it from the addable card list.
 3. Every effect draw pool filters it — the `drawFromPool` pool in
-   `primitives.ts` plus the five hand-rolled filters that already repeat the
-   `summonOnly` exclusion by hand (`dwgEffects.ts` ×2, `lhEffects.ts`,
-   `ssEffects.ts` ×2, `wfEffects.ts`). A retired card a Marauder can still mint
-   is not retired.
+   `primitives.ts` plus the **six** hand-rolled filters that already repeat the
+   `summonOnly` exclusion by hand (`dwgEffects.ts` ×2, `lhEffects.ts` ×1,
+   `ssEffects.ts` ×2, `wfEffects.ts` ×1). A retired card a Marauder can still
+   mint is not retired. Wave 0 extracts these into one `poolEligible()`
+   predicate rather than adding a second copy-pasted condition to each: six
+   hand-maintained copies is exactly how `retired` came to be needed in the
+   first place.
 
 **The five cards stay in `supabase/seed/source/`**, carrying `retired: true`.
 They are not deleted from it. This is a deliberate departure from the changes
@@ -112,7 +115,14 @@ this pass splits its own assertions per faction into
 where it is and is not rewritten — its numbers are still true except where a
 wave moves one, and a wave that moves one updates it in place.
 
-`DELIBERATE_ORPHANS` grows by distinct lines only, so it needs no split.
+⚠ **`DELIBERATE_ORPHANS` does need one edit, and it is not the map.** The map
+itself grows by distinct lines and cannot conflict — but the assertion guarding
+it, `it('the deliberate list is exactly the three the balance pass orphaned')`,
+spells its expectation as a **single-line array literal**. OW adds
+`bulwarkOnPlay` and SS adds `victoriaActivate` from parallel branches, and both
+would rewrite that one line. The OW wave (which reaches it first) reformats the
+literal to one name per line with each reason written down, so SS's later edit
+is a clean insertion.
 
 ### 2.4 Amend card-effects rule 10
 
@@ -273,7 +283,7 @@ Buzzsaw and Earth Raker move. WF's wave owns both. See §7.2.
 Costs are `materialCost / blueprintCost`. "data" means no effect work — a seed
 edit and a pinned assertion. Every new card carries a camelCase `imageUrl` by
 convention; built-in image URLs are bare filenames with no hosted art
-(`frontend/src/lib/cards.ts:21`), so no asset is required.
+(`frontend/src/lib/cards.ts:23`), so no asset is required.
 
 ### 6.1 DWG — 6 updated
 
@@ -286,10 +296,18 @@ convention; built-in image URLs are bare filenames with no hosted art
 | Buccaneer | 200k→225k, `+FRAGILE` | data |
 | Spawn Buccaneer | 150k→225k | data |
 
-Note: `spawnBuccaneerEffect` mints Buccaneer hulls with `SCRAPPY` per its text,
-and Buccaneer now prints `FRAGILE`. Both on one hull is legal — `FRAGILE`
-blocks repair, `SCRAPPY` makes repair free, and `autoRepairIds` checks
-`FRAGILE` first — but assert it, because it reads like a contradiction.
+⚠ **The FRAGILE+SCRAPPY worry this section originally raised does not arise.**
+`spawnBuccaneerEffect` builds its entry with `keywords: [KEYWORDS.SCRAPPY]` —
+it **replaces** the printed array rather than merging it, unlike `mintHull`. So
+a played Buccaneer is `['fragile']` and a spawned one is `['scrappy']`, and the
+two keywords never meet on one hull. That is existing, deliberate behaviour
+(its test already feeds it a catalog card carrying an unrelated keyword and
+asserts `[KEYWORDS.SCRAPPY]` alone), and **this pass does not change it** — the
+DWG wave pins the real behaviour instead.
+
+Worth knowing if it is ever revisited: merging would make the granted `SCRAPPY`
+inert, because `autoRepairIds` checks `FRAGILE` first and returns before the
+`SCRAPPY` test.
 
 ### 6.2 OW — 1 new, 4 updated, 1 retired
 
@@ -298,9 +316,15 @@ blocks repair, `SCRAPPY` makes repair free, and `autoRepairIds` checks
 | **Brandistock** (new) | ship 250k/258k, `SUB_SCREEN`, "When this card is destroyed, draw a random GT Airship" | new `brandistockOnDeath`, `{ needsCatalog: true }` (R-6) |
 | Bulwark | 400k→450k, bp 466k→848k, text cleared | **remove `onPlayEffect`**; orphan `bulwarkOnPlay` |
 | The Onyx Throne | text wording only | data |
-| Eyrie | 780k→575k, bp 781362→809000, `halfCost+blocker` → `blocker+fragile` | data |
+| Eyrie | 780k→575k, bp 781362→809000, `halfCost+blocker` → `blocker+fragile` | data — see the note below on what this actually costs |
 | Rook | `vehicleType: 'airship'` now stated in source | data; **remove the now-inert `OW:Rook` entry from `VEHICLE_TYPE_PATCHES`** in `transform.ts` and move its reasoning comment onto the card |
 | Halberd | retired | **Wave 0** (§2.1) — OW's wave does not touch it |
+
+⚠ **Eyrie's printed cost falls but its real cost rises.** `halfCost` is applied
+at usage time by `effectiveMaterialCostOf`, never baked into the stored number,
+so Eyrie costs 390k today (780k halved) and 575k afterwards. That is a 47%
+**nerf**, not the 26% cut the printed figures suggest. Pin it with that note, or
+a later reader scores it backwards.
 
 ### 6.3 WF — 1 new, 12 updated, 1 retired
 
@@ -418,23 +442,47 @@ of the three touches `ctx.catalog`. **A unit test cannot catch a missing
 runs the effect against an empty one and 400s on every real play. Each wave
 verifies its effects appear in `CATALOG_EFFECTS` before it closes.
 
-### 7.2 Four existing assertions this pass invalidates
+### 7.2 Fourteen existing assertions this pass invalidates
 
-`supabase/seed/balancePass.test.ts` pins the 2026-08-30 numbers, and four of its
-assertions describe cards this pass changes. They are **expected failures, not
-regressions** — each is updated in place by the wave that causes it (§2.3), and
-a wave that meets one unprepared will waste time treating it as a bug:
+`supabase/seed/balancePass.test.ts` pins the 2026-08-30 numbers, and **fourteen**
+of its assertions describe cards this pass changes. They are **expected
+failures, not regressions** — each is updated in place by the wave that causes
+it (§2.3), and a wave that meets one unprepared will waste time treating it as a
+bug.
 
-| Assertion | Broken by | Wave |
+Nine are rows in that file's `CARDS` map, which pins cost, blueprint cost,
+keywords, vehicle type and card text per card:
+
+| `CARDS` row | Broken by | Wave |
 |---|---|---|
-| "Paladin surges UNDER 240k, granting halfCost and temporary" | Paladin drops `resourceSurge` entirely | SS |
-| "Victoria carries the 200k material price its text prints" | Victoria's activated ability is replaced by an on-play effect | SS |
-| "Judgement carries the 1cp price its text prints" | `activateCpCost` moves 1 → 0 | WF |
-| "Harbringer draws from exactly the WF ships at or under 100k" | Harbringer retired; Buzzsaw 80k→75k and Earth Raker both sit in the asserted pool | WF |
+| `DWG:Tarpon` | keywords gain `subScreen` | DWG |
+| `DWG:Buccaneer` | 200k→225k and keywords gain `fragile` | DWG |
+| `WF:Pontus` | 150k→75k | WF |
+| `WF:Purifier` | 760k→750k | WF |
+| `SS:Chrysaor` | 100k→75k | SS |
+| `SS:Nothung` | 470k→400k | SS |
+| `SS:Balmung` | 630k→620k | SS |
+| `SS:Asphodel` | 470k→400k and keywords gain `stealthy` | SS |
+| `SS:Argonaut` | `cardText` moves from empty to its new death trigger | SS |
 
-The Harbringer one is deleted rather than updated — its subject is retired and
-its constant is going with it (§5). The other three are rewritten to the new
-values.
+Five are standalone `it(...)` blocks:
+
+| Assertion | Broken by | Wave | Action |
+|---|---|---|---|
+| "Judgement carries the 1cp price its text prints" | `activateCpCost` 1 → 0 | WF | update |
+| "Harbringer draws from exactly the WF ships at or under 100k" | `HARBRINGER_GUEST_MAX_COST` is deleted with its last reader (§5) | WF | **delete** |
+| "Paladin surges UNDER 240k, granting halfCost and temporary" | Paladin drops `resourceSurge` entirely | SS | update |
+| "Victoria carries the 200k material price its text prints" | Victoria's activated ability becomes an on-play effect | SS | update |
+| "Double Up and Repairmen Ready print the thresholds their code enforces" | Repairmen Ready's text moves "AI vehicle" → "SS vehicle" (R-5); the Double Up half is unaffected | SS | update |
+
+Only the Harbringer one is deleted — its subject is retired and its constant
+goes with it. The other thirteen are rewritten to the new values.
+
+⚠ Four cards move but keep their `CARDS` row intact, because the row pins only
+the five fields above and the change is elsewhere: `SS:Paladin` and
+`SS:Victoria` (meta only), `WF:Judgement` (meta only) and `WF:Harbringer`
+(retirement adds a meta key). **Do not delete those rows** — they still assert
+true things.
 
 ### 7.3 Close-out
 
