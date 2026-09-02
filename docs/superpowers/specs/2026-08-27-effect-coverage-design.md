@@ -794,6 +794,22 @@ Card text marks the distinction reliably:
 Orbit Flank contains both modes, which confirms the split is in the data rather
 than invented here.
 
+**Board spawn vs. *bystander* is a separate axis.** ⚠ **Corrected after wave
+7.** Wave 4 read the two columns above as a single switch and had Dryad's
+replacement sit out the battle that raised it, because it was a board spawn
+rather than a summon. That is not what the card does: a Dryad's reinforcement
+**joins the defence and is kept only if it survives**, so the battle it was
+raised for is the battle it fights. The columns decide *where the hull lives*
+(and therefore what report approval does to it), not *whether it fights*.
+
+A reinforcement that both fights and persists is exactly `spawnInto` followed by
+`joinBattle` **without an `entry`** — the id-only form, which appends to the
+side's list and leaves `summons` empty. Neither half alone will do:
+`summonHulls` + `joinBattle(entry)` (The Onyx Throne's shape) fights but
+evaporates on approval whatever its HP, and `spawnInto` alone persists but never
+fights. Being a real board vehicle is what earns the ordinary outcomes —
+destroyed and discarded when it dies, still standing when it lives.
+
 Battle summons serve seven cards: Flying Squirrel Attack, Martyr Attack, Air
 Strafe, Orbit Flank (mode b), The Onyx Throne, Recurring Threat, and **DWG
 Waters' unbuilt rider** — the phase-2 clause already documented as blocked on a
@@ -1244,8 +1260,18 @@ Added in wave 3:
   most as many battles as there were eligible enemies when it started. Card
   text still imposes no cap and none is invented — the bound is exactly the one
   this ruling always claimed to have.
-- **"Fights alone" means the target is the only defender.** Its allies in the
-  zone do not join, whatever they are.
+
+  Wave 7's Dryad correction (§4.4) adds a second, independent reason the chain
+  cannot run forever — the replacement now *joins* the duel, so Trebuchet has to
+  destroy it to win at all — but `chainIds` remains the load-bearing bound and
+  must not be removed on the strength of it. A future card that spawns a
+  non-combatant mid-chain would meet only the frozen list.
+- **"Fights alone" means the target is the only defender the *declaration*
+  names.** Its allies already in the zone do not join, whatever they are. It
+  does **not** freeze the roster afterwards: a defender whose own lock trigger
+  raises a reinforcement still gets it, and always has — The Onyx Throne's
+  Parapet is the wave-4 precedent, Dryad's replacement (§4.4) the wave-7 one.
+  A duel is 1v1 as declared, not 1v1 as resolved.
 
 Added in wave 4:
 
@@ -1663,7 +1689,7 @@ the only vehicle whose text targets a card in hand, and DP6 is what carries it.
 | Card | Faction | Effect name | Mechanism |
 |---|---|---|---|
 | Catshark | SS | `catsharkBattle` | `onBattleEffect` at lock, participant → `grant({ materials: CATSHARK_MATERIALS })`, expiring with the turn |
-| Dryad | SS | `dryadBattle` | `onBattleEffect` at lock, participant + defender → board-spawn another Dryad into that zone (catalog) |
+| Dryad | SS | `dryadBattle` | `onBattleEffect` at lock, participant + defender → board-spawn another Dryad into that zone (catalog), then `joinBattle` it into the defence by id — it fights, and is kept only if it survives (§4.4) |
 | The Onyx Throne | OW | `onyxThroneBattle`, `onyxThroneActivate` | `onBattleEffect` at lock, participant + defender → battle-summon a Parapet **into the already-locked battle**; plus DP1 clause 2 (`activateCpCost: 1` → draw a GT **heavy** airship) |
 | Sacrilego | SS | `sacrilegoBattle` | `onBattleEffect` at resolve, survived → `grant({ cp: 1 })`, then a DP4 choice to sacrifice itself and save a friendly ship destroyed at 75–89.99% (§7.3) |
 | Iron Cordon | OW | `ironCordonBattle` | `onBattleEffect` at resolve, survived + an allied GT airship died in that battle → DP4 choice to sacrifice itself and revive it |

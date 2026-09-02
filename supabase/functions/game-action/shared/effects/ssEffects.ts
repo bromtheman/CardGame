@@ -11,7 +11,7 @@ import { registerEffect } from './registry.ts'
 import type { EffectPayload } from './registry.ts'
 import type { EngineGame, Side, ZoneCardEntry } from '../engine/engineTypes.ts'
 import { findVehicle, otherSide, zoneById } from '../engine/gameEngine.ts'
-import { declareForcedBattle } from '../engine/battleDeclare.ts'
+import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
 
 // SS built-in card effects.
 registerEffect('resoluteOnPlay', grant({ draw: 1 }))
@@ -306,22 +306,40 @@ registerEffect('catsharkBattle', (payload) => {
 })
 
 // "Whenever this ship participates in a defensive battle, spawn another dryad
-// into the zone under your control." A BOARD spawn, not a battle summon —
-// "spawn ... into the zone" is spec §4.4's wording for the permanent kind — so
-// the new hull enters zone.cards and does NOT join the battle in progress.
+// into the zone under your control." The reinforcement TAKES PART in the
+// battle that summoned it, and is kept if it survives it.
+//
+// That pair of requirements is why this is a BOARD spawn joined by id rather
+// than the battle summon The Onyx Throne uses. A summon lives only inside
+// ActiveBattle.summons and evaporates on report approval whatever its HP
+// (battleResolve.ts) — which would make "spawn another dryad into the zone"
+// hand back nothing. So: spawnInto puts the hull in zone.cards, then
+// joinBattle WITHOUT an entry adds only its id to the defending side. Being a
+// real board vehicle is what earns it the ordinary outcomes — destroyed and
+// discarded when it dies, still standing in the zone when it lives.
+//
+// ⚠ This was originally a bystander spawn with no joinBattle at all, so the
+// Dryad fought alone and its replacement appeared beside the corpse. Do not
+// "restore" that by dropping the join.
 //
 // It carries the same trigger, so it will spawn again in a later defensive
 // battle it takes part in. That compounding is the card; nothing here caps it.
 // Within ONE lock it cannot re-trigger, because the dispatch walks a roster
-// snapshotted before any effect runs (battleTriggers.ts).
+// snapshotted before any effect runs (battleTriggers.ts) — so the hull this
+// adds to defenderIds is never dispatched by the lock that added it.
 registerEffect('dryadBattle', ({ game, actor, ctx, battle }) => {
   if (!battle || battle.phase !== 'lock' || !battle.isParticipant || !battle.isDefender) return true
   const snapshot = catalogCard(ctx, 'Dryad')
   // A card missing from the catalog is a data bug, not an empty pool — the
   // same contract spawnVehicles and summonHulls both use.
   if (!snapshot) return false
-  if (!spawnInto(game, ctx, actor, battle.zoneId, snapshot)) return false
-  game.state.log.push(`Another Dryad takes root in zone ${battle.zoneId}`)
+  // battle.zoneId, not the spawning Dryad's own zone: joinBattle's on-board
+  // check is scoped to the battle's zone, so a hull spawned anywhere else
+  // could not join. The two differ only for a cross-zone duel (wave 7).
+  const grown = spawnInto(game, ctx, actor, battle.zoneId, snapshot)
+  if (!grown) return false
+  if (!joinBattle(game, actor, grown.instanceId)) return false
+  game.state.log.push(`Another Dryad takes root in zone ${battle.zoneId} and joins the defence`)
   return true
 }, { needsCatalog: true })
 

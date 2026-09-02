@@ -214,7 +214,7 @@ export const ssVehicles = [
     }, {
         name: 'Dryad',
         isBuiltIn: true,
-        cardText: 'Whenever this ship participates in a defensive battle, spawn another dryad into the zone under your control',
+        cardText: 'Whenever this ship participates in a defensive battle, spawn another Dryad under your control into that zone. It fights alongside your fleet in that battle, and stays in the zone if it survives.',
         materialCost: 40500,
         blueprintCost: 40500,
         cpCost: 0,

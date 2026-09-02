@@ -1619,7 +1619,7 @@ describe('wave 4 — battle triggers at lock', () => {
   })
 
   describe('dryadBattle', () => {
-    it('board-spawns another Dryad on a defensive lock, without joining the battle', () => {
+    it('board-spawns another Dryad on a defensive lock and joins it to the defence', () => {
       const game = makeGame()
       const dryad = zoneEntry({ name: 'Dryad', instanceId: 'dryad-1', meta: { onBattleEffect: 'dryadBattle' } })
       game.state.zones[0].cards.a.push(dryad)
@@ -1630,9 +1630,75 @@ describe('wave 4 — battle triggers at lock', () => {
       })
       expect(ok).toBe(true)
       expect(game.state.zones[0].cards.a.map((c) => c.name)).toEqual(['Dryad', 'Dryad'])
-      // A board spawn, not a battle summon (spec §4.4's wording table).
-      expect(game.state.activeBattle?.defenderIds).toEqual(['dryad-1'])
+      // A BOARD spawn that also fights: it is in zone.cards (so it is kept if
+      // it survives) AND on defenderIds (so it helps defend). Never a battle
+      // summon — summons evaporate on approval, and this one must not.
+      const spawned = game.state.zones[0].cards.a[1]
+      expect(game.state.activeBattle?.defenderIds).toEqual(['dryad-1', spawned.instanceId])
       expect(game.state.activeBattle?.summons).toEqual([])
+    })
+
+    // The whole point of the board spawn over a battle summon: a summon
+    // evaporates on approval whatever its HP, and this hull must be kept.
+    it('keeps a spawned Dryad that survives the battle it joined', () => {
+      const game = makeGame({ turnNumber: 3 })
+      const attacker = zoneEntry({ instanceId: 'foe-1', playedOnTurn: 2 })
+      const dryad = zoneEntry({
+        name: 'Dryad', instanceId: 'dryad-1', vehicleType: 'ship',
+        meta: { onBattleEffect: 'dryadBattle' },
+      })
+      game.state.zones[0].cards.a.push(attacker)
+      game.state.zones[0].cards.b.push(dryad)
+      const ctx = makeCtx({ catalog: [dryadHull] })
+      const declared = applyAction(game, 'alice', {
+        type: 'ATTACK_ENEMY_FLEET', zoneId: 1, attackerIds: ['foe-1'], targetIds: ['dryad-1'],
+      }, ctx)
+      if (!declared.ok) throw new Error(declared.error)
+      const spawnedId = declared.game.state.zones[0].cards.b[1].instanceId
+      expect(declared.game.state.activeBattle?.defenderIds).toEqual(['dryad-1', spawnedId])
+
+      // The original dies, the spawned one holds the zone at 90%.
+      const submitted = applyAction(declared.game, 'alice', {
+        type: 'SUBMIT_BATTLE_REPORT',
+        results: { 'foe-1': 40, 'dryad-1': 0, [spawnedId]: 90 },
+        repairs: [],
+      }, ctx)
+      if (!submitted.ok) throw new Error(submitted.error)
+      const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, ctx)
+      if (!decided.ok) throw new Error(decided.error)
+      expect(decided.game.state.zones[0].cards.b.map((c) => c.instanceId)).toEqual([spawnedId])
+    })
+
+    // The other half of "if it lives, you keep it": when it does not live it
+    // is destroyed like any board vehicle — discarded, counted, logged — and
+    // does NOT quietly persist the way the pre-fix bystander spawn did.
+    it('loses a spawned Dryad that is destroyed in the battle it joined', () => {
+      const game = makeGame({ turnNumber: 3 })
+      const attacker = zoneEntry({ instanceId: 'foe-1', playedOnTurn: 2 })
+      const dryad = zoneEntry({
+        name: 'Dryad', instanceId: 'dryad-1', vehicleType: 'ship',
+        meta: { onBattleEffect: 'dryadBattle' },
+      })
+      game.state.zones[0].cards.a.push(attacker)
+      game.state.zones[0].cards.b.push(dryad)
+      const ctx = makeCtx({ catalog: [dryadHull] })
+      const declared = applyAction(game, 'alice', {
+        type: 'ATTACK_ENEMY_FLEET', zoneId: 1, attackerIds: ['foe-1'], targetIds: ['dryad-1'],
+      }, ctx)
+      if (!declared.ok) throw new Error(declared.error)
+      const spawnedId = declared.game.state.zones[0].cards.b[1].instanceId
+
+      const submitted = applyAction(declared.game, 'alice', {
+        type: 'SUBMIT_BATTLE_REPORT',
+        results: { 'foe-1': 95, 'dryad-1': 0, [spawnedId]: 0 },
+        repairs: [],
+      }, ctx)
+      if (!submitted.ok) throw new Error(submitted.error)
+      const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, ctx)
+      if (!decided.ok) throw new Error(decided.error)
+      expect(decided.game.state.zones[0].cards.b).toEqual([])
+      // Destroyed, not evaporated: both hulls reach the discard pile.
+      expect(decided.game.state.destroyed.b.filter((c) => c.name === 'Dryad')).toHaveLength(2)
     })
 
     it('does nothing on an offensive lock', () => {
@@ -1663,6 +1729,11 @@ describe('wave 4 — battle triggers at lock', () => {
       }, makeCtx({ catalog: [dryadHull] }))
       if (!r.ok) throw new Error(r.error)
       expect(r.game.state.zones[0].cards.b).toHaveLength(4)
+      // All four defend — the two originals plus the two they grew — and no
+      // fifth, which is what proves a joined hull is not re-dispatched by the
+      // lock that joined it.
+      expect(r.game.state.activeBattle?.defenderIds)
+        .toEqual(r.game.state.zones[0].cards.b.map((c) => c.instanceId))
     })
 
     it('fails rather than fizzling when Dryad is missing from the catalog', () => {
@@ -2293,8 +2364,14 @@ describe('wave 4 — terawattJoin', () => {
   // replacement whenever it is dragged into a defensive battle, forced ones
   // included, so a Trebuchet chain fed on Dryads never ran out of targets and
   // spec §7.3's "terminates on the zone's population" was false. The chain is
-  // now bounded by the hulls eligible when it began, which a spawned Dryad is
-  // not — so the repeat ends even though the zone never empties.
+  // bounded by the hulls eligible when it BEGAN, and a Dryad spawned by the
+  // lock that followed is not one of them.
+  //
+  // The reinforcement now joins the defence rather than watching from the
+  // zone, so this battle is 1v2 and Trebuchet has to destroy BOTH hulls to win
+  // — which is a second, independent reason the chain cannot run forever. The
+  // chainIds assertion below is what still pins the original bound, because it
+  // reads the frozen list directly rather than inferring it from the outcome.
   it('does not let a Dryad spawned mid-chain feed Trebuchet another repeat', () => {
     const dryadHull = snap({
       name: 'Dryad', faction: 'SS', vehicleType: 'ship', materialCost: 40_500,
@@ -2313,22 +2390,29 @@ describe('wave 4 — terawattJoin', () => {
     effectFor('trebuchetEffect')!({ game, actor: 'a', card: treb, ctx, targetZoneId: 1 })
     const declared = applyAction(game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'dryad-1' }, ctx)
     if (!declared.ok) throw new Error(declared.error)
-    // Dryad's own lock trigger already replaced it, so the zone will not be
-    // empty when the battle resolves — which is exactly what used to keep the
-    // chain alive.
+    // Dryad's own lock trigger replaced it AND put the replacement in the
+    // fight — which is exactly what used to keep the chain alive.
     expect(declared.game.state.zones[0].cards.b).toHaveLength(2)
+    const spawnedId = declared.game.state.zones[0].cards.b[1].instanceId
+    expect(declared.game.state.activeBattle?.defenderIds).toEqual(['dryad-1', spawnedId])
+    // The bound itself: the chain was frozen before the lock, so the hull that
+    // lock spawned is not in it, however the battle goes.
+    expect(declared.game.state.activeBattle?.continuation?.data).toEqual({
+      zoneId: 1, chainIds: ['dryad-1'],
+    })
 
     const submitted = applyAction(declared.game, 'alice', {
-      type: 'SUBMIT_BATTLE_REPORT', results: { 'treb-1': 95, 'dryad-1': 10 }, repairs: [],
+      type: 'SUBMIT_BATTLE_REPORT',
+      results: { 'treb-1': 95, 'dryad-1': 10, [spawnedId]: 10 },
+      repairs: [],
     }, ctx)
     if (!submitted.ok) throw new Error(submitted.error)
     const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, ctx)
     if (!decided.ok) throw new Error(decided.error)
 
-    // Trebuchet won cleanly and survived, and a fresh Dryad is standing right
-    // there — but it was not in the chain, so there is no repeat to offer.
-    expect(decided.game.state.zones[0].cards.b).toHaveLength(1)
-    expect(decided.game.state.zones[0].cards.b[0].name).toBe('Dryad')
+    // Trebuchet won cleanly and survived — and gets no repeat, because the
+    // only hull ever in its chain is dead.
+    expect(decided.game.state.zones[0].cards.b).toEqual([])
     expect(decided.game.state.zones[0].cards.a.some((c) => c.instanceId === 'treb-1')).toBe(true)
     expect(decided.game.state.pendingEffect).toBeNull()
   })
