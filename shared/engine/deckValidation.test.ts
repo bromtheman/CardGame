@@ -102,4 +102,32 @@ describe('validateDeck', () => {
     expect(result.valid).toBe(false)
     expect(result.errors.join(' ')).toMatch(/cannot be added to a deck/i)
   })
+
+  it('rejects a retired card and says it is retired', () => {
+    const infoMap = legalInfo()
+    infoMap.set(...info('dwg-0', { retired: true }))
+    const r = validateDeck({ faction: 'DWG', cards: legalCards() }, infoMap, ME)
+    expect(r.valid).toBe(false)
+    expect(r.errors.some((e) => e.includes('dwg-0') && /retired/i.test(e))).toBe(true)
+  })
+
+  // The two rules are distinct on purpose: a summon-only card was NEVER
+  // draftable, a retired one was legal until a balance pass moved. 25 live
+  // decks hit this message, and it is the only thing that tells their owners
+  // what changed.
+  it('does not report a retired card as summon-only', () => {
+    const infoMap = legalInfo()
+    infoMap.set(...info('dwg-0', { retired: true }))
+    const r = validateDeck({ faction: 'DWG', cards: legalCards() }, infoMap, ME)
+    expect(r.errors.join(' ')).not.toMatch(/cannot be added to a deck/)
+  })
+
+  // Retirement is checked before faction, so an off-faction retired card
+  // reports the actionable reason rather than a second, confusing one.
+  it('reports retirement once, not alongside a faction error', () => {
+    const infoMap = legalInfo()
+    infoMap.set(...info('dwg-0', { retired: true, faction: 'SS' }))
+    const r = validateDeck({ faction: 'DWG', cards: legalCards() }, infoMap, ME)
+    expect(r.errors.filter((e) => e.includes('dwg-0'))).toHaveLength(1)
+  })
 })
