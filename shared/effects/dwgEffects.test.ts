@@ -891,7 +891,7 @@ describe('the capture loop repeats, and the enemy keeps their card throughout', 
     // 1. capture
     marauder()
     expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Loot'])
-    expect(deckOfB()).toEqual(['Loot', 'Filler'])   // 2. the original never moved
+    expect(deckOfB()).toEqual(['Filler', 'Loot'])   // 2. the original went to the bottom, not away
 
     // 3. play the copy, then let Temporary cull it at end of turn
     const copy = game.privates.a.hand.pop()!
@@ -905,16 +905,17 @@ describe('the capture loop repeats, and the enemy keeps their card throughout', 
     expect(r.game.state.destroyed.a).toEqual([])
     expect(r.game.state.destroyed.b).toEqual([])
 
-    // 5. bob DRAWS the very card alice copied — the capture never denied it
-    //    to him, which is the whole point of the copy model
+    // 5. bob draws the card that was under Loot, and Loot is still his to
+    //    draw after it — the capture delayed it, never denied it, which is
+    //    the whole point of the copy model
     const again = r.game
-    expect(again.privates.b.hand.map((c) => c.name)).toEqual(['Loot'])
-    expect(again.privates.b.deck.map((c) => c.name)).toEqual(['Filler'])
+    expect(again.privates.b.hand.map((c) => c.name)).toEqual(['Filler'])
+    expect(again.privates.b.deck.map((c) => c.name)).toEqual(['Loot'])
 
     // 6. and the loop runs again, off whatever is left of his deck
     expect(effectFor('marauderOnPlay')!({ game: again, actor: 'a', card: inst(), ctx })).toBe(true)
-    expect(again.privates.a.hand.map((c) => c.name)).toEqual(['Filler'])
-    expect(again.privates.b.deck.map((c) => c.name)).toEqual(['Filler'])
+    expect(again.privates.a.hand.map((c) => c.name)).toEqual(['Loot'])
+    expect(again.privates.b.deck.map((c) => c.name)).toEqual(['Loot'])
   })
 })
 
@@ -1159,5 +1160,26 @@ describe('enemy-deck capture is a copy, for all three cards', () => {
     expect(game.privates.a.hand[0].meta.capturedCopy).toBe(true)
     expect(game.privates.b.deck.map((c) => c.name)).toEqual(['Enemy Secret'])
     expect(game.state.counts.b.deck).toBe(1)
+  })
+
+  // The reported bug: a copy leaves the original on top, so every raid read
+  // the same card until the enemy happened to draw it. Marauder plus two
+  // Plunderer raids must reach three different cards.
+  it('Marauder then two Plunderer raids take three different cards, not the top card thrice', () => {
+    const game = makeGame()
+    const ctx = makeCtx()
+    game.privates.b.deck.push(
+      inst({ name: 'Ship One', type: 'vehicle' }),
+      inst({ name: 'Ship Two', type: 'vehicle' }),
+      inst({ name: 'Ship Three', type: 'vehicle' }),
+    )
+    game.state.counts.b.deck = 3
+    effectFor('marauderOnPlay')!({ game, actor: 'a', card: inst(), ctx })
+    const raid = effectFor('plundererRaid')!
+    raid({ game, actor: 'a', card: inst(), ctx, battle: { survived: true, won: true, zoneId: 1 } })
+    raid({ game, actor: 'a', card: inst(), ctx, battle: { survived: true, won: true, zoneId: 1 } })
+    expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Ship One', 'Ship Two', 'Ship Three'])
+    expect(game.privates.b.deck.map((c) => c.name).sort()).toEqual(['Ship One', 'Ship Three', 'Ship Two'])
+    expect(game.state.counts.b.deck).toBe(3)
   })
 })

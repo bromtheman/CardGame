@@ -8,7 +8,7 @@ import type { EffectFn, EffectPayload } from './registry.ts'
 
 // Copy one card out of the enemy's deck into the actor's hand. The log line
 // must not name it — it is going into a hidden hand. The copy gets a fresh
-// instanceId; the original is left where it is.
+// instanceId; the original goes to the bottom of its own deck.
 export function takeFromEnemyDeck(
   game: EngineGame, actor: Side, ctx: EngineContext,
   filter?: (card: CardInstance) => boolean,
@@ -29,6 +29,12 @@ export function takeFromEnemyDeck(
   game.privates[actor].hand.push({
     ...card, instanceId: ctx.newId(), meta: { ...card.meta, capturedCopy: true },
   })
+  // The original goes to the BOTTOM of its deck. A copy leaves the pick in
+  // place, and without this every raid re-read the same top card until the
+  // enemy happened to draw it (Marauder + two Plunderer raids = three of one
+  // card). Bottoming walks successive raids down the deck without removing
+  // anything: the enemy keeps every card, and only its order shifts.
+  deck.push(...deck.splice(index, 1))
   // Only the captor's hand count moves. The enemy's deck count is deliberately
   // left alone because nothing left their deck — so the capture is invisible
   // in the public counts, and the log line below is its only public signal.
