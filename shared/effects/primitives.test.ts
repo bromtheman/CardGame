@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
-  catalogCard, choice, drawFromPool, enemyVehicleOptions, grant, mintHull, sequence, spawnVehicles,
-  summonHulls, takeFromEnemyDeck, whenPlayed, zoneOccupants,
+  catalogCard, choice, drawFromPool, enemyVehicleOptions, grant, mintHull, poolEligible, sequence,
+  spawnVehicles, summonHulls, takeFromEnemyDeck, whenPlayed, zoneOccupants,
 } from './primitives.ts'
 import { inst, makeCtx, makeGame, snap, zoneEntry } from '../engine/testFixtures.ts'
 
@@ -453,4 +453,35 @@ describe('takeFromEnemyDeck — copy model', () => {
     expect(game.privates.b.deck.map((c) => c.name)).toEqual(['Middle', 'Bottom', 'Top'])
   })
 
+})
+
+describe('poolEligible', () => {
+  it('excludes summon-only and retired cards, and admits everything else', () => {
+    expect(poolEligible({ meta: {} })).toBe(true)
+    expect(poolEligible({ meta: { summonOnly: true } })).toBe(false)
+    expect(poolEligible({ meta: { retired: true } })).toBe(false)
+  })
+
+  // Guards against a truthiness bug: only the boolean `true` excludes, the
+  // same comparison every existing summonOnly site makes.
+  it('treats any non-true value as eligible', () => {
+    expect(poolEligible({ meta: { retired: false } })).toBe(true)
+    expect(poolEligible({ meta: { retired: 'yes' } })).toBe(true)
+  })
+})
+
+describe('drawFromPool excludes retired cards', () => {
+  it('never mints a retired card from the catalog', () => {
+    const live = snap({ name: 'Live', faction: 'DWG', type: 'vehicle', vehicleType: 'ship' })
+    const dead = snap({
+      name: 'Dead', faction: 'DWG', type: 'vehicle', vehicleType: 'ship',
+      meta: { retired: true },
+    })
+    const game = makeGame()
+    const ok = drawFromPool({ source: 'catalog', filter: { faction: 'DWG' }, count: 5 })(
+      { game, actor: 'a', card: inst(), ctx: makeCtx({ catalog: [live, dead] }) },
+    )
+    expect(ok).toBe(true)
+    expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Live'])
+  })
 })

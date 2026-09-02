@@ -5,7 +5,7 @@ import {
 } from '../gameSettings.ts'
 import {
   catalogCard, costDelta, choice, drawFromPool, enemyVehicleOptions, grant, grantKeywords,
-  sacrificeToSave, sequence, spawnInto, spawnVehicles, summonHulls,
+  poolEligible, sacrificeToSave, sequence, spawnInto, spawnVehicles, summonHulls,
 } from './primitives.ts'
 import { registerEffect } from './registry.ts'
 import type { EffectPayload } from './registry.ts'
@@ -40,16 +40,16 @@ registerEffect('nothungOnPlay', spawnVehicles({
 // loggerheadOnDeath does mint at zero and is NOT the precedent: its copy goes
 // into a DECK, where nothing but the price ever reads that number.
 //
-// The summonOnly exclusion is repeated by hand because this filters the
-// catalog by name directly rather than going through drawFromPool, which is
-// the one place that guard comes for free (docs/claude/architecture.md —
-// reservesEffect missed exactly this).
+// This filters the catalog by name directly rather than going through
+// drawFromPool, so it uses the shared poolEligible predicate rather than
+// drawFromPool's own filter (docs/claude/architecture.md — reservesEffect
+// missed exactly this before the predicate existed).
 registerEffect('balmungOnPlay', ({ game, actor, ctx }) => {
   const hydra = catalogCard(ctx, 'Hydra')
   // A named card the catalog cannot supply is a data bug, not an empty pool,
   // so this fails the play rather than fizzling — the same contract
   // spawnVehicles uses for the same reason.
-  if (!hydra || hydra.meta.summonOnly === true) return false
+  if (!hydra || !poolEligible(hydra)) return false
   const hand = game.privates[actor].hand
   hand.push({
     ...hydra,
@@ -229,7 +229,7 @@ registerEffect('victoriaActivate', ({ game, actor, ctx, card }) => {
   if (!self || self.side !== actor) return false
   const snapshot = catalogCard(ctx, 'Victoria')
   // A named card the catalog cannot supply is a data bug, not an empty pool.
-  if (!snapshot || snapshot.meta.summonOnly === true) return false
+  if (!snapshot || !poolEligible(snapshot)) return false
   if (!spawnInto(game, ctx, actor, self.zone.id, snapshot)) return false
   game.state.log.push(`Victoria commissions another hull in zone ${self.zone.id}`)
   return true

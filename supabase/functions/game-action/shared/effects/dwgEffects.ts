@@ -12,7 +12,7 @@ import { effectiveMaterialCostOf } from '../engine/placement.ts'
 import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
 import { baseDamageFrom, baseStrikersIn } from '../engine/baseAttack.ts'
 import { fireDeathEffect } from '../engine/battleTriggers.ts'
-import { choice, grant, mintHull, summonHulls, takeFromEnemyDeck } from './primitives.ts'
+import { choice, grant, mintHull, poolEligible, summonHulls, takeFromEnemyDeck } from './primitives.ts'
 import { registerCostModifier, registerEffect } from './registry.ts'
 import type { EffectPayload } from './registry.ts'
 
@@ -87,10 +87,11 @@ registerEffect('loggerheadOnDeath', ({ game, actor, card, ctx }) => {
 // (Reserves — old BE shuffles the pool and shifts, so picks never repeat)
 registerEffect('reservesEffect', ({ game, actor, ctx }) => {
   // Mints straight from the catalog rather than through drawFromPool, so the
-  // summonOnly exclusion (spec §7.4) does not come for free — it must be
-  // repeated here by hand. Without it this pool matches Flying Squirrel.
+  // pool exclusion (spec §7.4) does not come for free by itself — it uses the
+  // shared poolEligible predicate rather than drawFromPool's own filter.
+  // Without it this pool matches Flying Squirrel.
   const pool = ctx.catalog.filter((c) =>
-    c.isBuiltIn && c.faction === 'DWG' && c.type === 'vehicle' && c.meta.summonOnly !== true)
+    c.isBuiltIn && c.faction === 'DWG' && c.type === 'vehicle' && poolEligible(c))
   if (pool.length === 0) return false
   for (let i = pool.length - 1; i > 0; i--) {
     const j = Math.floor(ctx.rng() * (i + 1))
@@ -346,16 +347,16 @@ const DWG_WATERS_EFFECT = 'dwgWatersEffect'
 //   clause 3  battle.phase === 'baseAttack' → intercept the bombardment
 
 // "From the game" is the catalog, the same phrasing Special Foundries uses for
-// a named pool (spec §7.3). The summonOnly exclusion is repeated by hand
-// because this filters ctx.catalog directly rather than going through
-// drawFromPool, which is the one place that guard comes for free.
+// a named pool (spec §7.3). This filters ctx.catalog directly rather than
+// going through drawFromPool, so it uses the shared poolEligible predicate
+// rather than drawFromPool's own filter.
 function dwgGuestPool(ctx: EngineContext): SnapshotCard[] {
   return ctx.catalog.filter((c) =>
     c.isBuiltIn &&
     c.faction === 'DWG' &&
     c.type === 'vehicle' &&
     c.materialCost < DWG_WATERS_GUEST_MAX_COST &&
-    c.meta.summonOnly !== true)
+    poolEligible(c))
 }
 
 // Clause 2. Options are catalog card names — public, like Special Foundries'
