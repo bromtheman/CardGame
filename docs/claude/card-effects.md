@@ -458,12 +458,17 @@ not current behaviour.
 
 `takeFromEnemyDeck` (Marauder, Paddlegun, Plunderer clause 2) **copies** one
 card out of the opponent's deck and stamps the copy `meta.capturedCopy: true`.
-The original never moves, so:
+The original is **moved to the bottom of the opponent's deck** — never out of
+it — so:
 
 - the opponent can still draw it, and their public `counts[side].deck` does not
   change — the log line ("takes a card from the enemy deck") is the only public
   signal that a capture happened;
-- the capture repeats freely, and can even take the same card twice;
+- the capture repeats freely, and successive raids walk *down* the deck. The
+  bottoming is what makes that true: a copy leaves the pick in place, and
+  before 2026-09-02 every raid re-read the same top card until the opponent
+  happened to draw it (Marauder + two Plunderer raids = three of one card).
+  It is the one way a capture touches the opponent's deck: order, not contents;
 - a captured copy is a phantom with no deck to go home to. `discardCard` — the
   single exit for every card leaving play (battle death, Temporary despawn,
   ability spend, Change Order) — **destroys it** rather than filing it, exactly

@@ -56,7 +56,7 @@ describe('grant', () => {
 })
 
 describe('takeFromEnemyDeck', () => {
-  it('copies the topmost card matching the filter, leaving the deck untouched', () => {
+  it('copies the topmost card matching the filter, and bottoms the original', () => {
     const game = makeGame()
     game.privates.b.deck.push(
       inst({ name: 'Ability', type: 'ability' }),
@@ -66,7 +66,8 @@ describe('takeFromEnemyDeck', () => {
     const ok = takeFromEnemyDeck(game, 'a', makeCtx(), (c) => c.type === 'vehicle')
     expect(ok).toBe(true)
     expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Ship'])
-    expect(game.privates.b.deck.map((c) => c.name)).toEqual(['Ability', 'Ship', 'Ship Two'])
+    // the cards above the pick stay put; only the pick moves, to the bottom
+    expect(game.privates.b.deck.map((c) => c.name)).toEqual(['Ability', 'Ship Two', 'Ship'])
   })
 })
 
@@ -434,14 +435,22 @@ describe('takeFromEnemyDeck — copy model', () => {
     expect(copy.instanceId).not.toBe('enemy-1')
   })
 
-  it('repeats: capturing twice yields two copies and leaves the deck intact', () => {
+  it('repeats: capturing twice yields two DIFFERENT cards, and the deck keeps both', () => {
     const game = makeGame()
     const ctx = makeCtx()
-    game.privates.b.deck.push(inst({ name: 'Loot', type: 'vehicle' }))
+    game.privates.b.deck.push(inst({ name: 'Loot', type: 'vehicle' }), inst({ name: 'Booty', type: 'vehicle' }))
     takeFromEnemyDeck(game, 'a', ctx)
     takeFromEnemyDeck(game, 'a', ctx)
-    expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Loot', 'Loot'])
-    expect(game.privates.b.deck.map((c) => c.name)).toEqual(['Loot'])
+    expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Loot', 'Booty'])
+    expect(game.privates.b.deck.map((c) => c.name).sort()).toEqual(['Booty', 'Loot'])
     expect(game.privates.a.hand[0].instanceId).not.toBe(game.privates.a.hand[1].instanceId)
   })
+
+  it('moves the original to the bottom of the enemy deck, so the next raid reads the next card', () => {
+    const game = makeGame()
+    game.privates.b.deck.push(inst({ name: 'Top' }), inst({ name: 'Middle' }), inst({ name: 'Bottom' }))
+    takeFromEnemyDeck(game, 'a', makeCtx())
+    expect(game.privates.b.deck.map((c) => c.name)).toEqual(['Middle', 'Bottom', 'Top'])
+  })
+
 })
