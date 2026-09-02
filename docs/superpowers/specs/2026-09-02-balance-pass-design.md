@@ -185,10 +185,25 @@ not "destroy it". The target leaves the board and is discarded, but
 `onDeathEffect` does **not** dispatch. Recorded here because the two phrasings
 are one line apart in the engine and the difference is invisible in review.
 
-**R-8 — Dead rules are kept, dead constants are deleted.** Two engine rules
-lose their last card (§5) and stay, commented, for the reason `purifierEffect`
-is kept registered. Four constants lose their last reader and are deleted,
-because a constant nothing reads is not a compatibility surface.
+**R-8 — Dead rules are kept, and only two constants are actually dead.** Two
+engine rules lose their last *card* (§5) and stay, commented, for the reason
+`purifierEffect` is kept registered.
+
+⚠ This ruling originally deleted four constants. **Two of the four are not
+dead**, because keeping a rule keeps its constant:
+
+| Constant | Reader | Verdict |
+|---|---|---|
+| `MARAUDER_DISCOUNT` | `dwgEffects.ts` only, and the rewrite removes it | **delete** (DWG) |
+| `SACRILEGO_HP_BOOST` | `ssEffects.ts:361`, inside the clause Sacrilego's rework deletes | **delete** (SS) |
+| `PURIFIER_LOSS_WINDOW_TURNS` | `placement.ts:95` (`battleLossMissing`) — a rule this ruling KEEPS | **keep** |
+| `HARBRINGER_GUEST_MAX_COST` | `wfEffects.ts:220` (`harbringerPool`), reachable from `harbringerBattle`, which the retired-but-seeded Harbringer still names | **keep** |
+
+Deleting either of the bottom two fails `tsc`. They stay exactly where they are
+in `shared/gameSettings.ts` — they are still tunable game rules with live
+readers, which is precisely what that file is for. Do not relocate them either:
+moving a constant beside its reader is churn that buys nothing and widens the
+merge surface.
 
 ## 4. New engine mechanics
 
@@ -232,14 +247,39 @@ Under R-1 the cap is **derived, not stored** — no new persistent state.
 
 - Data key `deployOrder: 'first' | 'last'`, meaning *this card's side spawns
   first / last*.
-- Surfaced as an instruction line in the battle-prep UI and the spawn sheet.
-  This is player conduct for staging the fight in From The Depths — the engine
-  has no deployment-order concept and this pass does not give it one.
+- Surfaced as an instruction line in the battle-prep UI. This is player conduct
+  for staging the fight in From The Depths — the engine has no deployment-order
+  concept and this pass does not give it one.
 - Covers `WF:Veles` (`last`), `WF:Purifier` (`last` — "the enemy forces must
   spawn in first" is the same statement seen from the other side), and frees
   **`TG:Anguish` from `EXEMPT`** (`first`) after three waves parked there.
-- If both sides carry a directive they cancel and normal order applies, with a
-  log line saying so.
+
+⚠ **Only one surface exists, not two.** This section originally said "the
+battle-prep UI and the spawn sheet". `shared/customBattle.ts` cannot carry a
+deploy order: `CustomBattleFile` has `SpawnDistanceBetweenTeams`, per-vehicle
+`SpawnAltitude` and a spawn angle, and nothing ordering-shaped — FtD spawns both
+teams at once. The only honest home is the battle panel in
+`frontend/src/pages/game/BattleOverlay.tsx`. Leave `customBattle.ts` alone.
+
+⚠ **`deployOrder` must go in `DATA_EFFECT_KEYS`.** `TG:Anguish` carries
+`meta: {}` and one sentence of card text, and Veles ends up the same shape. The
+moment Anguish leaves `EXEMPT`, G2 flags both as silent and `noteUnimplemented`
+logs a false "plays as vanilla" line **to players**. The three existing members
+whose whole card text IS the rule — `defensiveOmission`, `aircraftLock`,
+`noBaseDamage` — are the precedent.
+
+⚠ **Cancellation is on disagreement, not on presence.** The original rule — "if
+both sides carry a directive they cancel" — is wrong, because two directives can
+agree. Anguish on side A says *A spawns first*; Veles on side B also says *A
+spawns first*. Normalise every carrier to the single question **"which side
+spawns first?"** — the reading Purifier already forces — and cancel only when
+the answers genuinely conflict. Pin the agreement case as well as the conflict
+one.
+
+There is also no React test infrastructure in this repo (`vitest.config.ts`
+collects `*.test.ts`, and there are zero `.test.tsx` files), so the rule belongs
+in `shared/engine/` as a pure, exhaustively unit-tested function, with the
+rendering verified by build, lint and the browser.
 
 ## 5. Orphans, dead rules and dead constants
 
@@ -411,6 +451,21 @@ Retired: Dryad — **Wave 0** (§2.1). SS's wave still deletes `SACRILEGO_HP_BOO
 
 ## 7. Testing and verification
 
+⚠ **A new effect and the card that names it MUST land in the same commit.**
+Both split orderings leave the suite red, so this is not a preference:
+
+- **Effect first** → G4 (`effectCoverage.test.ts`, "names no orphan outside the
+  deliberate list") fails, because a registered name no seeded card mentions is
+  exactly what G4 hunts.
+- **Seed first** → G1/G2 fail, because a card naming an unimplemented effect
+  needs a `KNOWN_GAPS` entry, and §1.1 requires that map to stay empty.
+
+Keep TDD ordering *inside* the task — failing test, implement, pass — and put
+the registration, the seed row, `npm run seed:build` and the balance-guard row
+in one commit. Run the **full** `npx vitest run` before it: a targeted run of
+one test file will not show G4 going red, which is how this shape survives
+review. Say why in a comment, so nobody later "tidies" it into two commits.
+
 Per-branch, in order:
 
 1. Failing engine test **first**, for every effect. No exceptions
@@ -442,13 +497,28 @@ of the three touches `ctx.catalog`. **A unit test cannot catch a missing
 runs the effect against an empty one and 400s on every real play. Each wave
 verifies its effects appear in `CATALOG_EFFECTS` before it closes.
 
-### 7.2 Fourteen existing assertions this pass invalidates
+### 7.2 The existing assertions this pass invalidates
 
-`supabase/seed/balancePass.test.ts` pins the 2026-08-30 numbers, and **fourteen**
-of its assertions describe cards this pass changes. They are **expected
-failures, not regressions** — each is updated in place by the wave that causes
-it (§2.3), and a wave that meets one unprepared will waste time treating it as a
-bug.
+They are **expected failures, not regressions** — each is updated in place by
+the wave that causes it (§2.3), and a wave that meets one unprepared will waste
+time treating it as a bug.
+
+⚠ **Three files carry them, not one.** This section originally named only
+`balancePass.test.ts`:
+
+| File | Scope | Waves |
+|---|---|---|
+| `supabase/seed/balancePass.test.ts` | 14 assertions, itemised below | DWG, WF, SS |
+| `shared/engine/battleDeclare.test.ts` | 1 — "the two real seeded cards carry exactly the value the engine compares" asserts `['Buzzsaw','Veles']` carry `defensiveOmission`. WF drops the key from both, so the list empties. | WF |
+| `supabase/seed/tgFaction.test.ts` | Extensive — a 343-line guard pinning all 26 TG cards' costs, keywords and types, the 26-fresh/30-total counts, the 8/8/4/3/3 vehicle-type split, and the ten-card upkeep table. TG's wave moves all of it. | TG |
+
+`tgFaction.test.ts` is the one to plan for properly: TG adds five cards
+(26→31 fresh, 30→35 total), moves Obelisk `sub`→`ship` (changing the split), and
+takes `UPKEEP_REQUIRED` off Horror, Nostalgia and Alarmed while Mania brings it
+— so the upkeep table goes from ten entries to eight, with recomputed values.
+`balancePass.test.ts` contains **no TG assertions at all**.
+
+The 14 in `balancePass.test.ts`:
 
 Nine are rows in that file's `CARDS` map, which pins cost, blueprint cost,
 keywords, vehicle type and card text per card:
