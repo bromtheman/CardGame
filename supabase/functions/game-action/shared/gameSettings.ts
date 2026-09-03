@@ -104,9 +104,9 @@ export const KEYWORDS = {
 // income is set to floor(turnNumber) × materialsPerTurn rather than
 // accumulated, so a card is unplayable until income reaches its cost, and its
 // upkeep is therefore always ~15% of the income available on the turn it first
-// becomes playable — at any cost and at any lobby rate. Horror (70k) lands at
-// turn 1 and pays 14% of 75k; Fear (800k) lands at turn 11 and pays 14.5% of
-// 825k.
+// becomes playable — at any cost and at any lobby rate. Mania (270k) lands at
+// turn 4 and pays 13.5% of 300k; Fear (500k) lands at turn 7 and pays 14.3% of
+// 525k.
 export const UPKEEP_RATE = 0.15
 
 export const TRIGGERS = {

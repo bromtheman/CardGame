@@ -40,9 +40,12 @@ registerEffect('jealousyOnDeath', grant({ draw: 1 }))
 // ⚠ Spawns also bypass placement legality, so a Horror (a ship) lands in the
 // land zone that a ship could never be PLAYED into.
 //
-// Balance note, recorded rather than fixed: Fear is 120k/turn of upkeep and
-// its three Horrors add 31.5k. That is 18.4% of the income available on turn
-// 11, the first turn an 800k card can be played at all (spec §7.3, U-8).
+// Balance note, recorded rather than fixed: the 2026-09-02 pass cut Fear to
+// 500k, so its own upkeep is 75k/turn (UPKEEP_RATE 0.15) and it lands as early
+// as turn 7, the first turn a 500k card can be played at all (spec §7.3, U-8).
+// The three Horrors it spawns add nothing to that upkeep — Horror dropped
+// UPKEEP_REQUIRED in the same pass — but each is its own self-replicating
+// engine per horrorBattle's own balance note below.
 registerEffect('fearOnPlay', spawnVehicles({
   cardName: 'Horror',
   count: 1,
@@ -422,12 +425,27 @@ registerEffect(ALARMED, choice({
 // counter has to be read off state; a Horror in this zone already stamped with
 // the current turn IS this turn's spawn, and that needs no new field.
 //
+// ⚠ Recorded, not fixed: reading the cap off the board makes it asymmetric
+// between a same-turn Horror that SURVIVES its battle (it keeps this turn's
+// stamp, matches itself below, and correctly blocks a second copy) and one
+// that DIES in the same battle (the destruction branch splices it out of
+// zone.cards before this dispatch runs, taking its stamp with it, so a
+// same-turn spawner reads as unstamped again). That gap is reachable within
+// one turn without any new state: Horror H attacks and survives, minting copy
+// C1 stamped this turn; a Duel that same turn choosing C1 kills it, which
+// removes the only stamped copy from the zone; H's next offensive battle this
+// turn then reads as unstamped and mints a second copy C2 into the same zone.
+// Two spawns land in one turn this way, though each extra iteration still
+// costs a Duel card and net board growth per iteration stays +1. A real fix
+// needs a turn stamp that survives the kill — e.g. carried on the discard
+// snapshot rather than read off board presence — and is out of scope here.
+//
 // ⚠ Recorded by wave 7's late re-read: `playedOnTurn` cannot tell a Horror that
 // COPIED into this zone this turn from one that ARRIVED here this turn by any
 // other route — Fear's spawn, or an ordinary play. So a Horror that Fear
 // dropped on turn N and which then survives a battle still on turn N produces
 // no copy. That errs toward FEWER copies on the wave's acknowledged balance hot
-// spot (a 70k self-replicating hull), and distinguishing the two would need the
+// spot (a 50k self-replicating hull), and distinguishing the two would need the
 // per-zone counter D-4 deliberately avoided. Left as the conservative reading.
 //
 // ⚠ Balance, recorded rather than fixed. This pass makes Horror strictly

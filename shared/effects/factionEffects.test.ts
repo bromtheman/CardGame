@@ -4880,9 +4880,10 @@ describe('TG Alarmed — sacrifice a friendly AI vehicle (wave 7)', () => {
 // ---------------------------------------------------------------------------
 // Wave 7, group D — TG Horror.
 //
-// "Whenever a horror survives a fleet battle, create anther copy of it in this
-// zone. Max one spawn per zone." (`anther` is the card's own typo; cardText is
-// data, and it is reproduced verbatim rather than silently corrected.)
+// "Whenever a horror participates in an offensive fleet battle, create anther
+// copy of it in this zone. Max one spawn per zone." (`anther` is the card's own
+// typo; cardText is data, and it is reproduced verbatim rather than silently
+// corrected.)
 //
 // ⚠ Ruling D-3: "a horror" is read as THIS Horror. The sentence continues
 // "create another copy OF IT", which points back at the same hull, and DP2
@@ -7000,5 +7001,27 @@ describe('TG Spawn Audacious — a non-temporary Audacious (2026-09-02)', () => 
   // catalog — so the registration itself is what gets asserted.
   it('carries needsCatalog', () => {
     expect(CATALOG_EFFECTS.has('spawnAudaciousEffect')).toBe(true)
+  })
+
+  // End to end, so the handler's own gates (ability type, playOnZoneEffect
+  // key, materials payment) are exercised rather than only the effect body —
+  // every other test above calls spawnAudaciousEffect directly.
+  it('resolves through PLAY_CARD_TO_ZONE and pays its printed cost', () => {
+    const card = spawnCard()
+    const game = makeGame({
+      turnNumber: 3, activePlayer: 'alice',
+      privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } },
+    })
+    const materialsBefore = game.state.resources.a.materials
+    const ctx = makeCtx({ catalog: [audaciousSnap()] })
+    const res = applyAction(
+      game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, ctx,
+    )
+    if (!res.ok) throw new Error(res.error)
+    expect(res.game.state.zones[0].cards.a.map((c) => c.name)).toEqual(['Audacious'])
+    expect(res.game.state.zones[0].cards.a[0].keywords).toEqual([KEYWORDS.HALF_COST])
+    expect(res.game.state.resources.a.materials).toBe(materialsBefore - 40_000)
+    expect(res.game.privates.a.hand).toHaveLength(0)
+    expect(res.game.state.destroyed.a.map((c) => c.name)).toEqual(['Spawn Audacious'])
   })
 })
