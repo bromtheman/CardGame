@@ -91,6 +91,12 @@ export function useLobbyQuery(id: string | undefined) {
       if (error) throw error
       return data
     },
+    // Fallback for R-3's auto-navigation guarantee: realtime normally drives
+    // it (see useRealtimeInvalidate in LobbyPage), but a channel that never
+    // recovers must not strand a guest on a lobby whose game already started.
+    // A single-row select every 12s is cheap and unconditional on purpose —
+    // branching this on lobby status would save nothing worth the branch.
+    refetchInterval: 12_000,
   })
 }
 

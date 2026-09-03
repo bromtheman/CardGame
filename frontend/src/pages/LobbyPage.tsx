@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { DEFAULT_LOBBY_SETTINGS, materialsPerTurnOf, validateLobbySettings } from '@shared/lobbySettings'
 import type { LobbySettings } from '@shared/lobbySettings'
-import { MAX_MATERIALS_PER_TURN, MIN_MATERIALS_PER_TURN, ZONE_TYPES } from '@shared/gameSettings'
+import { MAX_MATERIALS_PER_TURN, MAX_ZONE_BASE_HP, MIN_MATERIALS_PER_TURN, ZONE_TYPES } from '@shared/gameSettings'
 import { shortHandNumber } from '@shared/format'
 import { BoardPreview } from '../components/BoardPreview'
 import { ConfirmDialog } from '../components/ConfirmDialog'
@@ -101,7 +101,17 @@ export function LobbyPage() {
 
   const leave = () => run(async () => {
     leavingRef.current = true
-    await lobbyAction({ action: 'LEAVE', lobbyId: id! })
+    try {
+      await lobbyAction({ action: 'LEAVE', lobbyId: id! })
+    } catch (e) {
+      // A failed LEAVE (transient 500, or the 409 that fires exactly when the
+      // host kicked us a moment earlier) must not leave leavingRef stuck
+      // true forever — the verdict effect above guards on it, so a stuck ref
+      // would silently stop this page from ever navigating on a later
+      // realtime row change (e.g. the host starting the game anyway).
+      leavingRef.current = false
+      throw e
+    }
     navigate('/lobbies', { replace: true })
   })
 
@@ -314,7 +324,11 @@ function SettingsEditor({ settings, busy, onChange }: {
 
   const commitZoneHp = (i: number, value: number) => {
     const next = { ...draft, zones: draft.zones.map((z, j) => (j === i ? { ...z, baseHp: value } : z)) }
-    setDraft(next); onChange(next)
+    setDraft(next)
+    // Skip the commit when unchanged from the incoming settings prop: a blur
+    // with no edit (the host merely tabbed through the field) must not fire
+    // UPDATE_SETTINGS and drop guest_ready for nothing.
+    if (value !== settings.zones[i]?.baseHp) onChange(next)
   }
 
   return (
@@ -334,6 +348,7 @@ function SettingsEditor({ settings, busy, onChange }: {
             {Object.values(ZONE_TYPES).map((b) => <option key={b} value={b}>{b}</option>)}
           </select>
           <input type="number" className="w-24 rounded bg-ocean-950 p-1" disabled={busy}
+            min={1} max={MAX_ZONE_BASE_HP}
             value={zone.baseHp}
             onChange={(e) => setDraft((d) => ({
               ...d, zones: d.zones.map((z, j) => (j === i ? { ...z, baseHp: Number(e.target.value) } : z)),
@@ -348,8 +363,12 @@ function SettingsEditor({ settings, busy, onChange }: {
           value={materialsPerTurnOf(draft)}
           onChange={(e) => setDraft((d) => ({ ...d, materialsPerTurn: Number(e.target.value) }))}
           onBlur={(e) => {
-            const next = { ...draft, materialsPerTurn: Number(e.target.value) }
-            setDraft(next); onChange(next)
+            const value = Number(e.target.value)
+            const next = { ...draft, materialsPerTurn: value }
+            setDraft(next)
+            // Same no-op guard as commitZoneHp: don't drop guest_ready for a
+            // blur that changed nothing.
+            if (value !== materialsPerTurnOf(settings)) onChange(next)
           }} />
         <span className="mt-1 block text-xs text-ocean-400">
           × turn number — {shortHandNumber(materialsPerTurnOf(draft))} on turn 1
