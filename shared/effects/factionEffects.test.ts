@@ -6805,9 +6805,14 @@ describe('TG Repurpose — scrap a friendly TG hull (2026-09-02)', () => {
     expect(game.state.destroyed.a.map((c) => c.name)).toEqual(['Ecstasy'])
   })
 
-  // TG-1, the half that separates the two authorities on real data: Half-Cost
-  // is the one modifier effectiveMaterialCostOf applies, and it is what the
-  // owner actually paid.
+  // TG-1: pins effectiveMaterialCostOf's own Half-Cost floor against a naive
+  // entry.materialCost read (660_000, which this test would wrongly pay if
+  // the effect ever regressed to reading the raw field). It does NOT
+  // discriminate effectiveMaterialCostOf from effectiveCostInGame — with no
+  // active resourceSurge both return 330_000 here, since effectiveCostInGame
+  // applies the same Half-Cost halving via the same effectiveMaterialCostOf
+  // (placement.ts). The costDelta test below is the one that actually tells
+  // the two authorities apart.
   it('TG-1: pays the HALF-COST price for a Half-Cost hull', () => {
     const game = makeGame({ turnNumber: 3 })
     game.state.zones[0].cards.a.push(tgHull({
@@ -6855,7 +6860,15 @@ describe('TG Repurpose — scrap a friendly TG hull (2026-09-02)', () => {
   })
 
   // PLAY_CARD_TARGETING_CARD_ON_FIELD checks only that the target is ON the
-  // field, never whose it is (ruling E-5). Both refusals live here or nowhere.
+  // field, never whose it is (ruling E-5), so both refusals live here or
+  // nowhere.
+  //
+  // This one does NOT pin the effect's own `found.side !== actor` guard:
+  // sacrificeEntry(game, actor, targetInstanceId, …) below searches
+  // zone.cards[actor], never zone.cards[found.side], so an enemy target
+  // already fails there and this test passes with or without the guard. The
+  // guard is kept as defence in depth against a future sacrificeEntry call
+  // that passes found.side instead of actor (see the effect's own comment).
   it('refuses an enemy hull', () => {
     const game = makeGame({ turnNumber: 3 })
     game.state.zones[0].cards.b.push(tgHull())
@@ -6863,6 +6876,9 @@ describe('TG Repurpose — scrap a friendly TG hull (2026-09-02)', () => {
     expect(game.state.zones[0].cards.b).toHaveLength(1)
   })
 
+  // Unlike the enemy-hull case above, this DOES pin real behaviour: the
+  // faction guard is load-bearing. Drop it and this hull (found.side ===
+  // actor, so sacrificeEntry's own lookup succeeds) is scrapped and paid out.
   it('refuses a friendly hull of another faction', () => {
     const game = makeGame({ turnNumber: 3 })
     game.state.zones[0].cards.a.push(tgHull({ faction: 'DWG' }))

@@ -274,7 +274,17 @@ registerEffect('wonderOnPlay', ({ game, actor, card }) => {
 //
 // ⚠ Ownership and faction are validated HERE because the handler does not:
 // PLAY_CARD_TARGETING_CARD_ON_FIELD checks only that the target is on the
-// field (ruling E-5, the same gap both Factories close by hand).
+// field (ruling E-5, the same gap both Factories close by hand). The FACTION
+// check is load-bearing: drop it and a friendly non-TG hull (found.side ===
+// actor, so sacrificeEntry's actor-keyed lookup succeeds) is scrapped and
+// paid out — "refuses a friendly hull of another faction" pins exactly that.
+// The OWNERSHIP check, by contrast, is redundant with sacrificeEntry's own
+// actor-keyed lookup below: sacrificeEntry(game, actor, targetInstanceId, …)
+// searches zone.cards[actor], never zone.cards[found.side], so an enemy
+// target (found.side !== actor) already fails there regardless of this
+// guard — "refuses an enemy hull" passes with or without it. Kept anyway as
+// defence in depth against a future refactor that passes found.side instead
+// of actor to sacrificeEntry, which would silently reopen the hole.
 //
 // "this turn" needs no mechanic. endTurn ASSIGNS the material pool from the
 // turn number rather than incrementing it, so every material gain in the game
@@ -283,7 +293,12 @@ registerEffect('wonderOnPlay', ({ game, actor, card }) => {
 // Balance, recorded rather than fixed: Spawn Audacious mints a Half-Cost
 // Audacious for 40k, and Repurpose converts that hull to 330k for 1cp. Two
 // cards and a CP for a ~290k swing is a real loop. Both numbers are the
-// spec's (§6.4) and neither card's text admits a guard against it.
+// spec's (§6.4) and neither card's text admits a guard against it. The
+// surface is wider than that one pairing: ANY board-spawned TG hull converts
+// at its printed cost, no matter how it arrived — Fear spawns a Horror (50k
+// after this wave) into every zone for free, and Horror self-copies on every
+// offensive battle it survives, so a single Fear can feed Repurpose a growing
+// supply of free 50k payouts with no second card played.
 registerEffect('repurposeEffect', ({ game, actor, ctx, card, targetInstanceId }) => {
   if (typeof targetInstanceId !== 'string') return false
   const found = findVehicle(game.state, targetInstanceId)
