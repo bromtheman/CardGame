@@ -108,24 +108,31 @@ Deno.serve(async (req) => {
       .from('lobbies').select('host_id, guest_id').eq('id', lobbyId).maybeSingle()
     if (!lobby) return json(404, { errors: ['Lobby not found'] })
 
+    const isHost = lobby.host_id === userId
+    const isGuest = lobby.guest_id === userId
+    if (!isHost && !isGuest) return json(403, { errors: ['You are not in that lobby'] })
+
     // Two things happen here. The faction is copied onto the lobby (spec
     // §3.1.1) because decks_select_own means the opponent's deck row is
     // unreadable by the client — faction is the ONLY field that crosses, so
     // the deck's name and contents stay structurally out of reach rather than
     // merely unrendered. And changing your deck drops your OWN ready flag
     // (§4.1): you re-affirm after changing what you are bringing.
-    const patch = lobby.host_id === userId
+    const patch = isHost
       ? { host_deck_id: deckId, host_faction: deck.faction, host_ready: false }
-      : lobby.guest_id === userId
-        ? { guest_deck_id: deckId, guest_faction: deck.faction, guest_ready: false }
-        : null
-    if (!patch) return json(403, { errors: ['You are not in that lobby'] })
+      : { guest_deck_id: deckId, guest_faction: deck.faction, guest_ready: false }
 
-    const { data: updated, error: updateError } = await admin
-      .from('lobbies').update(patch).eq('id', lobbyId).eq('status', 'open')
-      .select().maybeSingle()
+    // The identity predicate belongs in the UPDATE's own WHERE, not only in
+    // the read above: without it, a caller kicked or replaced between the
+    // read and this write would still match status='open' and could clobber
+    // the new occupant's row (TOCTOU).
+    let query = admin.from('lobbies').update(patch).eq('id', lobbyId).eq('status', 'open')
+    query = isHost ? query.eq('host_id', userId) : query.eq('guest_id', userId)
+    const { data: updated, error: updateError } = await query.select().maybeSingle()
     if (updateError) return json(500, { errors: [updateError.message] })
-    if (!updated) return json(409, { errors: ['Lobby is no longer open'] })
+    if (!updated) {
+      return json(409, { errors: ['Lobby is no longer open, or you are no longer in it'] })
+    }
     return json(200, { ok: true })
   }
 
@@ -144,13 +151,19 @@ Deno.serve(async (req) => {
     const myDeck = isHost ? lobby.host_deck_id : lobby.guest_deck_id
     if (ready && !myDeck) return json(409, { errors: ['Pick a deck before readying up'] })
 
-    const { data: updated, error: updateError } = await admin
-      .from('lobbies')
+    // The identity predicate belongs in the UPDATE's own WHERE, not only in
+    // the read above: without it, a caller kicked or replaced between the
+    // read and this write would still match status='open' and could clobber
+    // the new occupant's row (TOCTOU).
+    let query = admin.from('lobbies')
       .update(isHost ? { host_ready: ready } : { guest_ready: ready })
       .eq('id', lobbyId).eq('status', 'open')
-      .select().maybeSingle()
+    query = isHost ? query.eq('host_id', userId) : query.eq('guest_id', userId)
+    const { data: updated, error: updateError } = await query.select().maybeSingle()
     if (updateError) return json(500, { errors: [updateError.message] })
-    if (!updated) return json(409, { errors: ['Lobby is no longer open'] })
+    if (!updated) {
+      return json(409, { errors: ['Lobby is no longer open, or you are no longer in it'] })
+    }
     return json(200, { ok: true })
   }
 
