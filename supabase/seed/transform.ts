@@ -18,9 +18,10 @@ const SOURCE_DIR = join(dirname(fileURLToPath(import.meta.url)), 'source')
 // Upstream bug in supabase/seed/source/builtInCards/OW-Built-in.js: these 9
 // cards set `vehicleType: VEHICLE_TYPES.ship` (lowercase key), but the old
 // BE's VEHICLE_TYPES enum only has uppercase keys (SHIP, AIRSHIP, TANK,
-// PLANE, SUB), so `VEHICLE_TYPES.ship` evaluates to `undefined`. We patch it
-// here instead of editing the source file, which stays a verbatim copy of the
-// old BE data.
+// PLANE, SUB), so `VEHICLE_TYPES.ship` evaluates to `undefined`. The source
+// file is no longer a verbatim copy of the old BE data: stating the type
+// outright on the card, right in OW-Built-in.js, is now the preferred repair,
+// and this patch table survives only for the 9 cards still carrying the typo.
 //
 // A tenth card, OW:Rook, was patched here until the 2026-09-02 balance pass.
 // The typo meant the source could not be trusted on WHICH type was meant —

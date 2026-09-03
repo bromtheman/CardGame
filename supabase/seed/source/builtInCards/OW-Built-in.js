@@ -256,7 +256,7 @@ export const owVehicles = [
     },{
         name: 'The Onyx Throne',
         isBuiltIn: true,
-        cardText: 'Whenever this vehicle would partake in a defensive battle, spawn an allied parapet to fight alongside it. Once per turn, you may pay 1cp to draw a GT heavy airship card.',
+        cardText: 'Whenever this vehicle would partake in a defensive battle, spawn an allied parapet to fight alongside it for that battle. Once per turn, you may pay 1cp to draw a GT heavy airship card.',
         materialCost: 500000,
         blueprintCost: 492482,
         cpCost: 0,

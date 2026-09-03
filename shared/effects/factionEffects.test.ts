@@ -5930,9 +5930,10 @@ describe('2026-09-02 balance pass — OW', () => {
   // once — so a shared name silently rebinds one card the moment the other is
   // registered. Sharing the `gtAirship` CLOSURE is not the same thing and is
   // fine; halberdOnDeath, jormangundOnDeath and partisanEffect already do it.
-  it('brandistockOnDeath and halberdOnDeath are two independent registrations', () => {
+  it('brandistockOnDeath and halberdOnDeath are both registered under their own names', () => {
     expect(effectFor('brandistockOnDeath')).not.toBeNull()
     expect(effectFor('halberdOnDeath')).not.toBeNull()
+    expect(effectFor('brandistockOnDeath')).toBe(effectFor('halberdOnDeath'))
   })
 
   // Spec §7.1. A missing { needsCatalog: true } is invisible to every other test

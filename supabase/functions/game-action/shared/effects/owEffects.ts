@@ -190,14 +190,15 @@ registerEffect(SPECIAL_FOUNDRIES, choice({
 }), { needsCatalog: true })
 
 // Wave 4, DP2 (spec §4.3). "Whenever this vehicle would partake in a defensive
-// battle, spawn an allied parapet to fight alongside it" — the missing noun
-// was authored in the 2026-08-27 spec §7.2 and the 2026-09-02 balance pass
-// reworded the clause around it. The code below is unchanged, and both halves
-// of the old wording survive in it: "spawn … alongside" is still a battle
-// SUMMON rather than a free 259k hull (summonHulls returns entries for
-// ActiveBattle.summons and never touches zone.cards, so the Parapet vanishes
-// with the battle), and "to fight" is still joinBattle rather than a spectator
-// — the same correction Dryad took in wave 7.
+// battle, spawn an allied parapet to fight alongside it for that battle" — the
+// missing noun was authored in the 2026-08-27 spec §7.2, and the 2026-09-02
+// balance pass reworded "to fight" and lowercased "parapet" to prose. The code
+// below is unchanged: summonHulls returns entries for ActiveBattle.summons and
+// never touches zone.cards, so the Parapet is battle-scoped and vanishes when
+// the battle ends regardless of what the card says — "for that battle" is in
+// the text only because that is the one place a player learns it. "To fight"
+// is still joinBattle rather than a spectator — the same correction Dryad
+// took in wave 7.
 //
 // ⚠ summonHulls looks the hull up by the catalog card's exact NAME, 'Parapet'.
 // The reworded text's lowercase "parapet" is prose. Do not follow it into the

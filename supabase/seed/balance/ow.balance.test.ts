@@ -44,7 +44,7 @@ const CARDS: Record<string, Expected> = {
   'OW:The Onyx Throne': {
     materialCost: 500_000, blueprintCost: 492_482,
     keywords: ['blocker', 'inoffensive'], vehicleType: 'ship',
-    cardText: 'Whenever this vehicle would partake in a defensive battle, spawn an allied parapet to fight alongside it. Once per turn, you may pay 1cp to draw a GT heavy airship card.',
+    cardText: 'Whenever this vehicle would partake in a defensive battle, spawn an allied parapet to fight alongside it for that battle. Once per turn, you may pay 1cp to draw a GT heavy airship card.',
   },
   // HALF_COST out, FRAGILE in — and this is a bigger swing than the material
   // cost suggests. effectiveMaterialCostOf halves a halfCost hull for damage,
