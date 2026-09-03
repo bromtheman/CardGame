@@ -62,8 +62,10 @@ vehicle deploys n extra copies (capped at `ADDITIONAL_SPAWNS_CAP` = 10, ids from
 
 Some meta keys are **plain data, not effect names**: `additionalSpawns`,
 `resourceSurge`, `defensiveOmission`, `activateCpCost`, `costDelta`,
-`summonOnly`. None carries a registry name, so all six sit outside `TRIGGERS` /
-`ALL_META_KEYS` and **G1 and G3 never look at them**.
+`summonOnly`, `retired` (a balance pass took the card out of drafting and deck
+legality; its row stays seeded so in-flight games and unedited decks still
+resolve it — spec 2026-09-02 §2.1). None carries a registry name, so all seven
+sit outside `TRIGGERS` / `ALL_META_KEYS` and **G1 and G3 never look at them**.
 
 ⚠ **THE SEED HAS ITS OWN COPY OF THE VOCABULARY, and wave 7 walked into it.**
 `supabase/seed/source/*.js` import `"../gameSettings"` — which resolves to

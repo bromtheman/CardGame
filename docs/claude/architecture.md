@@ -328,13 +328,29 @@ covers every exit: `meta.summonOnly` cards are spawned, never drafted, so they
 must never reach `state.destroyed` — otherwise `reshuffleDiscard` would turn a
 destroyed Martyr into a draftable card. `deckValidation` rejects them from
 decks and `drawFromPool`'s catalog branch excludes them from pools — but that
-is not the whole story. Any effect that mints straight from `ctx.catalog`
-**instead of** going through `drawFromPool` does not get the guard for free and
-must repeat `c.meta.summonOnly !== true` in its own filter. `reservesEffect`
-(`shared/effects/dwgEffects.ts`) filtered `ctx.catalog` directly and missed
-it — Reserves could mint Flying Squirrel, a summon-only DWG vehicle, straight
-into a hand. Treat every catalog-filtering effect as an enforcement site you
-must check by hand, not as covered by the guards above.
+is not the whole story: any effect that mints straight from `ctx.catalog`
+**instead of** going through `drawFromPool` does not get the guard for free.
+`reservesEffect` (`shared/effects/dwgEffects.ts`) filtered `ctx.catalog`
+directly and missed it — Reserves could mint Flying Squirrel, a summon-only
+DWG vehicle, straight into a hand.
+
+That was six hand-repeated copies of the same condition (`dwgEffects.ts` ×2,
+`lhEffects.ts` ×1, `ssEffects.ts` ×2, `wfEffects.ts` ×1) before the
+2026-09-02 balance pass extracted **`poolEligible(card)`**
+(`shared/effects/primitives.ts`) and pointed all six at it — six
+hand-maintained copies is exactly how a card being retired (spec §2.1) but
+still mintable by name would have happened, so `poolEligible` excludes both
+`summonOnly` and `retired`, and is what `drawFromPool`'s own catalog branch
+calls too. Any new effect that filters `ctx.catalog` directly calls
+`poolEligible` inside that filter — the same shape as `balmungOnPlay`,
+`victoriaActivate`, `harbringerPool` and the rewritten `reservesEffect` — so
+the enforcement site to check by hand is now just "does this call
+`poolEligible`", not "did someone re-derive the condition correctly". The one
+recorded exception is `dryadBattle` (`shared/effects/ssEffects.ts`), which
+mints into a battle already in flight rather than a draft or draw pool —
+retirement gates drafting and draw pools, not a board effect resolving a game
+already dealt — and says so in its own comment; that is a decision to
+document at the call site, not a reason to skip `poolEligible` elsewhere.
 
 ## Turn & battle flow
 
