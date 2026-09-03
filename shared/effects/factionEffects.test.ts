@@ -25,7 +25,7 @@ registerEffect('t_slotHog', choice({
 }))
 
 const DRAW_ONE = [
-  'mandrelOnPlay', 'rookOnPlay', 'resoluteOnPlay', 'excruciatorOnPlay',
+  'mandrelOnPlay', 'rookOnPlay', 'resoluteOnPlay',
   'claymoreEffect', 'palisadeEffect', 'purifierEffect',
   'javelinOnDeath', 'ironMaidenOnDeath', 'victoriaOnDeath',
   'trondheimOnDeath', 'coulombEffect',
@@ -37,9 +37,19 @@ const DRAW_ONE = [
   // It prints BLOCKER and nothing else, so the SCRAPPY + onDeathEffect
   // prohibition is clear here too.
   'jealousyOnDeath',
+  // 2026-09-02. Earth Raker: "When this is played, draw a card". It prints
+  // STEALTHY and nothing else, so rule 10's SCRAPPY concern does not arise.
+  'earthRakerOnPlay',
+  // 2026-09-02. 'excruciatorOnPlay' LEFT this list: the pass rewrote the card to
+  // "draw two AI vehicles from your deck and reduce their cost by 100k", so it
+  // no longer takes exactly one card off the top. Its own describe block, at the
+  // end of this file, owns it now.
 ]
 const CP_ONLY: [string, number][] = [
   ['bulwarkOnPlay', 2], ['maelstromOnPlay', 1], ['maceEffect', 1],
+  // 2026-09-02. Two WF cards, two registry names — identical bodies, but a
+  // shared name would rebind one the moment the other changed (spec R-6).
+  ['scourgeOnPlay', 1], ['disembowelerOnPlay', 1],
 ]
 
 describe('grant-backed cards', () => {
@@ -3259,7 +3269,13 @@ describe('wave 6 — SS Nothung', () => {
 // flag is invisible to unit tests and shows up only as a dead card in
 // production. Asserted at runtime rather than by reading the source.
 describe('wave 6 — effects that must carry needsCatalog', () => {
-  it.each(['nothungOnPlay', 'balmungOnPlay', 'harbringerBattle', 'victoriaActivate'])(
+  it.each([
+    'nothungOnPlay', 'balmungOnPlay', 'harbringerBattle', 'victoriaActivate',
+    // 2026-09-02: mints from ctx.catalog by name.
+    'buzzsawOnPlay',
+    // 2026-09-02, Task 6: mints two Earth Rakers from ctx.catalog by name.
+    'slasherOnPlay',
+  ])(
     '%s', (name) => { expect(CATALOG_EFFECTS.has(name)).toBe(true) },
   )
 })
@@ -3354,7 +3370,10 @@ describe('wave 6 — WF Harbringer', () => {
   // real WF PLANE at exactly 100k, so the type filter is load-bearing rather
   // than decorative.
   const pool = [
-    wfShip('Buzzsaw', 80_000),
+    // 2026-09-02: Buzzsaw's real cost moved 80k -> 75k; still comfortably
+    // under this pool's own <=100k boundary, so this fixture is updated for
+    // hygiene, not because the test needs the exact number.
+    wfShip('Buzzsaw', 75_000),
     wfShip('Earth Raker', 50_000),
     wfShip('On The Line', 100_000),
     wfShip('Over The Line', 100_001),
@@ -3525,9 +3544,11 @@ describe('wave 6 — WF Judgement', () => {
   describe('judgementActivate — a 1v1 against a sub or airship in this zone', () => {
     function armed(place?: (g: EngineGame) => void) {
       const game = makeGame({ turnNumber: 3 })
+      // Free since the 2026-09-02 pass (was 1cp) — activateCpCost stays a
+      // required KEY, just now zero.
       const judgement = zoneEntry({
         name: 'Judgement', faction: 'WF', vehicleType: 'ship', playedOnTurn: 2,
-        meta: { onActivate: 'judgementActivate', activateCpCost: 1 },
+        meta: { onActivate: 'judgementActivate', activateCpCost: 0 },
       })
       game.state.zones[0].cards.a.push(judgement)
       place?.(game)
@@ -3569,14 +3590,14 @@ describe('wave 6 — WF Judgement', () => {
       expect(r.game.state.zones[0].lastActivatedTurn).toBeNull()
     })
 
-    it('charges the printed 1cp and stamps once-per-turn', () => {
+    it('activates for free and stamps once-per-turn', () => {
       const { game, judgement } = armed((g) => {
         g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'sub-here', name: 'Diver', vehicleType: 'sub' }))
       })
       const before = game.state.resources.a.cp
       const r = activate(game, judgement.instanceId)
       if (!r.ok) throw new Error(r.error)
-      expect(r.game.state.resources.a.cp).toBe(before - 1)
+      expect(r.game.state.resources.a.cp).toBe(before)
       const again = activate(r.game, judgement.instanceId)
       expect(again.ok).toBe(false)
     })
@@ -4294,9 +4315,11 @@ describe('wave 6 — mutation survivors', () => {
       })
       game.state.zones[0].cards.a.push(harbringer)
       game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'v1', name: 'Victim' }))
+      // 75_000: Buzzsaw's real 2026-09-02 cost. Only needs to clear the pool's
+      // own <=100k filter to be offered — the tests below move it themselves.
       return ok(applyAction(game, 'alice', {
         type: 'ATTACK_ENEMY_FLEET', zoneId: 1, attackerIds: ['h1'], targetIds: ['v1'],
-      }, makeCtx({ catalog: [wfShip('Buzzsaw', 80_000)] })))
+      }, makeCtx({ catalog: [wfShip('Buzzsaw', 75_000)] })))
     }
 
     it('refuses a guest that is no longer in the pool', () => {
@@ -4325,7 +4348,7 @@ describe('wave 6 — mutation survivors', () => {
       game.state.activeBattle!.zoneId = 2
       expect(applyAction(
         game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'Buzzsaw' },
-        makeCtx({ catalog: [wfShip('Buzzsaw', 80_000)] }),
+        makeCtx({ catalog: [wfShip('Buzzsaw', 75_000)] }),
       ).ok).toBe(false)
     })
   })
@@ -5919,6 +5942,305 @@ describe('TG Duel — E-10, an Inoffensive hull cannot be sent to duel', () => {
     const done = applyAction(hop1.game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'foe1' }, makeCtx())
     if (!done.ok) throw new Error(done.error)
     expect(done.game.state.activeBattle?.defenderIds).toEqual(['foe1'])
+  })
+})
+
+describe('2026-09-02 — WF Sub Strike', () => {
+  const strikeSnap = snap({
+    name: 'Sub Strike', faction: 'WF', type: 'ability', vehicleType: null,
+    materialCost: 100_000, cpCost: 1,
+    cardText: 'Target an enemy submarine, remove it from play.',
+    meta: { playOnVehicleEffect: 'subStrikeEffect' },
+  })
+  const strikeCtx = () => makeCtx({ catalog: [strikeSnap] })
+
+  function armed(over: { targetType?: string; targetMeta?: Record<string, unknown> } = {}) {
+    const game = makeGame({ turnNumber: 3, activePlayer: 'alice' })
+    const card = inst({ ...strikeSnap })
+    game.privates.a.hand.push(card)
+    game.state.counts.a.hand = 1
+    const target = zoneEntry({
+      name: 'Nautilus', vehicleType: over.targetType ?? 'sub', materialCost: 60_000,
+      meta: over.targetMeta ?? {},
+    })
+    game.state.zones[0].cards.b.push(target)
+    return { game, card, target }
+  }
+
+  const play = (game: EngineGame, ids: { card: string; target: string }) =>
+    applyAction(game, 'alice', {
+      type: 'PLAY_CARD_TARGETING_CARD_ON_FIELD', instanceId: ids.card, targetInstanceId: ids.target,
+    }, strikeCtx())
+
+  it('takes the submarine off the board and files it in its owner discard', () => {
+    const { game, card, target } = armed()
+    const r = play(game, { card: card.instanceId, target: target.instanceId })
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.zones[0].cards.b).toHaveLength(0)
+    expect(r.game.state.destroyed.b.map((c) => c.name)).toEqual(['Nautilus'])
+    // No rider: Sub Killer plants one, Sub Strike prints no second clause.
+    expect(r.game.state.zoneEffects).toEqual([])
+  })
+
+  // Spec R-7, and the reason it is a ruling at all: in battleResolve.ts's
+  // destruction loop `discardCard(...)` and `destroyedEntries.push(...)` are
+  // adjacent lines, and only the second one reaches fireDeathEffect. "Remove
+  // from play" copies the first and not the second, and nothing about the diff
+  // shows that.
+  it('fires no death trigger — removal is not destruction', () => {
+    const { game, card, target } = armed({ targetMeta: { onDeathEffect: 'javelinOnDeath' } })
+    game.privates.b.deck = [inst({ name: 'Consolation' })]
+    game.state.counts.b.deck = 1
+    const r = play(game, { card: card.instanceId, target: target.instanceId })
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.privates.b.hand).toHaveLength(0)
+    expect(r.game.state.counts.b.deck).toBe(1)
+  })
+
+  // Sub Killer takes three types; this card's text says "submarine" and means
+  // only that. Airship is the sharp case — it is prey for Judgement, so a
+  // reader may expect it here too.
+  it.each(['ship', 'tank', 'plane', 'airship'])('refuses a %s target', (vehicleType) => {
+    const { game, card, target } = armed({ targetType: vehicleType })
+    expect(play(game, { card: card.instanceId, target: target.instanceId }))
+      .toMatchObject({ ok: false, status: 400 })
+  })
+
+  it('refuses a friendly submarine', () => {
+    const { game, card } = armed()
+    const mine = zoneEntry({ name: 'My Sub', vehicleType: 'sub' })
+    game.state.zones[0].cards.a.push(mine)
+    expect(play(game, { card: card.instanceId, target: mine.instanceId }))
+      .toMatchObject({ ok: false, status: 400 })
+  })
+
+  // It reads no catalog, so it must NOT be flagged — the mirror of the two
+  // positive checks this file already makes. "It removes a card" is not the
+  // test; touching ctx.catalog is.
+  it('needs no catalog', () => {
+    expect(CATALOG_EFFECTS.has('subStrikeEffect')).toBe(false)
+  })
+})
+
+describe('2026-09-02 — WF Buzzsaw', () => {
+  const ambush = snap({
+    name: 'Ambush', faction: 'WF', type: 'ability', vehicleType: null,
+    materialCost: 0, blueprintCost: 0, meta: { playOnZoneEffect: 'ambushEffect' },
+  })
+  const fire = (game: EngineGame, catalog = [ambush]) =>
+    effectFor('buzzsawOnPlay')!({
+      game, actor: 'a', card: inst({ name: 'Buzzsaw', faction: 'WF' }), ctx: makeCtx({ catalog }),
+    })
+
+  it('mints the catalog Ambush into hand and resyncs the public count', () => {
+    const game = makeGame()
+    expect(fire(game)).toBe(true)
+    expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Ambush'])
+    // A direct push does not resync counts for you — drawCard does.
+    expect(game.state.counts.a.hand).toBe(1)
+  })
+
+  it('gives the minted card a fresh instanceId and keeps its trigger', () => {
+    const game = makeGame()
+    fire(game)
+    const minted = game.privates.a.hand[0]
+    expect(minted.instanceId).not.toBe('')
+    expect(minted.meta.playOnZoneEffect).toBe('ambushEffect')
+  })
+
+  // balmungOnPlay's rule: a named card the catalog cannot supply is a DATA BUG,
+  // not an empty pool, so the play fails rather than fizzling.
+  it('fails the play when the catalog has no Ambush', () => {
+    expect(fire(makeGame(), [])).toBe(false)
+  })
+
+  // Wave 0's poolEligible covers summonOnly and retired in one predicate.
+  it.each([{ summonOnly: true }, { retired: true }])('refuses an ineligible Ambush %p', (meta) => {
+    expect(fire(makeGame(), [snap({ ...ambush, meta: { ...ambush.meta, ...meta } })])).toBe(false)
+  })
+
+  // state.log is public and this card is entering a HIDDEN HAND, so the line
+  // must not name it — balmungOnPlay's line is deliberately coy for the same
+  // reason, even though Balmung's own printed text says "a hydra card".
+  it('never names the card it put in the hand', () => {
+    const game = makeGame()
+    fire(game)
+    expect(game.state.log.join(' ')).not.toContain('Ambush')
+  })
+})
+
+describe('2026-09-02 — WF Slasher', () => {
+  const raker = snap({
+    name: 'Earth Raker', faction: 'WF', type: 'vehicle', vehicleType: 'ship',
+    materialCost: 50_000, blueprintCost: 51_000, keywords: ['stealthy'],
+    meta: { onPlayEffect: 'earthRakerOnPlay' },
+  })
+  const fire = (game: EngineGame, catalog = [raker]) =>
+    effectFor('slasherOnPlay')!({
+      game, actor: 'a', card: inst({ name: 'Slasher', faction: 'WF' }), ctx: makeCtx({ catalog }),
+    })
+
+  it('puts exactly two Earth Rakers into hand and resyncs the count', () => {
+    const game = makeGame()
+    expect(fire(game)).toBe(true)
+    expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Earth Raker', 'Earth Raker'])
+    expect(game.state.counts.a.hand).toBe(2)
+  })
+
+  it('gives the two copies distinct instanceIds', () => {
+    const game = makeGame()
+    fire(game)
+    const [one, two] = game.privates.a.hand
+    expect(one.instanceId).not.toBe(two.instanceId)
+  })
+
+  // "They cost 0" is a PRICE, not a rewrite — balmungOnPlay's ruling. costDelta
+  // is summed into effectiveCostInGame and never reaches
+  // effectiveMaterialCostOf, so a free Earth Raker still deals its printed base
+  // damage and still costs its printed repair. Minting at materialCost: 0 would
+  // silently make them harmless as well as free.
+  it('prices them at zero without making them worthless', () => {
+    const game = makeGame()
+    expect(fire(game)).toBe(true)
+    expect(game.privates.a.hand).toHaveLength(2)
+    for (const c of game.privates.a.hand) {
+      expect(c.materialCost).toBe(50_000)
+      expect(effectiveCostInGame(game.state, 'a', c)).toBe(0)
+    }
+  })
+
+  it('keeps the minted copies own on-play trigger', () => {
+    const game = makeGame()
+    fire(game)
+    expect(game.privates.a.hand[0].meta.onPlayEffect).toBe('earthRakerOnPlay')
+  })
+
+  // The seeded name is TWO WORDS. A one-word lookup compiles, passes review and
+  // returns null.
+  it('fails the play when the catalog has no card called "Earth Raker"', () => {
+    expect(fire(makeGame(), [snap({ ...raker, name: 'EarthRaker' })])).toBe(false)
+  })
+
+  it('never names the cards it put in the hand', () => {
+    const game = makeGame()
+    fire(game)
+    expect(game.state.log.join(' ')).not.toContain('Earth Raker')
+  })
+})
+
+describe('2026-09-02 — WF Excruciator', () => {
+  const ai = (name: string, over: Partial<CardInstance> = {}) =>
+    inst({ name, isBuiltIn: true, type: 'vehicle', materialCost: 300_000, ...over })
+  const fire = (game: EngineGame) =>
+    effectFor('excruciatorOnPlay')!({
+      game, actor: 'a', card: inst({ name: 'Excruciator', faction: 'WF' }), ctx: makeCtx(),
+    })
+
+  it('moves two AI vehicles out of the deck and into the hand', () => {
+    const game = makeGame()
+    game.privates.a.deck = [ai('One'), ai('Two'), ai('Three')]
+    game.state.counts.a = { hand: 0, deck: 3 }
+    expect(fire(game)).toBe(true)
+    expect(game.privates.a.hand).toHaveLength(2)
+    expect(game.privates.a.deck).toHaveLength(1)
+    expect(game.state.counts.a).toEqual({ hand: 2, deck: 1 })
+  })
+
+  it('stamps each of them with a 100k discount', () => {
+    const game = makeGame()
+    game.privates.a.deck = [ai('One'), ai('Two')]
+    game.state.counts.a = { hand: 0, deck: 2 }
+    expect(fire(game)).toBe(true)
+    expect(game.privates.a.hand).toHaveLength(2)
+    for (const c of game.privates.a.hand) {
+      expect(c.meta.costDelta).toBe(-100_000)
+      expect(c.materialCost).toBe(300_000)          // a PRICE, not a rewrite
+      expect(effectiveCostInGame(game.state, 'a', c)).toBe(200_000)
+    }
+  })
+
+  // Spec R-5: "AI vehicle" is isBuiltIn, NOT a faction. repairmenReadyEffect
+  // reads the identical printed phrase the same way and is the proof — and the
+  // pass explicitly keeps the built-in meaning for THIS card while narrowing
+  // Repairmen Ready and Excalibur to SS.
+  it('draws by isBuiltIn, not by faction, and skips abilities', () => {
+    const game = makeGame()
+    game.privates.a.deck = [
+      ai('Off Faction', { faction: 'SS' }),
+      inst({ name: 'Player Design', isBuiltIn: false, type: 'vehicle' }),
+      inst({ name: 'An Ability', isBuiltIn: true, type: 'ability', vehicleType: null }),
+    ]
+    game.state.counts.a = { hand: 0, deck: 3 }
+    fire(game)
+    expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Off Faction'])
+  })
+
+  // The same filter with the one eligible hull LAST. The test above passes
+  // under a plain top-of-deck draw by accident of ordering; this one is the
+  // discriminator — a 'take the top card' implementation draws the player
+  // design here.
+  it('reaches past ineligible cards to find the AI vehicle', () => {
+    const game = makeGame()
+    game.privates.a.deck = [
+      inst({ name: 'Player Design', isBuiltIn: false, type: 'vehicle' }),
+      inst({ name: 'An Ability', isBuiltIn: true, type: 'ability', vehicleType: null }),
+      ai('Deep AI'),
+    ]
+    game.state.counts.a = { hand: 0, deck: 3 }
+    fire(game)
+    expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Deep AI'])
+    expect(game.privates.a.deck).toHaveLength(2)
+  })
+
+  // A deck that cannot supply two is routine, not a failure — drawFromPool's
+  // deck source defaults to allowEmpty for exactly this reason.
+  it.each([1, 0])('takes what the deck has when it holds %i', (n) => {
+    const game = makeGame()
+    game.privates.a.deck = Array.from({ length: n }, (_, i) => ai(`AI ${i}`))
+    game.state.counts.a = { hand: 0, deck: n }
+    expect(fire(game)).toBe(true)
+    expect(game.privates.a.hand).toHaveLength(n)
+  })
+
+  // An existing stamp accumulates rather than being overwritten — the same
+  // arithmetic primitives' costDelta() does.
+  it('adds to a discount the card already carried', () => {
+    const game = makeGame()
+    game.privates.a.deck = [ai('Discounted', { meta: { costDelta: -50_000 } })]
+    game.state.counts.a = { hand: 0, deck: 1 }
+    fire(game)
+    expect(game.privates.a.hand[0].meta.costDelta).toBe(-150_000)
+  })
+
+  // Below zero is FREE, not negative, and the floor lives in
+  // effectiveCostInGame's own Math.max — so the stamp is left un-clamped. If
+  // the effect clamped the stamp instead, a card that later picked up a second
+  // discount would price differently depending on the order the two landed.
+  // materialCost is untouched either way, so a cheap hull still deals its
+  // printed base damage and still costs its printed repair.
+  it('leaves a hull cheaper than the discount free rather than negative', () => {
+    const game = makeGame()
+    game.privates.a.deck = [ai('Cheap', { materialCost: 40_000 })]
+    game.state.counts.a = { hand: 0, deck: 1 }
+    fire(game)
+    const [drawn] = game.privates.a.hand
+    expect(drawn.meta.costDelta).toBe(-100_000)
+    expect(drawn.materialCost).toBe(40_000)
+    expect(effectiveCostInGame(game.state, 'a', drawn)).toBe(0)
+  })
+
+  it('never names what it drew', () => {
+    const game = makeGame()
+    game.privates.a.deck = [ai('Secret')]
+    game.state.counts.a = { hand: 0, deck: 1 }
+    fire(game)
+    expect(game.state.log.join(' ')).not.toContain('Secret')
+  })
+
+  // It reads the owner DECK, never ctx.catalog — "it draws cards" is not the
+  // test for the flag. Trondheim and Resolute are the same case and carry none.
+  it('needs no catalog', () => {
+    expect(CATALOG_EFFECTS.has('excruciatorOnPlay')).toBe(false)
   })
 })
 

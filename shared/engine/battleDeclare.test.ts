@@ -1,6 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import {
-  applyAction, declareForcedBattle, joinBattle, normalizeState, OMISSION_UNLESS_SHIP_OR_TANK,
+  applyAction, declareForcedBattle, DEPLOY_ORDER_FIRST, DEPLOY_ORDER_LAST, deployOrderFor,
+  joinBattle, normalizeState, OMISSION_UNLESS_SHIP_OR_TANK,
 } from './index'
 import { loadSeedData } from '../../supabase/seed/transform'
 import { registerEffect } from '../effects/registry'
@@ -279,6 +280,14 @@ beforeAll(() => {
     const hull = zoneEntry({ name: 'Joined' })
     return joinBattle(game, actor, hull.instanceId, hull)
   })
+  // Same shape as t_joinSpy, but the joining hull ITSELF carries a
+  // deployOrder directive. This is the fixture ruling R-WF-6 (commit
+  // bd5d2b1) needs: a conflict that exists only in the roster AFTER this
+  // join runs, never before it. See 'the deployment-order log line' below.
+  registerEffect('t_joinOrderSpy', ({ game, actor }) => {
+    const hull = zoneEntry({ name: 'Joined Directive', meta: { deployOrder: DEPLOY_ORDER_FIRST } })
+    return joinBattle(game, actor, hull.instanceId, hull)
+  })
 })
 
 beforeEach(() => { lockFired = [] })
@@ -348,10 +357,11 @@ describe('DP2 lock dispatch', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Wave 4: defender omission (spec §4.8). Buzzsaw and Veles print "this vehicle
-// may be omitted from defensive battles unless the attacking enemy force
-// contains a ship or tank" — a CONDITIONAL opt-out, which pending.stealthyIds
-// has no room for, so awaitingResponse gains a second list.
+// Wave 4: defender omission (spec §4.8). Buzzsaw and Veles used to print
+// "this vehicle may be omitted from defensive battles unless the attacking
+// enemy force contains a ship or tank" — a CONDITIONAL opt-out, which
+// pending.stealthyIds has no room for, so awaitingResponse gained a second
+// list.
 // ---------------------------------------------------------------------------
 
 // The constant, not the literal: a rename of its value must break this fixture
@@ -408,20 +418,25 @@ describe('defender omission', () => {
     }
   })
 
-  // Without this, seeding 'unlessShipOrTanks' would give a card that is inert
-  // AND invisible: G2's hasData and noteUnimplemented both test for the key's
-  // PRESENCE, not its value, so the guard stays green and no "plays as
-  // vanilla" note is logged either.
-  it('the two real seeded cards carry exactly the value the engine compares', async () => {
+  // NO SEEDED CARD CARRIES `defensiveOmission` any more: Buzzsaw and Veles both
+  // traded it for STEALTHY in the 2026-09-02 pass (spec §6.3), whose opt-out is
+  // unconditional and therefore strictly wider.
+  //
+  // The RULE is kept — ATTACK_ENEMY_FLEET still computes omissibleIds,
+  // RESPOND_TO_ATTACK still accepts an opt-out from that list, and
+  // FleetAttackDialog still badges one — for the reason purifierEffect is kept
+  // registered: an in-flight game dealt before this pass carries a frozen
+  // Buzzsaw snapshot that still prints the key, and the opt-out has to keep
+  // working for those hulls (spec R-8, §5).
+  //
+  // Asserted AT ZERO rather than deleted, so the next card to take the key has
+  // to come back here and say so.
+  it('no seeded card carries defensiveOmission, and the rule is kept for the next one', async () => {
     const { cards } = await loadSeedData()
     const carriers = cards.filter(
       (c) => c.isBuiltIn && (c.meta as Record<string, unknown> | undefined)?.defensiveOmission !== undefined,
     )
-    expect(carriers.map((c) => c.name).sort()).toEqual(['Buzzsaw', 'Veles'])
-    for (const card of carriers) {
-      expect({ name: card.name, value: (card.meta as Record<string, unknown>).defensiveOmission })
-        .toEqual({ name: card.name, value: OMISSION_UNLESS_SHIP_OR_TANK })
-    }
+    expect(carriers.map((c) => c.name)).toEqual([])
   })
 
   // Spec §4.8: the "force" is the attacker's committed selection, not
@@ -595,5 +610,166 @@ describe('joinBattle', () => {
       repairs: [],
     }, makeCtx())
     expect(r.ok).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 2026-09-02 §4.3: battle deployment order. CONDUCT TEXT — every assertion
+// below is about what is DERIVED and what is SAID, never about what the engine
+// enforces, because the engine has no deployment-order concept and this pass
+// does not give it one.
+// ---------------------------------------------------------------------------
+describe('deployOrderFor', () => {
+  const carrier = (order: unknown, over: Partial<ZoneCardEntry> = {}) =>
+    zoneEntry({ name: 'Veles', meta: { deployOrder: order }, ...over })
+
+  it('returns null when no participant carries a directive', () => {
+    expect(deployOrderFor([{ entry: zoneEntry({}), side: 'a' }])).toBeNull()
+  })
+
+  it("'first' on a side demands that side spawns first", () => {
+    expect(deployOrderFor([{ entry: carrier(DEPLOY_ORDER_FIRST), side: 'b' }]))
+      .toEqual({ firstSide: 'b', cancelled: false })
+  })
+
+  // Purifier prints "the enemy forces must spawn in first" — the same
+  // statement Veles prints, seen from the other side. One key serves both, and
+  // this is the assertion that says so.
+  it("'last' on a side demands the OTHER side spawns first", () => {
+    expect(deployOrderFor([{ entry: carrier(DEPLOY_ORDER_LAST), side: 'a' }]))
+      .toEqual({ firstSide: 'b', cancelled: false })
+  })
+
+  it('cancels when two carriers demand opposite orders', () => {
+    expect(deployOrderFor([
+      { entry: carrier(DEPLOY_ORDER_FIRST), side: 'a' },
+      { entry: carrier(DEPLOY_ORDER_FIRST), side: 'b' },
+    ])).toEqual({ firstSide: null, cancelled: true })
+  })
+
+  // Ruling W-1. Anguish on side A says "A first"; Veles on side B says "A
+  // first" too. Both sides carry a directive and nothing contradicts, so
+  // nothing cancels — the spec's literal wording would have cancelled here.
+  it('does not cancel when both sides carry directives that agree', () => {
+    expect(deployOrderFor([
+      { entry: carrier(DEPLOY_ORDER_FIRST), side: 'a' },
+      { entry: carrier(DEPLOY_ORDER_LAST), side: 'b' },
+    ])).toEqual({ firstSide: 'a', cancelled: false })
+  })
+
+  // Two Veles on one side is not a contradiction, and the directive does not
+  // stack — there is only one order to spawn in.
+  it('does not stack or cancel on two carriers of the same side', () => {
+    expect(deployOrderFor([
+      { entry: carrier(DEPLOY_ORDER_LAST), side: 'a' },
+      { entry: carrier(DEPLOY_ORDER_LAST), side: 'a' },
+    ])).toEqual({ firstSide: 'b', cancelled: false })
+  })
+
+  // A data key's VALUE is what this compares, and G2 checks only its PRESENCE
+  // — so a mistyped one must leave the hull OUT rather than in, exactly as
+  // `matches()` treats `metaFlag`. The trailing-space case is not hypothetical:
+  // two seeded rows already carry trailing spaces in an effect name, which is
+  // why `effectName` trims. This does NOT trim, matching its sibling
+  // `defensiveOmission`; the seed-backed assertion in Task 3 is what catches it.
+  it.each(['First', 'fist', 'last ', '', 'FIRST'])('ignores the mistyped value %s', (value) => {
+    expect(deployOrderFor([{ entry: carrier(value), side: 'a' }])).toBeNull()
+  })
+
+  it.each([true, 1, null])('ignores the non-string value %s', (value) => {
+    expect(deployOrderFor([{ entry: carrier(value), side: 'a' }])).toBeNull()
+  })
+})
+
+describe('the deployment-order log line', () => {
+  const carrier = (order: string, over: Partial<ZoneCardEntry> = {}) =>
+    zoneEntry({ name: 'Directive', meta: { deployOrder: order }, ...over })
+  const lines = (g: ReturnType<typeof attackWith>) =>
+    g.state.log.filter((l) => l.includes('deployment-order directive'))
+
+  it('is pushed once when the two fleets cancel', () => {
+    const out = attackWith(
+      [carrier(DEPLOY_ORDER_FIRST, { playedOnTurn: 2 })],
+      [carrier(DEPLOY_ORDER_FIRST)],
+    )
+    expect(lines(out)).toHaveLength(1)
+  })
+
+  // An UNcancelled directive is deliberately silent here: it has a permanent
+  // home in the spawn sheet both captains read while staging the fight
+  // (BattleOverlay, Task 2). The cancellation is the case where that sheet
+  // says "normal order" and the player whose card was answered would otherwise
+  // never learn why.
+  it('is not pushed when one side alone carries a directive', () => {
+    const out = attackWith([zoneEntry({ playedOnTurn: 2 })], [carrier(DEPLOY_ORDER_LAST)])
+    expect(lines(out)).toEqual([])
+  })
+
+  // Ruling R-WF-6 (commit bd5d2b1). noteDeployOrder MUST be derived from the
+  // roster produced AFTER dispatchBattleLock, never before it — the ordering
+  // is load-bearing, not stylistic, and THIS test is what pins it. Do not
+  // "tidy" the noteDeployOrder(game) call back above dispatchBattleLock(...)
+  // in lockBattle (or declareForcedBattle); this test fails the moment
+  // someone does.
+  //
+  // t_joinOrderSpy (registered above, alongside t_joinSpy) mirrors a DP2 lock
+  // trigger like The Onyx Throne's Parapet: it calls joinBattle from inside
+  // dispatchBattleLock, pushing a freshly summoned hull onto
+  // battle.attackerIds — exactly what lockRoster reads. That joined hull
+  // carries its OWN 'first' directive, which conflicts with the defender's
+  // 'first' directive already in play. The conflict exists ONLY in the
+  // post-join roster: before the join, the attacker side carries no
+  // directive at all, so deployOrderFor(lockRoster(game)) sees a single
+  // demand and reports no cancellation.
+  //
+  // Derived before dispatchBattleLock (the pre-fix ordering), noteDeployOrder
+  // reads that pre-join roster and stays silent — the bug: the spawn-sheet
+  // panel (Task 2), which reads the roster fresh on demand, would say the
+  // fleets cancel, while the log never explained why. Derived after (the
+  // current, correct ordering), it sees both directives and cancels, and the
+  // log line fires.
+  it('cancels once a DP2-joined hull carries a directive that conflicts with the other side (R-WF-6)', () => {
+    const trigger = zoneEntry({
+      name: 'Trigger Hull', playedOnTurn: 2,
+      meta: { onBattleEffect: 't_joinOrderSpy' },
+    })
+    const out = attackWith([trigger], [carrier(DEPLOY_ORDER_FIRST)])
+    // Sanity check that the join actually happened: t_joinOrderSpy joins the
+    // triggering hull's OWN side (the attacker here), so the roster grew from
+    // 1 to 2 on that side before noteDeployOrder ever ran.
+    expect(out.state.activeBattle?.attackerIds).toHaveLength(2)
+    expect(lines(out)).toHaveLength(1)
+  })
+
+  // Same conflict, same fixture, but for declareForcedBattle's identical
+  // R-WF-6 reorder (bd5d2b1) — attackWith cannot reach it, since
+  // ATTACK_ENEMY_FLEET only ever calls lockBattle. Both call sites carry the
+  // identical "never above the dispatch" comment and got the identical fix,
+  // but until this test only lockBattle's copy had a test that failed when
+  // reverted; reverting declareForcedBattle's ordering alone would have
+  // passed the whole suite silently. Built directly, the way this file's
+  // other declareForcedBattle tests are (e.g. 'fires with forced true from
+  // declareForcedBattle' above): push the two hulls onto the zone, then call
+  // declareForcedBattle(g, makeCtx(), spec) itself rather than going through
+  // applyAction.
+  it('cancels once a DP2-joined hull carries a directive that conflicts with the other side, via declareForcedBattle too (R-WF-6)', () => {
+    const g = makeGame({ turnNumber: 3 })
+    const trigger = zoneEntry({
+      name: 'Trigger Hull', playedOnTurn: 2,
+      meta: { onBattleEffect: 't_joinOrderSpy' },
+    })
+    const def = carrier(DEPLOY_ORDER_FIRST)
+    g.state.zones[0].cards.a.push(trigger)
+    g.state.zones[0].cards.b.push(def)
+    const ok = declareForcedBattle(g, makeCtx(), {
+      zoneId: 1, aggressor: 'a', attackerIds: [trigger.instanceId], defenderIds: [def.instanceId],
+      cause: 'Eclipse',
+    })
+    expect(ok).toBe(true)
+    // Same sanity check as the lockBattle test above: the join happened, so
+    // the roster grew from 1 to 2 on the attacker side before noteDeployOrder
+    // ever ran.
+    expect(g.state.activeBattle?.attackerIds).toHaveLength(2)
+    expect(lines(g)).toHaveLength(1)
   })
 })

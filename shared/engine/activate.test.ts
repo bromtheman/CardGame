@@ -216,3 +216,35 @@ describe('ACTIVATE_VEHICLE — a null price key means absent', () => {
     expect(r.game.state.resources.a.materials).toBe(game.state.resources.a.materials)
   })
 })
+
+describe('a free activated ability', () => {
+  // parsePrice takes `raw < 0` as invalid and 0 as valid, so the CP branch runs
+  // with a cost of zero rather than being skipped — which matters, because a
+  // SKIPPED branch and a ZERO branch differ for a card carrying no price key at
+  // all, and that card has no ability (activate.ts's own comment).
+  it('activates at 0 CP with an empty purse, and charges nothing', () => {
+    const game = gameWithTurret({ meta: { onActivate: 't_activateDraw', activateCpCost: 0 } })
+    game.state.resources.a.cp = 0
+    const res = applyAction(game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: 'v1' }, makeCtx())
+    if (!res.ok) throw new Error(res.error)
+    expect(res.game.state.resources.a.cp).toBe(0)
+    expect(res.game.state.zones[0].cards.a[0]).toHaveProperty('activatedOnTurn', 2)
+    expect(res.game.privates.a.hand).toHaveLength(1)
+  })
+
+  // The line between "free" and "has no ability". A card must carry a price
+  // KEY; 0 is a price, absence is not.
+  it('still refuses a card carrying onActivate and no price at all', () => {
+    const game = gameWithTurret({ meta: { onActivate: 't_activateDraw' } })
+    const res = applyAction(game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: 'v1' }, makeCtx())
+    expect(res).toMatchObject({ ok: false, status: 400 })
+  })
+
+  it('still refuses a once-per-turn second activation when it is free', () => {
+    const game = gameWithTurret({
+      meta: { onActivate: 't_activateDraw', activateCpCost: 0 }, activatedOnTurn: 2,
+    })
+    expect(applyAction(game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: 'v1' }, makeCtx()))
+      .toMatchObject({ ok: false, status: 409 })
+  })
+})

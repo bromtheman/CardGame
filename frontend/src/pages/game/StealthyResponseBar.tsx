@@ -9,9 +9,10 @@ import type { GameAction, Side, ZoneCardEntry } from '@shared/engine/engineTypes
 //
 // Two kinds of target may step out, and they are listed together but labelled
 // apart (spec §4.8): a Stealthy hull withdraws unconditionally, while an
-// omissible one (Buzzsaw, Veles) may only sit out because this particular
-// attacking force holds no ship or tank. The engine decides which is which;
-// this component never re-derives the condition.
+// omissible one (Buzzsaw and Veles until the 2026-09-02 pass; no seeded card
+// today, only frozen in-flight snapshots) may only sit out because this
+// particular attacking force holds no ship or tank. The engine decides which
+// is which; this component never re-derives the condition.
 export function StealthyResponseBar({
   state,
   mySide,

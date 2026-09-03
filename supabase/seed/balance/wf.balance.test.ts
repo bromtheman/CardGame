@@ -18,11 +18,155 @@ async function bySeedKey(): Promise<Map<string, SeedCard>> {
   return new Map(cards.map((c) => [`${c.faction}:${c.name}`, c]))
 }
 
+interface Expected {
+  materialCost: number
+  blueprintCost: number
+  keywords: string[]
+  vehicleType: string | null
+  cardText: string
+}
+
+const CARDS: Record<string, Expected> = {
+  'WF:Veles': {
+    materialCost: 225_000, blueprintCost: 286_922, keywords: ['stealthy', 'scrappy'],
+    vehicleType: 'ship',
+    cardText: 'This card may be spawned into battle after all enemies are already spawned in',
+  },
+  'WF:Purifier': {
+    materialCost: 750_000, blueprintCost: 765_000, keywords: ['halfCost', 'fragile'],
+    vehicleType: 'ship',
+    cardText: 'This vehicle does no damage to the enemy base. Whenever it participates in a fleet battle, the enemy forces must spawn in first, even if they are defending.',
+  },
+  'WF:Sub Strike': {
+    materialCost: 100_000, blueprintCost: 0, keywords: [], vehicleType: null,
+    cardText: 'Target an enemy submarine, remove it from play.',
+  },
+  'WF:Buzzsaw': {
+    materialCost: 75_000, blueprintCost: 88_000, keywords: ['stealthy', 'scrappy'],
+    vehicleType: 'ship', cardText: 'When played, put an ambush card into your hand',
+  },
+  'WF:Slasher': {
+    materialCost: 300_000, blueprintCost: 353_000, keywords: [], vehicleType: 'ship',
+    cardText: 'When this is played, add two earth rakers to your hand. they cost 0.',
+  },
+  'WF:Earth Raker': {
+    materialCost: 50_000, blueprintCost: 51_000, keywords: ['stealthy'], vehicleType: 'ship',
+    cardText: 'When this is played, draw a card',
+  },
+  'WF:Excruciator': {
+    materialCost: 600_000, blueprintCost: 663_000, keywords: ['blocker', 'subScreen'],
+    vehicleType: 'ship',
+    cardText: 'When played, draw two AI vehicles from your deck and reduce their cost by 100k.',
+  },
+  'WF:Scourge': {
+    materialCost: 225_000, blueprintCost: 209_000, keywords: ['scrappy'],
+    vehicleType: 'ship', cardText: 'When played, gain 1cp',
+  },
+  'WF:Disemboweler': {
+    materialCost: 300_000, blueprintCost: 305_000, keywords: [],
+    vehicleType: 'sub', cardText: 'When played, gain 1 cp.',
+  },
+  'WF:Pandemonium': {
+    materialCost: 225_000, blueprintCost: 244_000, keywords: ['stealthy', 'subScreen'],
+    vehicleType: 'ship', cardText: '',
+  },
+  'WF:Pulverizer': {
+    materialCost: 78_000, blueprintCost: 78_000, keywords: [], vehicleType: 'sub',
+    cardText: 'Spawn two additional copies of this vehicle into the zone',
+  },
+  // Pontus is absent from spec §6.3's inventory table (a header/table
+  // mismatch — WF is "1 new, 12 updated" but the table lists only 11), so
+  // §7.2's per-card list is the authority for this number, not §6.3.
+  'WF:Pontus': {
+    materialCost: 75_000, blueprintCost: 56_000, keywords: ['fragile'],
+    vehicleType: 'sub',
+    cardText: 'When this sub is played into a zone, spawn two additional copies into that same zone.',
+  },
+  'WF:Judgement': {
+    materialCost: 540_000, blueprintCost: 546_000, keywords: [], vehicleType: 'ship',
+    cardText: 'While your opponent has a submarine or airship, this card costs 100k less. Each turn, you may have this vehicle 1v1 an enemy submarine or airship in this zone.',
+  },
+}
+
 describe('2026-09-02 balance pass — WF', () => {
-  // Populated by the WF wave. Vitest fails a file with no tests at all, so
-  // this placeholder keeps the suite green until then. The wave that fills the
-  // file deletes it.
-  it('has a seed to read', async () => {
-    expect((await bySeedKey()).size).toBeGreaterThan(0)
+  it.each(Object.entries(CARDS))('%s carries its balanced numbers', async (k, want) => {
+    const card = (await bySeedKey()).get(k)
+    expect(card, `${k} is missing from the seed source`).toBeDefined()
+    expect({
+      materialCost: card!.materialCost,
+      blueprintCost: card!.blueprintCost,
+      keywords: [...(card!.keywords ?? [])].sort(),
+      vehicleType: card!.vehicleType ?? null,
+      cardText: card!.cardText ?? '',
+    }).toEqual({
+      materialCost: want.materialCost,
+      blueprintCost: want.blueprintCost,
+      keywords: [...want.keywords].sort(),
+      vehicleType: want.vehicleType,
+      cardText: want.cardText,
+    })
+  })
+
+  // §4.3's mechanic, pinned by VALUE on all three carriers. A data key's value
+  // is never checked by G1/G2/G3 (docs/claude/card-effects.md, blind spot 4),
+  // and deployOrderFor compares the string exactly — so a seeded 'fist' would
+  // give three cards that are inert AND invisible.
+  //
+  // TG:Anguish is asserted HERE, in WF's file, because WF made the edit
+  // (spec §6.3). Only its meta: Anguish's COSTS move in TG's wave and belong
+  // in tg.balance.test.ts, so pinning them here would collide.
+  it.each([
+    ['WF:Veles', 'last'],
+    ['WF:Purifier', 'last'],
+    ['TG:Anguish', 'first'],
+  ])('%s carries deployOrder %s', async (k, want) => {
+    expect((await bySeedKey()).get(k)!.meta?.deployOrder).toBe(want)
+  })
+
+  // Both directions of Purifier's meta. `toMatchObject` alone would not notice
+  // a key that STAYED, and the whole point of the rewrite is that the deploy
+  // prerequisite is gone while noBaseDamage is not.
+  it('Purifier keeps noBaseDamage and has given up its deploy prerequisite', async () => {
+    const meta = (await bySeedKey()).get('WF:Purifier')!.meta as Record<string, unknown>
+    expect(meta.noBaseDamage).toBe(true)
+    expect(meta.deployRequiresBattleLoss).toBeUndefined()
+  })
+
+  // Veles traded a CONDITIONAL opt-out for an unconditional one. Assert both
+  // halves: the key is gone, and STEALTHY — which is what now lets it sit a
+  // defensive battle out — is printed.
+  it('Veles trades defensiveOmission for STEALTHY', async () => {
+    const veles = (await bySeedKey()).get('WF:Veles')!
+    expect((veles.meta as Record<string, unknown>).defensiveOmission).toBeUndefined()
+    expect(veles.keywords).toContain('stealthy')
+  })
+
+  // Pulverizer's whole card text is this key, and it names no effect. Its cost
+  // fell 120k -> 78k without the payload changing, which is the entire balance
+  // change — so the payload is what needs saying out loud.
+  it('Pulverizer still deploys three hulls off one payment', async () => {
+    expect((await bySeedKey()).get('WF:Pulverizer')!.meta?.additionalSpawns).toBe(2)
+  })
+
+  // The only row this wave ADDS. Asserted as a count as well as a row, so a
+  // second accidental card — a copy-paste of the literal above under a new
+  // name — is caught rather than silently seeded.
+  it('adds exactly one WF card', async () => {
+    const { cards } = await loadSeedData()
+    expect(cards.filter((c) => c.faction === 'WF')).toHaveLength(21)
+  })
+
+  // The price is now ZERO, and zero is a number — which is the whole assertion.
+  // Both gates that decide whether this card has a usable ability read this one
+  // value: ACTIVATE_VEHICLE through parsePrice (0 is valid, `null` is not) and
+  // BoardZone.tsx through `typeof === 'number'` (same answer, both ways). A
+  // seeded `null`, a missing key or a string '0' would take the button away
+  // with the card text still promising it, and NO guard would notice.
+  it('Judgement activates for free, and the price is the number 0', async () => {
+    const meta = (await bySeedKey()).get('WF:Judgement')!.meta as Record<string, unknown>
+    expect(meta.onActivate).toBe('judgementActivate')
+    expect(meta.costModifier).toBe('judgementCostModifier')
+    expect(meta.activateCpCost).toBe(0)
+    expect(typeof meta.activateCpCost).toBe('number')
   })
 })

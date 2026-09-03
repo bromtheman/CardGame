@@ -11,14 +11,20 @@ const key = (c: { faction: string; name: string }) => `${c.faction}:${c.name}`
 
 // Permanently exempt: card text that is player-conduct guidance for the spawn
 // sheet, not a trigger. There is nothing for the engine to fire.
+//
+// TG:Anguish left this map in the 2026-09-02 pass: its deployment-order text is
+// still conduct, but it is now conduct the seed EXPRESSES (`deployOrder`, a
+// DATA_EFFECT_KEY), so G2 closes it on the data key like Albacore and Purifier
+// rather than on an exemption.
 const EXEMPT: Record<string, string> = {
   'SS:Falcon Squadron': 'Robotic-shaped conduct text: players apply it when reporting results',
-  'TG:Anguish': 'Deployment-order conduct text for the spawn sheet: the engine has no deployment-order concept, so there is nothing to fire',
 }
 
-// The gaps not yet closed (Falcon Squadron and TG Anguish are permanently
-// EXEMPT above). Delete entries as their wave lands — the "KNOWN_GAPS contains
-// no stale entries" test below rejects stale ones, so this list only shrinks.
+// The gaps not yet closed (Falcon Squadron is permanently EXEMPT above; see
+// EXEMPT's own comment for TG:Anguish, which left this file entirely in the
+// 2026-09-02 pass). Delete entries as their wave lands — the "KNOWN_GAPS
+// contains no stale entries" test below rejects stale ones, so this list only
+// shrinks.
 //
 // The five effect-coverage waves emptied it of that spec's 65 cards, and wave 6
 // closed the twelve the 2026-08-30 balance pass added. It reached zero, and the
@@ -31,9 +37,9 @@ const EXEMPT: Record<string, string> = {
 // waiting on. The list drains to zero across the wave; the toHaveLength literal
 // below moves with it, one task at a time.
 //
-// The ten vanilla TG cards, the two Swarms and TG:Anguish are absent on
-// purpose: the first twelve carry no card text at all (so G2 never inspects
-// them) and Anguish is permanently EXEMPT above.
+// The ten vanilla TG cards and the two Swarms are absent on purpose: they carry
+// no card text at all, so G2 never inspects them. TG:Anguish used to be listed
+// here as permanently EXEMPT and no longer is — see EXEMPT above.
 const KNOWN_GAPS: Record<string, string> = {
 }
 

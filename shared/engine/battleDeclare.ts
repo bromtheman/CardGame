@@ -2,12 +2,101 @@ import { KEYWORDS, SPAWN_DISTANCE_DEFAULT_M, VEHICLE_TYPES } from '../gameSettin
 import type { BattleContinuation, EngineContext, Side, ZoneCardEntry } from './engineTypes.ts'
 import type { EngineGame } from './engineTypes.ts'
 import { err, findVehicle, otherSide, registerHandler, zoneById } from './gameEngine.ts'
-import { dispatchBattleLock } from './battleTriggers.ts'
+import { dispatchBattleLock, lockRoster } from './battleTriggers.ts'
 
-// The one condition meta.defensiveOmission expresses today (spec §4.8). A
-// string rather than a boolean so a second condition is expressible without a
-// second meta key; Buzzsaw and Veles print identical text and share this one.
+// The one condition meta.defensiveOmission expresses (spec §4.8). A string
+// rather than a boolean so a second condition is expressible without a second
+// meta key.
+//
+// ⚠ NO SEEDED CARD CARRIES IT since the 2026-09-02 balance pass: Buzzsaw and
+// Veles, its only two carriers, both traded it for STEALTHY, whose opt-out is
+// unconditional and therefore strictly wider. The rule below is KEPT rather
+// than deleted, for the reason purifierEffect is kept registered — an
+// in-flight game dealt before that pass carries a frozen snapshot that still
+// prints the key, and the opt-out has to keep working for those hulls
+// (spec R-8, §5). battleDeclare.test.ts asserts the carrier set AT ZERO, so
+// the next card to take the key has to come back here.
 export const OMISSION_UNLESS_SHIP_OR_TANK = 'unlessShipOrTank'
+
+// The two directions meta.deployOrder expresses (2026-09-02 spec §4.3), read
+// on the side that CARRIES the key: 'first' — my side puts its fleet down
+// first; 'last' — my side puts its fleet down last. Strings rather than
+// booleans for the reason OMISSION_UNLESS_SHIP_OR_TANK is one: a third
+// direction becomes expressible without a second meta key.
+export const DEPLOY_ORDER_FIRST = 'first'
+export const DEPLOY_ORDER_LAST = 'last'
+
+export interface DeployOrderNote {
+  /** The side that must put its fleet down first — null when directives cancel. */
+  firstSide: Side | null
+  /** True when two carriers demand opposite orders. */
+  cancelled: boolean
+}
+
+// CONDUCT, NOT ENGINE. The players apply this in From The Depths; nothing here
+// gates, orders or validates anything, and this pass deliberately gives the
+// engine no deployment-order concept (spec §4.3). It exists so the spawn sheet
+// (BattleOverlay) and the game log can never say different things.
+//
+// Every carrier is NORMALISED to one statement — "which side spawns first" —
+// which is what makes Purifier's "the enemy forces must spawn in first" and
+// Anguish's "it must deploy first" one mechanic rather than two. That is the
+// spec's own reading of Purifier ("the same statement seen from the other
+// side"), and it is why cancellation below is about DISAGREEMENT rather than
+// about both sides merely holding a card (ruling W-1).
+export function deployOrderFor(
+  participants: Iterable<{ entry: { meta: Record<string, unknown> }; side: Side }>,
+): DeployOrderNote | null {
+  const demanded = new Set<Side>()
+  for (const { entry, side } of participants) {
+    // Strict equality on the VALUE, never truthiness: a mistyped 'fist' must
+    // leave the hull out of this entirely rather than in it — the same rule
+    // `matches()` applies to metaFlag, and the reason Task 3 pins the seeded
+    // values.
+    if (entry.meta.deployOrder === DEPLOY_ORDER_FIRST) demanded.add(side)
+    else if (entry.meta.deployOrder === DEPLOY_ORDER_LAST) demanded.add(otherSide(side))
+  }
+  if (demanded.size === 0) return null
+  if (demanded.size > 1) return { firstSide: null, cancelled: true }
+  return { firstSide: [...demanded][0], cancelled: false }
+}
+
+// The one line the ENGINE says about deployment order, and it is said only
+// when two carriers contradict. An active directive already has a permanent
+// home in the spawn sheet both captains read while staging the fight; a
+// cancelled one leaves that sheet saying "normal order", and the player whose
+// card was answered would otherwise never learn why.
+//
+// Called LAST — after dispatchBattleLock, never before it (ruling R-WF-6).
+// That ordering is load-bearing, not stylistic. A DP2 lock trigger may call
+// joinBattle, which pushes onto battle.attackerIds/defenderIds and therefore
+// onto lockRoster's output: The Onyx Throne's Parapet, Dryad, Obelisk's Mirth
+// Swarm and TG's factory escort (havocFactoryEffect/mirthFactoryEffect, the
+// joinBattle inside tgEffects.ts's factory()) all join INSIDE the dispatch —
+// NOT vengefulBattle, which gates on battle.phase === 'resolve' and never
+// calls joinBattle at all (RESOLVE_BYSTANDER_EFFECTS has it, per
+// factionEffects.test.ts). Derived before it, this note would read a roster
+// that no longer exists by the time the battle is staged — a hull joining
+// with an opposing directive would cancel the order on the spawn sheet, which
+// reads the final roster, while this stayed silent, and the one case the line
+// exists to explain would be the one case it missed.
+//
+// Four further joinBattle callers (two in dwgEffects, one in wfEffects, and LH
+// Terawatt) sit inside a choice()'s resolve, so they join in a LATER action and
+// no placement in this function can see them. Nothing on those paths carries
+// deployOrder today; if one ever does, the note has to be recomputed where the
+// roster changes, not here.
+//
+// The price is that the note now follows a trigger's own log lines instead of
+// preceding them. Reading order, traded for saying the true thing. Do not
+// "tidy" it back above the dispatch.
+function noteDeployOrder(game: EngineGame): void {
+  const note = deployOrderFor(lockRoster(game))
+  if (!note?.cancelled) return
+  game.state.log.push(
+    'The two fleets demand opposite deployment-order directives — they cancel; spawn in the normal order',
+  )
+}
 
 // The only place the activeBattle object literal is constructed (spec §4.3,
 // departure 1) — so the next field added to it is one edit here rather than
@@ -47,6 +136,9 @@ function lockBattle(
   // is declare-then-trigger; `forced: false` because this IS the ordinary
   // fleet attack, which is what Terawatt's bystander rule excludes.
   dispatchBattleLock(game, ctx, false)
+  // Last, so the note is derived from the roster a trigger's joinBattle may
+  // just have grown. Never above the dispatch — see its definition.
+  noteDeployOrder(game)
 }
 
 // The only function that appends to a battle already in progress. Every other
@@ -148,6 +240,9 @@ export function declareForcedBattle(game: EngineGame, ctx: EngineContext, spec: 
   // (departure 3, decision 19); that is deliberate and safe — see
   // gameEngine.ts's applyAction, and shared/engine/battleFreeze.test.ts.
   dispatchBattleLock(game, ctx, true)
+  // Last, so the note is derived from the roster a trigger's joinBattle may
+  // just have grown. Never above the dispatch — see its definition.
+  noteDeployOrder(game)
   return true
 }
 

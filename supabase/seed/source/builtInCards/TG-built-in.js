@@ -208,6 +208,12 @@ export const tgVehicles = [
         blueprintId: null,
         keywords: [KEYWORDS.UPKEEP_REQUIRED, KEYWORDS.ROBOTIC],
         meta: {
+            // WF's wave owns this key and set it here (2026-09-02 spec §4.3,
+            // §6.3). "It must deploy first before the opponent" is the same
+            // mechanic Veles and Purifier print from the other side, and it is
+            // what lets Anguish leave EXEMPT in effectCoverage.test.ts after
+            // three waves parked there. TG's wave still owns Anguish's COSTS.
+            deployOrder: 'first',
         }
     },
     {
