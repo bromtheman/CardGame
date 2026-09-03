@@ -42,17 +42,24 @@ describe('laneRowsAt', () => {
   })
 
   // Spec §4.1: the grid must render the REDUCED slot count or the board lies
-  // about capacity. A denied lane reserves five slots, not eight — at this
-  // panel's 4 columns both round up to 2 rows, so the row COUNT doesn't
-  // distinguish them here (`still shows every hull…` below does), but this
-  // still pins that the function takes the reduced cap rather than the flat
-  // constant, and would diverge from the full-cap case at a narrower panel.
+  // about capacity. A denied lane reserves five slots, not eight. At the
+  // FULL-width panel (4 columns) that difference is invisible in row count —
+  // ceil(5/4) and ceil(8/4) both round up to 2 — so this uses the NARROW panel
+  // (2 columns) instead, where the reduced cap (5 → 3 rows) and the flat
+  // constant (8 → 4 rows) diverge: a `laneRowsAt` still reading the flat
+  // constant fails this at 4, not 3.
   it('reserves only the reduced cap when a denier has shrunk it', () => {
-    expect(laneRowsAt(PANEL_INNER, 0, MAX_VEHICLES_PER_ZONE_SIDE - 3)).toBe(2)
+    expect(laneRowsAt(NARROW_PANEL_INNER, 0, MAX_VEHICLES_PER_ZONE_SIDE - 3)).toBe(3)
   })
 
   // The over-cap case AND the denied case at once — the board a player actually
-  // sees the turn a Tiger Shark lands opposite a full lane.
+  // sees the turn a Tiger Shark lands opposite a full lane. This is an
+  // INVARIANT pin, not a discriminator: `count` (8) already exceeds the
+  // reduced cap (5), so `Math.max(count, cap)` picks `count` regardless of
+  // which cap arrives, and this would pass unchanged even against the old
+  // flat-constant implementation. It still matters — it pins that an
+  // over-cap lane keeps showing every hull once a denier is on the board —
+  // just not as proof the cap argument is wired through.
   it('still shows every hull of a lane that is over the reduced cap', () => {
     expect(laneRowsAt(PANEL_INNER, MAX_VEHICLES_PER_ZONE_SIDE, MAX_VEHICLES_PER_ZONE_SIDE - 3)).toBe(2)
   })

@@ -150,7 +150,7 @@ function VehicleLane({
 
 // The front line: enemy territory above it, yours below. Its own element
 // rather than the `border-t` hairline the own-lane used to carry, because the
-// eight-slot grid fills both lanes with dashed outlines and a 1px line at 50%
+// dashed-slot grid fills both lanes with dashed outlines and a 1px line at 50%
 // opacity now reads as one more grid line instead of as the boundary between
 // the two fleets. Brass to match the board's own accent, with a centre
 // diamond so the midpoint is unmistakable even on an empty zone.
