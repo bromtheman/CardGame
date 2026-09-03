@@ -150,10 +150,10 @@ export function GameBoardPage() {
     cancelAllModes()
     setMoveMode({ phase: 'pickZone', instanceId, kind: 'mobile' })
   }
-  // Excalibur's hand direction (DP6, spec §4.3 departure 4): HandBar has
-  // already picked the hand target (an AI ship) by the time this fires —
-  // chain into the same pickZone phase for the destination zone rather than
-  // inventing a separate mode.
+  // Excalibur / Victoria's hand direction (DP6, spec §4.3 departure 4):
+  // HandBar has already picked the hand target (an SS ship, ruling R-5) by
+  // the time this fires — chain into the same pickZone phase for the
+  // destination zone rather than inventing a separate mode.
   function onVehicleHandTargetPicked(instanceId: string, targetInstanceId: string) {
     cancelAllModes()
     setMoveMode({ phase: 'pickZone', instanceId, kind: 'handTarget', targetInstanceId })
