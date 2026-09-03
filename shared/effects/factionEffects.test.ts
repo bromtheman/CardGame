@@ -5929,6 +5929,112 @@ describe('TG Duel — a cross-zone 1v1 (wave 7)', () => {
     const done = answer(answer(play(game, card), 'mine1'), 'foe1')
     expect(done.state.activeBattle?.zoneId).toBe(1)
   })
+
+  // The 2026-09-02 clause: "If the opponents vehicle dies, draw a card."
+  //
+  // The kill is read off battle.casualties, which DECIDE_BATTLE_REPORT hands
+  // the continuation. Nothing else can supply it: by then activeBattle is
+  // null, the hull is out of zone.cards, and state.destroyed holds a bare
+  // snapshot with no instanceId.
+  const withDeck = () => {
+    const card = duelCard()
+    const game = makeGame({
+      turnNumber: 3, activePlayer: 'alice',
+      privates: {
+        a: { hand: [card], deck: [inst({ name: 'Spare One' }), inst({ name: 'Spare Two' })] },
+        b: { hand: [], deck: [] },
+      },
+    })
+    game.state.zones[2].cards.a.push(zoneEntry({ instanceId: 'mine2', name: 'Mine Two', playedOnTurn: 1 }))
+    game.state.zones[1].cards.b.push(zoneEntry({ instanceId: 'foe1', name: 'Foe', playedOnTurn: 1 }))
+    return { game, card }
+  }
+
+  const fightOut = (game: EngineGame, results: Record<string, number>) => {
+    const submitted = applyAction(game, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT', results, repairs: [],
+    }, makeCtx())
+    if (!submitted.ok) throw new Error(submitted.error)
+    const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, makeCtx())
+    if (!decided.ok) throw new Error(decided.error)
+    return decided.game
+  }
+
+  it('draws a card when the duelled enemy hull dies', () => {
+    const { game, card } = withDeck()
+    const locked = answer(answer(play(game, card), 'mine2'), 'foe1')
+    const before = locked.privates.a.hand.length
+    const after = fightOut(locked, { mine2: 100, foe1: 0 })
+    expect(after.privates.a.hand).toHaveLength(before + 1)
+    expect(after.state.counts.a.hand).toBe(after.privates.a.hand.length)
+  })
+
+  it('draws nothing when the enemy hull survives', () => {
+    const { game, card } = withDeck()
+    const locked = answer(answer(play(game, card), 'mine2'), 'foe1')
+    const before = locked.privates.a.hand.length
+    const after = fightOut(locked, { mine2: 0, foe1: 100 })
+    expect(after.privates.a.hand).toHaveLength(before)
+  })
+
+  // The draw is for the ENEMY's death, not for any death. A duel in which only
+  // the duelling player's own hull dies pays nothing.
+  // The draw keys off the NAMED enemy hull's death, not off "any casualty" —
+  // and a duel has exactly one hull on each side, so no live scenario can
+  // separate the two readings. Driven directly for that reason alone.
+  it('pays only for the hull it named', () => {
+    // `'a' | 'b'` inline rather than the `Side` alias, which this test file
+    // does not import.
+    const casualty = (instanceId: string, side: 'a' | 'b'): BattleCasualty => ({
+      entry: zoneEntry({ instanceId, name: 'Dead', playedOnTurn: 1 }), side, hp: 0,
+    })
+    const run = (casualties: BattleCasualty[]) => {
+      const game = makeGame({
+        turnNumber: 3,
+        privates: { a: { hand: [], deck: [inst({ name: 'Spare' })] }, b: { hand: [], deck: [] } },
+      })
+      const card = duelCard()
+      effectFor('duelEffect')!({
+        game, actor: 'a', card, ctx: makeCtx(),
+        continuation: { effect: 'duelEffect', side: 'a', card, data: { enemyId: 'foe1' } },
+        battle: {
+          phase: 'resolve', zoneId: 1, isDefender: false, isParticipant: false,
+          forced: false, survived: false, won: true, casualties,
+        },
+      })
+      return game.privates.a.hand.length
+    }
+    expect(run([casualty('mine2', 'a')])).toBe(0)   // my own hull died
+    expect(run([casualty('other', 'b')])).toBe(0)   // a different enemy hull died
+    expect(run([casualty('foe1', 'b')])).toBe(1)    // the hull Duel named died
+  })
+
+  // ⚠ The router trap. A continuation carries neither `resolution` nor
+  // `pending`, so a router that checks pending.data first falls through to
+  // hop 1 and offers a brand-new duel off the back of the battle that just
+  // resolved. dwgWatersEffect and trebuchetEffect both check `continuation`
+  // first for this reason.
+  it('does not re-offer a duel after the battle resolves', () => {
+    const { game, card } = withDeck()
+    const locked = answer(answer(play(game, card), 'mine2'), 'foe1')
+    const after = fightOut(locked, { mine2: 100, foe1: 0 })
+    expect(after.state.pendingEffect).toBeNull()
+    expect(after.state.activeBattle).toBeNull()
+  })
+
+  it('names the kill in the log without naming the card drawn', () => {
+    const { game, card } = withDeck()
+    const locked = answer(answer(play(game, card), 'mine2'), 'foe1')
+    const after = fightOut(locked, { mine2: 100, foe1: 0 })
+    expect(after.state.log.some((l) => l.includes('Duel') && /draw/i.test(l))).toBe(true)
+    expect(after.state.log.some((l) => l.includes('Spare One') || l.includes('Spare Two'))).toBe(false)
+  })
+
+  // §7.1's near-miss list: "it draws a card" is not the test for needsCatalog.
+  // Duel draws from the owner's DECK via grant(), never from ctx.catalog.
+  it('still does not need the catalog', () => {
+    expect(CATALOG_EFFECTS.has('duelEffect')).toBe(false)
+  })
 })
 
 // ---------------------------------------------------------------------------

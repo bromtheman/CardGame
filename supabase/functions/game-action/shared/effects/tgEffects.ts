@@ -450,6 +450,10 @@ function resolveDuel(payload: EffectPayload, friendlyId: string, enemyId: string
     defenderIds: [enemyId],
     cause: card.name,
     crossZone: true,
+    // "If the opponents vehicle dies, draw a card" (2026-09-02). The enemy id
+    // is stashed because nothing on the continuation payload carries it —
+    // Trebuchet stashes its zoneId for the same reason.
+    continuation: { effect: DUEL, side: actor, card, data: { enemyId } },
   })
 }
 
@@ -481,9 +485,42 @@ const duelHop1: EffectFn = choice({
   },
 })
 
+// Entry (c): the duel's battle has resolved. activeBattle is already null —
+// DECIDE_BATTLE_REPORT nulls it before firing the continuation — so the
+// outcome arrives on payload.battle, the SAME BattleContext the resolve
+// triggers were handed, scoped to the Duel card itself.
+//
+// The kill test reads `casualties` and nothing else. By here the hull is out
+// of zone.cards and state.destroyed holds a bare snapshot with no instanceId,
+// so no board read can answer "did the hull I named die?".
+//
+// ⚠ A hull revived by Iron Cordon in the same DECIDE_BATTLE_REPORT is still
+// in `casualties`, so the draw stands. That is DP2 departure 7's existing
+// rule — a revive undoes the discard, not what already fired — rather than a
+// new ruling.
+function duelAftermath(payload: EffectPayload): boolean {
+  const { game, actor, card, continuation, battle } = payload
+  const enemyId = continuation?.data?.enemyId
+  if (typeof enemyId !== 'string') return false
+  const died = (battle?.casualties ?? []).some(
+    (c) => c.side === otherSide(actor) && c.entry.instanceId === enemyId,
+  )
+  if (!died) return true
+  // The log names the KILL, never the card drawn — it is entering a hidden
+  // hand. grant() resyncs state.counts for us.
+  game.state.log.push(`${card.name} claims its kill — a card is drawn`)
+  return grant({ draw: 1 })(payload)
+}
+
 // The router. Hop 2 is told apart by the friendlyId hop 1 stashed — never by
 // anything the client sent.
+//
+// ⚠ `continuation` is checked FIRST. A continuation re-entry carries neither
+// `resolution` nor `pending`, so any later branch would fall through to hop 1
+// and offer a fresh duel off the back of the battle that just resolved.
+// dwgWatersEffect and trebuchetEffect both order their routers this way.
 registerEffect(DUEL, (payload) => {
+  if (payload.continuation !== undefined) return duelAftermath(payload)
   const stashed = payload.pending?.data?.friendlyId
   if (typeof stashed === 'string') return duelHop2(stashed)(payload)
   return duelHop1(payload)

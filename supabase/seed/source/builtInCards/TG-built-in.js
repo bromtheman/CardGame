@@ -237,7 +237,7 @@ export const tgVehicles = [
     {
         name: 'Duel',
         isBuiltIn: true,
-        cardText: 'Target a friendly and enemy vehicle. They can be in different zones. they 1v1.',
+        cardText: 'Target a friendly and enemy vehicle. They can be in different zones. they 1v1. If the opponents vehicle dies, draw a card.',
         materialCost: 0,
         blueprintCost: 0,
         cpCost: 0,
