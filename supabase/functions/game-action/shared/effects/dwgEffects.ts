@@ -1,7 +1,7 @@
 import {
   BASE_DAMAGE_DIVISOR, ONGOING_ATTRITION_DAMAGE_PER_VEHICLE,
   DOUBLE_UP_MAX_COST, DWG_WATERS_GUEST_MAX_COST, FLYING_SQUIRREL_ATTACK_COUNT,
-  HERO_POWER_LABELS, KEYWORDS, MARAUDER_DISCOUNT, RESERVES_CARD_COUNT, VEHICLE_TYPES,
+  HERO_POWER_LABELS, KEYWORDS, PLUNDERER_CAPTURE_SURCHARGE, RESERVES_CARD_COUNT, VEHICLE_TYPES,
 } from '../gameSettings.ts'
 import type { EngineContext, EngineGame, Side, ZoneCardEntry } from '../engine/engineTypes.ts'
 import type { SnapshotCard } from '../engine/gameInit.ts'
@@ -24,25 +24,24 @@ const drawPlusCp = ({ game, actor, ctx }: EffectPayload): boolean => {
 }
 registerEffect('crossbonesOnPlay', drawPlusCp)
 
-// "When this vehicle is played, draw a vehicle card from the enemy deck
-// reduce its cost by 50k." The ported implementation aliased this to
-// Crossbones' own-deck draw plus 1 CP; card text is authoritative
-// (spec 2 §6), so that ruling is superseded.
-registerEffect('marauderOnPlay', ({ game, actor, ctx }) => {
-  const before = game.privates[actor].hand.length
-  takeFromEnemyDeck(game, actor, ctx, (c) => c.type === 'vehicle')
-  const taken = game.privates[actor].hand[before]
-  if (!taken) return true
-  const current = typeof taken.meta.costDelta === 'number' ? taken.meta.costDelta : 0
-  taken.meta = { ...taken.meta, costDelta: current - MARAUDER_DISCOUNT }
-  return true
-})
+// "When this vehicle is played, draw a vehicle card from the enemy deck."
+// The ported implementation aliased this to Crossbones' own-deck draw plus
+// 1 CP; card text is authoritative (spec 2 §6), so that ruling is superseded.
+//
+// The 2026-09-02 balance pass removed the trailing "reduce its cost by 50k"
+// clause and raised Marauder 40k -> 55k, which is why nothing stamps a
+// costDelta here any more and MARAUDER_DISCOUNT is gone (2026-09-02 spec §6.1,
+// R-8). The whole card is now the capture: takeFromEnemyDeck resyncs both
+// sides' counts and never names the card it moves into a hidden hand.
+registerEffect('marauderOnPlay', ({ game, actor, ctx }) =>
+  takeFromEnemyDeck(game, actor, ctx, (c) => c.type === 'vehicle'))
 
 registerEffect('ransackOnPlay', grant({ draw: 1, cp: 1 }))
 registerEffect('paddlegunEffect', grant({ draw: 1, from: 'enemy' }))
 
 // Plunderer clause 2: "When this vehicle survives a victorious fleet battle or
-// inflicts damage to the enemy base, draw one card from the enemy deck."
+// inflicts damage to the enemy base, draw one card from the enemy deck, but
+// increase its cost by 20k."
 //
 // One clause, two occasions, one implementation (spec §4.3, DP2 departure 5).
 // `onBattleVictory` at resolve only reaches a participant on the winning side,
@@ -53,9 +52,23 @@ registerEffect('paddlegunEffect', grant({ draw: 1, from: 'enemy' }))
 //
 // takeFromEnemyDeck resyncs both sides' counts and never names the card: it is
 // entering a hidden hand.
+//
+// The 2026-09-02 pass added the price. The stamp goes on the COPY that
+// takeFromEnemyDeck just pushed — `hand[before]` — never on the original, which
+// stays in the enemy's deck. It ADDS to whatever delta the card already carried
+// rather than replacing it: the only way a DECK card carries a costDelta at all
+// is a death effect that mints straight into one — loggerheadOnDeath, below, is
+// the one that exists — so a raid landing on such a card compounds the stamp
+// rather than silently erasing it.
 registerEffect('plundererRaid', ({ game, actor, ctx, battle }) => {
   if (!battle || !battle.survived || !battle.won) return true
-  return takeFromEnemyDeck(game, actor, ctx)
+  const before = game.privates[actor].hand.length
+  const ok = takeFromEnemyDeck(game, actor, ctx)
+  const taken = game.privates[actor].hand[before]
+  if (!taken) return ok
+  const current = typeof taken.meta.costDelta === 'number' ? taken.meta.costDelta : 0
+  taken.meta = { ...taken.meta, costDelta: current + PLUNDERER_CAPTURE_SURCHARGE }
+  return ok
 })
 
 // cost -20k per friendly DWG vehicle on the field (Plunderer)
@@ -73,7 +86,13 @@ registerEffect('loggerheadOnDeath', ({ game, actor, card, ctx }) => {
   // card arrives as a ZoneCardEntry at death — strip the zone stamps so the
   // deck copy is a clean CardInstance
   const { playedOnTurn: _p, movedOnTurn: _m, ...snapshot } = card as ZoneCardEntry
-  deck.push({ ...snapshot, instanceId: ctx.newId(), materialCost: 0, meta: copyMeta(snapshot.meta) })
+  // A per-instance price stamp (e.g. a Plunderer raid's +20k surcharge, spec
+  // §6.1) must not ride into the deck on a card whose own text promises it
+  // costs 0. copyMeta strips only the phantom capturedCopy stamp, so strip
+  // costDelta here too — the same shape as the tgEffects.ts:238 precedent
+  // (horrorBattle strips factoryEscort on top of copyMeta the same way).
+  const meta = (({ costDelta: _costDelta, ...rest }) => rest)(copyMeta(snapshot.meta))
+  deck.push({ ...snapshot, instanceId: ctx.newId(), materialCost: 0, meta })
   for (let i = deck.length - 1; i > 0; i--) {
     const j = Math.floor(ctx.rng() * (i + 1))
     ;[deck[i], deck[j]] = [deck[j], deck[i]]
