@@ -44,12 +44,16 @@ const CARDS: Record<string, Expected> = {
     materialCost: 260_000, blueprintCost: 261_000, keywords: ['fragile'],
     vehicleType: 'airship', cardText: AIRCRAFT_LOCK,
   },
+  // Tarpon and Buccaneer were moved again by the 2026-09-02 pass (§6.1) and are
+  // updated in place, per §2.3 — this file stays the record of what 2026-08-30
+  // moved, not a frozen snapshot of what it moved them to. The current values
+  // are also pinned, with their card text, in balance/dwg.balance.test.ts.
   'DWG:Tarpon': {
-    materialCost: 510_000, blueprintCost: 511_605, keywords: ['fragile'],
+    materialCost: 510_000, blueprintCost: 511_605, keywords: ['fragile', 'subScreen'],
     vehicleType: 'airship', cardText: AIRCRAFT_LOCK,
   },
   'DWG:Buccaneer': {
-    materialCost: 200_000, blueprintCost: 296_000, keywords: [],
+    materialCost: 225_000, blueprintCost: 296_000, keywords: ['fragile'],
     vehicleType: 'airship', cardText: '',
   },
   // ----------------------------------------------------------------- SS
