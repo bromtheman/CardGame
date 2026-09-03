@@ -6915,3 +6915,86 @@ describe('TG Repurpose — scrap a friendly TG hull (2026-09-02)', () => {
     expect(CATALOG_EFFECTS.has('repurposeEffect')).toBe(false)
   })
 })
+
+// ---------------------------------------------------------------------------
+// 2026-09-02 — TG Spawn Audacious. "Spawn an audacious into target zone. It is
+// not temporary."
+//
+// spawnBuccaneerEffect's SHAPE with its own id (spec R-6) and a different
+// keyword line. Buccaneer prints no keywords, so DWG's `keywords: [SCRAPPY]`
+// adds one and drops none; Audacious prints HALF_COST and TEMPORARY, so the
+// same literal would strip both and grant a Scrappy the card never mentions.
+describe('TG Spawn Audacious — a non-temporary Audacious (2026-09-02)', () => {
+  const audaciousSnap = () => snap({
+    name: 'Audacious', faction: 'TG', type: 'vehicle', vehicleType: 'plane',
+    materialCost: 660_000, blueprintCost: 665_000,
+    keywords: [KEYWORDS.HALF_COST, KEYWORDS.TEMPORARY],
+  })
+
+  const spawnCard = () => inst({
+    instanceId: 'spawn1', name: 'Spawn Audacious', faction: 'TG', type: 'ability',
+    vehicleType: null, materialCost: 40_000, meta: { playOnZoneEffect: 'spawnAudaciousEffect' },
+  })
+
+  const fire = (game: EngineGame, targetZoneId: number | undefined, catalog = [audaciousSnap()]) =>
+    effectFor('spawnAudaciousEffect')!({
+      game, actor: 'a', card: spawnCard(), ctx: makeCtx({ catalog }), targetZoneId,
+    })
+
+  it('puts an Audacious into the target zone', () => {
+    const game = makeGame({ turnNumber: 3 })
+    expect(fire(game, 2)).toBe(true)
+    expect(game.state.zones[1].cards.a.map((c) => c.name)).toEqual(['Audacious'])
+    expect(game.state.zones[0].cards.a).toHaveLength(0)
+  })
+
+  // The whole card text, in one assertion.
+  it('strips TEMPORARY and keeps HALF_COST', () => {
+    const game = makeGame({ turnNumber: 3 })
+    fire(game, 1)
+    expect(game.state.zones[0].cards.a[0].keywords).toEqual([KEYWORDS.HALF_COST])
+  })
+
+  // The card says only "it is not temporary". It says nothing about Scrappy,
+  // and copying DWG's literal is the way one would arrive.
+  it('grants nothing the card does not mention', () => {
+    const game = makeGame({ turnNumber: 3 })
+    fire(game, 1)
+    expect(game.state.zones[0].cards.a[0].keywords).not.toContain(KEYWORDS.SCRAPPY)
+  })
+
+  // Not temporary means it survives the cull endTurn runs at every turn start.
+  it('survives the temporary cull', () => {
+    const game = makeGame({ turnNumber: 3, activePlayer: 'alice' })
+    fire(game, 1)
+    const r = applyAction(game, 'alice', { type: 'END_TURN' }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.zones[0].cards.a.map((c) => c.name)).toEqual(['Audacious'])
+  })
+
+  it('stamps a fresh instanceId and this turn', () => {
+    const game = makeGame({ turnNumber: 3 })
+    fire(game, 1)
+    const hull = game.state.zones[0].cards.a[0]
+    expect(hull.playedOnTurn).toBe(3)
+    expect(hull.movedOnTurn).toBeNull()
+    expect(hull.activatedOnTurn).toBeNull()
+    expect(hull.instanceId).not.toBe('spawn1')
+  })
+
+  it('refuses with no target zone, and with a missing catalog row', () => {
+    expect(fire(makeGame({ turnNumber: 3 }), undefined)).toBe(false)
+    expect(fire(makeGame({ turnNumber: 3 }), 1, [])).toBe(false)
+  })
+
+  // Spec R-6: shared shape, separate implementations.
+  it('is not DWG’s implementation', () => {
+    expect(effectFor('spawnAudaciousEffect')).not.toBe(effectFor('spawnBuccaneerEffect'))
+  })
+
+  // §7.1. A unit test cannot catch a MISSING flag — makeCtx hand-builds a
+  // catalog — so the registration itself is what gets asserted.
+  it('carries needsCatalog', () => {
+    expect(CATALOG_EFFECTS.has('spawnAudaciousEffect')).toBe(true)
+  })
+})

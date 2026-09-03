@@ -1,5 +1,5 @@
 import {
-  choice, enemyVehicleOptions, friendlyVehicleOptions, grant, spawnVehicles, summonHulls,
+  catalogCard, choice, enemyVehicleOptions, friendlyVehicleOptions, grant, spawnVehicles, summonHulls,
 } from './primitives.ts'
 import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
 import { checkVictory, copyMeta, findVehicle, otherSide, zoneById } from '../engine/gameEngine.ts'
@@ -314,6 +314,42 @@ registerEffect('repurposeEffect', ({ game, actor, ctx, card, targetInstanceId })
   game.state.log.push(`${card.name} scraps ${entry.name} for ${value} materials`)
   return true
 })
+
+// "Spawn an audacious into target zone. It is not temporary."
+//
+// spawnBuccaneerEffect's shape with its OWN registry id (spec R-6): reusing
+// the DWG name would rebind that card's behaviour for every in-flight game the
+// moment this one deployed (Kraken/Paddlegun).
+//
+// ⚠ The keyword line is the one thing NOT copied across, and copying it would
+// be the bug. DWG writes `keywords: [KEYWORDS.SCRAPPY]`, replacing the
+// snapshot's list — harmless there only because Buccaneer prints none.
+// Audacious prints HALF_COST and TEMPORARY, so the same literal would strip
+// both and grant a Scrappy this card never mentions. The text removes exactly
+// one keyword, so this removes exactly one.
+//
+// SPAWNING IS NOT PLAYING (spec §7.4): no payment, no placement legality, no
+// onPlayEffect, and no zone-cap check — the same latitude every other spawn
+// takes.
+registerEffect('spawnAudaciousEffect', ({ game, actor, ctx, targetZoneId }) => {
+  if (typeof targetZoneId !== 'number') return false
+  const zone = zoneById(game.state, targetZoneId)
+  const audacious = catalogCard(ctx, 'Audacious')
+  // A missing catalog row is a data bug, not an empty pool: fail the play
+  // rather than fizzle, matching spawnVehicles' contract.
+  if (!zone || !audacious) return false
+  const entry: ZoneCardEntry = {
+    ...audacious,
+    instanceId: ctx.newId(),
+    keywords: audacious.keywords.filter((k) => k !== KEYWORDS.TEMPORARY),
+    playedOnTurn: game.turnNumber,
+    movedOnTurn: null,
+    activatedOnTurn: null,
+  }
+  zone.cards[actor].push(entry)
+  game.state.log.push(`An Audacious joins zone ${zone.id}`)
+  return true
+}, { needsCatalog: true })
 
 // "When this vehicle is played, sacrifice a target friendly AI vehicle in this
 // zone." Clause 1 (the deploy prerequisite) is a data key read by

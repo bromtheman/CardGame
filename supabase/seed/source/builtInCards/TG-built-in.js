@@ -518,5 +518,22 @@ export const tgVehicles = [
             [TRIGGERS.PLAY_ON_VEHICLE]: 'repurposeEffect',
         }
     },
+    {
+        name: 'Spawn Audacious',
+        isBuiltIn: true,
+        cardText: 'Spawn an audacious into target zone. It is not temporary.',
+        materialCost: 40000,
+        blueprintCost: 0,
+        cpCost: 0,
+        imageUrl: 'spawnAudacious.png',
+        playerId: null,
+        vehicleType: null,
+        type: 'ability',
+        faction: FACTIONS.TG,
+        blueprintId: null,
+        meta: {
+            [TRIGGERS.PLAY_ON_ZONE]: 'spawnAudaciousEffect',
+        }
+    },
 ];
 
