@@ -5921,3 +5921,80 @@ describe('TG Duel — E-10, an Inoffensive hull cannot be sent to duel', () => {
     expect(done.game.state.activeBattle?.defenderIds).toEqual(['foe1'])
   })
 })
+
+describe('2026-09-02 — WF Sub Strike', () => {
+  const strikeSnap = snap({
+    name: 'Sub Strike', faction: 'WF', type: 'ability', vehicleType: null,
+    materialCost: 100_000, cpCost: 1,
+    cardText: 'Target an enemy submarine, remove it from play.',
+    meta: { playOnVehicleEffect: 'subStrikeEffect' },
+  })
+  const strikeCtx = () => makeCtx({ catalog: [strikeSnap] })
+
+  function armed(over: { targetType?: string; targetMeta?: Record<string, unknown> } = {}) {
+    const game = makeGame({ turnNumber: 3, activePlayer: 'alice' })
+    const card = inst({ ...strikeSnap })
+    game.privates.a.hand.push(card)
+    game.state.counts.a.hand = 1
+    const target = zoneEntry({
+      name: 'Nautilus', vehicleType: over.targetType ?? 'sub', materialCost: 60_000,
+      meta: over.targetMeta ?? {},
+    })
+    game.state.zones[0].cards.b.push(target)
+    return { game, card, target }
+  }
+
+  const play = (game: EngineGame, ids: { card: string; target: string }) =>
+    applyAction(game, 'alice', {
+      type: 'PLAY_CARD_TARGETING_CARD_ON_FIELD', instanceId: ids.card, targetInstanceId: ids.target,
+    }, strikeCtx())
+
+  it('takes the submarine off the board and files it in its owner discard', () => {
+    const { game, card, target } = armed()
+    const r = play(game, { card: card.instanceId, target: target.instanceId })
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.zones[0].cards.b).toHaveLength(0)
+    expect(r.game.state.destroyed.b.map((c) => c.name)).toEqual(['Nautilus'])
+    // No rider: Sub Killer plants one, Sub Strike prints no second clause.
+    expect(r.game.state.zoneEffects).toEqual([])
+  })
+
+  // Spec R-7, and the reason it is a ruling at all: in battleResolve.ts's
+  // destruction loop `discardCard(...)` and `destroyedEntries.push(...)` are
+  // adjacent lines, and only the second one reaches fireDeathEffect. "Remove
+  // from play" copies the first and not the second, and nothing about the diff
+  // shows that.
+  it('fires no death trigger — removal is not destruction', () => {
+    const { game, card, target } = armed({ targetMeta: { onDeathEffect: 'javelinOnDeath' } })
+    game.privates.b.deck = [inst({ name: 'Consolation' })]
+    game.state.counts.b.deck = 1
+    const r = play(game, { card: card.instanceId, target: target.instanceId })
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.privates.b.hand).toHaveLength(0)
+    expect(r.game.state.counts.b.deck).toBe(1)
+  })
+
+  // Sub Killer takes three types; this card's text says "submarine" and means
+  // only that. Airship is the sharp case — it is prey for Judgement, so a
+  // reader may expect it here too.
+  it.each(['ship', 'tank', 'plane', 'airship'])('refuses a %s target', (vehicleType) => {
+    const { game, card, target } = armed({ targetType: vehicleType })
+    expect(play(game, { card: card.instanceId, target: target.instanceId }))
+      .toMatchObject({ ok: false, status: 400 })
+  })
+
+  it('refuses a friendly submarine', () => {
+    const { game, card } = armed()
+    const mine = zoneEntry({ name: 'My Sub', vehicleType: 'sub' })
+    game.state.zones[0].cards.a.push(mine)
+    expect(play(game, { card: card.instanceId, target: mine.instanceId }))
+      .toMatchObject({ ok: false, status: 400 })
+  })
+
+  // It reads no catalog, so it must NOT be flagged — the mirror of the two
+  // positive checks this file already makes. "It removes a card" is not the
+  // test; touching ctx.catalog is.
+  it('needs no catalog', () => {
+    expect(CATALOG_EFFECTS.has('subStrikeEffect')).toBe(false)
+  })
+})

@@ -37,6 +37,10 @@ const CARDS: Record<string, Expected> = {
     vehicleType: 'ship',
     cardText: 'This vehicle does no damage to the enemy base. Whenever it participates in a fleet battle, the enemy forces must spawn in first, even if they are defending.',
   },
+  'WF:Sub Strike': {
+    materialCost: 100_000, blueprintCost: 0, keywords: [], vehicleType: null,
+    cardText: 'Target an enemy submarine, remove it from play.',
+  },
 }
 
 describe('2026-09-02 balance pass — WF', () => {
@@ -90,5 +94,13 @@ describe('2026-09-02 balance pass — WF', () => {
     const veles = (await bySeedKey()).get('WF:Veles')!
     expect((veles.meta as Record<string, unknown>).defensiveOmission).toBeUndefined()
     expect(veles.keywords).toContain('stealthy')
+  })
+
+  // The only row this wave ADDS. Asserted as a count as well as a row, so a
+  // second accidental card — a copy-paste of the literal above under a new
+  // name — is caught rather than silently seeded.
+  it('adds exactly one WF card', async () => {
+    const { cards } = await loadSeedData()
+    expect(cards.filter((c) => c.faction === 'WF')).toHaveLength(21)
   })
 })

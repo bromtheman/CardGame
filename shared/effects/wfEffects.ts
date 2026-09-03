@@ -6,7 +6,7 @@ import {
 } from '../gameSettings.ts'
 import type { EngineContext, EngineGame, Side, ZoneCardEntry } from '../engine/engineTypes.ts'
 import type { SnapshotCard } from '../engine/gameInit.ts'
-import { findVehicle, otherSide, zoneById } from '../engine/gameEngine.ts'
+import { discardCard, findVehicle, otherSide, zoneById } from '../engine/gameEngine.ts'
 import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
 import {
   catalogCard, choice, enemyVehicleOptions, grant, poolEligible, spawnInto, summonHulls,
@@ -25,6 +25,38 @@ registerEffect('purifierEffect', grant({ draw: 1 }))
 // cannot hit the SCRAPPY-plus-onDeathEffect prohibition that cost Loggerhead
 // its keyword (docs/claude/card-effects.md).
 registerEffect('basherOnDeath', grant({ draw: 1 }))
+
+// "Target an enemy submarine, remove it from play."
+//
+// OW Sub Killer's shape (owEffects.ts) with the GT clause and the zone rider
+// removed and the target list narrowed from sub/plane/airship to SUB alone. It
+// carries its OWN registry id even though the body is nearly identical: a name
+// two cards could share silently rebinds one of them the moment the other
+// changes (spec R-6, the Kraken/Paddlegun collision).
+//
+// ⚠ REMOVE FROM PLAY IS NOT DESTROY (spec R-7). The hull leaves its zone and
+// goes out of play through discardCard — the single exit, so a summonOnly hull
+// still never reaches a discard and a captured copy is still destroyed — but it
+// is never pushed to destroyedEntries, and destroyedEntries is exactly what
+// fireDeathEffect walks. In battleResolve.ts those two statements are adjacent
+// lines; the difference between them is invisible in review, so it has its own
+// test.
+//
+// No `if (battle)` guard, unlike Sub Killer: that card's guard exists because
+// it plants a state.zoneEffects rider and is therefore re-dispatched at every
+// lock. This one plants nothing and is never re-entered.
+registerEffect('subStrikeEffect', ({ game, actor, targetInstanceId }) => {
+  if (typeof targetInstanceId !== 'string') return false
+  const found = findVehicle(game.state, targetInstanceId)
+  if (!found || found.side !== otherSide(actor)) return false
+  if (found.entry.vehicleType !== VEHICLE_TYPES.SUB) return false
+  const enemy = found.side
+  found.zone.cards[enemy] = found.zone.cards[enemy].filter((c) => c.instanceId !== targetInstanceId)
+  discardCard(game, enemy, found.entry)
+  // The hull was public on the board a moment ago, so naming it leaks nothing.
+  game.state.log.push(`${found.entry.name} is removed from play in zone ${found.zone.id}`)
+  return true
+})
 
 const AMBUSH = 'ambushEffect'
 

@@ -267,6 +267,24 @@ export const wfVehicles = [
     },
 
     {
+        name: 'Sub Strike',
+        isBuiltIn: true,
+        cardText: 'Target an enemy submarine, remove it from play.',
+        materialCost: 100000,
+        blueprintCost: 0,
+        cpCost: 1,
+        imageUrl: 'subStrike.png',
+        playerId: null,
+        vehicleType: null,
+        type: 'ability',
+        faction: FACTIONS.WF,
+        blueprintId: null,
+        meta: {
+            [TRIGGERS.PLAY_ON_VEHICLE]: 'subStrikeEffect'
+        }
+    },
+
+    {
         name: 'All for the Cause',
         isBuiltIn: true,
         cardText: 'Choose a zone. Give all friendly vehicles in that zone the TEMPORARY keyword, then spawn a Martyr for each vehicle affected. If the vehicle costed more than 250k, summon two instead.',
