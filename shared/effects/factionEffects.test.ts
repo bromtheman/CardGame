@@ -5931,8 +5931,8 @@ describe('2026-09-02 balance pass — OW', () => {
   // registered. Sharing the `gtAirship` CLOSURE is not the same thing and is
   // fine; halberdOnDeath, jormangundOnDeath and partisanEffect already do it.
   it('brandistockOnDeath and halberdOnDeath are two independent registrations', () => {
-    expect(effectFor('brandistockOnDeath')).toBeDefined()
-    expect(effectFor('halberdOnDeath')).toBeDefined()
+    expect(effectFor('brandistockOnDeath')).not.toBeNull()
+    expect(effectFor('halberdOnDeath')).not.toBeNull()
   })
 
   // Spec §7.1. A missing { needsCatalog: true } is invisible to every other test
