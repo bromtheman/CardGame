@@ -280,6 +280,14 @@ beforeAll(() => {
     const hull = zoneEntry({ name: 'Joined' })
     return joinBattle(game, actor, hull.instanceId, hull)
   })
+  // Same shape as t_joinSpy, but the joining hull ITSELF carries a
+  // deployOrder directive. This is the fixture ruling R-WF-6 (commit
+  // bd5d2b1) needs: a conflict that exists only in the roster AFTER this
+  // join runs, never before it. See 'the deployment-order log line' below.
+  registerEffect('t_joinOrderSpy', ({ game, actor }) => {
+    const hull = zoneEntry({ name: 'Joined Directive', meta: { deployOrder: DEPLOY_ORDER_FIRST } })
+    return joinBattle(game, actor, hull.instanceId, hull)
+  })
 })
 
 beforeEach(() => { lockFired = [] })
@@ -689,5 +697,41 @@ describe('the deployment-order log line', () => {
   it('is not pushed when one side alone carries a directive', () => {
     const out = attackWith([zoneEntry({ playedOnTurn: 2 })], [carrier(DEPLOY_ORDER_LAST)])
     expect(lines(out)).toEqual([])
+  })
+
+  // Ruling R-WF-6 (commit bd5d2b1). noteDeployOrder MUST be derived from the
+  // roster produced AFTER dispatchBattleLock, never before it — the ordering
+  // is load-bearing, not stylistic, and THIS test is what pins it. Do not
+  // "tidy" the noteDeployOrder(game) call back above dispatchBattleLock(...)
+  // in lockBattle (or declareForcedBattle); this test fails the moment
+  // someone does.
+  //
+  // t_joinOrderSpy (registered above, alongside t_joinSpy) mirrors a DP2 lock
+  // trigger like The Onyx Throne's Parapet: it calls joinBattle from inside
+  // dispatchBattleLock, pushing a freshly summoned hull onto
+  // battle.attackerIds — exactly what lockRoster reads. That joined hull
+  // carries its OWN 'first' directive, which conflicts with the defender's
+  // 'first' directive already in play. The conflict exists ONLY in the
+  // post-join roster: before the join, the attacker side carries no
+  // directive at all, so deployOrderFor(lockRoster(game)) sees a single
+  // demand and reports no cancellation.
+  //
+  // Derived before dispatchBattleLock (the pre-fix ordering), noteDeployOrder
+  // reads that pre-join roster and stays silent — the bug: the spawn-sheet
+  // panel (Task 2), which reads the roster fresh on demand, would say the
+  // fleets cancel, while the log never explained why. Derived after (the
+  // current, correct ordering), it sees both directives and cancels, and the
+  // log line fires.
+  it('cancels once a DP2-joined hull carries a directive that conflicts with the other side (R-WF-6)', () => {
+    const trigger = zoneEntry({
+      name: 'Trigger Hull', playedOnTurn: 2,
+      meta: { onBattleEffect: 't_joinOrderSpy' },
+    })
+    const out = attackWith([trigger], [carrier(DEPLOY_ORDER_FIRST)])
+    // Sanity check that the join actually happened: t_joinOrderSpy joins the
+    // triggering hull's OWN side (the attacker here), so the roster grew from
+    // 1 to 2 on that side before noteDeployOrder ever ran.
+    expect(out.state.activeBattle?.attackerIds).toHaveLength(2)
+    expect(lines(out)).toHaveLength(1)
   })
 })
