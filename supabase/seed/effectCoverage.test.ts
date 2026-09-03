@@ -275,9 +275,14 @@ describe('G4: every registered implementation is reachable from a seeded card', 
     expect(stale).toEqual([])
   })
 
-  it('the deliberate list is exactly the three the balance pass orphaned', () => {
-    expect(Object.keys(DELIBERATE_ORPHANS).sort()).toEqual(
-      ['purifierEffect', 'rheaOnPlay', 'victoriaOnDeath'],
-    )
+  // One name per line so a later branch adding its own orphan (OW's
+  // bulwarkOnPlay, SS's victoriaActivate, ...) is a clean insertion rather
+  // than a rewrite of this whole line (2026-09-02 spec §2.3).
+  it('the deliberate list matches exactly what the balance pass orphaned', () => {
+    expect(Object.keys(DELIBERATE_ORPHANS).sort()).toEqual([
+      'purifierEffect',
+      'rheaOnPlay',
+      'victoriaOnDeath',
+    ])
   })
 })
