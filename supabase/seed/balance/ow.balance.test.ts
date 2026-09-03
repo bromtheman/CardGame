@@ -37,6 +37,10 @@ const CARDS: Record<string, Expected> = {
     vehicleType: 'ship',
     cardText: 'When this card is destroyed, draw a random GT Airship',
   },
+  'OW:Bulwark': {
+    materialCost: 450_000, blueprintCost: 848_000, keywords: ['blocker'],
+    vehicleType: 'ship', cardText: '',
+  },
 }
 
 describe('2026-09-02 balance pass — OW', () => {
@@ -66,5 +70,15 @@ describe('2026-09-02 balance pass — OW', () => {
     const cards = await bySeedKey()
     expect(cards.get('OW:Brandistock')!.meta?.onDeathEffect).toBe('brandistockOnDeath')
     expect(cards.get('OW:Halberd')!.meta?.onDeathEffect).toBe('halberdOnDeath')
+  })
+
+  // The meta key's ABSENCE is the change, and an absence is exactly what no
+  // guard checks: G2 stops looking once cardText is empty, and G1 has no name
+  // left to resolve. Without this line, silently leaving onPlayEffect in place
+  // would ship a card that still grants 2cp while printing nothing — the worst
+  // shape of balance bug, because the board never explains itself.
+  it('Bulwark carries no onPlayEffect any more — the 2cp is gone with the text', async () => {
+    const bulwark = (await bySeedKey()).get('OW:Bulwark')!
+    expect(bulwark.meta ?? {}).toEqual({})
   })
 })

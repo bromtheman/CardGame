@@ -132,11 +132,15 @@ export const GT_HEAVY_AIRSHIP = [
 
 export const owVehicles = [
     {
+        // 2026-09-02 balance pass: the "gain 2cp" clause is gone and the meta
+        // key with it, so bulwarkOnPlay now names no card. The implementation
+        // STAYS registered and is recorded in DELIBERATE_ORPHANS — a game
+        // dealt before this pass still carries a snapshot naming it (spec §5).
         name: 'Bulwark',
         isBuiltIn: true,
-        cardText: 'When played, gain 2cp',
-        materialCost: 400000,
-        blueprintCost: 466000,
+        cardText: '',
+        materialCost: 450000,
+        blueprintCost: 848000,
         cpCost: 0,
         imageUrl: 'bulwark.png',
         playerId: null,
@@ -146,7 +150,6 @@ export const owVehicles = [
         blueprintId: null,
         keywords: [KEYWORDS.BLOCKER],
         meta: {
-            [TRIGGERS.ON_PLAY]: 'bulwarkOnPlay',
         }
     },
     {

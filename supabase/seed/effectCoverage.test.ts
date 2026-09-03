@@ -234,6 +234,7 @@ const DELIBERATE_ORPHANS: Record<string, string> = {
   purifierEffect: 'balance 2026-08-30 rewrote WF Purifier\'s text and cleared its meta',
   victoriaOnDeath: 'balance 2026-08-30 replaced SS Victoria\'s draw-on-death with an activated ability',
   rheaOnPlay: 'balance 2026-08-30 retired SS Rhea outright',
+  bulwarkOnPlay: 'balance 2026-09-02 cleared OW Bulwark\'s card text and removed its onPlayEffect key',
 }
 
 describe('G4: every registered implementation is reachable from a seeded card', () => {
@@ -280,6 +281,7 @@ describe('G4: every registered implementation is reachable from a seeded card', 
   // than a rewrite of this whole line (2026-09-02 spec §2.3).
   it('the deliberate list matches exactly what the balance pass orphaned', () => {
     expect(Object.keys(DELIBERATE_ORPHANS).sort()).toEqual([
+      'bulwarkOnPlay',
       'purifierEffect',
       'rheaOnPlay',
       'victoriaOnDeath',
