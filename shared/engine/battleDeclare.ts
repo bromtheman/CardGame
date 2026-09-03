@@ -2,12 +2,72 @@ import { KEYWORDS, SPAWN_DISTANCE_DEFAULT_M, VEHICLE_TYPES } from '../gameSettin
 import type { BattleContinuation, EngineContext, Side, ZoneCardEntry } from './engineTypes.ts'
 import type { EngineGame } from './engineTypes.ts'
 import { err, findVehicle, otherSide, registerHandler, zoneById } from './gameEngine.ts'
-import { dispatchBattleLock } from './battleTriggers.ts'
+import { dispatchBattleLock, lockRoster } from './battleTriggers.ts'
 
 // The one condition meta.defensiveOmission expresses today (spec §4.8). A
 // string rather than a boolean so a second condition is expressible without a
 // second meta key; Buzzsaw and Veles print identical text and share this one.
 export const OMISSION_UNLESS_SHIP_OR_TANK = 'unlessShipOrTank'
+
+// The two directions meta.deployOrder expresses (2026-09-02 spec §4.3), read
+// on the side that CARRIES the key: 'first' — my side puts its fleet down
+// first; 'last' — my side puts its fleet down last. Strings rather than
+// booleans for the reason OMISSION_UNLESS_SHIP_OR_TANK is one: a third
+// direction becomes expressible without a second meta key.
+export const DEPLOY_ORDER_FIRST = 'first'
+export const DEPLOY_ORDER_LAST = 'last'
+
+export interface DeployOrderNote {
+  /** The side that must put its fleet down first — null when directives cancel. */
+  firstSide: Side | null
+  /** True when two carriers demand opposite orders. */
+  cancelled: boolean
+}
+
+// CONDUCT, NOT ENGINE. The players apply this in From The Depths; nothing here
+// gates, orders or validates anything, and this pass deliberately gives the
+// engine no deployment-order concept (spec §4.3). It exists so the spawn sheet
+// (BattleOverlay) and the game log can never say different things.
+//
+// Every carrier is NORMALISED to one statement — "which side spawns first" —
+// which is what makes Purifier's "the enemy forces must spawn in first" and
+// Anguish's "it must deploy first" one mechanic rather than two. That is the
+// spec's own reading of Purifier ("the same statement seen from the other
+// side"), and it is why cancellation below is about DISAGREEMENT rather than
+// about both sides merely holding a card (ruling W-1).
+export function deployOrderFor(
+  participants: Iterable<{ entry: { meta: Record<string, unknown> }; side: Side }>,
+): DeployOrderNote | null {
+  const demanded = new Set<Side>()
+  for (const { entry, side } of participants) {
+    // Strict equality on the VALUE, never truthiness: a mistyped 'fist' must
+    // leave the hull out of this entirely rather than in it — the same rule
+    // `matches()` applies to metaFlag, and the reason Task 3 pins the seeded
+    // values.
+    if (entry.meta.deployOrder === DEPLOY_ORDER_FIRST) demanded.add(side)
+    else if (entry.meta.deployOrder === DEPLOY_ORDER_LAST) demanded.add(otherSide(side))
+  }
+  if (demanded.size === 0) return null
+  if (demanded.size > 1) return { firstSide: null, cancelled: true }
+  return { firstSide: [...demanded][0], cancelled: false }
+}
+
+// The one line the ENGINE says about deployment order, and it is said only
+// when two carriers contradict. An active directive already has a permanent
+// home in the spawn sheet both captains read while staging the fight; a
+// cancelled one leaves that sheet saying "normal order", and the player whose
+// card was answered would otherwise never learn why.
+//
+// Called after each declaration's own log line, so a reader gets
+// declare-then-note, and before dispatchBattleLock, so a trigger's lines
+// follow it.
+function noteDeployOrder(game: EngineGame): void {
+  const note = deployOrderFor(lockRoster(game))
+  if (!note?.cancelled) return
+  game.state.log.push(
+    'The two fleets demand opposite deployment-order directives — they cancel; spawn in the normal order',
+  )
+}
 
 // The only place the activeBattle object literal is constructed (spec §4.3,
 // departure 1) — so the next field added to it is one edit here rather than
@@ -43,6 +103,7 @@ function lockBattle(
   game.state.log.push(
     `Fleet battle declared in zone ${zoneId} — ${attackerIds.length} vs ${defenderIds.length}. Fight it in From The Depths, then report results.`,
   )
+  noteDeployOrder(game)
   // DP2 at lock (spec §4.3). After the log line, so the order a player reads
   // is declare-then-trigger; `forced: false` because this IS the ordinary
   // fleet attack, which is what Terawatt's bystander rule excludes.
@@ -141,6 +202,7 @@ export function declareForcedBattle(game: EngineGame, ctx: EngineContext, spec: 
   game.state.log.push(
     `${spec.cause} forces a battle in zone ${spec.zoneId} — ${spec.attackerIds.length} vs ${spec.defenderIds.length}. Fight it in From The Depths, then report results.`,
   )
+  noteDeployOrder(game)
   // DP2 at lock, with forced: true — which is what admits the bystander pass
   // (Terawatt, spec §4.3 DP2 departure 2). Fires only on the success path, so
   // a refused declaration triggers nothing. A trigger here MAY leave

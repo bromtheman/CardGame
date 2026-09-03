@@ -1,6 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import {
-  applyAction, declareForcedBattle, joinBattle, normalizeState, OMISSION_UNLESS_SHIP_OR_TANK,
+  applyAction, declareForcedBattle, DEPLOY_ORDER_FIRST, DEPLOY_ORDER_LAST, deployOrderFor,
+  joinBattle, normalizeState, OMISSION_UNLESS_SHIP_OR_TANK,
 } from './index'
 import { loadSeedData } from '../../supabase/seed/transform'
 import { registerEffect } from '../effects/registry'
@@ -595,5 +596,98 @@ describe('joinBattle', () => {
       repairs: [],
     }, makeCtx())
     expect(r.ok).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 2026-09-02 §4.3: battle deployment order. CONDUCT TEXT — every assertion
+// below is about what is DERIVED and what is SAID, never about what the engine
+// enforces, because the engine has no deployment-order concept and this pass
+// does not give it one.
+// ---------------------------------------------------------------------------
+describe('deployOrderFor', () => {
+  const carrier = (order: unknown, over: Partial<ZoneCardEntry> = {}) =>
+    zoneEntry({ name: 'Veles', meta: { deployOrder: order }, ...over })
+
+  it('returns null when no participant carries a directive', () => {
+    expect(deployOrderFor([{ entry: zoneEntry({}), side: 'a' }])).toBeNull()
+  })
+
+  it("'first' on a side demands that side spawns first", () => {
+    expect(deployOrderFor([{ entry: carrier(DEPLOY_ORDER_FIRST), side: 'b' }]))
+      .toEqual({ firstSide: 'b', cancelled: false })
+  })
+
+  // Purifier prints "the enemy forces must spawn in first" — the same
+  // statement Veles prints, seen from the other side. One key serves both, and
+  // this is the assertion that says so.
+  it("'last' on a side demands the OTHER side spawns first", () => {
+    expect(deployOrderFor([{ entry: carrier(DEPLOY_ORDER_LAST), side: 'a' }]))
+      .toEqual({ firstSide: 'b', cancelled: false })
+  })
+
+  it('cancels when two carriers demand opposite orders', () => {
+    expect(deployOrderFor([
+      { entry: carrier(DEPLOY_ORDER_FIRST), side: 'a' },
+      { entry: carrier(DEPLOY_ORDER_FIRST), side: 'b' },
+    ])).toEqual({ firstSide: null, cancelled: true })
+  })
+
+  // Ruling W-1. Anguish on side A says "A first"; Veles on side B says "A
+  // first" too. Both sides carry a directive and nothing contradicts, so
+  // nothing cancels — the spec's literal wording would have cancelled here.
+  it('does not cancel when both sides carry directives that agree', () => {
+    expect(deployOrderFor([
+      { entry: carrier(DEPLOY_ORDER_FIRST), side: 'a' },
+      { entry: carrier(DEPLOY_ORDER_LAST), side: 'b' },
+    ])).toEqual({ firstSide: 'a', cancelled: false })
+  })
+
+  // Two Veles on one side is not a contradiction, and the directive does not
+  // stack — there is only one order to spawn in.
+  it('does not stack or cancel on two carriers of the same side', () => {
+    expect(deployOrderFor([
+      { entry: carrier(DEPLOY_ORDER_LAST), side: 'a' },
+      { entry: carrier(DEPLOY_ORDER_LAST), side: 'a' },
+    ])).toEqual({ firstSide: 'b', cancelled: false })
+  })
+
+  // A data key's VALUE is what this compares, and G2 checks only its PRESENCE
+  // — so a mistyped one must leave the hull OUT rather than in, exactly as
+  // `matches()` treats `metaFlag`. The trailing-space case is not hypothetical:
+  // two seeded rows already carry trailing spaces in an effect name, which is
+  // why `effectName` trims. This does NOT trim, matching its sibling
+  // `defensiveOmission`; the seed-backed assertion in Task 3 is what catches it.
+  it.each(['First', 'fist', 'last ', '', 'FIRST'])('ignores the mistyped value %p', (value) => {
+    expect(deployOrderFor([{ entry: carrier(value), side: 'a' }])).toBeNull()
+  })
+
+  it.each([true, 1, null])('ignores the non-string value %p', (value) => {
+    expect(deployOrderFor([{ entry: carrier(value), side: 'a' }])).toBeNull()
+  })
+})
+
+describe('the deployment-order log line', () => {
+  const carrier = (order: string, over: Partial<ZoneCardEntry> = {}) =>
+    zoneEntry({ name: 'Directive', meta: { deployOrder: order }, ...over })
+  const lines = (g: ReturnType<typeof attackWith>) =>
+    g.state.log.filter((l) => l.includes('deployment-order directive'))
+
+  it('is pushed once when the two fleets cancel', () => {
+    const out = attackWith(
+      [carrier(DEPLOY_ORDER_FIRST, { playedOnTurn: 2 })],
+      [carrier(DEPLOY_ORDER_FIRST)],
+    )
+    expect(lines(out)).toHaveLength(1)
+  })
+
+  // An UNcancelled directive is deliberately silent here: it has a permanent
+  // home in the spawn sheet both captains read while staging the fight
+  // (BattleOverlay, Task 2). The cancellation is the case where that sheet
+  // says "normal order" and the player whose card was answered would otherwise
+  // never learn why.
+  it('is not pushed when one side alone carries a directive', () => {
+    const out = attackWith([zoneEntry({ playedOnTurn: 2 })], [carrier(DEPLOY_ORDER_LAST)])
+    expect(lines(out)).toEqual([])
   })
 })

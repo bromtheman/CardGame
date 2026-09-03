@@ -131,9 +131,15 @@ const ALL_META_KEYS = [...Object.values(TRIGGERS), 'costModifier']
 // legalZonesFor, and neither card carries a registry name at all.
 // Purifier's two (wave 6) are both here for the same reason: its whole card
 // text is those two rules, and it names no effect at all.
+// `deployOrder` (2026-09-02 spec §4.3) is the same case again, twice over: WF
+// Veles and TG Anguish each print ONE sentence, that sentence IS the
+// deployment-order rule, and neither card names a registry effect. Without it
+// here, G2 reports both as silent and noteUnimplemented logs a
+// player-visible "plays as vanilla" note that is false.
 export const DATA_EFFECT_KEYS = [
   'additionalSpawns', 'resourceSurge', 'defensiveOmission', 'aircraftLock',
   'deployRequiresBattleLoss', 'noBaseDamage', 'deployRequiresAiVehicle',
+  'deployOrder',
 ] as const
 
 // Spec §3.9: cards referencing unimplemented effects play as vanilla, with a
