@@ -1,5 +1,6 @@
 import {
-  catalogCard, choice, enemyVehicleOptions, friendlyVehicleOptions, grant, spawnVehicles, summonHulls,
+  catalogCard, choice, enemyVehicleOptions, friendlyVehicleOptions, grant, mintHull, spawnVehicles,
+  summonHulls,
 } from './primitives.ts'
 import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
 import { checkVictory, copyMeta, findVehicle, otherSide, zoneById } from '../engine/gameEngine.ts'
@@ -321,12 +322,22 @@ registerEffect('repurposeEffect', ({ game, actor, ctx, card, targetInstanceId })
 // the DWG name would rebind that card's behaviour for every in-flight game the
 // moment this one deployed (Kraken/Paddlegun).
 //
-// ⚠ The keyword line is the one thing NOT copied across, and copying it would
-// be the bug. DWG writes `keywords: [KEYWORDS.SCRAPPY]`, replacing the
-// snapshot's list — harmless there only because Buccaneer prints none.
-// Audacious prints HALF_COST and TEMPORARY, so the same literal would strip
-// both and grant a Scrappy this card never mentions. The text removes exactly
-// one keyword, so this removes exactly one.
+// Minted through mintHull rather than hand-stamped: mintHull is documented
+// (primitives.ts) as the ONE place the per-entry stamp list (playedOnTurn,
+// movedOnTurn, activatedOnTurn) lives, and re-implementing it inline here
+// would drift the moment a future stamp is added there and skipped here —
+// a silent gap rather than a wrong value, and worse for it. mintHull's own
+// keyword param only ADDS to the snapshot's printed list, and can never
+// express "remove one" — so the keyword field is overridden immediately
+// after, the one deliberate departure from composing straight through.
+//
+// ⚠ The keyword override is the one thing NOT copied from spawnBuccaneerEffect
+// verbatim, and copying it would be the bug. DWG writes
+// `keywords: [KEYWORDS.SCRAPPY]`, replacing the snapshot's list outright —
+// harmless there only because Buccaneer prints none. Audacious prints
+// HALF_COST and TEMPORARY, so the same literal would strip both and grant a
+// Scrappy this card never mentions. The text removes exactly one keyword, so
+// this removes exactly one.
 //
 // SPAWNING IS NOT PLAYING (spec §7.4): no payment, no placement legality, no
 // onPlayEffect, and no zone-cap check — the same latitude every other spawn
@@ -339,12 +350,8 @@ registerEffect('spawnAudaciousEffect', ({ game, actor, ctx, targetZoneId }) => {
   // rather than fizzle, matching spawnVehicles' contract.
   if (!zone || !audacious) return false
   const entry: ZoneCardEntry = {
-    ...audacious,
-    instanceId: ctx.newId(),
+    ...mintHull(game, ctx, audacious),
     keywords: audacious.keywords.filter((k) => k !== KEYWORDS.TEMPORARY),
-    playedOnTurn: game.turnNumber,
-    movedOnTurn: null,
-    activatedOnTurn: null,
   }
   zone.cards[actor].push(entry)
   game.state.log.push(`An Audacious joins zone ${zone.id}`)

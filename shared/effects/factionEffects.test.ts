@@ -6989,6 +6989,10 @@ describe('TG Spawn Audacious — a non-temporary Audacious (2026-09-02)', () => 
 
   // Spec R-6: shared shape, separate implementations.
   it('is not DWG’s implementation', () => {
+    // Registered at all — otherwise the .not.toBe below passes vacuously
+    // (effectFor returns null for an unregistered name, and would pass this
+    // check even if the body were filed under spawnBuccaneerEffect).
+    expect(effectFor('spawnAudaciousEffect')).toBeTruthy()
     expect(effectFor('spawnAudaciousEffect')).not.toBe(effectFor('spawnBuccaneerEffect'))
   })
 
