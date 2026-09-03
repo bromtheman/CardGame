@@ -80,6 +80,7 @@ export function LobbiesPage() {
 
   const createLobby = () => run(async () => {
     if (!me) throw new Error('Not signed in')
+    if (myLobby) throw new Error('You already have a lobby in progress')
     const trimmed = name.trim()
     if (trimmed.length < 1 || trimmed.length > 40) throw new Error('Name must be 1-40 characters')
     // No deck and default settings: both are chosen inside the lobby now.
@@ -131,17 +132,19 @@ export function LobbiesPage() {
         </section>
       )}
 
-      <section className="mt-4 rounded border border-ocean-600 bg-ocean-900/60 p-4">
-        <h2 className="font-display text-xl">Open a lobby</h2>
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          <input className="rounded bg-ocean-950 p-2" placeholder="Lobby name" value={name}
-            onChange={(e) => setName(e.target.value)} />
-        </div>
-        <button disabled={busy} onClick={createLobby}
-          className="mt-3 rounded bg-brass-400 px-4 py-2 font-bold text-ocean-950 disabled:opacity-50">
-          Create lobby
-        </button>
-      </section>
+      {!myLobby && (
+        <section className="mt-4 rounded border border-ocean-600 bg-ocean-900/60 p-4">
+          <h2 className="font-display text-xl">Open a lobby</h2>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <input className="rounded bg-ocean-950 p-2" placeholder="Lobby name" value={name}
+              onChange={(e) => setName(e.target.value)} />
+          </div>
+          <button disabled={busy} onClick={createLobby}
+            className="mt-3 rounded bg-brass-400 px-4 py-2 font-bold text-ocean-950 disabled:opacity-50">
+            Create lobby
+          </button>
+        </section>
+      )}
 
       <section className="mt-6">
         <h2 className="font-display text-xl">Open lobbies</h2>
