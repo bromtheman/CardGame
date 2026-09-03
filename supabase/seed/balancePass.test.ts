@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { loadSeedData } from './transform'
+import { poolEligible } from '../../shared/effects/primitives'
 import type { SeedCard } from '../../shared/types'
 
 // The 2026-08-30 balance pass, pinned against the seed source.
@@ -213,13 +214,20 @@ describe('2026-08-30 balance pass', () => {
     })
   })
 
+  // Filters through the shared poolEligible predicate — the same one
+  // harbringerPool() (shared/effects/wfEffects.ts) calls — rather than a
+  // hand-rolled `summonOnly` check, so this pin cannot silently drift from
+  // the implementation the way the smoke harness once did (2026-09-02 review
+  // finding 7). It excludes `retired` as well as `summonOnly`: no WF ship at
+  // or under 100k is retired today, but if one ever is, harbringerPool()
+  // drops it and this expectation must too.
   it('Harbringer draws from exactly the WF ships at or under 100k', async () => {
     const { cards } = await loadSeedData()
     const pool = cards
       .filter((c) => (
         c.isBuiltIn && c.faction === 'WF' && c.type === 'vehicle' &&
         c.vehicleType === 'ship' && c.materialCost <= 100_000 &&
-        c.meta?.summonOnly !== true
+        poolEligible({ meta: c.meta ?? {} })
       ))
       .map((c) => c.name)
       .sort()

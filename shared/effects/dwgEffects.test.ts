@@ -145,9 +145,10 @@ describe('reservesEffect', () => {
   })
 
   // Regression: reservesEffect filters ctx.catalog directly instead of going
-  // through drawFromPool, so it must repeat the summonOnly exclusion (spec
-  // §7.4) by hand. A summon-only DWG vehicle (Flying Squirrel, seeded this
-  // way) must never be reachable in a hand.
+  // through drawFromPool, so it applies the shared poolEligible predicate
+  // (spec §7.4; 2026-09-02 §2.1) rather than drawFromPool's own filter. A
+  // summon-only DWG vehicle (Flying Squirrel, seeded this way) must never be
+  // reachable in a hand.
   it('never mints a summon-only DWG vehicle into hand (spec §7.4)', () => {
     const game = makeGame()
     const catalog = [
@@ -514,8 +515,9 @@ describe('plundererRaid', () => {
 
 describe('DWG Waters clauses 2 and 3', () => {
   // The guest pool "from the game" is the catalog (spec §7.3): built-in DWG
-  // vehicles under 60k, with the summonOnly exclusion repeated by hand because
-  // this filters ctx.catalog directly rather than going through drawFromPool.
+  // vehicles under 60k, filtered through the shared poolEligible predicate
+  // because this filters ctx.catalog directly rather than going through
+  // drawFromPool.
   const corsair = snap({ name: 'Corsair', faction: 'DWG', type: 'vehicle', materialCost: 30_000 })
   const marauderHull = snap({ name: 'Marauder', faction: 'DWG', type: 'vehicle', materialCost: 40_000 })
   const tooDear = snap({ name: 'Plunderer', faction: 'DWG', type: 'vehicle', materialCost: 180_000 })
