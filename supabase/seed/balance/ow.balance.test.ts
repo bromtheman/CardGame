@@ -56,6 +56,15 @@ const CARDS: Record<string, Expected> = {
     materialCost: 575_000, blueprintCost: 809_000,
     keywords: ['blocker', 'fragile'], vehicleType: 'airship', cardText: '',
   },
+  // Rook's vehicleType is the only thing moving, and it moves from
+  // transform.ts's patch table into the card. The assertion reads the same
+  // either way — which is the point: the change is behaviour-free. What
+  // catches a Rook that silently became typeless is transform.test.ts's
+  // "every vehicle-type card has a non-null vehicleType".
+  'OW:Rook': {
+    materialCost: 50_000, blueprintCost: 98_841, keywords: [],
+    vehicleType: 'airship', cardText: 'Draw a card when played',
+  },
 }
 
 describe('2026-09-02 balance pass — OW', () => {

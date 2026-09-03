@@ -297,7 +297,22 @@ export const owVehicles = [
         cpCost: 0,
         imageUrl: 'Rook.png',
         playerId: null,
-        vehicleType: VEHICLE_TYPES.ship,
+        // Stated here since the 2026-09-02 balance pass. It used to be written
+        // `VEHICLE_TYPES.ship` — a lowercase key that evaluates to undefined,
+        // the upstream bug nine other cards in this file still carry — and
+        // transform.ts patched it back at load time. The patch is gone; this
+        // is now the only place the fact lives.
+        //
+        // Airship, not ship, and not plane. From The Depths' own Neter.faction
+        // entry gives Rook BlueprintType 9, the air class (Eyrie, Nimbus,
+        // Damacy), where the other nine carry BlueprintType 2 — as do 53 of
+        // the cards already typed 'ship'. It also spawns through the air
+        // delegate at 200 m and puts its lowest block at y=+3, the only one of
+        // the ten whose hull sits entirely above the waterline. Airship rather
+        // than plane is a balance call: 3,180 blocks at a 98,841 blueprint
+        // cost is a heavy castle-flyer, so it is Judgement prey and takes
+        // Martyr's boosted attack count.
+        vehicleType: VEHICLE_TYPES.AIRSHIP,
         type: 'vehicle',
         faction: FACTIONS.OW,
         blueprintId: null,

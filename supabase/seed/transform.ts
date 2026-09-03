@@ -15,22 +15,20 @@ export const heroPowerId = (faction: string, name: string): string =>
 
 const SOURCE_DIR = join(dirname(fileURLToPath(import.meta.url)), 'source')
 
-// Upstream bug in supabase/seed/source/builtInCards/OW-Built-in.js: these 10
+// Upstream bug in supabase/seed/source/builtInCards/OW-Built-in.js: these 9
 // cards set `vehicleType: VEHICLE_TYPES.ship` (lowercase key), but the old
 // BE's VEHICLE_TYPES enum only has uppercase keys (SHIP, AIRSHIP, TANK,
 // PLANE, SUB), so `VEHICLE_TYPES.ship` evaluates to `undefined`. We patch it
 // here instead of editing the source file, which stays a verbatim copy of the
 // old BE data.
 //
-// The typo also means the source cannot be trusted on WHICH type was meant —
-// `.ship` was written on a flyer too. Rook is one: From The Depths' own
-// Neter.faction entry gives it BlueprintType 9, the air class (Eyrie, Nimbus,
-// Damacy), where the other nine carry BlueprintType 2 — as do 53 of the cards
-// already typed 'ship'. It also spawns through the air delegate at 200 m and
-// puts its lowest block at y=+3, the only one of the ten whose hull sits
-// entirely above the waterline. Airship rather than plane is a balance call:
-// 3,180 blocks at a 98,841 blueprint cost is a heavy castle-flyer, so it is
-// Judgement prey and takes Martyr's boosted attack count.
+// A tenth card, OW:Rook, was patched here until the 2026-09-02 balance pass.
+// The typo meant the source could not be trusted on WHICH type was meant —
+// `.ship` was written on a flyer too — so Rook's entry carried a paragraph of
+// evidence for reading it as an airship. That evidence now lives on the card
+// itself in OW-Built-in.js, where the type is stated outright; a patch entry
+// for it would be inert anyway, since a patch only applies when the source
+// leaves vehicleType null.
 const VEHICLE_TYPE_PATCHES: Record<string, VehicleType> = {
   'OW:Cauldron': 'ship',
   'OW:Clydesdale': 'ship',
@@ -41,7 +39,6 @@ const VEHICLE_TYPE_PATCHES: Record<string, VehicleType> = {
   'OW:Mace': 'ship',
   'OW:Mandrel': 'ship',
   'OW:Partisan': 'ship',
-  'OW:Rook': 'airship',
 }
 
 export async function loadSeedData(): Promise<{
