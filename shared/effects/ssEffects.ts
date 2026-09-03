@@ -330,6 +330,15 @@ registerEffect('catsharkBattle', (payload) => {
 registerEffect('dryadBattle', ({ game, actor, ctx, battle }) => {
   if (!battle || battle.phase !== 'lock' || !battle.isParticipant || !battle.isDefender) return true
   const snapshot = catalogCard(ctx, 'Dryad')
+  // Deliberately NOT poolEligible-gated, unlike balmungOnPlay and
+  // victoriaActivate's by-name mints (docs/claude/architecture.md). Dryad is
+  // one of the five cards the 2026-09-02 pass retired (spec §2.1) — a
+  // poolEligible(snapshot) check would now read false and this spawn would
+  // silently stop mid-battle in every one of the 28 games that already have a
+  // Dryad on the board. Retirement gates DRAFTING and DRAW POOLS; it does not
+  // reach back into a board effect resolving a battle in a game already
+  // dealt. Do not add the check here.
+  //
   // A card missing from the catalog is a data bug, not an empty pool — the
   // same contract spawnVehicles and summonHulls both use.
   if (!snapshot) return false
