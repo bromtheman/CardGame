@@ -186,6 +186,11 @@ function fragileGrant(effect: string, prompt: string): EffectFn {
 const SPITE = 'spiteOnPlay'
 registerEffect(SPITE, fragileGrant(SPITE, 'Choose an enemy vehicle to make Fragile'))
 
+// Agony prints Spite's text on a 375k Blocker sub. Same factory, its OWN id —
+// see fragileGrant's header for why the name is a parameter.
+const AGONY = 'agonyOnPlay'
+registerEffect(AGONY, fragileGrant(AGONY, 'Choose an enemy vehicle to make Fragile'))
+
 // "When played, target enemy vehicle in this zone, it gains inoffensive."
 //
 // Hysteria's grant with Alarmed's stash. Its OWN id rather than a reuse of

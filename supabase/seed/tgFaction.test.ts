@@ -116,7 +116,7 @@ describe('L-1: the four borrowed [TG] rows are otherwise untouched', () => {
 // Read off the file rather than off the handoff's tables: card text is
 // authoritative (spec decision 1), and every wave so far has found at least
 // one place where a summary had drifted from the card.
-describe('the 26 TG faction cards (wave 7)', () => {
+describe('the TG faction cards, as the 2026-09-02 pass left them', () => {
   interface Expected {
     materialCost: number
     blueprintCost: number
@@ -153,6 +153,7 @@ describe('the 26 TG faction cards (wave 7)', () => {
     Acceptance: { materialCost: 150_000, blueprintCost: 159_000, vehicleType: 'plane', type: V, keywords: ['halfCost', 'temporary'] },
     Audacious: { materialCost: 660_000, blueprintCost: 665_000, vehicleType: 'plane', type: V, keywords: ['halfCost', 'temporary'] },
     Spite: { materialCost: 120_000, blueprintCost: 128_000, vehicleType: 'sub', type: V, keywords: [] },
+    Agony: { materialCost: 375_000, blueprintCost: 440_000, vehicleType: 'sub', type: V, keywords: ['blocker'] },
     Vengeful: { materialCost: 160_000, blueprintCost: 168_000, vehicleType: 'sub', type: V, keywords: [] },
     // 120k, not the supplied 1,200,000 — its blueprint cost was already 120k.
     'Havoc Swarm': { materialCost: 120_000, blueprintCost: 120_000, vehicleType: 'plane', type: V, keywords: ['halfCost', 'robotic', 'temporary'] },
@@ -163,12 +164,12 @@ describe('the 26 TG faction cards (wave 7)', () => {
     Loathing: { materialCost: 225_000, blueprintCost: 268_000, vehicleType: 'ship', type: V, keywords: [] },
   }
 
-  it('seeds exactly 26 new cards, and 30 TG rows in total with the borrowed four', async () => {
+  it('seeds exactly 27 new cards, and 31 TG rows in total with the borrowed four', async () => {
     const { cards } = await loadSeedData()
     const tg = cards.filter((c) => c.isBuiltIn && c.faction === 'TG')
     const fresh = tg.filter((c) => !c.name.startsWith('[TG] '))
-    expect(fresh).toHaveLength(26)
-    expect(tg).toHaveLength(30)
+    expect(fresh).toHaveLength(27)
+    expect(tg).toHaveLength(31)
     expect(fresh.map((c) => c.name).sort()).toEqual(Object.keys(CARDS).sort())
   })
 
@@ -182,14 +183,14 @@ describe('the 26 TG faction cards (wave 7)', () => {
     expect(keywordsOf(card!)).toEqual([...want.keywords].sort())
   })
 
-  it('splits 8 airship / 8 ship / 4 plane / 3 sub / 3 ability', async () => {
+  it('splits 8 airship / 8 ship / 4 plane / 4 sub / 3 ability', async () => {
     const { cards } = await loadSeedData()
     const fresh = cards.filter((c) => c.isBuiltIn && c.faction === 'TG' && !c.name.startsWith('[TG] '))
     const count = (fn: (c: SeedCard) => boolean) => fresh.filter(fn).length
     expect(count((c) => c.vehicleType === 'airship')).toBe(8)
     expect(count((c) => c.vehicleType === 'ship')).toBe(8)
     expect(count((c) => c.vehicleType === 'plane')).toBe(4)
-    expect(count((c) => c.vehicleType === 'sub')).toBe(3)
+    expect(count((c) => c.vehicleType === 'sub')).toBe(4)
     expect(count((c) => c.type === 'ability')).toBe(3)
   })
 

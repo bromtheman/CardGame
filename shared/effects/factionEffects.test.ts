@@ -6545,6 +6545,61 @@ describe('TG Spite — grant an enemy vehicle FRAGILE (2026-09-02)', () => {
   })
 })
 
+// TG Agony — Spite's printed text on a 375k Blocker sub. Same factory, its own
+// id. The two tests below are the ones that would catch a copy-pasted const:
+// nothing else in the suite distinguishes them.
+describe('TG Agony — the same grant, a different id (2026-09-02)', () => {
+  const agonyCard = () => inst({
+    instanceId: 'agony1', name: 'Agony', faction: 'TG', type: 'vehicle',
+    vehicleType: 'sub', materialCost: 375_000, keywords: [KEYWORDS.BLOCKER],
+    meta: { onPlayEffect: 'agonyOnPlay' },
+  })
+
+  const armed = () => {
+    const card = agonyCard()
+    const game = makeGame({
+      turnNumber: 3, activePlayer: 'alice',
+      privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } },
+    })
+    game.state.resources.a.materials = 900_000
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe1', name: 'Foe', playedOnTurn: 1 }))
+    return { game, card }
+  }
+
+  const play = (game: EngineGame, card: CardInstance) => {
+    const r = applyAction(game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    return r.game
+  }
+
+  it('is registered under its own name, distinct from Spite’s', () => {
+    expect(effectFor('agonyOnPlay')).not.toBeNull()
+    expect(effectFor('spiteOnPlay')).not.toBeNull()
+    expect(effectFor('agonyOnPlay')).not.toBe(effectFor('spiteOnPlay'))
+  })
+
+  // The failure this catches is invisible to every other test: a shared const
+  // would make Agony's dialog re-enter spiteOnPlay, which resolves correctly
+  // in isolation and mis-attributes the effect in a live game.
+  it('suspends under agonyOnPlay, not spiteOnPlay', () => {
+    const { game, card } = armed()
+    expect(play(game, card).state.pendingEffect?.effect).toBe('agonyOnPlay')
+  })
+
+  it('makes the chosen hull Fragile', () => {
+    const { game, card } = armed()
+    const done = applyAction(
+      play(game, card), 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'foe1' }, makeCtx(),
+    )
+    if (!done.ok) throw new Error(done.error)
+    expect(findVehicle(done.game.state, 'foe1')!.entry.keywords).toContain(KEYWORDS.FRAGILE)
+  })
+
+  it('does not need the catalog', () => {
+    expect(CATALOG_EFFECTS.has('agonyOnPlay')).toBe(false)
+  })
+})
+
 // ---------------------------------------------------------------------------
 // 2026-09-02 — TG Loathing. Hysteria's grant, scoped to the played zone.
 //

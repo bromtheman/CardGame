@@ -343,6 +343,24 @@ export const tgVehicles = [
         }
     },
     {
+        name: 'Agony',
+        isBuiltIn: true,
+        cardText: 'When played, grant an enemy vehicle FRAGILE',
+        materialCost: 375000,
+        blueprintCost: 440000,
+        cpCost: 0,
+        imageUrl: 'agony.png',
+        playerId: null,
+        vehicleType: 'sub',
+        type: 'vehicle',
+        faction: FACTIONS.TG,
+        blueprintId: null,
+        keywords: [KEYWORDS.BLOCKER],
+        meta: {
+            [TRIGGERS.ON_PLAY]: 'agonyOnPlay',
+        }
+    },
+    {
         name: 'Vengeful',
         isBuiltIn: true,
         cardText: 'Whenever you lose a vehicle to a fleet battle (any zone) this unit deals 40k damage to the enemy base in this zone',
