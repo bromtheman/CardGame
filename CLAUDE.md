@@ -57,6 +57,7 @@ npx tsc -p tsconfig.json --noEmit   # typecheck shared/ + supabase/seed (fronten
 npm --prefix frontend run build     # frontend typecheck + production build
 npm --prefix frontend run lint      # oxlint
 npm run functions:sync              # copy shared/ modules into edge functions (see rule below)
+npm run seed:verify                 # diff LIVE card rows against seed_data.sql (see rule below)
 ```
 
 Dev server: `npm --prefix frontend run dev` (`.claude/launch.json` has a `frontend`
@@ -100,6 +101,37 @@ session, and authenticates with a single-use battle token instead. It stores a
 report PREFILL and changes no game state — a human still submits and the
 opponent still approves. Never extend it into either.
 Details: docs/claude/supabase.md.
+
+## Seed data does NOT deploy — apply it by hand after every merge
+
+**Merging deploys CODE, never card data.** `supabase/seed/seed_data.sql` is
+applied out of band: `supabase/config.toml` deliberately carries no seed
+settings, so the integration's seed step does nothing, and no migration inserts
+cards either. Nothing warns you, because the whole test suite reads the seed
+**source** and never the database.
+
+This has already shipped two production defects. Wave 0 of the 2026-09-02
+balance pass deployed hard card retirement — `validateDeck`'s rejection,
+`poolEligible`'s pool filter, the required `DeckCardInfo.retired`, the
+DecksPage badge — and every bit of it was **inert**, because the five
+`retired: true` flags never reached the database. The DWG/OW/WF waves then
+deployed new effect code against the old rows, so three cards lied to players:
+Marauder's text promised a 50k discount its rewritten effect no longer gave.
+
+So, after any merge touching `supabase/seed/source/**`:
+
+```bash
+npm run seed:verify     # diffs LIVE cards against seed_data.sql, exit 1 on drift
+```
+
+If it reports drift, apply the upserts in `seed_data.sql` against the project
+(they are idempotent `on conflict (id) do update`, so re-applying is safe and
+nothing is ever deleted), then re-run until it is clean. `seed:verify` needs
+`SUPABASE_ACCESS_TOKEN`, the same token `functions:deploy` uses.
+
+Spec §1 puts each faction's data and effects in one commit precisely so a card
+never ships ahead of its effect. **That guarantee holds in the repo and breaks
+at the deploy** — code ships automatically and data does not.
 
 ## Deploying edge functions
 
