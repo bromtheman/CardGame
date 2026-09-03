@@ -140,11 +140,24 @@ Deno.serve(async (req) => {
           id: c.id, isBuiltIn: c.is_built_in, faction: c.faction,
           vehicleType: c.vehicle_type, ownerId: c.owner_id,
           summonOnly: (c.meta as { summonOnly?: boolean } | null)?.summonOnly === true,
+          retired: (c.meta as { retired?: boolean } | null)?.retired === true,
         }]),
       )
       const snapshots = new Map<string, SnapshotCard>(
         (cardRows ?? []).map((c) => [c.id, snapshotCard(c)]),
       )
+
+      // validateDeck's errors are keyed by card id — shared/ has no name
+      // lookup and should not grow one. A uuid means nothing to a lobby owner
+      // staring at a failed START (spec §2.2's "no way to see why"), so swap
+      // in the printed name for every id this map already knows, from the
+      // cardRows we already fetched above.
+      const nameById = new Map((cardRows ?? []).map((c) => [c.id as string, c.name as string]))
+      const withCardNames = (errors: string[]) => errors.map((e) => {
+        let msg = e
+        for (const [id, name] of nameById) msg = msg.split(id).join(name)
+        return msg
+      })
 
       // Lobby-overridable deck rules (spec §4): defaults merged with any
       // validated per-lobby overrides, then frozen into the game's settings.
@@ -154,13 +167,13 @@ Deno.serve(async (req) => {
         { faction: hostDeck.faction, cards: hostCards }, infoMap, locked.host_id, deckRules,
       )
       if (!hostResult.valid) {
-        return fail(400, hostResult.errors.map((e) => `Host deck: ${e}`))
+        return fail(400, withCardNames(hostResult.errors).map((e) => `Host deck: ${e}`))
       }
       const guestResult = validateDeck(
         { faction: guestDeck.faction, cards: guestCards }, infoMap, locked.guest_id, deckRules,
       )
       if (!guestResult.valid) {
-        return fail(400, guestResult.errors.map((e) => `Guest deck: ${e}`))
+        return fail(400, withCardNames(guestResult.errors).map((e) => `Guest deck: ${e}`))
       }
 
       const built = buildInitialGame({

@@ -30,7 +30,15 @@ export interface DeckCardInfo {
   // Retired by a balance pass (2026-09-02 spec §2.1). The row stays seeded so
   // in-flight games and unedited decks still resolve the snapshot — this flag
   // is what stops it being a legal deck card from here on.
-  retired?: boolean
+  //
+  // Required, not optional: a lobby-action rebuild once left this unpopulated
+  // and the compiler had nothing to catch it — `undefined` is falsy, so
+  // validateDeck silently let every retired card through. There are exactly
+  // two construction sites (lobby-action/index.ts, DeckBuilderPage.tsx) plus
+  // the test helper; making the field required forces the next one to set it.
+  // `summonOnly` stays optional — it has no live bug — but should follow if
+  // it ever grows a third construction site.
+  retired: boolean
 }
 
 export interface DeckValidationResult {

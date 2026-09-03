@@ -104,9 +104,12 @@ async function builtIns(token) {
 }
 
 // A legal 20-card deck: `required` first, then filler from the same faction,
-// two copies each, never a summonOnly card and never more than 6 fliers.
+// two copies each, never a summonOnly or retired card and never more than 6
+// fliers.
 function buildDeck(cards, faction, required) {
-  const pool = cards.filter((c) => c.faction === faction && c.meta?.summonOnly !== true)
+  const pool = cards.filter((c) => (
+    c.faction === faction && c.meta?.summonOnly !== true && c.meta?.retired !== true
+  ))
   const byName = new Map(pool.map((c) => [c.name, c]))
   const deck = {}
   let count = 0
