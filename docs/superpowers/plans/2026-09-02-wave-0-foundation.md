@@ -698,11 +698,23 @@ of four lines is the cheaper trade.
 npx vitest run supabase/seed/balance
 ```
 
-Expected: 5 passed files, 5 passed tests. The `include` glob in
-`vitest.config.ts` is `supabase/seed/**/*.test.ts`, so the new subdirectory is
-picked up with no config change — **verify that in the output rather than
-assuming it**, because a plan that silently collects 0 files is the failure
-mode `--root` is warned about.
+Expected: **6 passed files, 35 passed tests** — five new files with one
+placeholder test each, PLUS the 30 tests in `supabase/seed/balancePass.test.ts`.
+Vitest filters by path *substring*, and `supabase/seed/balance` is a prefix of
+`supabase/seed/balancePass.test.ts`, so that file is swept in whether you want
+it or not. What you are checking is that the five new files appear individually
+in the output.
+
+The `include` glob in `vitest.config.ts` is `supabase/seed/**/*.test.ts`, so the
+new subdirectory is picked up with no config change — **verify that in the
+output rather than assuming it**, because a run that silently collects 0 files
+is the failure mode `--root` is warned about.
+
+⚠ **Paste the output verbatim into your report; do not retype it.** Wave 0's own
+run had a reconstructed transcript that invented the path
+`supabase/seed/balance/balancePass.test.ts`, which does not exist. The counts
+were right and the conclusion was right, but a verification transcript that has
+been through a human hand is not evidence of what the command printed.
 
 - [ ] **Step 3: Commit**
 
