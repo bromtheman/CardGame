@@ -95,6 +95,17 @@ Every op below is conditioned on `status = 'open'` inside its `WHERE`
 clause, so none of them can mutate a lobby that `START` has already
 locked to `starting`.
 
+**The caller's identity belongs in that same `WHERE`, not in a read above
+it.** `SET_DECK` and `SET_READY` must read the row first to decide *which*
+seat's columns to write, but the write itself has to carry
+`host_id = caller` or `guest_id = caller` alongside the status check.
+`host_id` never changes for a lobby's lifetime, so the host branch is safe
+either way — but `guest_id` changes under `JOIN`, `LEAVE` and `KICK`, so a
+guest's in-flight write can otherwise land after they have been kicked and
+replaced, silently overwriting the *new* guest's deck, faction and ready
+flag. The conditional `UPDATE` is this function's only mutex; a
+precondition checked in a preceding `SELECT` is not enforced by it.
+
 | Op | Caller | Effect |
 |---|---|---|
 | `JOIN` | any | `deckId` is now **optional**. Claims the guest seat only. The existing atomic claim (`status = 'open'`, `guest_id is null`, `host_id != caller`) is unchanged. |
