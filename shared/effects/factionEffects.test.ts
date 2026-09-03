@@ -3259,7 +3259,11 @@ describe('wave 6 — SS Nothung', () => {
 // flag is invisible to unit tests and shows up only as a dead card in
 // production. Asserted at runtime rather than by reading the source.
 describe('wave 6 — effects that must carry needsCatalog', () => {
-  it.each(['nothungOnPlay', 'balmungOnPlay', 'harbringerBattle', 'victoriaActivate'])(
+  it.each([
+    'nothungOnPlay', 'balmungOnPlay', 'harbringerBattle', 'victoriaActivate',
+    // 2026-09-02: both mint from ctx.catalog by name.
+    'buzzsawOnPlay', 'slasherOnPlay',
+  ])(
     '%s', (name) => { expect(CATALOG_EFFECTS.has(name)).toBe(true) },
   )
 })
@@ -3354,7 +3358,10 @@ describe('wave 6 — WF Harbringer', () => {
   // real WF PLANE at exactly 100k, so the type filter is load-bearing rather
   // than decorative.
   const pool = [
-    wfShip('Buzzsaw', 80_000),
+    // 2026-09-02: Buzzsaw's real cost moved 80k -> 75k; still comfortably
+    // under this pool's own <=100k boundary, so this fixture is updated for
+    // hygiene, not because the test needs the exact number.
+    wfShip('Buzzsaw', 75_000),
     wfShip('Earth Raker', 50_000),
     wfShip('On The Line', 100_000),
     wfShip('Over The Line', 100_001),
@@ -4294,9 +4301,11 @@ describe('wave 6 — mutation survivors', () => {
       })
       game.state.zones[0].cards.a.push(harbringer)
       game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'v1', name: 'Victim' }))
+      // 75_000: Buzzsaw's real 2026-09-02 cost. Only needs to clear the pool's
+      // own <=100k filter to be offered — the tests below move it themselves.
       return ok(applyAction(game, 'alice', {
         type: 'ATTACK_ENEMY_FLEET', zoneId: 1, attackerIds: ['h1'], targetIds: ['v1'],
-      }, makeCtx({ catalog: [wfShip('Buzzsaw', 80_000)] })))
+      }, makeCtx({ catalog: [wfShip('Buzzsaw', 75_000)] })))
     }
 
     it('refuses a guest that is no longer in the pool', () => {
@@ -4325,7 +4334,7 @@ describe('wave 6 — mutation survivors', () => {
       game.state.activeBattle!.zoneId = 2
       expect(applyAction(
         game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'Buzzsaw' },
-        makeCtx({ catalog: [wfShip('Buzzsaw', 80_000)] }),
+        makeCtx({ catalog: [wfShip('Buzzsaw', 75_000)] }),
       ).ok).toBe(false)
     })
   })
@@ -5996,5 +6005,52 @@ describe('2026-09-02 — WF Sub Strike', () => {
   // test; touching ctx.catalog is.
   it('needs no catalog', () => {
     expect(CATALOG_EFFECTS.has('subStrikeEffect')).toBe(false)
+  })
+})
+
+describe('2026-09-02 — WF Buzzsaw', () => {
+  const ambush = snap({
+    name: 'Ambush', faction: 'WF', type: 'ability', vehicleType: null,
+    materialCost: 0, blueprintCost: 0, meta: { playOnZoneEffect: 'ambushEffect' },
+  })
+  const fire = (game: EngineGame, catalog = [ambush]) =>
+    effectFor('buzzsawOnPlay')!({
+      game, actor: 'a', card: inst({ name: 'Buzzsaw', faction: 'WF' }), ctx: makeCtx({ catalog }),
+    })
+
+  it('mints the catalog Ambush into hand and resyncs the public count', () => {
+    const game = makeGame()
+    expect(fire(game)).toBe(true)
+    expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Ambush'])
+    // A direct push does not resync counts for you — drawCard does.
+    expect(game.state.counts.a.hand).toBe(1)
+  })
+
+  it('gives the minted card a fresh instanceId and keeps its trigger', () => {
+    const game = makeGame()
+    fire(game)
+    const minted = game.privates.a.hand[0]
+    expect(minted.instanceId).not.toBe('')
+    expect(minted.meta.playOnZoneEffect).toBe('ambushEffect')
+  })
+
+  // balmungOnPlay's rule: a named card the catalog cannot supply is a DATA BUG,
+  // not an empty pool, so the play fails rather than fizzling.
+  it('fails the play when the catalog has no Ambush', () => {
+    expect(fire(makeGame(), [])).toBe(false)
+  })
+
+  // Wave 0's poolEligible covers summonOnly and retired in one predicate.
+  it.each([{ summonOnly: true }, { retired: true }])('refuses an ineligible Ambush %p', (meta) => {
+    expect(fire(makeGame(), [snap({ ...ambush, meta: { ...ambush.meta, ...meta } })])).toBe(false)
+  })
+
+  // state.log is public and this card is entering a HIDDEN HAND, so the line
+  // must not name it — balmungOnPlay's line is deliberately coy for the same
+  // reason, even though Balmung's own printed text says "a hydra card".
+  it('never names the card it put in the hand', () => {
+    const game = makeGame()
+    fire(game)
+    expect(game.state.log.join(' ')).not.toContain('Ambush')
   })
 })

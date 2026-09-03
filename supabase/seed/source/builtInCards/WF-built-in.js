@@ -4,8 +4,8 @@ export const wfVehicles = [
     {
         name: 'Buzzsaw',
         isBuiltIn: true,
-        cardText: 'This vehicle may be omitted from defensive battles unless the attacking enemy force contains a ship or tank',
-        materialCost: 80000,
+        cardText: 'When played, put an ambush card into your hand',
+        materialCost: 75000,
         blueprintCost: 88000,
         cpCost: 0,
         imageUrl: 'buzzsaw.png',
@@ -14,9 +14,12 @@ export const wfVehicles = [
         type: 'vehicle',
         faction: FACTIONS.WF,
         blueprintId: null,
-        keywords: [],
+        keywords: [KEYWORDS.STEALTHY, KEYWORDS.SCRAPPY],
         meta: {
-            defensiveOmission: 'unlessShipOrTank',
+            [TRIGGERS.ON_PLAY]: 'buzzsawOnPlay',
+            // `defensiveOmission` is gone with the old text — Buzzsaw was one
+            // of its only two carriers. STEALTHY above replaces it and is
+            // strictly wider. The rule is kept in battleDeclare.ts (spec R-8).
         }
     },
     {

@@ -41,6 +41,10 @@ const CARDS: Record<string, Expected> = {
     materialCost: 100_000, blueprintCost: 0, keywords: [], vehicleType: null,
     cardText: 'Target an enemy submarine, remove it from play.',
   },
+  'WF:Buzzsaw': {
+    materialCost: 75_000, blueprintCost: 88_000, keywords: ['stealthy', 'scrappy'],
+    vehicleType: 'ship', cardText: 'When played, put an ambush card into your hand',
+  },
 }
 
 describe('2026-09-02 balance pass — WF', () => {

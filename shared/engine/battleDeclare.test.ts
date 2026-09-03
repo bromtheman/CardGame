@@ -417,24 +417,25 @@ describe('defender omission', () => {
     }
   })
 
-  // Without this, seeding 'unlessShipOrTanks' would give a card that is inert
-  // AND invisible: G2's hasData and noteUnimplemented both test for the key's
-  // PRESENCE, not its value, so the guard stays green and no "plays as
-  // vanilla" note is logged either.
-  it('the two real seeded cards carry exactly the value the engine compares', async () => {
+  // NO SEEDED CARD CARRIES `defensiveOmission` any more: Buzzsaw and Veles both
+  // traded it for STEALTHY in the 2026-09-02 pass (spec §6.3), whose opt-out is
+  // unconditional and therefore strictly wider.
+  //
+  // The RULE is kept — ATTACK_ENEMY_FLEET still computes omissibleIds,
+  // RESPOND_TO_ATTACK still accepts an opt-out from that list, and
+  // FleetAttackDialog still badges one — for the reason purifierEffect is kept
+  // registered: an in-flight game dealt before this pass carries a frozen
+  // Buzzsaw snapshot that still prints the key, and the opt-out has to keep
+  // working for those hulls (spec R-8, §5).
+  //
+  // Asserted AT ZERO rather than deleted, so the next card to take the key has
+  // to come back here and say so.
+  it('no seeded card carries defensiveOmission, and the rule is kept for the next one', async () => {
     const { cards } = await loadSeedData()
     const carriers = cards.filter(
       (c) => c.isBuiltIn && (c.meta as Record<string, unknown> | undefined)?.defensiveOmission !== undefined,
     )
-    // Veles gave the key up in the 2026-09-02 pass (spec §6.3); Buzzsaw is the
-    // last carrier and goes in the same wave. Narrowed rather than deleted, so
-    // this assertion keeps proving the VALUE right up to the moment there is
-    // nothing left to prove it about.
-    expect(carriers.map((c) => c.name).sort()).toEqual(['Buzzsaw'])
-    for (const card of carriers) {
-      expect({ name: card.name, value: (card.meta as Record<string, unknown>).defensiveOmission })
-        .toEqual({ name: card.name, value: OMISSION_UNLESS_SHIP_OR_TANK })
-    }
+    expect(carriers.map((c) => c.name)).toEqual([])
   })
 
   // Spec §4.8: the "force" is the attacker's committed selection, not

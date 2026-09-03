@@ -58,6 +58,35 @@ registerEffect('subStrikeEffect', ({ game, actor, targetInstanceId }) => {
   return true
 })
 
+// "When played, put an ambush card into your hand."
+//
+// balmungOnPlay's shape (ssEffects.ts) minus the discount — Ambush is already
+// a 0/0 ability, so there is nothing to reduce. Buzzsaw's whole text used to be
+// `defensiveOmission`; that key is gone and STEALTHY replaces it on the card.
+//
+// poolEligible rather than a hand-rolled summonOnly check (Wave 0): this
+// filters the catalog by NAME directly rather than through drawFromPool, which
+// is the one place that guard comes for free.
+//
+// { needsCatalog: true } is NOT optional. game-action fetches a catalog only
+// for names in CATALOG_EFFECTS; without the flag this runs against an empty one
+// and 400s on every real play, while every unit test here passes against
+// makeCtx's hand-built catalog. factionEffects.test.ts asserts membership at
+// runtime, which is the only way to check a flag rather than a comment.
+registerEffect('buzzsawOnPlay', ({ game, actor, card, ctx }) => {
+  const ambush = catalogCard(ctx, 'Ambush')
+  // A named card the catalog cannot supply is a data bug, not an empty pool, so
+  // this fails the play rather than fizzling — spawnVehicles' contract.
+  if (!ambush || !poolEligible(ambush)) return false
+  const hand = game.privates[actor].hand
+  hand.push({ ...ambush, instanceId: ctx.newId() })
+  // A direct push does not resync the public counts for you (drawCard does).
+  game.state.counts[actor].hand = hand.length
+  // Never named: state.log is public and this card is entering a hidden hand.
+  game.state.log.push(`${card.name} slips a card into player ${actor.toUpperCase()}'s hand`)
+  return true
+}, { needsCatalog: true })
+
 const AMBUSH = 'ambushEffect'
 
 // "Choose a zone. During the next offensive battle you fight there this turn,
