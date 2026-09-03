@@ -1,12 +1,13 @@
 import {
   CHANGE_ORDER_DELAY_TURNS, HERO_POWER_DISTANCE_MOD_M, KEYWORDS,
-  MAX_VEHICLES_PER_ZONE_SIDE, SPAWN_DISTANCE_MAX_M, SPAWN_DISTANCE_MIN_M,
+  SPAWN_DISTANCE_MAX_M, SPAWN_DISTANCE_MIN_M,
 } from '../gameSettings.ts'
 import type { ApplyResult, EngineGame, Side, ZoneCardEntry } from './engineTypes.ts'
 import {
   battleFrozen, discardCard, drawCard, err, findVehicle, otherSide, registerHandler, zoneById,
 } from './gameEngine.ts'
 import { biomeAllows, effectiveMaterialCostOf } from './placement.ts'
+import { zoneCapFor } from './zoneCapacity.ts'
 
 // power → faction that alone may use it. Powers absent from this map (the
 // four universal ones) are open to any faction.
@@ -105,8 +106,9 @@ export function moveEntry(game: EngineGame, actor: Side, instanceId: string, zon
   // against the source (or run after the splice) would have frozen in place.
   // moveEntry is the single chokepoint for MOVE_VEHICLE and [GT] Monsoon
   // alike, so both are covered by this one gate.
-  if (target.cards[actor].length >= MAX_VEHICLES_PER_ZONE_SIDE) {
-    return err(400, `Zone ${zoneId} already holds your ${MAX_VEHICLES_PER_ZONE_SIDE}-vehicle limit`)
+  const cap = zoneCapFor(game.state, actor, zoneId)
+  if (target.cards[actor].length >= cap) {
+    return err(400, `Zone ${zoneId} already holds your ${cap}-vehicle limit`)
   }
   found.zone.cards[actor] = found.zone.cards[actor].filter((c) => c.instanceId !== instanceId)
   const entry: ZoneCardEntry = { ...found.entry, movedOnTurn: stampMove ? game.turnNumber : found.entry.movedOnTurn }

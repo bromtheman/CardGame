@@ -1510,4 +1510,43 @@ describe('MAX_VEHICLES_PER_ZONE_SIDE — the zone-side cap', () => {
     if (!r.ok) throw new Error(r.error)
     expect(r.game.state.zones[0].cards.a).toHaveLength(MAX_VEHICLES_PER_ZONE_SIDE)
   })
+
+  // Spec §4.1. A denier on the ENEMY side of the zone takes slots off the
+  // acting side's cap, so a zone that was legal a moment ago stops being one
+  // with no hull of the actor's own having moved.
+  it('an enemy slotDenial removes the zone from legalZonesFor early', () => {
+    const g = makeGame()
+    fill(g, 0, 'a', MAX_VEHICLES_PER_ZONE_SIDE - 3)
+    g.state.zones[0].cards.b.push(zoneEntry({ name: 'Tiger Shark', meta: { slotDenial: 3 } }))
+    const card = inst({ vehicleType: 'ship', materialCost: 0 })
+    expect(legalZonesFor(g.state, 'a', card, g.turnNumber)).not.toContain(1)
+    expect(legalZonesFor(g.state, 'b', card, g.turnNumber)).toContain(1)
+  })
+
+  // ⚠ THE CASE A READER ASSUMES WAS HANDLED BY CULLING, AND IS NOT. Nothing is
+  // removed from the board when the cap drops: both engine sites compare with
+  // `>=`, so a side already over the reduced cap simply cannot ADD. Spec §4.1
+  // says this "falls out with no extra code — but it needs a test".
+  it('a side already OVER the reduced cap keeps every hull and only stops adding', () => {
+    const g = makeGame()
+    fill(g, 0, 'a', MAX_VEHICLES_PER_ZONE_SIDE) // 8 hulls, legal when placed
+    g.state.zones[0].cards.b.push(zoneEntry({ name: 'Tiger Shark', meta: { slotDenial: 3 } }))
+    expect(g.state.zones[0].cards.a).toHaveLength(MAX_VEHICLES_PER_ZONE_SIDE)
+    const card = inst({ vehicleType: 'ship', materialCost: 0 })
+    expect(legalZonesFor(g.state, 'a', card, g.turnNumber)).not.toContain(1)
+  })
+
+  // deployVehicle's `room`, the second engine site. additionalSpawns lands what
+  // FITS rather than being refused (zoneFull's own comment), and what fits is
+  // now the REDUCED cap.
+  it('additionalSpawns clamps to the reduced cap, not the flat one', () => {
+    const g = makeGame()
+    g.state.zones[0].cards.b.push(zoneEntry({ name: 'Tiger Shark', meta: { slotDenial: 3 } }))
+    const card = inst({ vehicleType: 'ship', materialCost: 0, meta: { additionalSpawns: 9 } })
+    g.privates.a.hand.push(card)
+    const r = applyAction(g, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 })
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.game.state.zones[0].cards.a).toHaveLength(MAX_VEHICLES_PER_ZONE_SIDE - 3)
+  })
 })

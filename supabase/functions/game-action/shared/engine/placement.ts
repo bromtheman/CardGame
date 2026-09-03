@@ -1,5 +1,5 @@
 import {
-  ADDITIONAL_SPAWNS_CAP, KEYWORDS, MAX_VEHICLES_PER_ZONE_SIDE, PURIFIER_LOSS_WINDOW_TURNS,
+  ADDITIONAL_SPAWNS_CAP, KEYWORDS, PURIFIER_LOSS_WINDOW_TURNS,
   VEHICLE_TYPES, ZONE_TYPES,
 } from '../gameSettings.ts'
 import type { CardInstance, PublicGameState } from './gameInit.ts'
@@ -7,6 +7,7 @@ import type { ApplyResult, EngineContext, EngineGame, Side, ZoneCardEntry } from
 import {
   copyMeta, discardCard, err, findVehicle, otherSide, registerHandler, zoneById,
 } from './gameEngine.ts'
+import { zoneCapFor } from './zoneCapacity.ts'
 import { costModifierFor, effectFor, effectName, noteUnimplemented } from '../effects/registry.ts'
 import { dispatchDeployWatchers } from './battleTriggers.ts'
 import { effectiveMaterialCostOf } from './costs.ts'
@@ -130,10 +131,11 @@ function aiVehicleMissing(
   return !zone?.cards[side].some((c) => c.isBuiltIn)
 }
 
-// The zone-side cap: at most MAX_VEHICLES_PER_ZONE_SIDE of your own hulls on
-// your own half of one zone. Reads the ACTOR'S OWN side — the same pronoun
-// distinction aircraftLocked draws against screenBlocks — so your full zone
-// never constrains the enemy's half of it, nor your other two zones.
+// The zone-side cap: at most `zoneCapFor(state, side, zoneId)` of your own
+// hulls on your own half of one zone, which is `MAX_VEHICLES_PER_ZONE_SIDE`
+// less whatever the enemy denies here. Reads the ACTOR'S OWN side — the same
+// pronoun distinction aircraftLocked draws against screenBlocks — so your
+// full zone never constrains the enemy's half of it, nor your other two zones.
 //
 // Requires ONE free slot, not room for the card's whole payload. A card with
 // additionalSpawns lands what fits (deployVehicle clamps) instead of becoming
@@ -147,7 +149,10 @@ function aiVehicleMissing(
 function zoneFull(state: PublicGameState, side: Side, zoneId: number): boolean {
   const zone = state.zones.find((z) => z.id === zoneId)
   if (!zone) return true
-  return zone.cards[side].length >= MAX_VEHICLES_PER_ZONE_SIDE
+  // The cap is now DERIVED (spec §4.1) — an enemy Tiger Shark in this zone
+  // shrinks it. `>=` is what makes a side already ABOVE the reduced cap keep
+  // every hull and simply stop adding: nothing is culled when a denier lands.
+  return zone.cards[side].length >= zoneCapFor(state, side, zoneId)
 }
 
 // `turnNumber` is REQUIRED rather than optional, for the reason
@@ -357,8 +362,10 @@ function deployVehicle(
   // one free slot, so a multi-hull payload lands what fits and drops the rest
   // — the card is never refused for its own copies (see zoneFull's comment).
   // The hull itself is already pushed above, so the remainder is measured
-  // against the side's length as it now stands.
-  const room = Math.max(0, MAX_VEHICLES_PER_ZONE_SIDE - zone.cards[actor].length)
+  // against the side's length as it now stands. And since spec §4.1 the
+  // zone-side cap is itself the tighter of the flat cap and whatever the
+  // enemy denies in THIS zone.
+  const room = Math.max(0, zoneCapFor(game.state, actor, zoneId) - zone.cards[actor].length)
   const extra = Math.min(wanted, room)
   for (let i = 0; i < extra; i++) {
     const copy: ZoneCardEntry = {
