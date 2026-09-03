@@ -451,7 +451,7 @@ describe('captured cards', () => {
     expect(game.state.destroyed.b).toHaveLength(0)
   })
 
-  it("leaves the raider's discount with the copy it died on", () => {
+  it("leaves the enemy's original unstamped in their deck", () => {
     const game = capturedInBattle()
     expect(game.state.destroyed.b).toHaveLength(0)
     expect(game.privates.b.deck[0].meta.costDelta).toBeUndefined()
