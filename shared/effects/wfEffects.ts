@@ -417,8 +417,7 @@ registerEffect(HARBRINGER, (payload) => {
 }, { needsCatalog: true })
 
 // "While your opponent has a submarine or airship, this card costs 100k less.
-// Each turn, you may pay 1cp to have this vehicle 1v1 an enemy submarine or
-// airship in this zone."
+// Each turn, you may have this vehicle 1v1 an enemy submarine or airship in this zone."
 //
 // Two clauses, two mechanisms, and the SCOPE of each is what tells them apart
 // (spec §7.3, wave 6): the discount names no zone and reads the whole enemy
