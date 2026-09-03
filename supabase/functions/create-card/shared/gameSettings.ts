@@ -203,6 +203,12 @@ export const HARBRINGER_GUEST_MAX_COST = 100_000
 // card text is then the only other place the number appears.
 export const SLASHER_EARTH_RAKER_COUNT = 2
 
+// Excruciator: "draw two AI vehicles from your deck and reduce their cost by
+// 100k". A costDelta, so the sign lives with the number here rather than at the
+// call site — the same convention EXCALIBUR_COST_DELTA follows.
+export const EXCRUCIATOR_DRAW_COUNT = 2
+export const EXCRUCIATOR_COST_DELTA = -100_000
+
 // Human-readable names for the seven hero powers, used wherever a power id
 // is shown to a player (Kraken's refresh choice).
 export const HERO_POWER_LABELS: Record<string, string> = {

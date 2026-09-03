@@ -52,8 +52,8 @@ export const wfVehicles = [
     {
         name: 'Excruciator',
         isBuiltIn: true,
-        cardText: 'When played, draw a card',
-        materialCost: 660000,
+        cardText: 'When played, draw two AI vehicles from your deck and reduce their cost by 100k.',
+        materialCost: 600000,
         blueprintCost: 663000,
         cpCost: 0,
         imageUrl: 'excruciator.png',
@@ -62,7 +62,7 @@ export const wfVehicles = [
         type: 'vehicle',
         faction: FACTIONS.WF,
         blueprintId: null,
-        keywords: [KEYWORDS.BLOCKER],
+        keywords: [KEYWORDS.BLOCKER, KEYWORDS.SUB_SCREEN],
         meta: {
             [TRIGGERS.ON_PLAY]: 'excruciatorOnPlay',
         }

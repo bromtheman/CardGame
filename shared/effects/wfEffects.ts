@@ -1,6 +1,7 @@
 import {
   AMBUSH_DISTANCE_M, SPAWN_DISTANCE_MIN_M,
-  ALL_FOR_THE_CAUSE_DOUBLE_COST, HARBRINGER_GUEST_MAX_COST, JUDGEMENT_DISCOUNT, KEYWORDS,
+  ALL_FOR_THE_CAUSE_DOUBLE_COST, CARD_TYPES, EXCRUCIATOR_COST_DELTA, EXCRUCIATOR_DRAW_COUNT,
+  HARBRINGER_GUEST_MAX_COST, JUDGEMENT_DISCOUNT, KEYWORDS,
   MARTYR_ATTACK_BOOST_MIN_COST,
   MARTYR_ATTACK_BOOSTED_COUNT, MARTYR_ATTACK_COUNT, SLASHER_EARTH_RAKER_COUNT, VEHICLE_TYPES,
 } from '../gameSettings.ts'
@@ -9,13 +10,74 @@ import type { SnapshotCard } from '../engine/gameInit.ts'
 import { discardCard, findVehicle, otherSide, zoneById } from '../engine/gameEngine.ts'
 import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
 import {
-  catalogCard, choice, enemyVehicleOptions, grant, poolEligible, spawnInto, summonHulls,
+  catalogCard, choice, enemyVehicleOptions, grant, poolEligible, shuffled, spawnInto, summonHulls,
 } from './primitives.ts'
 import { registerCostModifier, registerEffect } from './registry.ts'
 import type { EffectPayload } from './registry.ts'
 
 // WF built-in card effects.
-registerEffect('excruciatorOnPlay', grant({ draw: 1 }))
+
+// "When played, draw two AI vehicles from your deck and reduce their cost by
+// 100k."
+//
+// "AI vehicle" is isBuiltIn === true, NOT a faction (spec R-5). That is what
+// repairmenReadyEffect already compares for the identical printed phrase, and
+// what Air Strafe, Excalibur and Martyr Attack all read. The 2026-09-02 pass
+// narrows Repairmen Ready and Excalibur to faction === 'SS' and deliberately
+// leaves THIS card on the built-in meaning — and it is emphatically NOT a WF
+// filter, which is the plausible-looking wrong answer R-5 exists to forbid.
+//
+// It reads the owner's OWN DECK, so it takes NO { needsCatalog: true }:
+// nothing here touches ctx.catalog, and "it draws cards" is not the test for
+// that flag. Trondheim and Resolute draw from the deck too and carry none.
+//
+// Hand-rolled rather than drawFromPool because the discount has to land on the
+// cards that were actually drawn, and drawFromPool tells its caller nothing
+// about what it took. It still borrows drawFromPool's own `shuffled`, so both
+// deck draws pick the same way — off ctx.rng, never Math.random.
+//
+// The reduction is a PRICE, not a rewrite (balmungOnPlay's ruling, and
+// slasherOnPlay's above): costDelta is summed into effectiveCostInGame and
+// never reaches effectiveMaterialCostOf — which is what base damage
+// (baseAttack.ts), repair cost (battleResolve.ts) and upkeep (costs.ts) all
+// read. A rewritten materialCost would quietly change a drawn hull's damage
+// and repair bill, which the card text does not say.
+//
+// The stamp is deliberately NOT clamped: effectiveCostInGame floors the price
+// at zero with its own Math.max, so a hull cheaper than 100k is free rather
+// than negative, while a stamp clamped here would make a second, later
+// discount depend on the order the two landed.
+registerEffect('excruciatorOnPlay', ({ game, actor, card, ctx }) => {
+  const deck = game.privates[actor].deck
+  const pool = deck.filter((c) => c.isBuiltIn && c.type === CARD_TYPES.VEHICLE)
+  let taken = 0
+  // `deck` IS game.privates[actor].deck, so splice mutates in place and needs
+  // no reassignment.
+  for (const pick of shuffled(pool, ctx).slice(0, EXCRUCIATOR_DRAW_COUNT)) {
+    const index = deck.findIndex((c) => c.instanceId === pick.instanceId)
+    if (index < 0) continue
+    const [drawn] = deck.splice(index, 1)
+    const current = typeof drawn.meta.costDelta === 'number' ? drawn.meta.costDelta : 0
+    drawn.meta = { ...drawn.meta, costDelta: current + EXCRUCIATOR_COST_DELTA }
+    game.privates[actor].hand.push(drawn)
+    taken++
+  }
+  // A direct push does not resync the public counts for you (drawCard does),
+  // and BOTH move here: cards left the deck as well as entering the hand.
+  game.state.counts[actor] = {
+    hand: game.privates[actor].hand.length,
+    deck: deck.length,
+  }
+  // A deck that cannot supply two is routine rather than a data bug, so this
+  // resolves instead of failing the play — the same contract drawFromPool's
+  // deck source has. The drawn cards are never NAMED: state.log is public and
+  // they are entering a hidden hand.
+  game.state.log.push(
+    `${card.name} pulls ${taken} vehicle(s) out of player ${actor.toUpperCase()}'s own deck at a discount`,
+  )
+  return true
+})
+
 // Orphaned by the 2026-08-30 balance pass, which rewrote Purifier's text and
 // cleared its meta. Kept registered rather than deleted: a game dealt before
 // that pass carries a frozen snapshot still naming it, and the name must never

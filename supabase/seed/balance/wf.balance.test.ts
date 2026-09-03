@@ -53,6 +53,11 @@ const CARDS: Record<string, Expected> = {
     materialCost: 50_000, blueprintCost: 51_000, keywords: ['stealthy'], vehicleType: 'ship',
     cardText: 'When this is played, draw a card',
   },
+  'WF:Excruciator': {
+    materialCost: 600_000, blueprintCost: 663_000, keywords: ['blocker', 'subScreen'],
+    vehicleType: 'ship',
+    cardText: 'When played, draw two AI vehicles from your deck and reduce their cost by 100k.',
+  },
 }
 
 describe('2026-09-02 balance pass — WF', () => {

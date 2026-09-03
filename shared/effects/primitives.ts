@@ -119,7 +119,11 @@ function matches(card: { faction: string; vehicleType: string | null; type: stri
   return true
 }
 
-function shuffled<T>(items: T[], ctx: EngineContext): T[] {
+// Fisher-Yates off ctx.rng, never Math.random — determinism is what makes a
+// pool draw testable at all. Exported for excruciatorOnPlay, which cannot use
+// drawFromPool (it needs to know WHICH cards it took) but must pick the same
+// way this file does.
+export function shuffled<T>(items: T[], ctx: EngineContext): T[] {
   const copy = [...items]
   for (let i = copy.length - 1; i > 0; i--) {
     const j = Math.floor(ctx.rng() * (i + 1))

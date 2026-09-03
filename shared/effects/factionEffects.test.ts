@@ -25,7 +25,7 @@ registerEffect('t_slotHog', choice({
 }))
 
 const DRAW_ONE = [
-  'mandrelOnPlay', 'rookOnPlay', 'resoluteOnPlay', 'excruciatorOnPlay',
+  'mandrelOnPlay', 'rookOnPlay', 'resoluteOnPlay',
   'claymoreEffect', 'palisadeEffect', 'purifierEffect',
   'javelinOnDeath', 'ironMaidenOnDeath', 'victoriaOnDeath',
   'trondheimOnDeath', 'coulombEffect',
@@ -40,6 +40,10 @@ const DRAW_ONE = [
   // 2026-09-02. Earth Raker: "When this is played, draw a card". It prints
   // STEALTHY and nothing else, so rule 10's SCRAPPY concern does not arise.
   'earthRakerOnPlay',
+  // 2026-09-02. 'excruciatorOnPlay' LEFT this list: the pass rewrote the card to
+  // "draw two AI vehicles from your deck and reduce their cost by 100k", so it
+  // no longer takes exactly one card off the top. Its own describe block, at the
+  // end of this file, owns it now.
 ]
 const CP_ONLY: [string, number][] = [
   ['bulwarkOnPlay', 2], ['maelstromOnPlay', 1], ['maceEffect', 1],
@@ -6115,5 +6119,120 @@ describe('2026-09-02 — WF Slasher', () => {
     const game = makeGame()
     fire(game)
     expect(game.state.log.join(' ')).not.toContain('Earth Raker')
+  })
+})
+
+describe('2026-09-02 — WF Excruciator', () => {
+  const ai = (name: string, over: Partial<CardInstance> = {}) =>
+    inst({ name, isBuiltIn: true, type: 'vehicle', materialCost: 300_000, ...over })
+  const fire = (game: EngineGame) =>
+    effectFor('excruciatorOnPlay')!({
+      game, actor: 'a', card: inst({ name: 'Excruciator', faction: 'WF' }), ctx: makeCtx(),
+    })
+
+  it('moves two AI vehicles out of the deck and into the hand', () => {
+    const game = makeGame()
+    game.privates.a.deck = [ai('One'), ai('Two'), ai('Three')]
+    game.state.counts.a = { hand: 0, deck: 3 }
+    expect(fire(game)).toBe(true)
+    expect(game.privates.a.hand).toHaveLength(2)
+    expect(game.privates.a.deck).toHaveLength(1)
+    expect(game.state.counts.a).toEqual({ hand: 2, deck: 1 })
+  })
+
+  it('stamps each of them with a 100k discount', () => {
+    const game = makeGame()
+    game.privates.a.deck = [ai('One'), ai('Two')]
+    game.state.counts.a = { hand: 0, deck: 2 }
+    fire(game)
+    for (const c of game.privates.a.hand) {
+      expect(c.meta.costDelta).toBe(-100_000)
+      expect(c.materialCost).toBe(300_000)          // a PRICE, not a rewrite
+      expect(effectiveCostInGame(game.state, 'a', c)).toBe(200_000)
+    }
+  })
+
+  // Spec R-5: "AI vehicle" is isBuiltIn, NOT a faction. repairmenReadyEffect
+  // reads the identical printed phrase the same way and is the proof — and the
+  // pass explicitly keeps the built-in meaning for THIS card while narrowing
+  // Repairmen Ready and Excalibur to SS.
+  it('draws by isBuiltIn, not by faction, and skips abilities', () => {
+    const game = makeGame()
+    game.privates.a.deck = [
+      ai('Off Faction', { faction: 'SS' }),
+      inst({ name: 'Player Design', isBuiltIn: false, type: 'vehicle' }),
+      inst({ name: 'An Ability', isBuiltIn: true, type: 'ability', vehicleType: null }),
+    ]
+    game.state.counts.a = { hand: 0, deck: 3 }
+    fire(game)
+    expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Off Faction'])
+  })
+
+  // The same filter with the one eligible hull LAST. The test above passes
+  // under a plain top-of-deck draw by accident of ordering; this one is the
+  // discriminator — a 'take the top card' implementation draws the player
+  // design here.
+  it('reaches past ineligible cards to find the AI vehicle', () => {
+    const game = makeGame()
+    game.privates.a.deck = [
+      inst({ name: 'Player Design', isBuiltIn: false, type: 'vehicle' }),
+      inst({ name: 'An Ability', isBuiltIn: true, type: 'ability', vehicleType: null }),
+      ai('Deep AI'),
+    ]
+    game.state.counts.a = { hand: 0, deck: 3 }
+    fire(game)
+    expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Deep AI'])
+    expect(game.privates.a.deck).toHaveLength(2)
+  })
+
+  // A deck that cannot supply two is routine, not a failure — drawFromPool's
+  // deck source defaults to allowEmpty for exactly this reason.
+  it.each([1, 0])('takes what the deck has when it holds %i', (n) => {
+    const game = makeGame()
+    game.privates.a.deck = Array.from({ length: n }, (_, i) => ai(`AI ${i}`))
+    game.state.counts.a = { hand: 0, deck: n }
+    expect(fire(game)).toBe(true)
+    expect(game.privates.a.hand).toHaveLength(n)
+  })
+
+  // An existing stamp accumulates rather than being overwritten — the same
+  // arithmetic primitives' costDelta() does.
+  it('adds to a discount the card already carried', () => {
+    const game = makeGame()
+    game.privates.a.deck = [ai('Discounted', { meta: { costDelta: -50_000 } })]
+    game.state.counts.a = { hand: 0, deck: 1 }
+    fire(game)
+    expect(game.privates.a.hand[0].meta.costDelta).toBe(-150_000)
+  })
+
+  // Below zero is FREE, not negative, and the floor lives in
+  // effectiveCostInGame's own Math.max — so the stamp is left un-clamped. If
+  // the effect clamped the stamp instead, a card that later picked up a second
+  // discount would price differently depending on the order the two landed.
+  // materialCost is untouched either way, so a cheap hull still deals its
+  // printed base damage and still costs its printed repair.
+  it('leaves a hull cheaper than the discount free rather than negative', () => {
+    const game = makeGame()
+    game.privates.a.deck = [ai('Cheap', { materialCost: 40_000 })]
+    game.state.counts.a = { hand: 0, deck: 1 }
+    fire(game)
+    const [drawn] = game.privates.a.hand
+    expect(drawn.meta.costDelta).toBe(-100_000)
+    expect(drawn.materialCost).toBe(40_000)
+    expect(effectiveCostInGame(game.state, 'a', drawn)).toBe(0)
+  })
+
+  it('never names what it drew', () => {
+    const game = makeGame()
+    game.privates.a.deck = [ai('Secret')]
+    game.state.counts.a = { hand: 0, deck: 1 }
+    fire(game)
+    expect(game.state.log.join(' ')).not.toContain('Secret')
+  })
+
+  // It reads the owner DECK, never ctx.catalog — "it draws cards" is not the
+  // test for the flag. Trondheim and Resolute are the same case and carry none.
+  it('needs no catalog', () => {
+    expect(CATALOG_EFFECTS.has('excruciatorOnPlay')).toBe(false)
   })
 })
