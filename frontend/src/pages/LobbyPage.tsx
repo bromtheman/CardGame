@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { DEFAULT_LOBBY_SETTINGS, materialsPerTurnOf, validateLobbySettings } from '@shared/lobbySettings'
@@ -52,6 +52,16 @@ export function LobbyPage() {
       navigate('/lobbies', { replace: true, state: { notice: verdict.notice } })
     }
   }, [lobby, isLoading, me, navigate])
+
+  // Memoized on the raw jsonb, not on `lobby` — a realtime-driven refetch (or
+  // any busy-toggling action) produces a new `lobby` object even when the
+  // settings are unchanged, and SettingsEditor resets its draft to whatever
+  // identity this holds. Without the memo, every such re-render would stomp
+  // an in-progress (not-yet-blurred) edit with the last-committed value.
+  const settings = useMemo(() => {
+    const checked = validateLobbySettings(lobby?.settings)
+    return 'errors' in checked ? DEFAULT_LOBBY_SETTINGS : checked.settings
+  }, [lobby?.settings])
 
   async function run(fn: () => Promise<void>) {
     setBusy(true); setError(null)
@@ -114,9 +124,6 @@ export function LobbyPage() {
   if (!lobby) return <main className="p-8 text-center text-ocean-300">Lobby not found.</main>
 
   const isHost = seat === 'host'
-  const settings = 'errors' in validateLobbySettings(lobby.settings)
-    ? DEFAULT_LOBBY_SETTINGS
-    : (validateLobbySettings(lobby.settings) as { settings: LobbySettings }).settings
 
   if (seat === null) {
     const open = lobby.status === 'open' && !lobby.guest_id
