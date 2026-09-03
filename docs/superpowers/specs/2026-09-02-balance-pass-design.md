@@ -73,6 +73,16 @@ Three exclusions, all of which must land together:
    hand-maintained copies is exactly how `retired` came to be needed in the
    first place.
 
+⚠ **Two exclusions live outside `shared/` and this list missed both.** Wave 0's
+final review found them: `scripts/smoke-lib.mjs` and `scripts/smoke-wave4.mjs`
+each hand-roll the same filter to build E2E decks. They are not effect pools, so
+`poolEligible` does not reach them, but a retired card in a smoke deck fails at
+`lobby-action START` — which is how Wave 0 learned that **`lobby-action` builds
+its own `DeckCardInfo` map and never populated `retired` at all**, leaving the
+whole mechanism unenforced server-side. `DeckCardInfo.retired` is now a
+**required** field for that reason: the hole was a silently-omitted optional.
+When adding an exclusion, grep the repo, not just `shared/`.
+
 **The five cards stay in `supabase/seed/source/`**, carrying `retired: true`.
 They are not deleted from it. This is a deliberate departure from the changes
 file's "deleted" framing, and it is load-bearing: `gameInit.ts`'s `expandDeck`
@@ -346,9 +356,11 @@ Two engine rules lose their last carrying card and are **kept, commented**
 drop the key) and `deployRequiresBattleLoss` with its per-zone battle-loss
 tracking (Purifier drops it).
 
-Four constants lose their last reader and are **deleted** (R-8):
-`MARAUDER_DISCOUNT` (DWG), `SACRILEGO_HP_BOOST` (SS),
-`PURIFIER_LOSS_WINDOW_TURNS` and `HARBRINGER_GUEST_MAX_COST` (both WF).
+**Two** constants lose their last reader and are deleted — `MARAUDER_DISCOUNT`
+(DWG) and `SACRILEGO_HP_BOOST` (SS). `PURIFIER_LOSS_WINDOW_TURNS` and
+`HARBRINGER_GUEST_MAX_COST` **stay**: keeping a rule keeps its constant, and
+both still have live readers. R-8 carries the table and the reasoning; deleting
+either is a compile error.
 
 ⚠ `HARBRINGER_GUEST_MAX_COST` has a second reader beyond `harbringerBattle`:
 `balancePass.test.ts` asserts the pool it defines ("Harbringer draws from
