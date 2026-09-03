@@ -367,7 +367,7 @@ export const wfVehicles = [
     {
         name: 'Judgement',
         isBuiltIn: true,
-        cardText: 'While your opponent has a submarine or airship, this card costs 100k less. Each turn, you may pay 1cp to have this vehicle 1v1 an enemy submarine or airship in this zone.',
+        cardText: 'While your opponent has a submarine or airship, this card costs 100k less. Each turn, you may have this vehicle 1v1 an enemy submarine or airship in this zone.',
         materialCost: 540000,
         blueprintCost: 546000,
         cpCost: 0,
@@ -381,10 +381,11 @@ export const wfVehicles = [
         meta: {
             costModifier: 'judgementCostModifier',
             [TRIGGERS.ON_ACTIVATE]: 'judgementActivate',
-            // "Each turn, you may pay 1cp". An activated ability needs BOTH
-            // onActivate and a price, or ACTIVATE_VEHICLE refuses it and
-            // BoardZone renders no button.
-            activateCpCost: 1,
+            // Free since the 2026-09-02 pass, and the KEY IS STILL REQUIRED:
+            // ACTIVATE_VEHICLE refuses a card carrying onActivate with no price
+            // at all, and BoardZone.tsx gates its button on the same pair.
+            // `0` is a price; deleting the line is not.
+            activateCpCost: 0,
         }
     },
     {

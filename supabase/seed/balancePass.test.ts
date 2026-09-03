@@ -205,15 +205,16 @@ describe('2026-08-30 balance pass', () => {
     })
   })
 
-  // Judgement's text says "pay 1cp", and ACTIVATE_VEHICLE refuses a card with
-  // no price key at all — so without this, the card would have a registered
-  // ability, a card text promising it, and no way to press it. The same
-  // silent-pair trap Braveheart's assertion above exists for.
-  it('Judgement carries the 1cp price its text prints', async () => {
+  // Judgement's text used to say "pay 1cp"; the 2026-09-02 pass made the
+  // activation free and rewrote the sentence. ACTIVATE_VEHICLE refuses a card
+  // with no price key AT ALL — so 0 and "absent" are different things, and this
+  // still exists to say the key is present. The same silent-pair trap
+  // Braveheart's assertion above exists for.
+  it('Judgement carries the free activation its text now prints', async () => {
     expect((await bySeedKey()).get('WF:Judgement')!.meta).toMatchObject({
       costModifier: 'judgementCostModifier',
       onActivate: 'judgementActivate',
-      activateCpCost: 1,
+      activateCpCost: 0,
     })
   })
 

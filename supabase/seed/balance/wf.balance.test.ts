@@ -82,6 +82,10 @@ const CARDS: Record<string, Expected> = {
     vehicleType: 'sub',
     cardText: 'When this sub is played into a zone, spawn two additional copies into that same zone.',
   },
+  'WF:Judgement': {
+    materialCost: 540_000, blueprintCost: 546_000, keywords: [], vehicleType: 'ship',
+    cardText: 'While your opponent has a submarine or airship, this card costs 100k less. Each turn, you may have this vehicle 1v1 an enemy submarine or airship in this zone.',
+  },
 }
 
 describe('2026-09-02 balance pass — WF', () => {
@@ -150,5 +154,19 @@ describe('2026-09-02 balance pass — WF', () => {
   it('adds exactly one WF card', async () => {
     const { cards } = await loadSeedData()
     expect(cards.filter((c) => c.faction === 'WF')).toHaveLength(21)
+  })
+
+  // The price is now ZERO, and zero is a number — which is the whole assertion.
+  // Both gates that decide whether this card has a usable ability read this one
+  // value: ACTIVATE_VEHICLE through parsePrice (0 is valid, `null` is not) and
+  // BoardZone.tsx through `typeof === 'number'` (same answer, both ways). A
+  // seeded `null`, a missing key or a string '0' would take the button away
+  // with the card text still promising it, and NO guard would notice.
+  it('Judgement activates for free, and the price is the number 0', async () => {
+    const meta = (await bySeedKey()).get('WF:Judgement')!.meta as Record<string, unknown>
+    expect(meta.onActivate).toBe('judgementActivate')
+    expect(meta.costModifier).toBe('judgementCostModifier')
+    expect(meta.activateCpCost).toBe(0)
+    expect(typeof meta.activateCpCost).toBe('number')
   })
 })

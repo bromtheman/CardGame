@@ -3544,9 +3544,11 @@ describe('wave 6 — WF Judgement', () => {
   describe('judgementActivate — a 1v1 against a sub or airship in this zone', () => {
     function armed(place?: (g: EngineGame) => void) {
       const game = makeGame({ turnNumber: 3 })
+      // Free since the 2026-09-02 pass (was 1cp) — activateCpCost stays a
+      // required KEY, just now zero.
       const judgement = zoneEntry({
         name: 'Judgement', faction: 'WF', vehicleType: 'ship', playedOnTurn: 2,
-        meta: { onActivate: 'judgementActivate', activateCpCost: 1 },
+        meta: { onActivate: 'judgementActivate', activateCpCost: 0 },
       })
       game.state.zones[0].cards.a.push(judgement)
       place?.(game)
@@ -3588,14 +3590,14 @@ describe('wave 6 — WF Judgement', () => {
       expect(r.game.state.zones[0].lastActivatedTurn).toBeNull()
     })
 
-    it('charges the printed 1cp and stamps once-per-turn', () => {
+    it('activates for free and stamps once-per-turn', () => {
       const { game, judgement } = armed((g) => {
         g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'sub-here', name: 'Diver', vehicleType: 'sub' }))
       })
       const before = game.state.resources.a.cp
       const r = activate(game, judgement.instanceId)
       if (!r.ok) throw new Error(r.error)
-      expect(r.game.state.resources.a.cp).toBe(before - 1)
+      expect(r.game.state.resources.a.cp).toBe(before)
       const again = activate(r.game, judgement.instanceId)
       expect(again.ok).toBe(false)
     })
