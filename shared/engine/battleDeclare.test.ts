@@ -734,4 +734,36 @@ describe('the deployment-order log line', () => {
     expect(out.state.activeBattle?.attackerIds).toHaveLength(2)
     expect(lines(out)).toHaveLength(1)
   })
+
+  // Same conflict, same fixture, but for declareForcedBattle's identical
+  // R-WF-6 reorder (bd5d2b1) — attackWith cannot reach it, since
+  // ATTACK_ENEMY_FLEET only ever calls lockBattle. Both call sites carry the
+  // identical "never above the dispatch" comment and got the identical fix,
+  // but until this test only lockBattle's copy had a test that failed when
+  // reverted; reverting declareForcedBattle's ordering alone would have
+  // passed the whole suite silently. Built directly, the way this file's
+  // other declareForcedBattle tests are (e.g. 'fires with forced true from
+  // declareForcedBattle' above): push the two hulls onto the zone, then call
+  // declareForcedBattle(g, makeCtx(), spec) itself rather than going through
+  // applyAction.
+  it('cancels once a DP2-joined hull carries a directive that conflicts with the other side, via declareForcedBattle too (R-WF-6)', () => {
+    const g = makeGame({ turnNumber: 3 })
+    const trigger = zoneEntry({
+      name: 'Trigger Hull', playedOnTurn: 2,
+      meta: { onBattleEffect: 't_joinOrderSpy' },
+    })
+    const def = carrier(DEPLOY_ORDER_FIRST)
+    g.state.zones[0].cards.a.push(trigger)
+    g.state.zones[0].cards.b.push(def)
+    const ok = declareForcedBattle(g, makeCtx(), {
+      zoneId: 1, aggressor: 'a', attackerIds: [trigger.instanceId], defenderIds: [def.instanceId],
+      cause: 'Eclipse',
+    })
+    expect(ok).toBe(true)
+    // Same sanity check as the lockBattle test above: the join happened, so
+    // the roster grew from 1 to 2 on the attacker side before noteDeployOrder
+    // ever ran.
+    expect(g.state.activeBattle?.attackerIds).toHaveLength(2)
+    expect(lines(g)).toHaveLength(1)
+  })
 })
