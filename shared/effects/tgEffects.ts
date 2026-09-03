@@ -3,8 +3,9 @@ import {
 } from './primitives.ts'
 import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
 import { checkVictory, copyMeta, findVehicle, otherSide, zoneById } from '../engine/gameEngine.ts'
-import { FACTORY_ESCORT_KEY, returnToHand, sacrificeEntry } from '../engine/battleTriggers.ts'
-import { BASE_DAMAGE_DIVISOR, KEYWORDS, VENGEFUL_BASE_DAMAGE } from '../gameSettings.ts'
+import { FACTORY_ESCORT_KEY, fireDeathEffect, returnToHand, sacrificeEntry } from '../engine/battleTriggers.ts'
+import { effectiveMaterialCostOf } from '../engine/placement.ts'
+import { BASE_DAMAGE_DIVISOR, FACTIONS, KEYWORDS, VENGEFUL_BASE_DAMAGE } from '../gameSettings.ts'
 import type { ZoneCardEntry } from '../engine/engineTypes.ts'
 import type { EffectFn, EffectPayload } from './registry.ts'
 import { registerEffect } from './registry.ts'
@@ -247,6 +248,55 @@ registerEffect('wonderOnPlay', ({ game, actor, card }) => {
     )
   }
   game.state.resources[actor].cp += 1
+  return true
+})
+
+// "Target a friendly TG vehicle. destroy it. gain resources this turn equal to
+// its cost."
+//
+// ⚠ Ruling TG-1 — "its cost" is effectiveMaterialCostOf, NEVER
+// effectiveCostInGame. The latter sums costModifier, the stored costDelta
+// stamp and the active resourceSurge delta: all three are about PAYING for a
+// card out of hand, and this target is a hull already deployed and already
+// paid for. Spec ruling U-1 makes the identical call for upkeep, and
+// repairCostOf, baseDamageFrom, upkeepOwedBy and Boarding Party all read the
+// same authority for the same reason. sapphireEffect's use of the play-time
+// one is not a counter-example: it refunds the card being played, from hand,
+// at that instant.
+//
+// ⚠ Ruling TG-2 — "destroy it" FIRES onDeathEffect. Spec R-7 rules the mirror
+// for WF Sub Strike ("remove it from play" does not), and the two phrasings
+// are one line apart here. sacrificeEntry alone would be the removal case;
+// the fireDeathEffect below is what makes this the destruction case. The
+// ORDER matters as well as the call: nostalgiaOnDeath pulls its snapshot back
+// out of the discard that sacrificeEntry just filed, which is the same
+// sequence battleResolve uses.
+//
+// ⚠ Ownership and faction are validated HERE because the handler does not:
+// PLAY_CARD_TARGETING_CARD_ON_FIELD checks only that the target is on the
+// field (ruling E-5, the same gap both Factories close by hand).
+//
+// "this turn" needs no mechanic. endTurn ASSIGNS the material pool from the
+// turn number rather than incrementing it, so every material gain in the game
+// already expires with the turn.
+//
+// Balance, recorded rather than fixed: Spawn Audacious mints a Half-Cost
+// Audacious for 40k, and Repurpose converts that hull to 330k for 1cp. Two
+// cards and a CP for a ~290k swing is a real loop. Both numbers are the
+// spec's (§6.4) and neither card's text admits a guard against it.
+registerEffect('repurposeEffect', ({ game, actor, ctx, card, targetInstanceId }) => {
+  if (typeof targetInstanceId !== 'string') return false
+  const found = findVehicle(game.state, targetInstanceId)
+  if (!found || found.side !== actor) return false
+  if (found.entry.faction !== FACTIONS.TG) return false
+  // Read before the hull leaves the board, so the payout cannot depend on
+  // ordering.
+  const entry = found.entry
+  const value = effectiveMaterialCostOf(entry)
+  if (!sacrificeEntry(game, actor, targetInstanceId, found.zone.id)) return false
+  fireDeathEffect(game, ctx, actor, entry)
+  game.state.resources[actor].materials += value
+  game.state.log.push(`${card.name} scraps ${entry.name} for ${value} materials`)
   return true
 })
 

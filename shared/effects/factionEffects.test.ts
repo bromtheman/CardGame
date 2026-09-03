@@ -6760,3 +6760,142 @@ describe('TG Wonder — refresh every hero power, then 1cp (2026-09-02)', () => 
     expect(CATALOG_EFFECTS.has('wonderOnPlay')).toBe(false)
   })
 })
+
+// ---------------------------------------------------------------------------
+// 2026-09-02 — TG Repurpose. "Target a friendly TG vehicle. destroy it. gain
+// resources this turn equal to its cost."
+//
+// Ruling TG-1: "its cost" is effectiveMaterialCostOf, never
+// effectiveCostInGame. The latter is play-time-only (costModifier, costDelta,
+// resourceSurge) and this target is a deployed hull — spec U-1 makes the same
+// call for upkeep, and repairCostOf / baseDamageFrom / Boarding Party all read
+// the same authority.
+//
+// Ruling TG-2: "destroy it" FIRES onDeathEffect. Spec R-7 rules the mirror
+// case for Sub Strike ("remove it from play" does not), and the two phrasings
+// are one line apart in the engine.
+//
+// "this turn" needs no mechanic: endTurn ASSIGNS the material pool from the
+// turn number (gameEngine.ts), so every material gain already expires with the
+// turn.
+describe('TG Repurpose — scrap a friendly TG hull (2026-09-02)', () => {
+  const repurposeCard = () => inst({
+    instanceId: 'rep1', name: 'Repurpose', faction: 'TG', type: 'ability',
+    vehicleType: null, materialCost: 0, cpCost: 1,
+    meta: { playOnVehicleEffect: 'repurposeEffect' },
+  })
+
+  const tgHull = (over = {}) => zoneEntry({
+    instanceId: 'hull1', name: 'Ecstasy', faction: 'TG', vehicleType: 'ship',
+    materialCost: 224_000, playedOnTurn: 1, ...over,
+  })
+
+  const fire = (game: EngineGame, targetInstanceId: string) =>
+    effectFor('repurposeEffect')!({
+      game, actor: 'a', card: repurposeCard(), ctx: makeCtx(), targetInstanceId,
+    })
+
+  it('destroys the hull and pays its printed cost', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zones[0].cards.a.push(tgHull())
+    const before = game.state.resources.a.materials
+    expect(fire(game, 'hull1')).toBe(true)
+    expect(game.state.zones[0].cards.a).toHaveLength(0)
+    expect(game.state.resources.a.materials).toBe(before + 224_000)
+    expect(game.state.destroyed.a.map((c) => c.name)).toEqual(['Ecstasy'])
+  })
+
+  // TG-1, the half that separates the two authorities on real data: Half-Cost
+  // is the one modifier effectiveMaterialCostOf applies, and it is what the
+  // owner actually paid.
+  it('TG-1: pays the HALF-COST price for a Half-Cost hull', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zones[0].cards.a.push(tgHull({
+      name: 'Audacious', materialCost: 660_000, keywords: [KEYWORDS.HALF_COST],
+    }))
+    const before = game.state.resources.a.materials
+    fire(game, 'hull1')
+    expect(game.state.resources.a.materials).toBe(before + 330_000)
+  })
+
+  // TG-1 again, from the other side: a stale play-time costDelta stamp must
+  // not reach the payout. effectiveCostInGame would add it; the correct
+  // authority never looks.
+  it('TG-1: ignores a play-time costDelta stamp on the hull', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zones[0].cards.a.push(tgHull({ meta: { costDelta: -100_000 } }))
+    const before = game.state.resources.a.materials
+    fire(game, 'hull1')
+    expect(game.state.resources.a.materials).toBe(before + 224_000)
+  })
+
+  // TG-2: "destroy" fires the death trigger. Jealousy is the shortest proof.
+  it('TG-2: fires the target’s onDeathEffect', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.privates.a.deck = [inst({ name: 'Spare' })]
+    game.state.zones[0].cards.a.push(tgHull({
+      name: 'Jealousy', materialCost: 400_000, meta: { onDeathEffect: 'jealousyOnDeath' },
+    }))
+    expect(fire(game, 'hull1')).toBe(true)
+    expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Spare'])
+    expect(game.state.counts.a.hand).toBe(1)
+  })
+
+  // The ordering TG-2 depends on: returnToHand pulls the snapshot back OUT of
+  // the discard, so the hull must reach the discard before the trigger fires.
+  it('TG-2: a Nostalgia scrapped this way still returns to hand', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zones[0].cards.a.push(tgHull({
+      name: 'Nostalgia', materialCost: 75_000, meta: { onDeathEffect: 'nostalgiaOnDeath' },
+    }))
+    expect(fire(game, 'hull1')).toBe(true)
+    expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Nostalgia'])
+    expect(game.state.destroyed.a).toHaveLength(0)
+    expect(game.state.resources.a.materials).toBeGreaterThan(0)
+  })
+
+  // PLAY_CARD_TARGETING_CARD_ON_FIELD checks only that the target is ON the
+  // field, never whose it is (ruling E-5). Both refusals live here or nowhere.
+  it('refuses an enemy hull', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zones[0].cards.b.push(tgHull())
+    expect(fire(game, 'hull1')).toBe(false)
+    expect(game.state.zones[0].cards.b).toHaveLength(1)
+  })
+
+  it('refuses a friendly hull of another faction', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zones[0].cards.a.push(tgHull({ faction: 'DWG' }))
+    expect(fire(game, 'hull1')).toBe(false)
+    expect(game.state.zones[0].cards.a).toHaveLength(1)
+  })
+
+  it('refuses with no target at all', () => {
+    const game = makeGame({ turnNumber: 3 })
+    expect(effectFor('repurposeEffect')!({
+      game, actor: 'a', card: repurposeCard(), ctx: makeCtx(),
+    })).toBe(false)
+  })
+
+  // End to end, so the handler's own gates (ability type, playOnVehicleEffect
+  // key, cp payment) are exercised rather than only the effect body.
+  it('resolves through PLAY_CARD_TARGETING_CARD_ON_FIELD and costs 1cp', () => {
+    const card = repurposeCard()
+    const game = makeGame({
+      turnNumber: 3, activePlayer: 'alice',
+      privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } },
+    })
+    game.state.zones[0].cards.a.push(tgHull())
+    const cpBefore = game.state.resources.a.cp
+    const r = applyAction(game, 'alice', {
+      type: 'PLAY_CARD_TARGETING_CARD_ON_FIELD', instanceId: 'rep1', targetInstanceId: 'hull1',
+    }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.resources.a.cp).toBe(cpBefore - 1)
+    expect(r.game.state.zones[0].cards.a).toHaveLength(0)
+  })
+
+  it('does not need the catalog', () => {
+    expect(CATALOG_EFFECTS.has('repurposeEffect')).toBe(false)
+  })
+})

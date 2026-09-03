@@ -501,5 +501,22 @@ export const tgVehicles = [
             [TRIGGERS.ON_PLAY]: 'wonderOnPlay',
         }
     },
+    {
+        name: 'Repurpose',
+        isBuiltIn: true,
+        cardText: 'Target a friendly TG vehicle. destroy it. gain resources this turn equal to its cost.',
+        materialCost: 0,
+        blueprintCost: 0,
+        cpCost: 1,
+        imageUrl: 'repurpose.png',
+        playerId: null,
+        vehicleType: null,
+        type: 'ability',
+        faction: FACTIONS.TG,
+        blueprintId: null,
+        meta: {
+            [TRIGGERS.PLAY_ON_VEHICLE]: 'repurposeEffect',
+        }
+    },
 ];
 

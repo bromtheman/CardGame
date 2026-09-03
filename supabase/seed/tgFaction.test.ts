@@ -163,14 +163,15 @@ describe('the TG faction cards, as the 2026-09-02 pass left them', () => {
     Obelisk: { materialCost: 40_000, blueprintCost: 32_000, vehicleType: 'sub', type: V, keywords: ['stealthy'] },
     Loathing: { materialCost: 225_000, blueprintCost: 268_000, vehicleType: 'ship', type: V, keywords: [] },
     Wonder: { materialCost: 700_000, blueprintCost: 865_000, vehicleType: 'ship', type: V, keywords: [] },
+    Repurpose: { materialCost: 0, blueprintCost: 0, vehicleType: null, type: A, keywords: [] },
   }
 
-  it('seeds exactly 28 new cards, and 32 TG rows in total with the borrowed four', async () => {
+  it('seeds exactly 29 new cards, and 33 TG rows in total with the borrowed four', async () => {
     const { cards } = await loadSeedData()
     const tg = cards.filter((c) => c.isBuiltIn && c.faction === 'TG')
     const fresh = tg.filter((c) => !c.name.startsWith('[TG] '))
-    expect(fresh).toHaveLength(28)
-    expect(tg).toHaveLength(32)
+    expect(fresh).toHaveLength(29)
+    expect(tg).toHaveLength(33)
     expect(fresh.map((c) => c.name).sort()).toEqual(Object.keys(CARDS).sort())
   })
 
@@ -184,7 +185,7 @@ describe('the TG faction cards, as the 2026-09-02 pass left them', () => {
     expect(keywordsOf(card!)).toEqual([...want.keywords].sort())
   })
 
-  it('splits 8 airship / 9 ship / 4 plane / 4 sub / 3 ability', async () => {
+  it('splits 8 airship / 9 ship / 4 plane / 4 sub / 4 ability', async () => {
     const { cards } = await loadSeedData()
     const fresh = cards.filter((c) => c.isBuiltIn && c.faction === 'TG' && !c.name.startsWith('[TG] '))
     const count = (fn: (c: SeedCard) => boolean) => fresh.filter(fn).length
@@ -192,7 +193,7 @@ describe('the TG faction cards, as the 2026-09-02 pass left them', () => {
     expect(count((c) => c.vehicleType === 'ship')).toBe(9)
     expect(count((c) => c.vehicleType === 'plane')).toBe(4)
     expect(count((c) => c.vehicleType === 'sub')).toBe(4)
-    expect(count((c) => c.type === 'ability')).toBe(3)
+    expect(count((c) => c.type === 'ability')).toBe(4)
   })
 
   it('renames Extasy to Ecstasy — a correction that had to precede the first seed', async () => {
