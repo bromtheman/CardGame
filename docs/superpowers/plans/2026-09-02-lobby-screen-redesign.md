@@ -756,10 +756,19 @@ git commit -m "feat(lobby-action): SET_DECK, SET_READY, UPDATE_SETTINGS, KICK, a
 
 ### Task 5: Repair the smoke harness, then cover the new ops
 
-`smoke-lib.mjs`'s `startGame` posts a lobby and calls `START` immediately. With Task 4 deployed, that `START` now 409s — which breaks **every** existing harness (`smoke-wave4/5/6/7.mjs`, `smoke-battle-report.mjs`, `mutation-harness.mjs`). Fix the shared plumbing first, then add the lobby-specific coverage.
+With Task 4 deployed, `START` is ready-gated and every harness that starts a game 409s. They do not all start it the same way — this table was verified against the scripts, and an earlier draft of this task got it wrong:
+
+| Script | Starts a game via | Needs |
+|---|---|---|
+| `smoke-wave5/6/7.mjs`, `smoke-battle-report.mjs` | `smoke-lib.mjs`'s shared `startGame` | the shared repair (Step 1) |
+| `smoke-wave4.mjs` | **its own inline** create → JOIN → START at lines ~170-187; it does **not** import `smoke-lib` | the same two calls added separately (Step 1b) |
+| `mutation-harness.mjs` | creates no lobbies — it is a helper the wave scripts import | nothing |
+
+**`smoke-wave5.mjs` is the regression gate, not `smoke-wave4.mjs`.** Wave 4 shares no code with the shared repair, so a 409 there proves nothing about whether Step 1 landed — chasing one would be chasing a phantom.
 
 **Files:**
 - Modify: `scripts/smoke-lib.mjs` (the `startGame` function, around lines 195–200)
+- Modify: `scripts/smoke-wave4.mjs` (its own inline START, around lines 184–187)
 - Create: `scripts/smoke-lobby.mjs`
 
 **Interfaces:**
@@ -781,13 +790,27 @@ In `scripts/smoke-lib.mjs`, between the existing JOIN and START calls, insert:
 
 The lobby POST above it keeps `host_deck_id: p1DeckId` — harnesses deck the host at creation, which a nullable column still allows.
 
+- [ ] **Step 1b: Ready both seats in `smoke-wave4.mjs`'s own inline setup**
+
+`scripts/smoke-wave4.mjs` does not import `smoke-lib` — it builds its own lobby and calls `START` directly (around lines 170-187). Step 1 does nothing for it. Insert the same two calls between its `JOIN` and its `START`, using whatever local variable names that script already uses for the two players' tokens and the lobby id:
+
+```js
+// START is ready-gated as of the lobby redesign. This script has its own
+// inline lobby setup rather than smoke-lib's startGame, so it needs its own
+// copy of the ready calls.
+for (const who of [p1, p2]) {
+  const r = await fn('lobby-action', who.token, { action: 'SET_READY', lobbyId, ready: true })
+  if (r.status !== 200) die(`SET_READY failed (HTTP ${r.status})`)
+}
+```
+
 - [ ] **Step 2: Prove the existing harnesses still start a game**
 
 ```bash
-node scripts/smoke-wave4.mjs
+node scripts/smoke-wave5.mjs
 ```
 
-Expected: the run reaches its scenarios and reports PASS lines. A `START failed (HTTP 409)` here means Step 1 did not land. This is the regression gate for Task 4 — run it before writing anything new.
+Expected: the run reaches its scenarios and reports PASS lines. A `START failed (HTTP 409)` here means Step 1 did not land. Wave 5 is the gate because it is a genuine `smoke-lib.startGame` consumer; wave 4 is **not** a valid gate for Step 1, since it shares no code with it — verify wave 4 separately after Step 1b.
 
 - [ ] **Step 3: Write the lobby smoke script**
 
@@ -941,15 +964,15 @@ Expected: every step PASS, exit code 0. Needs `frontend/.env.local` and `scripts
 - [ ] **Step 5: Confirm the wider harness suite still passes**
 
 ```bash
-node scripts/smoke-wave7.mjs
+node scripts/smoke-wave4.mjs; node scripts/smoke-wave7.mjs
 ```
 
-Expected: PASS lines throughout — the deepest existing harness, and the strongest evidence Step 1 did not break the shared plumbing.
+Expected: PASS lines throughout. Wave 7 is the deepest `smoke-lib` consumer and the strongest evidence Step 1 did not break the shared plumbing; wave 4 verifies Step 1b, its own inline setup.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add scripts/smoke-lib.mjs scripts/smoke-lobby.mjs
+git add scripts/smoke-lib.mjs scripts/smoke-wave4.mjs scripts/smoke-lobby.mjs
 git commit -m "test(smoke): ready-gate the shared harness and cover the new lobby ops"
 ```
 

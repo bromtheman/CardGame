@@ -118,13 +118,26 @@ precondition checked in a preceding `SELECT` is not enforced by it.
 
 ### 4.1 Consent invariant (R-8)
 
-Two clears carry R-8:
+Three clears carry R-8:
 
 - `SET_DECK` clears the caller's own ready flag — you re-affirm after
   changing what you are bringing.
+- `SET_DECK` **called by the host** additionally clears `guest_ready`. The
+  opponent's faction badge is the most strategically loaded thing a player
+  reads before pressing Ready — R-1 exists to put it on the seat — so a
+  host who swaps decks has changed something the guest consented to.
+  Without this, a host could ready, wait for the guest to ready against
+  "DWG", switch to an SS deck (clearing only their own flag), re-ready and
+  start, launching the guest against a faction they never saw. The guest's
+  own `SET_DECK` does **not** clear `host_ready`: the host holds the Start
+  button and can look before pressing it.
 - `UPDATE_SETTINGS` clears `guest_ready` — the guest re-affirms after the
   host changes the battlefield. It does **not** clear `host_ready`: the
   host authored the change, so their consent is implicit.
+
+The asymmetry has one rule behind it: **whoever did not make the change
+re-affirms.** The host is exempt from re-affirming their own edits because
+pressing Start is itself the affirmation.
 
 Races between `SET_READY` and `UPDATE_SETTINGS` are benign in either
 order, because `START` re-checks both flags inside the same statement
@@ -133,6 +146,31 @@ read and then acted on.
 
 `START`'s existing failure path — revert `starting → open` on any error
 after the lock — is unchanged and still covers the new preconditions.
+
+### 4.2 The game is built from the POST-lock settings
+
+`START` must validate and build from `locked.settings`, never from the
+settings it read before taking the mutex. This is the one place R-8 could
+be defeated without any ready flag being wrong.
+
+The sequence: host client A calls `START` and reads settings S1; host
+client B calls `UPDATE_SETTINGS`, writing S2 and clearing `guest_ready`;
+the guest reads S2 and readies; A's lock statement now finds both flags
+true and succeeds. Every ready check passed honestly, and the game is
+still built from S1 — a board the guest declined. `start_game_tx` writes
+`games.settings` once and there is no re-negotiation after a game exists,
+so the corruption is permanent.
+
+The pre-lock read may stay as a cheap early bail for a malformed blob, but
+the values that reach `buildInitialGame` and the frozen `deckRules` come
+from the locked row. A post-lock validation failure must revert
+`starting → open` like any other post-lock error, or the lobby strands.
+
+Worth recording *why* this was not a bug before: `settings` used to be
+writable only at insert, so the pre-lock and post-lock rows could never
+disagree and reading either was equivalent. `UPDATE_SETTINGS` is what
+turned a safe read into an exploitable one — a reminder that adding a
+writer can invalidate a read somewhere that never changed.
 
 ## 5. Client
 
@@ -272,13 +310,23 @@ status open) and `seatOf(lobby, myId)`.
 - `frontend/src/lib/biomeStyles.test.ts` — every `ZONE_TYPES` value has a
   tint and a border, so a new biome cannot silently render untinted.
   Mirrors the existing `keywords.test.ts` guard.
-- `scripts/smoke-lib.mjs` — **a required repair, not an addition.** Its
-  shared `startGame` posts a lobby and calls `START` immediately, so the
-  ready gate breaks *every* existing harness (`smoke-wave4/5/6/7.mjs`,
-  `smoke-battle-report.mjs`, `mutation-harness.mjs`). Two `SET_READY`
-  calls between its JOIN and START fix all of them at once. This is the
-  regression gate for §4 and must pass before any new coverage is
-  written.
+- **Two required repairs, not additions.** The ready gate breaks every
+  harness that starts a game, and they do not all start it the same way —
+  verified against the scripts rather than assumed:
+  - `scripts/smoke-lib.mjs` — its shared `startGame` posts a lobby and
+    calls `START` immediately. Two `SET_READY` calls between its JOIN and
+    START repair every harness that imports it: `smoke-wave5.mjs`,
+    `smoke-wave6.mjs`, `smoke-wave7.mjs` and `smoke-battle-report.mjs`.
+  - `scripts/smoke-wave4.mjs` — **does not import `smoke-lib` at all** and
+    carries its own inline create → JOIN → START. Repairing the shared
+    plumbing leaves it 409-ing, so it needs the same two calls added
+    separately.
+  - `scripts/mutation-harness.mjs` creates no lobbies (it is a helper the
+    wave scripts import) and needs no repair.
+
+  `smoke-wave5.mjs` is the regression gate for §4, because it is a genuine
+  `startGame` consumer. `smoke-wave4.mjs` is not — a 409 there proves
+  nothing about the shared repair, since it shares no code with it.
 - `scripts/smoke-lobby.mjs` — the new edge-function ops have no local
   Supabase to run against, so a two-account smoke script in the existing
   `smoke-*.mjs` style drives create → join → set decks → ready → start,
@@ -294,11 +342,38 @@ the engine suite is a regression guard only.
 
 1. Apply the migration.
 2. Regenerate `database.types.ts`.
-3. `npm run functions:deploy -- lobby-action` from a branch up to date
-   with `main`; verify the version incremented, by content.
-4. Ship the frontend.
+3. **Deploy the function manually, before merging**, with
+   `npm run functions:deploy -- lobby-action` from a branch up to date with
+   `main`. Verify the version incremented **by content, not file count** — a
+   deploy legitimately reads back with fewer modules, because type-only
+   imports are erased during transpilation.
+4. Only once that version is confirmed, merge and ship the frontend.
 
-Between steps 3 and 4 a lobby created by the *old* frontend cannot be
-started by the *new* function: its ready flags are `false` and the old UI
-offers no way to set them. It self-clears — cancel and recreate the
-lobby — and is called out here so it is not mistaken for a defect.
+Step 3 is deliberately manual and deliberately *pre*-merge. Merging to
+`main` does deploy functions automatically via the Supabase GitHub
+integration — but a failed migrate step **silently skips the deploy step**
+while the SPA ships anyway. Leaving the order to the integration therefore
+has a documented failure mode that lands squarely in the bad window below.
+Deploy by hand, confirm, then merge.
+
+### 7.1 The window has two directions
+
+Both are closed by the same rule — the function goes first — but they are
+not equally bad, and only the first was originally written down.
+
+**Old frontend, new function.** A lobby created before the frontend ships
+cannot be started: its ready flags are `false` and the old UI offers no way
+to set them. Scope: one stale lobby per affected host. Recovery: cancel and
+recreate. Mild.
+
+**New frontend, old function.** Much worse, and the reason step 3 is not
+optional. The new client sends `JOIN` with no `deckId`, because deck choice
+moved into the lobby — and the currently-deployed function still hard-fails
+that request with `deckId required to join`. This is not one stale lobby; it
+is **every join, for every player**, until the function lands. Shipping the
+frontend first would take the feature down for everyone rather than
+inconveniencing a few hosts.
+
+At the time of writing the live table held 27 lobby rows and **zero**
+non-closed lobbies, so the first window currently has nothing in it to
+break.
