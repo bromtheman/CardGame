@@ -132,7 +132,7 @@ describe('the 26 TG faction cards (wave 7)', () => {
     Obsession: { materialCost: 330_000, blueprintCost: 337_000, vehicleType: 'ship', type: V, keywords: ['robotic', 'upkeepRequired'] },
     Euphoria: { materialCost: 580_000, blueprintCost: 581_000, vehicleType: 'ship', type: V, keywords: ['robotic', 'upkeepRequired'] },
     Ecstasy: { materialCost: 224_000, blueprintCost: 224_000, vehicleType: 'ship', type: V, keywords: [] },
-    Horror: { materialCost: 70_000, blueprintCost: 77_000, vehicleType: 'ship', type: V, keywords: ['robotic', 'upkeepRequired'] },
+    Horror: { materialCost: 50_000, blueprintCost: 77_000, vehicleType: 'ship', type: V, keywords: ['robotic'] },
     Nostalgia: { materialCost: 90_000, blueprintCost: 98_000, vehicleType: 'ship', type: V, keywords: ['robotic', 'upkeepRequired'] },
     Optimism: { materialCost: 410_000, blueprintCost: 419_000, vehicleType: 'airship', type: V, keywords: [] },
     // An airship carrying SUB_SCREEN — every other Sub Screen in the game is a
@@ -212,11 +212,10 @@ describe('the 26 TG faction cards (wave 7)', () => {
 
 // ---------------------------------------------------------------------------
 // UPKEEP_REQUIRED, priced (spec §7.3, U-0 … U-2).
-describe('the ten upkeep cards and what they cost per turn', () => {
+describe('the upkeep cards and what they cost per turn', () => {
   // Spelled out rather than computed from materialCost — a test that
   // recalculates its expectation from the source it is checking proves nothing.
   const UPKEEP: Record<string, number> = {
-    Horror: 10_500,
     Nostalgia: 13_500,
     Alarmed: 34_500,
     Anguish: 39_000,
@@ -228,7 +227,7 @@ describe('the ten upkeep cards and what they cost per turn', () => {
     Fear: 120_000,
   }
 
-  it('is carried by exactly these ten', async () => {
+  it('is carried by exactly the cards in this map', async () => {
     const { cards } = await loadSeedData()
     const carriers = cards
       .filter((c) => c.isBuiltIn && (c.keywords ?? []).includes('upkeepRequired'))

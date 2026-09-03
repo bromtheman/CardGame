@@ -4891,10 +4891,10 @@ describe('TG Alarmed — sacrifice a friendly AI vehicle (wave 7)', () => {
 // "a Horror in this zone already has playedOnTurn === game.turnNumber". Each
 // fire() is an isolated invocation with no shared scratchpad, so any counter
 // has to be read off the board; this reading needs no new state.
-describe('TG Horror — a self-copy on surviving a battle (wave 7)', () => {
+describe('TG Horror — a self-copy on an OFFENSIVE battle (2026-09-02)', () => {
   const horrorEntry = (over = {}) => zoneEntry({
     instanceId: 'h1', name: 'Horror', faction: 'TG', vehicleType: 'ship',
-    materialCost: 70_000, keywords: [KEYWORDS.ROBOTIC, KEYWORDS.UPKEEP_REQUIRED],
+    materialCost: 50_000, keywords: [KEYWORDS.ROBOTIC],
     meta: { onBattleEffect: 'horrorBattle' }, playedOnTurn: 1, ...over,
   })
 
@@ -4914,11 +4914,56 @@ describe('TG Horror — a self-copy on surviving a battle (wave 7)', () => {
     expect(game.state.zones[0].cards.a.map((c) => c.name)).toEqual(['Horror', 'Horror'])
   })
 
-  it('does nothing when it did not survive', () => {
+  // The whole point of the 2026-09-02 change: the copy no longer depends on
+  // the original living through the fight. A 50k hull that trades itself for
+  // an enemy still leaves a replacement behind.
+  it('copies even when it did NOT survive', () => {
     const game = makeGame({ turnNumber: 3 })
     const entry = horrorEntry()
     game.state.zones[0].cards.a.push(entry)
     expect(fire(game, entry, resolveCtx({ survived: false }))).toBe(true)
+    expect(game.state.zones[0].cards.a.map((c) => c.name)).toEqual(['Horror', 'Horror'])
+  })
+
+  // ⚠ The half of the change a reader will miss. A destroyed hull is spliced
+  // out of zone.cards by the destruction branch BEFORE the resolve dispatch
+  // runs, so findVehicle returns null — dropping the `survived` gate alone
+  // leaves the card doing nothing. The zone falls back to battle.zoneId and
+  // the source entry falls back to `card`, which fire() hands us verbatim.
+  it('copies into the battle zone when the hull is already off the board', () => {
+    const game = makeGame({ turnNumber: 3 })
+    // Nothing pushed: the Horror died and has been removed.
+    expect(fire(game, horrorEntry(), resolveCtx({ zoneId: 2, survived: false }))).toBe(true)
+    expect(game.state.zones[1].cards.a.map((c) => c.name)).toEqual(['Horror'])
+    expect(game.state.zones[0].cards.a).toHaveLength(0)
+  })
+
+  // The dead hull's copy still carries what the hull carried into the fight,
+  // because `card` is the participant entry, not a catalog snapshot.
+  it('a dead Horror’s copy still carries its granted keywords', () => {
+    const game = makeGame({ turnNumber: 3 })
+    const entry = horrorEntry({ keywords: [KEYWORDS.ROBOTIC, KEYWORDS.SCRAPPY] })
+    fire(game, entry, resolveCtx({ survived: false }))
+    expect(game.state.zones[0].cards.a[0].keywords).toContain(KEYWORDS.SCRAPPY)
+  })
+
+  it('does nothing on a DEFENSIVE battle, survived or not', () => {
+    for (const survived of [true, false]) {
+      const game = makeGame({ turnNumber: 3 })
+      const entry = horrorEntry()
+      game.state.zones[0].cards.a.push(entry)
+      expect(fire(game, entry, resolveCtx({ isDefender: true, survived }))).toBe(true)
+      expect(game.state.zones[0].cards.a).toHaveLength(1)
+    }
+  })
+
+  // D-4 still holds across the new path: two Horrors dying out of one zone in
+  // one turn leave ONE replacement between them, because the first copy is
+  // already stamped with this turn when the second fires.
+  it('D-4: two dead Horrors in one zone still leave one copy', () => {
+    const game = makeGame({ turnNumber: 3 })
+    expect(fire(game, horrorEntry(), resolveCtx({ survived: false }))).toBe(true)
+    expect(fire(game, horrorEntry({ instanceId: 'h2' }), resolveCtx({ survived: false }))).toBe(true)
     expect(game.state.zones[0].cards.a).toHaveLength(1)
   })
 
@@ -5008,12 +5053,6 @@ describe('TG Horror — a self-copy on surviving a battle (wave 7)', () => {
     expect(copy.instanceId).not.toBe('h1')
   })
 
-  it('does nothing when the hull has left the board', () => {
-    const game = makeGame({ turnNumber: 3 })
-    expect(fire(game, horrorEntry())).toBe(true)
-    expect(game.state.zones[0].cards.a).toHaveLength(0)
-  })
-
   // ✅ It copies the ENTRY, so it never reads ctx.catalog — and so, unlike
   // Fear and Obelisk, it must NOT be registered as needing one. Asserted
   // rather than commented, because the claim is easy to get wrong either way.
@@ -5038,6 +5077,23 @@ describe('TG Horror — a self-copy on surviving a battle (wave 7)', () => {
     const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, ctx)
     if (!decided.ok) throw new Error(decided.error)
     expect(decided.game.state.zones[0].cards.a.filter((c) => c.name === 'Horror')).toHaveLength(2)
+  })
+
+  it('fires from a real DECIDE_BATTLE_REPORT even when the Horror dies', () => {
+    const game = makeGame({ turnNumber: 3, activePlayer: 'alice' })
+    game.state.zones[0].cards.a.push(horrorEntry())
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe1', name: 'Foe', playedOnTurn: 1 }))
+    const ctx = makeCtx()
+    if (!declareForcedBattle(game, ctx, {
+      zoneId: 1, aggressor: 'a', attackerIds: ['h1'], defenderIds: ['foe1'], cause: 'Test',
+    })) throw new Error('battle not declared')
+    const submitted = applyAction(game, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT', results: { h1: 0, foe1: 0 }, repairs: [],
+    }, ctx)
+    if (!submitted.ok) throw new Error(submitted.error)
+    const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, ctx)
+    if (!decided.ok) throw new Error(decided.error)
+    expect(decided.game.state.zones[0].cards.a.filter((c) => c.name === 'Horror')).toHaveLength(1)
   })
 })
 

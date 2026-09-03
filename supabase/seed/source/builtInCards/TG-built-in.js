@@ -73,8 +73,8 @@ export const tgVehicles = [
     {
         name: 'Horror',
         isBuiltIn: true,
-        cardText: 'Whenever a horror survives a fleet battle, create anther copy of it in this zone. Max one spawn per zone',
-        materialCost: 70000,
+        cardText: 'Whenever a horror participates in an offensive fleet battle, create anther copy of it in this zone. Max one spawn per zone',
+        materialCost: 50000,
         blueprintCost: 77000,
         cpCost: 0,
         imageUrl: 'euphoria.png',
@@ -83,7 +83,7 @@ export const tgVehicles = [
         type: 'vehicle',
         faction: FACTIONS.TG,
         blueprintId: null,
-        keywords: [KEYWORDS.UPKEEP_REQUIRED, KEYWORDS.ROBOTIC],
+        keywords: [KEYWORDS.ROBOTIC],
         meta: {
             [TRIGGERS.ON_BATTLE_EFFECT]: 'horrorBattle',
         }

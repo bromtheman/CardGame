@@ -2,7 +2,7 @@ import {
   choice, enemyVehicleOptions, friendlyVehicleOptions, grant, spawnVehicles, summonHulls,
 } from './primitives.ts'
 import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
-import { checkVictory, copyMeta, findVehicle, otherSide } from '../engine/gameEngine.ts'
+import { checkVictory, copyMeta, findVehicle, otherSide, zoneById } from '../engine/gameEngine.ts'
 import { FACTORY_ESCORT_KEY, returnToHand, sacrificeEntry } from '../engine/battleTriggers.ts'
 import { BASE_DAMAGE_DIVISOR, KEYWORDS, VENGEFUL_BASE_DAMAGE } from '../gameSettings.ts'
 import type { ZoneCardEntry } from '../engine/engineTypes.ts'
@@ -188,9 +188,9 @@ registerEffect(ALARMED, choice({
   },
 }))
 
-// "Whenever a horror survives a fleet battle, create anther copy of it in this
-// zone. Max one spawn per zone." (`anther` is the card's own typo, reproduced
-// verbatim in cardText because card text is data.)
+// "Whenever a horror participates in an offensive fleet battle, create anther
+// copy of it in this zone. Max one spawn per zone." (`anther` is the card's
+// own typo, reproduced verbatim in cardText because card text is data.)
 //
 // ⚠ Ruling D-3 — "a horror" is THIS Horror. The sentence continues "create
 // another copy OF IT", which points back at the same hull, and DP2 already
@@ -210,39 +210,54 @@ registerEffect(ALARMED, choice({
 // spot (a 70k self-replicating hull), and distinguishing the two would need the
 // per-zone counter D-4 deliberately avoided. Left as the conservative reading.
 //
-// ✅ It copies the surviving ENTRY rather than minting from the catalog, which
-// is what carries keywords GRANTED to that hull across (clydesdaleEffect and
-// loggerheadOnDeath are the precedents) — and is why this effect needs no
-// { needsCatalog: true } and meets no fireRider trap: it is a participant
-// trigger, not a zoneEffects rider.
-//
-// The zone comes from findVehicle rather than from battle.zoneId: the two
-// agree for a participant today, but the hull's own zone is what the card
-// says, and Braveheart sets the precedent for re-deriving it.
+// ⚠ Balance, recorded rather than fixed. This pass makes Horror strictly
+// stronger three ways at once: 70k → 50k, UPKEEP_REQUIRED dropped, and the
+// copy no longer requires surviving. Together with Fear (800k → 500k), which
+// spawns a Horror into every zone, that is a self-replicating engine on a
+// hull with no running cost. Recorded here because the wave-7 comment already
+// named Horror as this faction's balance hot spot, and the pass has doubled
+// down on it deliberately (2026-09-02 spec §6.4).
 registerEffect('horrorBattle', ({ game, actor, ctx, card, battle }) => {
-  if (!battle || battle.phase !== 'resolve' || !battle.survived) return true
+  // The 2026-09-02 pass: an AGGRESSOR gate replaces the survival gate.
+  // "Offensive" is `!isDefender`, which dispatchBattleResolve computes as
+  // `side !== aggressor` — true for the attacking side of a declared battle,
+  // a forced one, and a Duel alike.
+  if (!battle || battle.phase !== 'resolve' || battle.isDefender) return true
   const found = findVehicle(game.state, card.instanceId)
-  // Destroyed hulls are still in `participants` when the resolve dispatch
-  // runs, so this is reachable rather than defensive.
-  if (!found || found.side !== actor) return true
-  const alreadySpawned = found.zone.cards[actor].some(
+  // Unreachable side guard, kept: every dispatch hands `fire` the side the
+  // entry was found on (the same latitude vengefulBattle documents).
+  if (found && found.side !== actor) return true
+  // ⚠ The zone can no longer come from findVehicle alone. A destroyed hull is
+  // spliced out of zone.cards by the destruction branch BEFORE this dispatch
+  // runs, so dropping the survival gate without this fallback leaves the card
+  // silently inert on exactly the case the change exists for.
+  //
+  // battle.zoneId is EXACT here rather than approximate, and only because of
+  // the aggressor gate above: every hull on the aggressor's side is in the
+  // battle's own zone. ATTACK_ENEMY_FLEET validates attackers against
+  // zone.cards, joinBattle requires the same for an on-board id, and a
+  // cross-zone Duel sets zoneId to the AGGRESSOR's hull's zone. The away hull
+  // of a cross-zone battle is always the defender, which this gate excludes.
+  const zone = found?.zone ?? zoneById(game.state, battle.zoneId)
+  if (!zone) return true
+  // `card` IS the participant's ZoneCardEntry (battleTriggers.ts `fire`), so a
+  // dead Horror's copy still carries the keywords it was granted in the fight.
+  const source = (found?.entry ?? card) as ZoneCardEntry
+  const alreadySpawned = zone.cards[actor].some(
     (c) => c.name === card.name && (c as ZoneCardEntry).playedOnTurn === game.turnNumber,
   )
   if (alreadySpawned) return true
   const copy: ZoneCardEntry = {
-    ...found.entry,
+    ...source,
     instanceId: ctx.newId(),
-    // The escort is a per-instance grant on the hull the Factory targeted, so
-    // a copy does not inherit it — the same reasoning discardSnapshotOf uses
-    // to keep it out of the discard.
-    meta: (({ [FACTORY_ESCORT_KEY]: _escort, ...rest }) => rest)(copyMeta(found.entry.meta)),
-    keywords: [...found.entry.keywords],
+    meta: (({ [FACTORY_ESCORT_KEY]: _escort, ...rest }) => rest)(copyMeta(source.meta)),
+    keywords: [...source.keywords],
     playedOnTurn: game.turnNumber,
     movedOnTurn: null,
     activatedOnTurn: null,
   }
-  found.zone.cards[actor].push(copy)
-  game.state.log.push(`${card.name} splits in zone ${found.zone.id}`)
+  zone.cards[actor].push(copy)
+  game.state.log.push(`${card.name} splits in zone ${zone.id}`)
   return true
 })
 
