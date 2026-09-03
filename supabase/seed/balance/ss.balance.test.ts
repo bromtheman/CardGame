@@ -48,6 +48,11 @@ const CARDS: Record<string, Expected> = {
     keywords: ['blocker', 'subScreen'], vehicleType: 'ship',
     cardText: 'While you have less resources than this costs, you may play it with HALFCOST and INOFFENSIVE',
   },
+  'SS:Bull Shark': {
+    materialCost: 640_000, blueprintCost: 898_000,
+    keywords: ['blocker', 'subScreen'], vehicleType: 'ship',
+    cardText: 'Whenever this survives an offensive fleet battle, deal 200k damage to enemy base in this zone',
+  },
 }
 
 describe('2026-09-02 balance pass — SS', () => {

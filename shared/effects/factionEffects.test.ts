@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { CATALOG_EFFECTS, RESOLVE_BYSTANDER_EFFECTS, effectFor, registerEffect } from './registry.ts'
 import { choice } from './primitives.ts'
-import { KEYWORDS, TYR_HAND_DISCOUNT } from '../gameSettings.ts'
+import { BASE_DAMAGE_DIVISOR, BULL_SHARK_BASE_DAMAGE, KEYWORDS, TYR_HAND_DISCOUNT } from '../gameSettings.ts'
 import { inst, makeCtx, makeGame, snap, zoneEntry } from '../engine/testFixtures.ts'
 import {
   applyAction, declareForcedBattle, discardSnapshotOf, effectiveCostInGame, effectiveMaterialCostOf,
@@ -6316,5 +6316,69 @@ describe('SS Tyr — a discount that grows in your hand', () => {
   it('never raises the price', () => {
     expect(priceAt(2, 9)).toBe(950_000)
     expect(priceAt(5, Number.NaN)).toBe(950_000)
+  })
+})
+
+describe('SS Bull Shark — 200k to the base on an offensive win', () => {
+  const ctxFor = (over: Partial<BattleContext> = {}): BattleContext => ({
+    phase: 'resolve', zoneId: 1, isDefender: false, isParticipant: true,
+    forced: false, survived: true, won: true, casualties: [], ...over,
+  })
+  const fire = (battle: BattleContext) => {
+    const game = makeGame()
+    const hull = zoneEntry({ name: 'Bull Shark', vehicleType: 'ship' })
+    game.state.zones[0].cards.a.push(hull)
+    const ok = effectFor('bullSharkVictory')!({ game, actor: 'a', card: hull, ctx: makeCtx(), battle })
+    return { game, ok }
+  }
+
+  it('takes 200 HP off the enemy base in its own zone', () => {
+    const { game, ok } = fire(ctxFor())
+    expect(ok).toBe(true)
+    expect(game.state.zones[0].baseHp.b).toBe(1000 - BULL_SHARK_BASE_DAMAGE / BASE_DAMAGE_DIVISOR)
+    expect(game.state.zones[0].baseHp.a).toBe(1000)
+  })
+
+  it('does nothing on a DEFENSIVE win — the text says offensive', () => {
+    const { game, ok } = fire(ctxFor({ isDefender: true }))
+    expect(ok).toBe(true)
+    expect(game.state.zones[0].baseHp.b).toBe(1000)
+  })
+
+  it('does nothing when it did not survive', () => {
+    const { game } = fire(ctxFor({ survived: false }))
+    expect(game.state.zones[0].baseHp.b).toBe(1000)
+  })
+
+  // ⚠ ON_BATTLE_VICTORY is ALSO dispatched by ATTACK_ENEMY_BASE
+  // (dispatchBaseAttackVictory, phase 'baseAttack') — that is Plunderer's other
+  // half. A bombardment is not a fleet battle, so this must be inert there or
+  // every base attack Bull Shark joins deals 200 extra HP.
+  it('does nothing on a bombardment', () => {
+    const { game } = fire(ctxFor({ phase: 'baseAttack' }))
+    expect(game.state.zones[0].baseHp.b).toBe(1000)
+  })
+
+  it('cannot take a base below zero, and ends the game when the second falls', () => {
+    const game = makeGame()
+    game.state.zones[0].baseHp.b = 50
+    game.state.zones[1].baseHp.b = 0
+    const hull = zoneEntry({ name: 'Bull Shark', vehicleType: 'ship' })
+    game.state.zones[0].cards.a.push(hull)
+    effectFor('bullSharkVictory')!({ game, actor: 'a', card: hull, ctx: makeCtx(), battle: ctxFor() })
+    expect(game.state.zones[0].baseHp.b).toBe(0)
+    expect(game.status).toBe('complete')
+  })
+
+  // E-2b's shape: `participants` still holds a DESTROYED hull's entry at
+  // resolve, so the pass reaches a Bull Shark that just died. `survived` is
+  // false for it, but a hull that is off the board also has no zone to strike
+  // from — guard both rather than relying on one.
+  it('does nothing when the hull is no longer on the board', () => {
+    const game = makeGame()
+    const hull = zoneEntry({ name: 'Bull Shark', vehicleType: 'ship' })
+    const ok = effectFor('bullSharkVictory')!({ game, actor: 'a', card: hull, ctx: makeCtx(), battle: ctxFor() })
+    expect(ok).toBe(true)
+    expect(game.state.zones[0].baseHp.b).toBe(1000)
   })
 })

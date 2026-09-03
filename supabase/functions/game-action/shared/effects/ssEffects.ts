@@ -1,5 +1,6 @@
 import {
-  AIR_STRAFE_PREDATOR_COUNT, CATSHARK_MATERIALS, EXCALIBUR_COST_DELTA, KEYWORDS,
+  AIR_STRAFE_PREDATOR_COUNT, BASE_DAMAGE_DIVISOR, BULL_SHARK_BASE_DAMAGE, CATSHARK_MATERIALS,
+  EXCALIBUR_COST_DELTA, KEYWORDS,
   REPAIRMEN_READY_DRAW_MAX_COST, RHEA_MAX_PLANE_COST, SACRILEGO_HP_BOOST,
   SURVIVE_HP_PERCENT, TYR_HAND_DISCOUNT, VEHICLE_TYPES,
 } from '../gameSettings.ts'
@@ -10,7 +11,7 @@ import {
 import { registerCostModifier, registerEffect } from './registry.ts'
 import type { EffectPayload } from './registry.ts'
 import type { EngineGame, Side, ZoneCardEntry } from '../engine/engineTypes.ts'
-import { findVehicle, otherSide, putInHand, zoneById } from '../engine/gameEngine.ts'
+import { checkVictory, findVehicle, otherSide, putInHand, zoneById } from '../engine/gameEngine.ts'
 import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
 
 // SS built-in card effects.
@@ -542,4 +543,38 @@ registerCostModifier('tyrCostModifier', (_state, _side, card, turnNumber) => {
   const entered = card.handEnteredTurn
   if (typeof entered !== 'number' || !Number.isFinite(entered)) return 0
   return -TYR_HAND_DISCOUNT * Math.max(0, Math.floor(turnNumber - entered))
+})
+
+// "Whenever this survives an offensive fleet battle, deal 200k damage to enemy
+// base in this zone." vengefulBattle (tgEffects.ts) is the worked example,
+// including the checkVictory call — this is a route to a base reaching 0 that
+// ATTACK_ENEMY_BASE's own call cannot cover.
+//
+// ⚠ THE 'baseAttack' GATE IS LOAD-BEARING. ON_BATTLE_VICTORY is dispatched
+// from TWO places: dispatchBattleResolve (a real battle) and
+// dispatchBaseAttackVictory (a bombardment, phase 'baseAttack' — Plunderer's
+// other half, spec §4.3 DP2 departure 5). A bombardment is not a fleet battle,
+// so without `phase === 'resolve'` this would add 200 HP to every base attack
+// Bull Shark took part in.
+//
+// `!isDefender` is the word "offensive". `won` needs no gate: this key is
+// dispatched only for the side that won.
+registerEffect('bullSharkVictory', ({ game, actor, card, battle }) => {
+  if (!battle || battle.phase !== 'resolve') return true
+  if (battle.isDefender || !battle.survived) return true
+  const found = findVehicle(game.state, card.instanceId)
+  // A hull that is off the board has no zone to strike from. `participants`
+  // still holds a destroyed entry at resolve (ruling E-2b), and while
+  // `survived` already excludes that case, the board is the authority on where
+  // the damage lands.
+  if (!found || found.side !== actor) return true
+  const enemy = otherSide(actor)
+  const damage = Math.floor(BULL_SHARK_BASE_DAMAGE / BASE_DAMAGE_DIVISOR)
+  found.zone.baseHp[enemy] = Math.max(0, found.zone.baseHp[enemy] - damage)
+  game.state.log.push(
+    `${card.name} shells the enemy base in zone ${found.zone.id} for ${damage} (${found.zone.baseHp[enemy]} HP remains)`,
+  )
+  if (found.zone.baseHp[enemy] === 0) game.state.log.push(`Zone ${found.zone.id} has fallen`)
+  checkVictory(game)
+  return true
 })

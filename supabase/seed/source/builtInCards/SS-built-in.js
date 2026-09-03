@@ -551,6 +551,24 @@ export const ssVehicles = [
             },
         }
     },
+    {
+        name: 'Bull Shark',
+        isBuiltIn: true,
+        cardText: 'Whenever this survives an offensive fleet battle, deal 200k damage to enemy base in this zone',
+        materialCost: 640000,
+        blueprintCost: 898000,
+        cpCost: 0,
+        imageUrl: 'bullShark.png',
+        playerId: null,
+        vehicleType: 'ship',
+        type: 'vehicle',
+        faction: FACTIONS.SS,
+        blueprintId: null,
+        keywords: [KEYWORDS.BLOCKER, KEYWORDS.SUB_SCREEN],
+        meta: {
+            [TRIGGERS.ON_BATTLE_VICTORY]: 'bullSharkVictory',
+        }
+    },
 
 
 ];

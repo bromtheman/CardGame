@@ -42,6 +42,12 @@ export const ONGOING_ATTRITION_DAMAGE_PER_VEHICLE = 40_000
 // BASE_DAMAGE_DIVISOR: 40k is 40 HP of a default 1000.
 export const VENGEFUL_BASE_DAMAGE = 40_000
 
+// SS Bull Shark: "deal 200k damage to enemy base in this zone". Its OWN
+// constant, for the reason VENGEFUL_BASE_DAMAGE's comment records above — two
+// figures that are equal by coincidence must not share one. Materials, so it
+// converts through BASE_DAMAGE_DIVISOR: 200k is 200 HP of a default 1000.
+export const BULL_SHARK_BASE_DAMAGE = 200_000
+
 // Ambush: "position your ships 600m closer to the enemy". Its own constant
 // rather than a reuse of the hero power's: the two are equal by coincidence,
 // and Ambush deliberately does NOT spend distanceModifiedBy (spec §7.3).
