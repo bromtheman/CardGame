@@ -250,8 +250,17 @@ export interface CustomBattleFile {
 
 const NEUTRAL_FLEET_COLORS = ['0,0,0,0', '0,0,0,0', '0,0,0,0', '0,0,0,0']
 
-/** Spec §3.5's spawn sheet: "surface vessels/subs at surface, aircraft at 80 m". */
-export const AIRCRAFT_SPAWN_ALTITUDE_M = 80
+/**
+ * Spec §3.5's spawn sheet: "surface vessels/subs at surface, aircraft at
+ * altitude". Retuned 80 → 160 on 2026-09-02; the spec still prints 80 m and is
+ * the one remaining reader of the old value.
+ *
+ * ⚠ Every player-facing statement of this altitude must DERIVE from this
+ * constant, never restate it. The 80 → 160 change left a hard-coded literal in
+ * customBattle.test.ts and a hard-coded sentence in BattleOverlay.tsx, so the
+ * battle panel told players 80 m while the generated file said 160.
+ */
+export const AIRCRAFT_SPAWN_ALTITUDE_M = 160
 
 /**
  * Yaw applied to every hull on the attacking side, in degrees.
