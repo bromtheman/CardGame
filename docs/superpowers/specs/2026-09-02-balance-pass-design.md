@@ -552,6 +552,30 @@ They are **expected failures, not regressions** — each is updated in place by
 the wave that causes it (§2.3), and a wave that meets one unprepared will waste
 time treating it as a bug.
 
+⚠ **This inventory is a starting point, not a complete list. Derive your wave's
+breakage empirically; do not trust the tables below to be exhaustive.**
+
+The list said "one file", was corrected to "three", and is still short. DWG's
+wave found two more outside all three named files — `shared/engine/placement.test.ts`
+(a hard-coded `-50000` where `MARAUDER_DISCOUNT` was expected) and
+`shared/effects/dwgEffects.test.ts`. WF's wave reached the same conclusion
+independently.
+
+The cause is structural, so it will keep happening: **a hard-coded literal that
+duplicates a constant's value is invisible to a grep for that constant's name.**
+Enumerating readers of `FOO` finds none of the places that wrote `FOO`'s value
+by hand.
+
+So before closing a wave, sweep for the literal **values** you moved — every
+cost, threshold, keyword and cp price — across `shared/engine/`,
+`shared/effects/`, `supabase/seed/` and `frontend/src/`, not just for the
+identifiers naming them. Run the **full** `npx vitest run`; a targeted file run
+cannot show you what a sibling file pinned.
+
+The same shape bit §6.3, whose header says "12 updated" while its table lists
+11 — the missing row, `WF:Pontus`, appears only in the table below and in no
+plan.
+
 ⚠ **Three files carry them, not one.** This section originally named only
 `balancePass.test.ts`:
 
@@ -589,13 +613,23 @@ Five are standalone `it(...)` blocks:
 | Assertion | Broken by | Wave | Action |
 |---|---|---|---|
 | "Judgement carries the 1cp price its text prints" | `activateCpCost` 1 → 0 | WF | update |
-| "Harbringer draws from exactly the WF ships at or under 100k" | `HARBRINGER_GUEST_MAX_COST` is deleted with its last reader (§5) | WF | **delete** |
+| ~~"Harbringer draws from exactly the WF ships at or under 100k"~~ | ~~`HARBRINGER_GUEST_MAX_COST` is deleted with its last reader (§5)~~ | WF | ~~**delete**~~ → **leave alone** (see below) |
 | "Paladin surges UNDER 240k, granting halfCost and temporary" | Paladin drops `resourceSurge` entirely | SS | update |
 | "Victoria carries the 200k material price its text prints" | Victoria's activated ability becomes an on-play effect | SS | update |
 | "Double Up and Repairmen Ready print the thresholds their code enforces" | Repairmen Ready's text moves "AI vehicle" → "SS vehicle" (R-5); the Double Up half is unaffected | SS | update |
 
-Only the Harbringer one is deleted — its subject is retired and its constant
-goes with it. The other thirteen are rewritten to the new values.
+⚠ **Correction: the Harbringer row is NOT deleted, and nothing in this table is.**
+Its premise was that `HARBRINGER_GUEST_MAX_COST` goes with its last reader — but
+R-8's own table **keeps** that constant, because `harbringerPool` still reads it
+and the retired-but-seeded Harbringer row still names `harbringerBattle` (§5).
+Deleting the constant fails `tsc`; deleting the assertion removes the only guard
+on a constant three sections keep. WF's wave also established that the assertion
+would not have gone red anyway: Buzzsaw at 75k is still ≤100k and Earth Raker
+does not move, so the pool is unchanged.
+
+So: **thirteen rows are rewritten to the new values, and the Harbringer row is
+left exactly as Wave 0 rewrote it** (it now calls `poolEligible`). That makes
+this a table of 13 updates and 0 deletions, not 13 and 1.
 
 ⚠ Four cards move but keep their `CARDS` row intact, because the row pins only
 the five fields above and the change is elsewhere: `SS:Paladin` and
