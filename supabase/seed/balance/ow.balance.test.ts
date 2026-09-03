@@ -41,6 +41,11 @@ const CARDS: Record<string, Expected> = {
     materialCost: 450_000, blueprintCost: 848_000, keywords: ['blocker'],
     vehicleType: 'ship', cardText: '',
   },
+  'OW:The Onyx Throne': {
+    materialCost: 500_000, blueprintCost: 492_482,
+    keywords: ['blocker', 'inoffensive'], vehicleType: 'ship',
+    cardText: 'Whenever this vehicle would partake in a defensive battle, spawn an allied parapet to fight alongside it. Once per turn, you may pay 1cp to draw a GT heavy airship card.',
+  },
 }
 
 describe('2026-09-02 balance pass — OW', () => {
@@ -80,5 +85,18 @@ describe('2026-09-02 balance pass — OW', () => {
   it('Bulwark carries no onPlayEffect any more — the 2cp is gone with the text', async () => {
     const bulwark = (await bySeedKey()).get('OW:Bulwark')!
     expect(bulwark.meta ?? {}).toEqual({})
+  })
+
+  // Both keys, or the card has a registered ability and no way to press it:
+  // ACTIVATE_VEHICLE requires onActivate AND activateCpCost, and BoardZone
+  // gates the board's "use" button on the same pair. A text-only edit is
+  // exactly the change most likely to take a meta key with it by accident —
+  // the 2026-08-30 pass did it to Braveheart.
+  it('The Onyx Throne keeps both clauses its reworded text still promises', async () => {
+    expect((await bySeedKey()).get('OW:The Onyx Throne')!.meta).toMatchObject({
+      onBattleEffect: 'onyxThroneBattle',
+      onActivate: 'onyxThroneActivate',
+      activateCpCost: 1,
+    })
   })
 })
