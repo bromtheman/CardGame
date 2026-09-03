@@ -97,7 +97,7 @@ describe('drawFromPool-backed cards', () => {
     },
   )
 
-  it.each(['halberdOnDeath', 'jormangundOnDeath', 'partisanEffect'])(
+  it.each(['halberdOnDeath', 'jormangundOnDeath', 'partisanEffect', 'brandistockOnDeath'])(
     '%s draws a GT airship',
     (name) => {
       const game = makeGame()
@@ -5919,5 +5919,32 @@ describe('TG Duel — E-10, an Inoffensive hull cannot be sent to duel', () => {
     const done = applyAction(hop1.game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'foe1' }, makeCtx())
     if (!done.ok) throw new Error(done.error)
     expect(done.game.state.activeBattle?.defenderIds).toEqual(['foe1'])
+  })
+})
+
+describe('2026-09-02 balance pass — OW', () => {
+  // R-6 (2026-09-02 spec §3). Brandistock prints Halberd's sentence word for
+  // word and is registered under its OWN id anyway. Reusing 'halberdOnDeath'
+  // is the Kraken/Paddlegun collision: the NAME is frozen into every dealt
+  // game's snapshot, while the code behind it is redeployed for all of them at
+  // once — so a shared name silently rebinds one card the moment the other is
+  // registered. Sharing the `gtAirship` CLOSURE is not the same thing and is
+  // fine; the three names above already do it.
+  it('brandistockOnDeath and halberdOnDeath are two independent registrations', () => {
+    expect(effectFor('brandistockOnDeath')).toBeDefined()
+    expect(effectFor('halberdOnDeath')).toBeDefined()
+  })
+
+  // Spec §7.1. A missing { needsCatalog: true } is invisible to every other test
+  // in this file, because makeCtx hands each one a hand-built catalog. In
+  // production game-action fetches the catalog ONLY for names in this set, so
+  // without the flag the effect runs against an empty one, finds no GT airship,
+  // and 400s on every real play: green suite, dead card. Asserted off the derived
+  // set at runtime, which is the only check that reads what was really
+  // registered rather than what a comment claims.
+  describe('catalog-minting death triggers carry needsCatalog', () => {
+    it.each(['brandistockOnDeath', 'halberdOnDeath', 'jormangundOnDeath', 'partisanEffect'])(
+      '%s', (name) => { expect(CATALOG_EFFECTS.has(name)).toBe(true) },
+    )
   })
 })

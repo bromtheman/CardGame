@@ -105,6 +105,14 @@ const gtAirship = drawFromPool({
 registerEffect('halberdOnDeath', gtAirship, { needsCatalog: true })
 registerEffect('jormangundOnDeath', gtAirship, { needsCatalog: true })
 registerEffect('partisanEffect', gtAirship, { needsCatalog: true })
+// Brandistock (2026-09-02 balance pass, spec §6.2) prints Halberd's sentence
+// verbatim — "When this card is destroyed, draw a random GT Airship" — and
+// still gets its own id, per R-6. Sharing the CLOSURE above is what the three
+// names already do and costs nothing; sharing a NAME would be the
+// Kraken/Paddlegun collision, because the name is what a dealt game's frozen
+// snapshot carries and the implementation behind it is redeployed for every
+// live game at once.
+registerEffect('brandistockOnDeath', gtAirship, { needsCatalog: true })
 
 // OW has no built-in submarines, so a player's only subs are custom cards in
 // their own deck — which is why the card says "if you have one".

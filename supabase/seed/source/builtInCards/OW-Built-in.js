@@ -343,6 +343,28 @@ export const owVehicles = [
         }
     },
     {
+        // New in the 2026-09-02 balance pass (spec §6.2). Its text is Halberd's
+        // word for word; its registry id is its OWN — see R-6, and
+        // shared/effects/owEffects.ts, where brandistockOnDeath is registered
+        // beside halberdOnDeath rather than aliased to it.
+        name: 'Brandistock',
+        isBuiltIn: true,
+        cardText: 'When this card is destroyed, draw a random GT Airship',
+        materialCost: 250000,
+        blueprintCost: 258000,
+        cpCost: 0,
+        imageUrl: 'brandistock.png',
+        playerId: null,
+        vehicleType: VEHICLE_TYPES.SHIP,
+        type: 'vehicle',
+        faction: FACTIONS.OW,
+        blueprintId: null,
+        keywords: [KEYWORDS.SUB_SCREEN],
+        meta: {
+            [TRIGGERS.ON_DEATH]: 'brandistockOnDeath',
+        }
+    },
+    {
         name: 'Mandrel',
         isBuiltIn: true,
         cardText: 'When played, draw a card',
