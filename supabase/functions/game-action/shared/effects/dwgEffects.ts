@@ -1,7 +1,7 @@
 import {
   BASE_DAMAGE_DIVISOR, ONGOING_ATTRITION_DAMAGE_PER_VEHICLE,
   DOUBLE_UP_MAX_COST, DWG_WATERS_GUEST_MAX_COST, FLYING_SQUIRREL_ATTACK_COUNT,
-  HERO_POWER_LABELS, KEYWORDS, MARAUDER_DISCOUNT, RESERVES_CARD_COUNT, VEHICLE_TYPES,
+  HERO_POWER_LABELS, KEYWORDS, RESERVES_CARD_COUNT, VEHICLE_TYPES,
 } from '../gameSettings.ts'
 import type { EngineContext, EngineGame, Side, ZoneCardEntry } from '../engine/engineTypes.ts'
 import type { SnapshotCard } from '../engine/gameInit.ts'
@@ -24,19 +24,17 @@ const drawPlusCp = ({ game, actor, ctx }: EffectPayload): boolean => {
 }
 registerEffect('crossbonesOnPlay', drawPlusCp)
 
-// "When this vehicle is played, draw a vehicle card from the enemy deck
-// reduce its cost by 50k." The ported implementation aliased this to
-// Crossbones' own-deck draw plus 1 CP; card text is authoritative
-// (spec 2 §6), so that ruling is superseded.
-registerEffect('marauderOnPlay', ({ game, actor, ctx }) => {
-  const before = game.privates[actor].hand.length
-  takeFromEnemyDeck(game, actor, ctx, (c) => c.type === 'vehicle')
-  const taken = game.privates[actor].hand[before]
-  if (!taken) return true
-  const current = typeof taken.meta.costDelta === 'number' ? taken.meta.costDelta : 0
-  taken.meta = { ...taken.meta, costDelta: current - MARAUDER_DISCOUNT }
-  return true
-})
+// "When this vehicle is played, draw a vehicle card from the enemy deck."
+// The ported implementation aliased this to Crossbones' own-deck draw plus
+// 1 CP; card text is authoritative (spec 2 §6), so that ruling is superseded.
+//
+// The 2026-09-02 balance pass removed the trailing "reduce its cost by 50k"
+// clause and raised Marauder 40k -> 55k, which is why nothing stamps a
+// costDelta here any more and MARAUDER_DISCOUNT is gone (2026-09-02 spec §6.1,
+// R-8). The whole card is now the capture: takeFromEnemyDeck resyncs both
+// sides' counts and never names the card it moves into a hidden hand.
+registerEffect('marauderOnPlay', ({ game, actor, ctx }) =>
+  takeFromEnemyDeck(game, actor, ctx, (c) => c.type === 'vehicle'))
 
 registerEffect('ransackOnPlay', grant({ draw: 1, cp: 1 }))
 registerEffect('paddlegunEffect', grant({ draw: 1, from: 'enemy' }))

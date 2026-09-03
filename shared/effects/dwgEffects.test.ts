@@ -24,6 +24,20 @@ describe('marauderOnPlay', () => {
     effectFor('marauderOnPlay')!({ game, actor: 'a', card: inst(), ctx: makeCtx() })
     expect(game.state.resources.a.cp).toBe(3)
   })
+
+  // The discriminating test: an implementation that merely swapped the constant
+  // for 0 would still rewrite meta and pass the assertion above. This one fails
+  // unless the arithmetic is gone — `current - 50_000` on a card already
+  // carrying -30_000 reads -80_000.
+  it('leaves a costDelta the captured card already carried exactly as it was', () => {
+    const game = makeGame()
+    game.privates.b.deck.push(
+      inst({ name: 'Discounted Ship', type: 'vehicle', meta: { costDelta: -30_000 } }),
+    )
+    game.state.counts.b.deck = 1
+    effectFor('marauderOnPlay')!({ game, actor: 'a', card: inst(), ctx: makeCtx() })
+    expect(game.privates.a.hand[0].meta.costDelta).toBe(-30_000)
+  })
 })
 
 describe('crossbonesOnPlay', () => {
@@ -1126,7 +1140,7 @@ describe('wave 5 — Ongoing Attrition', () => {
 // inherit the copy model. Pinned per card so a future branch in one of them
 // cannot quietly revert to moving the card.
 describe('enemy-deck capture is a copy, for all three cards', () => {
-  it('marauderOnPlay copies a vehicle, discounts it 50k, and leaves the deck intact', () => {
+  it('marauderOnPlay copies a vehicle at full price, and leaves the deck intact', () => {
     const game = makeGame()
     game.privates.b.deck.push(
       inst({ name: 'Enemy Ability', type: 'ability' }),
@@ -1135,7 +1149,10 @@ describe('enemy-deck capture is a copy, for all three cards', () => {
     game.state.counts.b.deck = 2
     effectFor('marauderOnPlay')!({ game, actor: 'a', card: inst(), ctx: makeCtx() })
     expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Enemy Ship'])
-    expect(game.privates.a.hand[0].meta.costDelta).toBe(-50_000)
+    // The 2026-09-02 pass paid for the 50k discount with 15k of printed cost
+    // (40k -> 55k) and dropped the clause from the card text. No stamp at all
+    // now — not a zero one, which would still read as a deliberate discount.
+    expect(game.privates.a.hand[0].meta.costDelta).toBeUndefined()
     expect(game.privates.a.hand[0].meta.capturedCopy).toBe(true)
     expect(game.privates.b.deck.map((c) => c.name)).toEqual(['Enemy Ability', 'Enemy Ship'])
     expect(game.state.counts.b.deck).toBe(2)

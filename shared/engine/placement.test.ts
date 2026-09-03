@@ -152,7 +152,7 @@ describe('additionalSpawns', () => {
 })
 
 describe('play-pipeline effect dispatch', () => {
-  it('vehicle with onPlayEffect marauderOnPlay takes an enemy vehicle and discounts it by 50k after deploy', () => {
+  it('vehicle with onPlayEffect marauderOnPlay takes an enemy vehicle at full price after deploy', () => {
     const { g, card } = withHand({ vehicleType: 'ship', materialCost: 10000, meta: { onPlayEffect: 'marauderOnPlay' } })
     g.privates.b.deck.push(inst({ name: 'Enemy Ship', type: 'vehicle', materialCost: 200000 }))
     g.state.counts.b.deck = 1
@@ -160,7 +160,9 @@ describe('play-pipeline effect dispatch', () => {
     if (!r.ok) throw new Error(r.error)
     expect(r.game.state.zones[0].cards.a).toHaveLength(1)
     expect(r.game.privates.a.hand.map((c) => c.name)).toEqual(['Enemy Ship'])
-    expect(r.game.privates.a.hand[0].meta.costDelta).toBe(-50000)
+    // The 2026-09-02 pass paid for the 50k discount with 15k of printed cost
+    // (40k -> 55k) and dropped the clause. No costDelta stamp at all now.
+    expect(r.game.privates.a.hand[0].meta.costDelta).toBeUndefined()
     expect(r.game.state.resources.a.cp).toBe(3) // unchanged — Marauder's card text grants no CP
   })
 

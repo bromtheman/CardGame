@@ -166,7 +166,6 @@ export const JUDGEMENT_DISCOUNT = 100_000
 // a defensive loss, which the card does not say (spec §7.3, wave 6).
 export const PURIFIER_LOSS_WINDOW_TURNS = 1
 
-export const MARAUDER_DISCOUNT = 50_000  // Marauder: enemy vehicle costs 50k less
 export const EXCALIBUR_COST_DELTA = -200_000 // Excalibur: AI ship in hand costs 200k less
 export const REPAIRMEN_READY_DRAW_MAX_COST = 400_000 // Repairmen Ready draws below this
 
