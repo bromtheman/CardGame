@@ -889,18 +889,9 @@ describe('wave 3 — forced battles', () => {
       expect(game.state.zones[0].lastActivatedTurn).toBeNull() // not a zone activation
     })
 
-    it('rejects a non-ship target', () => {
-      const game = makeGame()
-      const target = zoneEntry({ instanceId: 'foe-1', name: 'Foe Plane', vehicleType: 'plane', isBuiltIn: true })
-      game.state.zones[0].cards.b.push(target)
-      const ok = effectFor('airStrafeEffect')!({
-        game, actor: 'a', card: inst({ name: 'Air Strafe' }),
-        ctx: makeCtx({ catalog }), targetInstanceId: target.instanceId,
-      })
-      expect(ok).toBe(false)
-      expect(game.state.activeBattle).toBeNull()
-      expect(game.state.pendingEffect).toBeNull()
-    })
+    // Superseded by the it.each block below (2026-09-02 §6.5 widened the
+    // target from "ship" to any enemy vehicle, so a plane is now legal) —
+    // that block's 'strikes an enemy plane' case covers what this asserted.
 
     it('rejects a friendly target', () => {
       const game = makeGame()
@@ -912,6 +903,32 @@ describe('wave 3 — forced battles', () => {
       })
       expect(ok).toBe(false)
       expect(game.state.activeBattle).toBeNull()
+    })
+
+    // The target widened from "ship" to any vehicle (2026-09-02 §6.5). The old
+    // filter is shared by options(), the immediate resolve branch and
+    // re-entry's re-validation, so this covers all three.
+    it.each(['sub', 'plane', 'airship', 'tank'])('strikes an enemy %s', (vehicleType) => {
+      const game = makeGame()
+      const target = zoneEntry({ name: 'Prey', vehicleType, isBuiltIn: true })
+      game.state.zones[0].cards.b.push(target)
+      const ok = effectFor('airStrafeEffect')!({
+        game, actor: 'a', card: inst({ name: 'Air Strafe' }),
+        ctx: makeCtx({ catalog: [snap({ name: 'PredatorX', faction: 'SS', vehicleType: 'plane' })] }),
+        targetInstanceId: target.instanceId,
+      })
+      expect(ok).toBe(true)
+      expect(game.state.activeBattle?.defenderIds).toEqual([target.instanceId])
+    })
+
+    it('still refuses a FRIENDLY vehicle', () => {
+      const game = makeGame()
+      const mine = zoneEntry({ name: 'Mine', vehicleType: 'sub' })
+      game.state.zones[0].cards.a.push(mine)
+      expect(effectFor('airStrafeEffect')!({
+        game, actor: 'a', card: inst({ name: 'Air Strafe' }), ctx: makeCtx(),
+        targetInstanceId: mine.instanceId,
+      })).toBe(false)
     })
 
     it('a player-design target suspends offering exactly Hydra and Cyclone, and declares no battle yet', () => {

@@ -71,6 +71,10 @@ const CARDS: Record<string, Expected> = {
     materialCost: 60_000, blueprintCost: 63_300, keywords: [], vehicleType: 'ship',
     cardText: 'When this vehicle is played, draw an SS ship from your deck and reduce its cost by 40k',
   },
+  'SS:Air Strafe': {
+    materialCost: 150_000, blueprintCost: 0, keywords: [], vehicleType: null,
+    cardText: 'Choose an enemy vehicle, it fights alone against two predatorX. If the target is a player design, also spawn your choice of hydra or cyclone',
+  },
 }
 
 describe('2026-09-02 balance pass — SS', () => {

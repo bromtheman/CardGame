@@ -148,14 +148,14 @@ registerEffect('repairmenReadyEffect', sequence(
 
 const AIR_STRAFE = 'airStrafeEffect'
 
-// Enemy ships only — card text says "Choose an enemy ship", not the looser
-// "vehicle" other forced-battle cards use. Shared by the choice's options(),
-// its immediate (no-choice) resolve branch, and re-entry's re-validation.
+// Any enemy VEHICLE since the 2026-09-02 pass — the card text used to say "an
+// enemy ship" and now says "an enemy vehicle". Shared by the choice's
+// options(), its immediate (no-choice) resolve branch, and re-entry's
+// re-validation, so all three widened together.
 function legalTarget(game: EngineGame, actor: Side, targetInstanceId: unknown) {
   if (typeof targetInstanceId !== 'string') return null
   const found = findVehicle(game.state, targetInstanceId)
   if (!found || found.side !== otherSide(actor)) return null
-  if (found.entry.vehicleType !== VEHICLE_TYPES.SHIP) return null
   return found
 }
 

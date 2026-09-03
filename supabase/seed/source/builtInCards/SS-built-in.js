@@ -57,8 +57,8 @@ export const ssVehicles = [
     {
         name: 'Air Strafe',
         isBuiltIn: true,
-        cardText: 'Choose an enemy ship, it fights alone against two predatorX. If the target is a player design, also spawn your choice of hydra or cyclone',
-        materialCost: 180000,
+        cardText: 'Choose an enemy vehicle, it fights alone against two predatorX. If the target is a player design, also spawn your choice of hydra or cyclone',
+        materialCost: 150000,
         blueprintCost: 0,
         cpCost: 0,
         imageUrl: 'airStrafe.png',
