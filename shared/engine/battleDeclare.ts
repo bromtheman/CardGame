@@ -62,12 +62,15 @@ export function deployOrderFor(
 // That ordering is load-bearing, not stylistic. A DP2 lock trigger may call
 // joinBattle, which pushes onto battle.attackerIds/defenderIds and therefore
 // onto lockRoster's output: The Onyx Throne's Parapet, Dryad, Obelisk's Mirth
-// Swarm and TG's vengefulBattle all join INSIDE the dispatch. Derived before
-// it, this note would read a roster that no longer exists by the time the
-// battle is staged — a hull joining with an opposing directive would cancel the
-// order on the spawn sheet, which reads the final roster, while this stayed
-// silent, and the one case the line exists to explain would be the one case it
-// missed.
+// Swarm and TG's factory escort (havocFactoryEffect/mirthFactoryEffect, the
+// joinBattle inside tgEffects.ts's factory()) all join INSIDE the dispatch —
+// NOT vengefulBattle, which gates on battle.phase === 'resolve' and never
+// calls joinBattle at all (RESOLVE_BYSTANDER_EFFECTS has it, per
+// factionEffects.test.ts). Derived before it, this note would read a roster
+// that no longer exists by the time the battle is staged — a hull joining
+// with an opposing directive would cancel the order on the spawn sheet, which
+// reads the final roster, while this stayed silent, and the one case the line
+// exists to explain would be the one case it missed.
 //
 // Four further joinBattle callers (two in dwgEffects, one in wfEffects, and LH
 // Terawatt) sit inside a choice()'s resolve, so they join in a LATER action and
