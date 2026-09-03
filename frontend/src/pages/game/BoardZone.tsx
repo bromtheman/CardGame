@@ -1,11 +1,12 @@
 import type { ReactNode } from 'react'
 import type { ZoneState } from '@shared/engine/gameInit'
 import type { Side, ZoneCardEntry } from '@shared/engine/engineTypes'
-import { KEYWORDS, MAX_VEHICLES_PER_ZONE_SIDE, VEHICLE_TYPES, ZONE_TYPES } from '@shared/gameSettings'
+import { KEYWORDS, MAX_VEHICLES_PER_ZONE_SIDE, VEHICLE_TYPES } from '@shared/gameSettings'
 import { shortHandNumber } from '@shared/format'
 import { MiniVehicle } from './MiniVehicle'
 import type { ZoneEffectBadge, ZoneEffectIcon } from './zoneEffectBadges'
 import { LANE_GRID_COLUMNS, SLOT_HEIGHT_CLASS, SLOT_WIDTH_CLASS } from './laneLayout'
+import { BIOME_BORDER, BIOME_TINT } from '../../lib/biomeStyles'
 import anchorIcon from '../../assets/icons/anchorSVG.svg'
 import crosshairIcon from '../../assets/icons/crosshairSVG.svg'
 import torpedoIcon from '../../assets/icons/torpedoSVG.svg'
@@ -20,24 +21,6 @@ const ZONE_EFFECT_ICONS: Record<ZoneEffectIcon, string> = {
   noSubs: noSubsIcon,
   ghostShip: ship2Icon,
   shield: shieldIcon,
-}
-
-// With the biome word gone from the panel, these ARE the biome readout — so
-// they carry more contrast than the near-invisible 10% washes they replace. A
-// tinted border does most of the work: a low-opacity fill over a dark navy page
-// barely registers, an edge colour reads at a glance. Deliberately weaker than
-// the solid brass border + ring that marks a legal drop target, so a land zone
-// is never mistaken for a highlighted one.
-const BIOME_TINT: Record<string, string> = {
-  [ZONE_TYPES.WATER]: 'bg-ocean-600/30',
-  [ZONE_TYPES.BEACH]: 'bg-parchment-300/20',
-  [ZONE_TYPES.LAND]: 'bg-brass-400/20',
-}
-
-const BIOME_BORDER: Record<string, string> = {
-  [ZONE_TYPES.WATER]: 'border-ocean-300/50',
-  [ZONE_TYPES.BEACH]: 'border-parchment-300/60',
-  [ZONE_TYPES.LAND]: 'border-brass-400/45',
 }
 
 function HpBar({ label, hp, max, own = true, badge }: {
