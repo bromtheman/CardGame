@@ -226,6 +226,30 @@ registerEffect(LOATHING, choice({
   },
 }))
 
+// "When played, refresh all your hero powers and gain 1cp."
+//
+// ⚠ Deliberately not Kraken's shape. Kraken and SS Hydra refresh ONE power and
+// need choice(); "all" leaves nothing to choose. Skipping the suspension is a
+// real difference, not a shortcut: choice() DROPS a second offer made in the
+// same action, and Kraken keeps its CP through that only by granting it inside
+// resolve. Wonder never takes the slot, so its CP is unconditional by
+// construction.
+//
+// state.usedHeroPowers[side] is the only gate USE_HERO_POWER consults
+// (shared/engine/heroPowers.ts:131), so clearing the list IS the refresh.
+// The list is already in PublicGameState, so naming the refresh leaks nothing.
+registerEffect('wonderOnPlay', ({ game, actor, card }) => {
+  const used = game.state.usedHeroPowers[actor]
+  if (used.length > 0) {
+    game.state.usedHeroPowers[actor] = []
+    game.state.log.push(
+      `${card.name} refreshes every hero power for player ${actor.toUpperCase()}`,
+    )
+  }
+  game.state.resources[actor].cp += 1
+  return true
+})
+
 // "When this vehicle is played, sacrifice a target friendly AI vehicle in this
 // zone." Clause 1 (the deploy prerequisite) is a data key read by
 // legalZonesFor; this is clause 2.

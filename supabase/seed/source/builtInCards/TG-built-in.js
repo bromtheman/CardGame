@@ -483,5 +483,23 @@ export const tgVehicles = [
             [TRIGGERS.ON_PLAY]: 'loathingOnPlay',
         }
     },
+    {
+        name: 'Wonder',
+        isBuiltIn: true,
+        cardText: 'When played, refresh all your hero powers and gain 1cp',
+        materialCost: 700000,
+        blueprintCost: 865000,
+        cpCost: 0,
+        imageUrl: 'wonder.png',
+        playerId: null,
+        vehicleType: 'ship',
+        type: 'vehicle',
+        faction: FACTIONS.TG,
+        blueprintId: null,
+        keywords: [],
+        meta: {
+            [TRIGGERS.ON_PLAY]: 'wonderOnPlay',
+        }
+    },
 ];
 

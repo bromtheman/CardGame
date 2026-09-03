@@ -6687,3 +6687,76 @@ describe('TG Loathing — Inoffensive, in this zone only (2026-09-02)', () => {
     expect(CATALOG_EFFECTS.has('loathingOnPlay')).toBe(false)
   })
 })
+
+// ---------------------------------------------------------------------------
+// 2026-09-02 — TG Wonder. "When played, refresh all your hero powers and gain
+// 1cp."
+//
+// ⚠ Deliberately NOT Kraken's shape. Kraken refreshes ONE power and needs
+// choice(); Wonder refreshes all of them, so there is nothing to choose — and
+// taking no suspension slot means its CP can never be lost to another card's
+// offer in the same action (the failure choice()'s one-slot rule creates and
+// Kraken has to write around).
+describe('TG Wonder — refresh every hero power, then 1cp (2026-09-02)', () => {
+  const wonderCard = () => inst({
+    instanceId: 'wonder1', name: 'Wonder', faction: 'TG', type: 'vehicle',
+    vehicleType: 'ship', materialCost: 700_000, meta: { onPlayEffect: 'wonderOnPlay' },
+  })
+
+  const fire = (game: EngineGame) =>
+    effectFor('wonderOnPlay')!({ game, actor: 'a', card: wonderCard(), ctx: makeCtx(), targetZoneId: 1 })
+
+  it('clears every used power for its own side', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.usedHeroPowers.a = ['draw', 'salvage', 'tacticalPositioning']
+    expect(fire(game)).toBe(true)
+    expect(game.state.usedHeroPowers.a).toEqual([])
+  })
+
+  it('leaves the opponent’s used powers alone', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.usedHeroPowers.a = ['draw']
+    game.state.usedHeroPowers.b = ['salvage']
+    fire(game)
+    expect(game.state.usedHeroPowers.b).toEqual(['salvage'])
+  })
+
+  it('grants 1cp', () => {
+    const game = makeGame({ turnNumber: 3 })
+    const before = game.state.resources.a.cp
+    fire(game)
+    expect(game.state.resources.a.cp).toBe(before + 1)
+  })
+
+  // The tail runs either way — the same guarantee Kraken's empty-options path
+  // gives, reached here without a suspension at all.
+  it('still grants the cp when nothing was used', () => {
+    const game = makeGame({ turnNumber: 3 })
+    const before = game.state.resources.a.cp
+    expect(fire(game)).toBe(true)
+    expect(game.state.resources.a.cp).toBe(before + 1)
+  })
+
+  it('never suspends', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.usedHeroPowers.a = ['draw', 'salvage']
+    fire(game)
+    expect(game.state.pendingEffect).toBeNull()
+  })
+
+  // End to end: a power used and refused, then refreshed and accepted.
+  it('a refreshed power can actually be used again', () => {
+    const game = makeGame({ turnNumber: 3, activePlayer: 'alice' })
+    game.state.usedHeroPowers.a = ['draw']
+    game.privates.a.deck = [inst({ name: 'Spare' })]
+    const refused = applyAction(game, 'alice', { type: 'USE_HERO_POWER', power: 'draw' }, makeCtx())
+    expect(refused).toMatchObject({ ok: false })
+    fire(game)
+    const allowed = applyAction(game, 'alice', { type: 'USE_HERO_POWER', power: 'draw' }, makeCtx())
+    expect(allowed.ok).toBe(true)
+  })
+
+  it('does not need the catalog', () => {
+    expect(CATALOG_EFFECTS.has('wonderOnPlay')).toBe(false)
+  })
+})
