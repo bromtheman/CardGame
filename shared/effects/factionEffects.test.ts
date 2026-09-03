@@ -3,7 +3,7 @@ import { CATALOG_EFFECTS, RESOLVE_BYSTANDER_EFFECTS, effectFor, registerEffect }
 import { choice } from './primitives.ts'
 import {
   BASE_DAMAGE_DIVISOR, BULL_SHARK_BASE_DAMAGE, CASH_ADVANCE_MATERIALS, KEYWORDS,
-  MATERIALS_PER_TURN, TYR_HAND_DISCOUNT, VICTORIA_COST_DELTA,
+  MATERIALS_PER_TURN, RESOLUTE_COST_DELTA, TRONDHEIM_COST_DELTA, TYR_HAND_DISCOUNT, VICTORIA_COST_DELTA,
 } from '../gameSettings.ts'
 import { inst, makeCtx, makeGame, snap, zoneEntry } from '../engine/testFixtures.ts'
 import {
@@ -28,10 +28,10 @@ registerEffect('t_slotHog', choice({
 }))
 
 const DRAW_ONE = [
-  'mandrelOnPlay', 'rookOnPlay', 'resoluteOnPlay',
+  'mandrelOnPlay', 'rookOnPlay',
   'claymoreEffect', 'palisadeEffect', 'purifierEffect',
   'javelinOnDeath', 'ironMaidenOnDeath', 'victoriaOnDeath',
-  'trondheimOnDeath', 'coulombEffect',
+  'coulombEffect',
   // Wave 6. Basher: "When this is destroyed, draw a card". It prints no
   // keywords at all, so the standing prohibition on SCRAPPY + onDeathEffect
   // (docs/claude/card-effects.md) is clear.
@@ -6451,5 +6451,63 @@ describe('SS Cash advance — 150k and a card', () => {
     if (!r.ok) return
     expect(r.game.state.resources.a.cp).toBe(1)
     expect(r.game.state.destroyed.a.map((c) => c.name)).toEqual(['Cash advance'])
+  })
+})
+
+describe('SS Trondheim and Resolute — a discounted SS ship out of the deck', () => {
+  const deckOf = (game: EngineGame) => {
+    game.privates.a.deck.push(
+      inst({ name: 'SS Ship A', faction: 'SS', type: 'vehicle', vehicleType: 'ship', materialCost: 300_000 }),
+      inst({ name: 'SS Sub', faction: 'SS', type: 'vehicle', vehicleType: 'sub' }),
+      inst({ name: 'DWG Ship', faction: 'DWG', type: 'vehicle', vehicleType: 'ship' }),
+    )
+  }
+
+  it.each([
+    ['trondheimOnDeath', TRONDHEIM_COST_DELTA],
+    ['resoluteOnPlay', RESOLUTE_COST_DELTA],
+  ])('%s pulls an SS SHIP and stamps %i on it', (name, delta) => {
+    const game = makeGame()
+    deckOf(game)
+    expect(effectFor(name)!({ game, actor: 'a', card: inst(), ctx: makeCtx() })).toBe(true)
+    expect(game.privates.a.hand.map((c) => c.name)).toEqual(['SS Ship A'])
+    expect(game.privates.a.hand[0].meta.costDelta).toBe(delta)
+    expect(game.privates.a.deck.map((c) => c.name)).toEqual(['SS Sub', 'DWG Ship'])
+    expect(game.state.counts.a).toEqual({ hand: 1, deck: 2 })
+  })
+
+  // A deck pool is legitimately empty ("if you have one" is the shape of the
+  // card), so an empty one resolves rather than failing the play — which for
+  // Trondheim matters more than usual: a death effect that returns false logs
+  // a note but must not take the battle report down.
+  it.each(['trondheimOnDeath', 'resoluteOnPlay'])('%s resolves on an empty pool', (name) => {
+    const game = makeGame()
+    expect(effectFor(name)!({ game, actor: 'a', card: inst(), ctx: makeCtx() })).toBe(true)
+    expect(game.privates.a.hand).toHaveLength(0)
+  })
+
+  it('the drawn card is never named in the public log', () => {
+    const game = makeGame()
+    deckOf(game)
+    effectFor('resoluteOnPlay')!({ game, actor: 'a', card: inst(), ctx: makeCtx() })
+    expect(game.state.log.join('\n')).not.toContain('SS Ship A')
+  })
+
+  // Accumulates, matching costDelta()'s own contract, so a ship already
+  // discounted by Excalibur is discounted twice rather than reset.
+  it('adds to a discount the drawn card already carried', () => {
+    const game = makeGame()
+    game.privates.a.deck.push(inst({
+      name: 'Pre-cut', faction: 'SS', type: 'vehicle', vehicleType: 'ship',
+      meta: { costDelta: -10_000 },
+    }))
+    effectFor('resoluteOnPlay')!({ game, actor: 'a', card: inst(), ctx: makeCtx() })
+    expect(game.privates.a.hand[0].meta.costDelta).toBe(-10_000 + RESOLUTE_COST_DELTA)
+  })
+
+  // Spec §7.1's near miss: "it draws a card" is not the test. Both read the
+  // owner's DECK and never ctx.catalog, so neither may carry the flag.
+  it.each(['trondheimOnDeath', 'resoluteOnPlay'])('%s does NOT need the catalog', (name) => {
+    expect(CATALOG_EFFECTS.has(name)).toBe(false)
   })
 })

@@ -245,6 +245,13 @@ export const EXCRUCIATOR_COST_DELTA = -100_000
 // records as a reason to keep them apart.
 export const VICTORIA_COST_DELTA = -75_000
 
+// SS Trondheim: "draw an SS ship from your deck and reduce its cost by 75k".
+// Its own constant despite equalling VICTORIA_COST_DELTA — two figures equal by
+// coincidence do not share one.
+export const TRONDHEIM_COST_DELTA = -75_000
+// SS Resolute: the same clause at 40k.
+export const RESOLUTE_COST_DELTA = -40_000
+
 // Human-readable names for the seven hero powers, used wherever a power id
 // is shown to a player (Kraken's refresh choice).
 export const HERO_POWER_LABELS: Record<string, string> = {

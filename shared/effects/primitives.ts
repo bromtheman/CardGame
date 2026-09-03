@@ -102,6 +102,13 @@ export interface PoolSpec {
   // card), so a deck source defaults to allowEmpty — pass false to require a
   // match instead.
   allowEmpty?: boolean
+  // A per-instance discount stamped onto every card this pool delivers
+  // (SS Trondheim, SS Resolute — 2026-09-02 §6.5). ACCUMULATES onto whatever
+  // the card already carried, matching costDelta() above, so a ship already cut
+  // by Excalibur is cut twice rather than reset. Read only by
+  // effectiveCostInGame; it never reaches effectiveMaterialCostOf, so a
+  // discounted hull still deals its printed base damage.
+  costDelta?: number
 }
 
 // Cost filters read the printed materialCost — "base cost" in card text —
@@ -151,6 +158,13 @@ export function poolEligible(c: { meta: Record<string, unknown> }): boolean {
 export function drawFromPool(spec: PoolSpec): EffectFn {
   return ({ game, actor, ctx }) => {
     const allowEmpty = spec.allowEmpty ?? spec.source === 'deck'
+    // No-delta path returns the ORIGINAL object — byte-identical behaviour for
+    // every existing caller that never passes costDelta.
+    const stamped = (card: CardInstance): CardInstance => {
+      if (spec.costDelta === undefined) return card
+      const current = typeof card.meta.costDelta === 'number' ? card.meta.costDelta : 0
+      return { ...card, meta: { ...card.meta, costDelta: current + spec.costDelta } }
+    }
     if (spec.source === 'catalog') {
       const pool = ctx.catalog.filter((c) => c.isBuiltIn && poolEligible(c) && matches(c, spec.filter))
       if (pool.length === 0) {
@@ -159,11 +173,11 @@ export function drawFromPool(spec: PoolSpec): EffectFn {
         return true
       }
       for (const pick of shuffled(pool, ctx).slice(0, spec.count)) {
-        putInHand(game, actor, {
+        putInHand(game, actor, stamped({
           ...pick,
           instanceId: ctx.newId(),
           keywords: spec.strip ? pick.keywords.filter((k) => !spec.strip!.includes(k)) : pick.keywords,
-        })
+        }))
       }
     } else {
       const deck = game.privates[actor].deck
@@ -177,7 +191,7 @@ export function drawFromPool(spec: PoolSpec): EffectFn {
         const index = deck.findIndex((c) => c.instanceId === pick.instanceId)
         if (index < 0) continue
         const [card] = deck.splice(index, 1)
-        putInHand(game, actor, spec.strip ? { ...card, keywords: card.keywords.filter((k) => !spec.strip!.includes(k)) } : card)
+        putInHand(game, actor, stamped(spec.strip ? { ...card, keywords: card.keywords.filter((k) => !spec.strip!.includes(k)) } : card))
       }
       game.privates[actor].deck = deck
     }

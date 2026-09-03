@@ -63,6 +63,14 @@ const CARDS: Record<string, Expected> = {
     materialCost: 250_000, blueprintCost: 270_185, keywords: [], vehicleType: 'ship',
     cardText: 'When this vehicle is played, pick one SS ship in hand and reduce its cost by 75k',
   },
+  'SS:Trondheim': {
+    materialCost: 375_000, blueprintCost: 393_000, keywords: ['blocker'], vehicleType: 'ship',
+    cardText: 'When this vehicle is destroyed, draw an SS ship from your deck and reduce its cost by 75k',
+  },
+  'SS:Resolute': {
+    materialCost: 60_000, blueprintCost: 63_300, keywords: [], vehicleType: 'ship',
+    cardText: 'When this vehicle is played, draw an SS ship from your deck and reduce its cost by 40k',
+  },
 }
 
 describe('2026-09-02 balance pass — SS', () => {

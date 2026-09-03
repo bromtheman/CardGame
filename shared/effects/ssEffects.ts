@@ -2,8 +2,8 @@ import {
   AIR_STRAFE_PREDATOR_COUNT, BASE_DAMAGE_DIVISOR, BULL_SHARK_BASE_DAMAGE, CASH_ADVANCE_MATERIALS,
   CATSHARK_MATERIALS,
   EXCALIBUR_COST_DELTA, FACTIONS, KEYWORDS,
-  REPAIRMEN_READY_DRAW_MAX_COST, RHEA_MAX_PLANE_COST, SACRILEGO_HP_BOOST,
-  SURVIVE_HP_PERCENT, TYR_HAND_DISCOUNT, VEHICLE_TYPES, VICTORIA_COST_DELTA,
+  REPAIRMEN_READY_DRAW_MAX_COST, RESOLUTE_COST_DELTA, RHEA_MAX_PLANE_COST, SACRILEGO_HP_BOOST,
+  SURVIVE_HP_PERCENT, TRONDHEIM_COST_DELTA, TYR_HAND_DISCOUNT, VEHICLE_TYPES, VICTORIA_COST_DELTA,
 } from '../gameSettings.ts'
 import {
   catalogCard, costDelta, choice, drawFromPool, enemyVehicleOptions, grant, grantKeywords,
@@ -46,11 +46,25 @@ export function discountInHand(card: CardInstance, delta: number): void {
 }
 
 // SS built-in card effects.
-registerEffect('resoluteOnPlay', grant({ draw: 1 }))
 registerEffect('ironMaidenOnDeath', grant({ draw: 1 }))
 registerEffect('victoriaOnDeath', grant({ draw: 1 }))
-registerEffect('trondheimOnDeath', grant({ draw: 1 }))
 registerEffect('maelstromOnPlay', grant({ cp: 1 }))
+
+// "When this vehicle is destroyed, draw an SS ship from your deck and reduce
+// its cost by 75k." / Resolute's on-play twin at 40k.
+//
+// From the owner's DECK, not the catalog — which is why neither carries
+// { needsCatalog: true } (spec §7.1 names both as the near miss that "it draws
+// a card" would get wrong). A deck pool is legitimately empty, so
+// drawFromPool's allowEmpty default resolves rather than failing: a death
+// effect that returned false would log a failed trigger on every Trondheim that
+// dies with no SS ship left.
+registerEffect('trondheimOnDeath', drawFromPool({
+  source: 'deck', filter: SS_SHIP_FILTER, count: 1, costDelta: TRONDHEIM_COST_DELTA,
+}))
+registerEffect('resoluteOnPlay', drawFromPool({
+  source: 'deck', filter: SS_SHIP_FILTER, count: 1, costDelta: RESOLUTE_COST_DELTA,
+}))
 
 // "Whenever this vehicle is played into a zone, also create a friendly
 // Sacrilego in that zone." Spawning is not playing (spec §7.4), which skips

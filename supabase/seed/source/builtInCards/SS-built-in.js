@@ -39,9 +39,9 @@ export const ssVehicles = [
     {
         name: 'Trondheim',
         isBuiltIn: true,
-        cardText: 'When this vehicle is destroyed, draw a card',
-        materialCost: 400000,
-        blueprintCost: 403000,
+        cardText: 'When this vehicle is destroyed, draw an SS ship from your deck and reduce its cost by 75k',
+        materialCost: 375000,
+        blueprintCost: 393000,
         cpCost: 0,
         imageUrl: 'trodnheim.png',
         playerId: null,
@@ -194,7 +194,7 @@ export const ssVehicles = [
     }, {
         name: 'Resolute',
         isBuiltIn: true,
-        cardText: 'When this vehicle is played, draw a card',
+        cardText: 'When this vehicle is played, draw an SS ship from your deck and reduce its cost by 40k',
         materialCost: 60000,
         blueprintCost: 63300,
         cpCost: 0,
