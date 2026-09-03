@@ -58,9 +58,26 @@ export function deployOrderFor(
 // cancelled one leaves that sheet saying "normal order", and the player whose
 // card was answered would otherwise never learn why.
 //
-// Called after each declaration's own log line, so a reader gets
-// declare-then-note, and before dispatchBattleLock, so a trigger's lines
-// follow it.
+// Called LAST — after dispatchBattleLock, never before it (ruling R-WF-6).
+// That ordering is load-bearing, not stylistic. A DP2 lock trigger may call
+// joinBattle, which pushes onto battle.attackerIds/defenderIds and therefore
+// onto lockRoster's output: The Onyx Throne's Parapet, Dryad, Obelisk's Mirth
+// Swarm and TG's vengefulBattle all join INSIDE the dispatch. Derived before
+// it, this note would read a roster that no longer exists by the time the
+// battle is staged — a hull joining with an opposing directive would cancel the
+// order on the spawn sheet, which reads the final roster, while this stayed
+// silent, and the one case the line exists to explain would be the one case it
+// missed.
+//
+// Four further joinBattle callers (two in dwgEffects, one in wfEffects, and LH
+// Terawatt) sit inside a choice()'s resolve, so they join in a LATER action and
+// no placement in this function can see them. Nothing on those paths carries
+// deployOrder today; if one ever does, the note has to be recomputed where the
+// roster changes, not here.
+//
+// The price is that the note now follows a trigger's own log lines instead of
+// preceding them. Reading order, traded for saying the true thing. Do not
+// "tidy" it back above the dispatch.
 function noteDeployOrder(game: EngineGame): void {
   const note = deployOrderFor(lockRoster(game))
   if (!note?.cancelled) return
@@ -103,11 +120,13 @@ function lockBattle(
   game.state.log.push(
     `Fleet battle declared in zone ${zoneId} — ${attackerIds.length} vs ${defenderIds.length}. Fight it in From The Depths, then report results.`,
   )
-  noteDeployOrder(game)
   // DP2 at lock (spec §4.3). After the log line, so the order a player reads
   // is declare-then-trigger; `forced: false` because this IS the ordinary
   // fleet attack, which is what Terawatt's bystander rule excludes.
   dispatchBattleLock(game, ctx, false)
+  // Last, so the note is derived from the roster a trigger's joinBattle may
+  // just have grown. Never above the dispatch — see its definition.
+  noteDeployOrder(game)
 }
 
 // The only function that appends to a battle already in progress. Every other
@@ -202,7 +221,6 @@ export function declareForcedBattle(game: EngineGame, ctx: EngineContext, spec: 
   game.state.log.push(
     `${spec.cause} forces a battle in zone ${spec.zoneId} — ${spec.attackerIds.length} vs ${spec.defenderIds.length}. Fight it in From The Depths, then report results.`,
   )
-  noteDeployOrder(game)
   // DP2 at lock, with forced: true — which is what admits the bystander pass
   // (Terawatt, spec §4.3 DP2 departure 2). Fires only on the success path, so
   // a refused declaration triggers nothing. A trigger here MAY leave
@@ -210,6 +228,9 @@ export function declareForcedBattle(game: EngineGame, ctx: EngineContext, spec: 
   // (departure 3, decision 19); that is deliberate and safe — see
   // gameEngine.ts's applyAction, and shared/engine/battleFreeze.test.ts.
   dispatchBattleLock(game, ctx, true)
+  // Last, so the note is derived from the roster a trigger's joinBattle may
+  // just have grown. Never above the dispatch — see its definition.
+  noteDeployOrder(game)
   return true
 }
 

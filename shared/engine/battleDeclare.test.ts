@@ -658,11 +658,11 @@ describe('deployOrderFor', () => {
   // two seeded rows already carry trailing spaces in an effect name, which is
   // why `effectName` trims. This does NOT trim, matching its sibling
   // `defensiveOmission`; the seed-backed assertion in Task 3 is what catches it.
-  it.each(['First', 'fist', 'last ', '', 'FIRST'])('ignores the mistyped value %p', (value) => {
+  it.each(['First', 'fist', 'last ', '', 'FIRST'])('ignores the mistyped value %s', (value) => {
     expect(deployOrderFor([{ entry: carrier(value), side: 'a' }])).toBeNull()
   })
 
-  it.each([true, 1, null])('ignores the non-string value %p', (value) => {
+  it.each([true, 1, null])('ignores the non-string value %s', (value) => {
     expect(deployOrderFor([{ entry: carrier(value), side: 'a' }])).toBeNull()
   })
 })
