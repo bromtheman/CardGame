@@ -160,7 +160,7 @@ describe('the 26 TG faction cards (wave 7)', () => {
     'Havoc Factory': { materialCost: 120_000, blueprintCost: 0, vehicleType: null, type: A, keywords: [] },
     'Mirth Factory': { materialCost: 200_000, blueprintCost: 0, vehicleType: null, type: A, keywords: [] },
     Obelisk: { materialCost: 40_000, blueprintCost: 32_000, vehicleType: 'sub', type: V, keywords: ['stealthy'] },
-    Loathing: { materialCost: 260_000, blueprintCost: 268_000, vehicleType: 'ship', type: V, keywords: [] },
+    Loathing: { materialCost: 225_000, blueprintCost: 268_000, vehicleType: 'ship', type: V, keywords: [] },
   }
 
   it('seeds exactly 26 new cards, and 30 TG rows in total with the borrowed four', async () => {

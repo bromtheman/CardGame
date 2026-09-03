@@ -186,6 +186,41 @@ function fragileGrant(effect: string, prompt: string): EffectFn {
 const SPITE = 'spiteOnPlay'
 registerEffect(SPITE, fragileGrant(SPITE, 'Choose an enemy vehicle to make Fragile'))
 
+// "When played, target enemy vehicle in this zone, it gains inoffensive."
+//
+// Hysteria's grant with Alarmed's stash. Its OWN id rather than a reuse of
+// hysteriaOnPlay (spec R-6) — and here the two genuinely differ as well:
+// Hysteria offers the whole board, Loathing only the zone it landed in.
+//
+// ⚠ The `data` stash is not an optimisation. targetZoneId is a
+// first-entry-only field and RESOLVE_PENDING_EFFECT never sets it, so without
+// the stash resolve has no "this zone" to re-check against and the card
+// silently widens to Hysteria's scope.
+//
+// No placedInstanceIds exclusion is needed, unlike Alarmed's: the options are
+// the ENEMY's hulls, and this play placed none of those.
+const LOATHING = 'loathingOnPlay'
+registerEffect(LOATHING, choice({
+  effect: LOATHING,
+  prompt: 'Choose an enemy vehicle in this zone to make Inoffensive',
+  options: ({ game, actor, targetZoneId }) => (
+    typeof targetZoneId === 'number' ? enemyVehicleOptions(game, actor, targetZoneId) : []
+  ),
+  data: ({ targetZoneId }) => ({ zoneId: targetZoneId }),
+  resolve: ({ game, actor, pending }, choiceId) => {
+    if (choiceId === null) return true
+    const zoneId = pending?.data?.zoneId
+    if (typeof zoneId !== 'number') return false
+    const found = findVehicle(game.state, choiceId)
+    if (!found || found.side !== otherSide(actor) || found.zone.id !== zoneId) return false
+    if (!found.entry.keywords.includes(KEYWORDS.INOFFENSIVE)) {
+      found.entry.keywords = [...found.entry.keywords, KEYWORDS.INOFFENSIVE]
+    }
+    game.state.log.push(`${found.entry.name} is made Inoffensive`)
+    return true
+  },
+}))
+
 // "When this vehicle is played, sacrifice a target friendly AI vehicle in this
 // zone." Clause 1 (the deploy prerequisite) is a data key read by
 // legalZonesFor; this is clause 2.

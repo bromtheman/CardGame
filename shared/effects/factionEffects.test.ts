@@ -6544,3 +6544,91 @@ describe('TG Spite — grant an enemy vehicle FRAGILE (2026-09-02)', () => {
     expect(CATALOG_EFFECTS.has('spiteOnPlay')).toBe(false)
   })
 })
+
+// ---------------------------------------------------------------------------
+// 2026-09-02 — TG Loathing. Hysteria's grant, scoped to the played zone.
+//
+// ⚠ The zone MUST be stashed. targetZoneId is a first-entry-only field and
+// RESOLVE_PENDING_EFFECT never sets it, so resolve cannot re-derive "this
+// zone" — alarmedOnPlay carries the same stash for the same reason. Without
+// it the re-check silently degenerates to board-wide.
+describe('TG Loathing — Inoffensive, in this zone only (2026-09-02)', () => {
+  const loathingCard = () => inst({
+    instanceId: 'loath1', name: 'Loathing', faction: 'TG', type: 'vehicle',
+    vehicleType: 'ship', materialCost: 225_000, meta: { onPlayEffect: 'loathingOnPlay' },
+  })
+
+  const armed = () => {
+    const card = loathingCard()
+    const game = makeGame({
+      turnNumber: 3, activePlayer: 'alice',
+      privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } },
+    })
+    game.state.resources.a.materials = 900_000
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'here', name: 'Near Foe', playedOnTurn: 1 }))
+    game.state.zones[2].cards.b.push(zoneEntry({ instanceId: 'away', name: 'Far Foe', playedOnTurn: 1 }))
+    return { game, card }
+  }
+
+  const play = (game: EngineGame, card: CardInstance, zoneId = 1) => {
+    const r = applyAction(game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    return r.game
+  }
+
+  // Loathing's whole difference from Hysteria, in one assertion.
+  it('offers only the enemies in the zone it was played into', () => {
+    const { game, card } = armed()
+    expect(play(game, card).state.pendingEffect?.options?.map((o) => o.id)).toEqual(['here'])
+  })
+
+  it('suspends under its own registry name and stashes the zone', () => {
+    const { game, card } = armed()
+    const after = play(game, card)
+    expect(after.state.pendingEffect?.effect).toBe('loathingOnPlay')
+    expect(after.state.pendingEffect?.data?.zoneId).toBe(1)
+  })
+
+  it('makes the chosen hull Inoffensive', () => {
+    const { game, card } = armed()
+    const done = applyAction(
+      play(game, card), 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'here' }, makeCtx(),
+    )
+    if (!done.ok) throw new Error(done.error)
+    expect(findVehicle(done.game.state, 'here')!.entry.keywords).toContain(KEYWORDS.INOFFENSIVE)
+  })
+
+  // The stash is what makes this refusal possible. Without it, resolve has no
+  // "this zone" to compare against and a hull that moved away would still be
+  // granted the keyword.
+  it('refuses a hull that left the zone before the answer', () => {
+    const { game, card } = armed()
+    const suspended = play(game, card)
+    const [moved] = suspended.state.zones[0].cards.b.splice(0, 1)
+    suspended.state.zones[1].cards.b.push(moved)
+    const done = applyAction(suspended, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'here' }, makeCtx())
+    expect(done).toMatchObject({ ok: false, status: 400 })
+  })
+
+  it('resolves without suspending when the played zone holds no enemy', () => {
+    const { game, card } = armed()
+    const after = play(game, card, 2)
+    expect(after.state.pendingEffect).toBeNull()
+    expect(after.state.zones[1].cards.a.map((c) => c.name)).toContain('Loathing')
+  })
+
+  it('is idempotent', () => {
+    const { game, card } = armed()
+    findVehicle(game.state, 'here')!.entry.keywords.push(KEYWORDS.INOFFENSIVE)
+    const done = applyAction(
+      play(game, card), 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'here' }, makeCtx(),
+    )
+    if (!done.ok) throw new Error(done.error)
+    const kw = findVehicle(done.game.state, 'here')!.entry.keywords
+    expect(kw.filter((k) => k === KEYWORDS.INOFFENSIVE)).toHaveLength(1)
+  })
+
+  it('does not need the catalog', () => {
+    expect(CATALOG_EFFECTS.has('loathingOnPlay')).toBe(false)
+  })
+})

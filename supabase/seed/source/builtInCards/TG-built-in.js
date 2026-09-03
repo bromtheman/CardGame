@@ -450,8 +450,8 @@ export const tgVehicles = [
     }, {
         name: 'Loathing',
         isBuiltIn: true,
-        cardText: '',
-        materialCost: 260000,
+        cardText: 'When played, target enemy vehicle in this zone, it gains inoffensive',
+        materialCost: 225000,
         blueprintCost: 268000,
         cpCost: 0,
         imageUrl: 'vengeful.png',
@@ -462,6 +462,7 @@ export const tgVehicles = [
         blueprintId: null,
         keywords: [],
         meta: {
+            [TRIGGERS.ON_PLAY]: 'loathingOnPlay',
         }
     },
 ];
