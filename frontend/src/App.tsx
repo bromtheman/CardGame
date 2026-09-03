@@ -14,6 +14,7 @@ const CreateCardPage = lazy(() => import('./pages/CreateCardPage').then((m) => (
 const DecksPage = lazy(() => import('./pages/DecksPage').then((m) => ({ default: m.DecksPage })))
 const DeckBuilderPage = lazy(() => import('./pages/DeckBuilderPage').then((m) => ({ default: m.DeckBuilderPage })))
 const LobbiesPage = lazy(() => import('./pages/LobbiesPage').then((m) => ({ default: m.LobbiesPage })))
+const LobbyPage = lazy(() => import('./pages/LobbyPage').then((m) => ({ default: m.LobbyPage })))
 const GamesPage = lazy(() => import('./pages/GamesPage').then((m) => ({ default: m.GamesPage })))
 const GameBoardPage = lazy(() => import('./pages/game/GameBoardPage').then((m) => ({ default: m.GameBoardPage })))
 
@@ -49,22 +50,25 @@ function UserMenu() {
 }
 
 export default function App() {
-  // The battle board is the one route that owns the whole viewport: it is a
-  // fixed-height column sized so the board, hand, hero powers and resource
-  // figures all fit without scrolling, and the NavBar's ~65px is the
-  // difference between that fitting on a 1080p screen and not. The board's own
-  // command strip carries a "← Games" link in its place.
+  // The battle board is a fixed-height column sized so board, hand, hero powers
+  // and resource figures fit without scrolling, and the NavBar's ~65px is the
+  // difference between that fitting on a 1080p screen and not. The lobby joins
+  // it for a different reason: it is a full-screen staging room with its own
+  // command strip, and the site nav competes with it. Both routes carry a back
+  // link in the NavBar's place.
   const onGameBoard = useMatch('/game/:id') !== null
+  const onLobby = useMatch('/lobby/:id') !== null
 
   return (
     <AuthProvider>
-      {!onGameBoard && <NavBar right={<UserMenu />} />}
+      {!onGameBoard && !onLobby && <NavBar right={<UserMenu />} />}
       <Suspense fallback={<main className="p-12 text-center font-display text-2xl text-ocean-300">Charting a course…</main>}>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/signup" element={<SignupPage />} />
           <Route path="/" element={<RequireAuth><HomePage /></RequireAuth>} />
           <Route path="/lobbies" element={<RequireAuth><LobbiesPage /></RequireAuth>} />
+          <Route path="/lobby/:id" element={<RequireAuth><LobbyPage /></RequireAuth>} />
           <Route path="/games" element={<RequireAuth><GamesPage /></RequireAuth>} />
           <Route path="/game/:id" element={<RequireAuth><GameBoardPage /></RequireAuth>} />
           <Route path="/decks" element={<RequireAuth><DecksPage /></RequireAuth>} />

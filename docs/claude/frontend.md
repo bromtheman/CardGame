@@ -58,8 +58,25 @@ self-healing; **do not simplify away** any of these, each covers a real failure:
   reconnect. On SUBSCRIBED it invalidates all keys (missed-window catch-up).
 
 QueryClient is configured `{ refetchOnReconnect: 'always', retry: 2 }`. Call
-sites: GamesPage, LobbiesPage ×2, GameBoardPage ×2 — reuse the hook, don't
-hand-roll channels.
+sites: GamesPage, LobbiesPage ×2, GameBoardPage ×2, LobbyPage — reuse the hook,
+don't hand-roll channels.
+
+## Lobby room (`src/pages/LobbyPage.tsx`, `/lobby/:id`)
+
+Full-screen like the game board: `App.tsx` hides the site `NavBar` on both
+`/lobby/:id` and `/game/:id` (`useMatch`), and `LobbyPage` renders its own
+command strip in that place, shaped like the board's so the two routes read
+alike.
+
+Navigation off the page is **derived, not commanded**: `lobbyVerdict` (in
+`src/lib/lobbies.ts`) reads the realtime lobby row and decides `waiting` /
+`to-game` / `ejected` / `joinable` / `unavailable` — the page's effect just
+acts on whichever verdict comes back. That is what gets host and guest to the
+board by the same path (the host's `START` response is only a fast-path
+shortcut; the verdict effect would get them there anyway once `game_id`
+lands). `useLobbyQuery` also carries a `refetchInterval` (~12s) as a
+belt-and-suspenders fallback — the auto-navigation guarantee must hold even if
+a realtime channel never recovers, not only when it does.
 
 ## Game board (`src/pages/game/`)
 

@@ -1,0 +1,379 @@
+# Lobby screen redesign — design
+
+Status: approved 2026-09-02. Supersedes the inline lobby card on
+`LobbiesPage` described by the Phase 3 lobby flow.
+
+## 1. Problem
+
+The lobby "waiting screen" is a card embedded in the middle of the lobby
+browser. It shows a name, a settings summary and one line of prose
+("Waiting for an opponent…"). It does not say who is in the lobby, decks
+are bound before you ever get there, and only the host is navigated into
+the game when it starts — the guest's lobby silently disappears and they
+must find an "Enter game" button on the browser page.
+
+Target: a StarCraft II-style lobby. Seats you can read at a glance, deck
+choice made in the lobby, a picture of the battlefield you are about to
+fight over, and both players dropped onto the board when the host starts.
+
+## 2. Requirements
+
+- R-1 Both players see who occupies each seat, with their faction and
+  ready state.
+- R-2 Deck selection happens inside the lobby, not on the create or join
+  control.
+- R-3 Starting the game navigates **both** players to the board with no
+  further interaction.
+- R-4 The site nav bar is hidden on the lobby route; a command strip
+  carries a back link and lobby identity, mirroring the game board.
+- R-5 The lobby shows a miniature of the board, zone-for-zone, coloured
+  from the host's live settings.
+- R-6 The host may edit lobby settings from inside the lobby.
+- R-7 Readiness is explicit: each player toggles Ready, and the host can
+  only start when both are ready.
+- R-8 A player can never be started into settings they did not agree to.
+- R-9 The host may kick the guest.
+- R-10 Browser rows show host name, occupancy and a board miniature.
+
+Out of scope: lobby chat, spectators, more than two seats, avatars.
+
+## 3. Data model
+
+### 3.1 Migration
+
+`supabase/migrations/<timestamp>_lobby_ready_and_optional_decks.sql`:
+
+```sql
+alter table public.lobbies alter column host_deck_id drop not null;
+alter table public.lobbies add column host_ready    boolean not null default false;
+alter table public.lobbies add column guest_ready   boolean not null default false;
+alter table public.lobbies add column host_faction  text;
+alter table public.lobbies add column guest_faction text;
+```
+
+`host_deck_id` was `NOT NULL`, which is what forces deck choice onto the
+create form (R-2). It is not named in any RLS policy, so dropping the
+constraint needs no policy change on its own.
+
+### 3.1.1 Why the factions are denormalized
+
+R-1 wants each seat to show the opponent's faction, and the client cannot
+read it from `decks`: `decks_select_own` is owner-only, so the opponent's
+deck row is invisible. Widening that policy is not an option — RLS cannot
+restrict by column, so "let them read the faction" would expose the whole
+row, `cards` included, which is the opponent's entire decklist.
+
+So `SET_DECK` copies the deck's faction onto the lobby, which every
+signed-in player may already read. Faction is the only field that
+crosses; the deck's name and contents are structurally unreachable by the
+client rather than merely unrendered. That is what makes §5.3's
+"faction yes, deck name no" an enforced property instead of a UI
+convention.
+
+These columns are a cache of `decks.faction` and are only ever written
+beside their `*_deck_id`, in the same statement, so the pair cannot
+disagree.
+
+`lobbies_insert_as_host` is replaced to additionally require
+`host_ready = false and guest_ready = false`, so a lobby cannot be born
+pre-readied by a hand-crafted insert. Its existing checks
+(`auth.uid() = host_id`, `status = 'open'`, `guest_id is null`,
+`guest_deck_id is null`, `game_id is null`) are carried over unchanged.
+
+The `lobbies_select_authenticated` and `lobbies_delete_own` policies are
+untouched.
+
+### 3.2 Generated types
+
+`frontend/src/lib/database.types.ts` is regenerated after the migration
+applies. `host_deck_id` becomes `string | null`; `host_ready` and
+`guest_ready` appear as `boolean`.
+
+## 4. Server contract (`lobby-action`)
+
+Every op below is conditioned on `status = 'open'` inside its `WHERE`
+clause, so none of them can mutate a lobby that `START` has already
+locked to `starting`.
+
+**The caller's identity belongs in that same `WHERE`, not in a read above
+it.** `SET_DECK` and `SET_READY` must read the row first to decide *which*
+seat's columns to write, but the write itself has to carry
+`host_id = caller` or `guest_id = caller` alongside the status check.
+`host_id` never changes for a lobby's lifetime, so the host branch is safe
+either way — but `guest_id` changes under `JOIN`, `LEAVE` and `KICK`, so a
+guest's in-flight write can otherwise land after they have been kicked and
+replaced, silently overwriting the *new* guest's deck, faction and ready
+flag. The conditional `UPDATE` is this function's only mutex; a
+precondition checked in a preceding `SELECT` is not enforced by it.
+
+| Op | Caller | Effect |
+|---|---|---|
+| `JOIN` | any | `deckId` is now **optional**. Claims the guest seat only. The existing atomic claim (`status = 'open'`, `guest_id is null`, `host_id != caller`) is unchanged. |
+| `SET_DECK` | host or guest | Requires `deckId`; verifies `decks.owner_id = caller`. Writes the caller's `*_deck_id` **and `*_faction`** (§3.1.1) and clears **the caller's own** ready flag. |
+| `SET_READY` | host or guest | Writes the caller's own ready flag. Rejects `ready = true` when that player's deck is unset. |
+| `UPDATE_SETTINGS` | host | Runs `validateLobbySettings` server-side; writes `settings` and clears `guest_ready`. |
+| `KICK` | host | Clears `guest_id`, `guest_deck_id`, `guest_faction`, `guest_ready`. |
+| `LEAVE` | guest | As today, and additionally clears `guest_faction` and `guest_ready`. |
+| `START` | host | Unchanged except that the atomic `open → starting` lock gains `host_deck_id is not null`, `host_ready = true` and `guest_ready = true` to its `WHERE`. |
+
+### 4.1 Consent invariant (R-8)
+
+Three clears carry R-8:
+
+- `SET_DECK` clears the caller's own ready flag — you re-affirm after
+  changing what you are bringing.
+- `SET_DECK` **called by the host** additionally clears `guest_ready`. The
+  opponent's faction badge is the most strategically loaded thing a player
+  reads before pressing Ready — R-1 exists to put it on the seat — so a
+  host who swaps decks has changed something the guest consented to.
+  Without this, a host could ready, wait for the guest to ready against
+  "DWG", switch to an SS deck (clearing only their own flag), re-ready and
+  start, launching the guest against a faction they never saw. The guest's
+  own `SET_DECK` does **not** clear `host_ready`: the host holds the Start
+  button and can look before pressing it.
+- `UPDATE_SETTINGS` clears `guest_ready` — the guest re-affirms after the
+  host changes the battlefield. It does **not** clear `host_ready`: the
+  host authored the change, so their consent is implicit.
+
+The asymmetry has one rule behind it: **whoever did not make the change
+re-affirms.** The host is exempt from re-affirming their own edits because
+pressing Start is itself the affirmation.
+
+Races between `SET_READY` and `UPDATE_SETTINGS` are benign in either
+order, because `START` re-checks both flags inside the same statement
+that takes the mutex. There is no window in which a stale `true` can be
+read and then acted on.
+
+`START`'s existing failure path — revert `starting → open` on any error
+after the lock — is unchanged and still covers the new preconditions.
+
+### 4.2 The game is built from the POST-lock settings
+
+`START` must validate and build from `locked.settings`, never from the
+settings it read before taking the mutex. This is the one place R-8 could
+be defeated without any ready flag being wrong.
+
+The sequence: host client A calls `START` and reads settings S1; host
+client B calls `UPDATE_SETTINGS`, writing S2 and clearing `guest_ready`;
+the guest reads S2 and readies; A's lock statement now finds both flags
+true and succeeds. Every ready check passed honestly, and the game is
+still built from S1 — a board the guest declined. `start_game_tx` writes
+`games.settings` once and there is no re-negotiation after a game exists,
+so the corruption is permanent.
+
+The pre-lock read may stay as a cheap early bail for a malformed blob, but
+the values that reach `buildInitialGame` and the frozen `deckRules` come
+from the locked row. A post-lock validation failure must revert
+`starting → open` like any other post-lock error, or the lobby strands.
+
+Worth recording *why* this was not a bug before: `settings` used to be
+writable only at insert, so the pre-lock and post-lock rows could never
+disagree and reading either was equivalent. `UPDATE_SETTINGS` is what
+turned a safe read into an exploitable one — a reminder that adding a
+writer can invalidate a read somewhere that never changed.
+
+## 5. Client
+
+### 5.1 Route
+
+`/lobby/:id`, lazily loaded as a named export like every other page.
+`App.tsx` extends its existing nav-hiding test:
+
+```ts
+const onGameBoard = useMatch('/game/:id') !== null
+const onLobby = useMatch('/lobby/:id') !== null
+```
+
+`NavBar` renders when neither matches (R-4). The lobby's own command
+strip carries `← Harbor`, the lobby name, the caller's role, and a
+status pill, mirroring `GameBoardPage`'s strip.
+
+### 5.2 New modules
+
+- `frontend/src/lib/lobbies.ts` — `useLobbyQuery(id)`, the `lobbyAction`
+  invoker moved off `LobbiesPage`, and the pure functions in §5.4.
+- `frontend/src/lib/biomeStyles.ts` — `BIOME_TINT` and `BIOME_BORDER`,
+  lifted verbatim out of `BoardZone.tsx`, which then imports them.
+  Single source of truth so the preview and the real board cannot drift.
+- `frontend/src/components/BoardPreview.tsx` — takes `LobbySettings` and
+  a size, renders the zones left-to-right in board order using those
+  maps (R-5, R-10).
+- `frontend/src/pages/LobbyPage.tsx` — the screen itself.
+
+### 5.3 Screen layout
+
+Left column, two seat rows (R-1):
+
+- Your own row carries a deck `<select>` over `useDecksQuery()`. Both rows
+  show ready **state** as a badge; the Ready **control** lives in the
+  bottom action bar, not in the row (see below).
+- The opponent's row shows their username and their deck's **faction**
+  only — never the deck name, which would leak strategy with no way to
+  un-see it — plus their ready state. The faction is read off
+  `lobbies.*_faction` (§3.1.1), not from `decks`, which the client cannot
+  read for another player at all.
+- The host's view of the guest row carries a kick control (R-9).
+- An empty guest seat reads as an invitation, not an error.
+
+Right column: `BoardPreview` above a settings panel. For the host the
+panel holds the zone biome selects, base-HP inputs and resources-per-turn
+input moved off the create form (R-6); for the guest the same values
+render as static text. Biome selects commit on `change`; number inputs
+commit on `blur`, so typing a five-digit HP value sends one request, not
+five.
+
+Bottom bar: the Ready/Unready toggle for whichever seat you occupy, plus
+`Start game` (host only, disabled until both are ready) and `Cancel lobby`
+(host) or `Leave lobby` (guest).
+
+Every action lives in this bar and the seat rows carry state only. An
+earlier draft of this section put each player's Ready toggle in their own
+seat row, which would have been the more symmetric layout; the
+implementation put it beside Start instead, and that is what this spec now
+records. Two reasons it is the better call: the action bar becomes the one
+place a player looks for something to press, and a Ready control sitting
+next to the Start button makes the gating relationship between them
+legible — you can see that the thing you just pressed is what unlocks the
+host's button.
+
+Function errors render inline beside the triggering control, using the
+established `FunctionsHttpError` → `errors.join('; ')` pattern.
+
+### 5.4 Navigation and realtime (R-3)
+
+The page subscribes with `useRealtimeInvalidate` on the `lobbies` table,
+filtered to `id=eq.<lobbyId>`, invalidating the `['lobby', id]` key. It
+feeds the refetched row to a pure function:
+
+```ts
+lobbyVerdict(lobby: LobbyRow | null, myId: string, wasSeated: boolean):
+  | { kind: 'waiting' }
+  | { kind: 'to-game'; gameId: string }
+  | { kind: 'ejected'; notice: string }
+  | { kind: 'joinable' }
+  | { kind: 'unavailable'; notice: string }
+```
+
+| Row state | Verdict |
+|---|---|
+| `game_id` set, caller is host or guest | `to-game` |
+| caller is host or guest, `game_id` null, `status` is `open` or `starting` | `waiting` |
+| caller is neither seat, `status = 'open'`, guest seat free | `joinable` |
+| caller is neither seat, otherwise | `unavailable`: "That lobby is full or closed." |
+| caller was seated (`wasSeated`) and is no longer | `ejected`: "You were removed from the lobby." |
+| `lobby === null` (row deleted) | `ejected`: "The host closed the lobby." |
+| `status = 'closed'`, `game_id` null | `ejected`: "That lobby is no longer open." |
+
+Distinguishing `ejected` from `unavailable` needs to know whether the
+caller was previously seated. The page holds that as a ref across renders
+and passes it in as `wasSeated`, keeping `lobbyVerdict` itself pure.
+
+An effect acts on the verdict: `to-game` navigates to `/game/:gameId`
+with `replace: true`; `ejected` navigates to `/lobbies` with the notice
+in router state, which `LobbiesPage` renders as a banner.
+
+`to-game` fires for host and guest alike — that is R-3. The host also
+navigates directly from `START`'s response as a fast path, but no longer
+depends on it: a dropped response leaves the host in the same
+self-healing state as the guest.
+
+Actions the caller took themselves navigate immediately from their own
+success response and suppress the verdict notice, so a host who cancels
+their lobby is not told "The host closed the lobby" and a guest who
+leaves is not told they were removed. The verdict path is what catches
+the *other* player.
+
+`joinable` means a lobby URL is shareable — an incidental benefit of the
+route, not a separate feature.
+
+Also pure and unit-tested: `canStart(lobby)` (both decks set, both ready,
+status open) and `seatOf(lobby, myId)`.
+
+### 5.5 Changes to `LobbiesPage`
+
+- The create form loses every settings control and the deck select; it
+  becomes a name field and a button that inserts with `host_deck_id: null`
+  and navigates to `/lobby/:id`.
+- The standalone "Join with:" deck select and its `joinDeckId` state are
+  removed. `JOIN` then navigates into the lobby.
+- The inline `myLobby` card is removed; an in-progress lobby renders as a
+  link into `/lobby/:id`.
+- Browser rows gain host username (via `useUsernames`), an occupancy pill
+  and a small `BoardPreview` (R-10).
+- A notice banner renders `location.state.notice` when present.
+
+## 6. Testing
+
+- `frontend/src/lib/lobbies.test.ts` — `lobbyVerdict` across every row of
+  the §5.4 table, and `canStart` with each precondition missing in turn.
+  Written before the implementation.
+- `frontend/src/lib/biomeStyles.test.ts` — every `ZONE_TYPES` value has a
+  tint and a border, so a new biome cannot silently render untinted.
+  Mirrors the existing `keywords.test.ts` guard.
+- **Two required repairs, not additions.** The ready gate breaks every
+  harness that starts a game, and they do not all start it the same way —
+  verified against the scripts rather than assumed:
+  - `scripts/smoke-lib.mjs` — its shared `startGame` posts a lobby and
+    calls `START` immediately. Two `SET_READY` calls between its JOIN and
+    START repair every harness that imports it: `smoke-wave5.mjs`,
+    `smoke-wave6.mjs`, `smoke-wave7.mjs` and `smoke-battle-report.mjs`.
+  - `scripts/smoke-wave4.mjs` — **does not import `smoke-lib` at all** and
+    carries its own inline create → JOIN → START. Repairing the shared
+    plumbing leaves it 409-ing, so it needs the same two calls added
+    separately.
+  - `scripts/mutation-harness.mjs` creates no lobbies (it is a helper the
+    wave scripts import) and needs no repair.
+
+  `smoke-wave5.mjs` is the regression gate for §4, because it is a genuine
+  `startGame` consumer. `smoke-wave4.mjs` is not — a 409 there proves
+  nothing about the shared repair, since it shares no code with it.
+- `scripts/smoke-lobby.mjs` — the new edge-function ops have no local
+  Supabase to run against, so a two-account smoke script in the existing
+  `smoke-*.mjs` style drives create → join → set decks → ready → start,
+  asserting that each precondition rejects when unmet, that the consent
+  clears in §4.1 fire correctly, and that `games` gains a row.
+- Browser verification with two `qa-login.mjs` sessions, confirming the
+  guest reaches the board without clicking.
+
+No `shared/` module changes, so `functions:sync` has nothing to carry;
+the engine suite is a regression guard only.
+
+## 7. Deploy sequence
+
+1. Apply the migration.
+2. Regenerate `database.types.ts`.
+3. **Deploy the function manually, before merging**, with
+   `npm run functions:deploy -- lobby-action` from a branch up to date with
+   `main`. Verify the version incremented **by content, not file count** — a
+   deploy legitimately reads back with fewer modules, because type-only
+   imports are erased during transpilation.
+4. Only once that version is confirmed, merge and ship the frontend.
+
+Step 3 is deliberately manual and deliberately *pre*-merge. Merging to
+`main` does deploy functions automatically via the Supabase GitHub
+integration — but a failed migrate step **silently skips the deploy step**
+while the SPA ships anyway. Leaving the order to the integration therefore
+has a documented failure mode that lands squarely in the bad window below.
+Deploy by hand, confirm, then merge.
+
+### 7.1 The window has two directions
+
+Both are closed by the same rule — the function goes first — but they are
+not equally bad, and only the first was originally written down.
+
+**Old frontend, new function.** A lobby created before the frontend ships
+cannot be started: its ready flags are `false` and the old UI offers no way
+to set them. Scope: one stale lobby per affected host. Recovery: cancel and
+recreate. Mild.
+
+**New frontend, old function.** Much worse, and the reason step 3 is not
+optional. The new client sends `JOIN` with no `deckId`, because deck choice
+moved into the lobby — and the currently-deployed function still hard-fails
+that request with `deckId required to join`. This is not one stale lobby; it
+is **every join, for every player**, until the function lands. Shipping the
+frontend first would take the feature down for everyone rather than
+inconveniencing a few hosts.
+
+At the time of writing the live table held 27 lobby rows and **zero**
+non-closed lobbies, so the first window currently has nothing in it to
+break.
