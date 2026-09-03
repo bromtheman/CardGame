@@ -3261,8 +3261,8 @@ describe('wave 6 — SS Nothung', () => {
 describe('wave 6 — effects that must carry needsCatalog', () => {
   it.each([
     'nothungOnPlay', 'balmungOnPlay', 'harbringerBattle', 'victoriaActivate',
-    // 2026-09-02: both mint from ctx.catalog by name.
-    'buzzsawOnPlay', 'slasherOnPlay',
+    // 2026-09-02: mints from ctx.catalog by name. slasherOnPlay joins in Task 6.
+    'buzzsawOnPlay',
   ])(
     '%s', (name) => { expect(CATALOG_EFFECTS.has(name)).toBe(true) },
   )
