@@ -589,13 +589,25 @@ Five are standalone `it(...)` blocks:
 | Assertion | Broken by | Wave | Action |
 |---|---|---|---|
 | "Judgement carries the 1cp price its text prints" | `activateCpCost` 1 → 0 | WF | update |
-| "Harbringer draws from exactly the WF ships at or under 100k" | `HARBRINGER_GUEST_MAX_COST` is deleted with its last reader (§5) | WF | **delete** |
+| ~~"Harbringer draws from exactly the WF ships at or under 100k"~~ | **Not invalidated after all — leave it alone.** See below. | WF | **no change** |
 | "Paladin surges UNDER 240k, granting halfCost and temporary" | Paladin drops `resourceSurge` entirely | SS | update |
 | "Victoria carries the 200k material price its text prints" | Victoria's activated ability becomes an on-play effect | SS | update |
 | "Double Up and Repairmen Ready print the thresholds their code enforces" | Repairmen Ready's text moves "AI vehicle" → "SS vehicle" (R-5); the Double Up half is unaffected | SS | update |
 
-Only the Harbringer one is deleted — its subject is retired and its constant
-goes with it. The other thirteen are rewritten to the new values.
+⚠ **The Harbringer row was wrong and is now struck through.** It told WF to
+delete that assertion because `HARBRINGER_GUEST_MAX_COST` was going with it.
+Both halves are false as of Wave 0: R-8 keeps the constant (it still has a live
+reader in `wfEffects.ts:220`, reachable because the retired Harbringer row stays
+seeded and still names `harbringerBattle`), and the assertion's pool is
+**unchanged** by WF's wave — Buzzsaw moves 80k→75k and is still ≤100k, Earth
+Raker does not move, and every other WF card the wave touches is either over
+100k, a sub, or an ability. Wave 0 additionally rewrote the assertion to call
+`poolEligible` instead of a hand-rolled filter. **WF touches this assertion not
+at all.**
+
+With Harbringer struck out, **nothing here is deleted** — the remaining
+thirteen (9 `CARDS` rows + 4 `it(...)` blocks) are all rewritten to their new
+values.
 
 ⚠ Four cards move but keep their `CARDS` row intact, because the row pins only
 the five fields above and the change is elsewhere: `SS:Paladin` and
