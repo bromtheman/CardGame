@@ -58,7 +58,7 @@ registerEffect('sapphireEffect', whenPlayed(
   sequence(
     grant({ draw: 1 }),
     ({ game, actor, card }) => {
-      game.state.resources[actor].materials += effectiveCostInGame(game.state, actor, card)
+      game.state.resources[actor].materials += effectiveCostInGame(game.state, actor, card, game.turnNumber)
       game.state.log.push(`${card.name} slips in unopposed — its cost is refunded`)
       return true
     },

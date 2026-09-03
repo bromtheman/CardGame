@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { CATALOG_EFFECTS, RESOLVE_BYSTANDER_EFFECTS, effectFor, registerEffect } from './registry.ts'
 import { choice } from './primitives.ts'
-import { KEYWORDS } from '../gameSettings.ts'
+import { KEYWORDS, TYR_HAND_DISCOUNT } from '../gameSettings.ts'
 import { inst, makeCtx, makeGame, snap, zoneEntry } from '../engine/testFixtures.ts'
 import {
   applyAction, declareForcedBattle, discardSnapshotOf, effectiveCostInGame, effectiveMaterialCostOf,
@@ -6269,5 +6269,52 @@ describe('2026-09-02 balance pass — OW', () => {
     it.each(['brandistockOnDeath', 'halberdOnDeath', 'jormangundOnDeath', 'partisanEffect'])(
       '%s', (name) => { expect(CATALOG_EFFECTS.has(name)).toBe(true) },
     )
+  })
+})
+
+describe('SS Tyr — a discount that grows in your hand', () => {
+  const tyr = (handEnteredTurn?: number) => inst({
+    name: 'Tyr', faction: 'SS', vehicleType: 'ship', type: 'vehicle',
+    materialCost: 950_000, keywords: ['blocker'],
+    meta: { costModifier: 'tyrCostModifier' }, handEnteredTurn,
+  })
+  const priceAt = (turnNumber: number, entered?: number) =>
+    effectiveCostInGame(makeGame().state, 'a', tyr(entered), turnNumber)
+
+  it('is full price on the turn it arrives', () => {
+    expect(priceAt(3, 3)).toBe(950_000)
+  })
+
+  // R-2. Half a turn is not a turn: the discount steps on the FULL round, so
+  // the opponent's half-turn in between buys nothing on its own.
+  it('gives nothing for a half-turn', () => {
+    expect(priceAt(3.5, 3)).toBe(950_000)
+  })
+
+  it('gives one step per full round', () => {
+    expect(priceAt(4, 3)).toBe(950_000 - TYR_HAND_DISCOUNT)
+    expect(priceAt(4.5, 3)).toBe(950_000 - TYR_HAND_DISCOUNT)
+    expect(priceAt(5, 3)).toBe(950_000 - 2 * TYR_HAND_DISCOUNT)
+  })
+
+  // The floor is effectiveCostInGame's existing Math.max(0, …). This asserts
+  // the PRICE, not a second clamp — one added here would be untested and
+  // unneeded (spec §4.2).
+  it('bottoms out at free rather than going negative', () => {
+    expect(priceAt(100, 1)).toBe(0)
+  })
+
+  // ⚠ THE PRODUCTION CASE. Hands live in game_players rows, which
+  // normalizeState cannot reach, so every card in every in-flight game's hand
+  // has no stamp. `turnNumber - undefined` is NaN, and a NaN price makes the
+  // card unaffordable AND writes NaN into the payer's materials at pay().
+  it('treats an unstamped card as newly arrived, never as NaN', () => {
+    expect(priceAt(9, undefined)).toBe(950_000)
+  })
+
+  // Defence against a corrupt row: a NEGATIVE residence must not raise the price.
+  it('never raises the price', () => {
+    expect(priceAt(2, 9)).toBe(950_000)
+    expect(priceAt(5, Number.NaN)).toBe(950_000)
   })
 })

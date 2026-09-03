@@ -1,13 +1,13 @@
 import {
   AIR_STRAFE_PREDATOR_COUNT, CATSHARK_MATERIALS, EXCALIBUR_COST_DELTA, KEYWORDS,
   REPAIRMEN_READY_DRAW_MAX_COST, RHEA_MAX_PLANE_COST, SACRILEGO_HP_BOOST,
-  SURVIVE_HP_PERCENT, VEHICLE_TYPES,
+  SURVIVE_HP_PERCENT, TYR_HAND_DISCOUNT, VEHICLE_TYPES,
 } from '../gameSettings.ts'
 import {
   catalogCard, costDelta, choice, drawFromPool, enemyVehicleOptions, grant, grantKeywords,
   poolEligible, sacrificeToSave, sequence, spawnInto, spawnVehicles, summonHulls,
 } from './primitives.ts'
-import { registerEffect } from './registry.ts'
+import { registerCostModifier, registerEffect } from './registry.ts'
 import type { EffectPayload } from './registry.ts'
 import type { EngineGame, Side, ZoneCardEntry } from '../engine/engineTypes.ts'
 import { findVehicle, otherSide, putInHand, zoneById } from '../engine/gameEngine.ts'
@@ -519,3 +519,27 @@ registerEffect(BLOCKADE, (payload) => {
   if (payload.battle) return blockadeSpring(payload)
   return blockadeClaim(payload)
 }, { needsCatalog: true, deployWatcher: true })
+
+// "This card costs 60k less for every turn it spends in your hand."
+//
+// The residence stamp is written by putInHand (spec §4.2) and re-written every
+// time the card re-enters a hand, so a Tyr that was played, died, reshuffled
+// and was drawn again starts its count over — which is what "spends in your
+// hand" says.
+//
+// ⚠ An UNSTAMPED card is not a bug to assert on, it is the ordinary state of
+// every hand dealt before this deploys: hands live in game_players rows and
+// normalizeState cannot reach them (it takes a PublicGameState). So a missing
+// or non-finite stamp returns 0 — `turnNumber - undefined` is NaN, a NaN
+// modifier makes effectiveCostInGame NaN, and that reads as unaffordable at
+// every check AND writes NaN into the payer's materials at pay().
+//
+// Math.max(0, …) is on the STEP COUNT, not on the price. The price floor is
+// effectiveCostInGame's own Math.max(0, …) and must not be duplicated here
+// (spec §4.2); this clamp is a different guarantee — a card whose stamp is
+// somehow in the future must not cost MORE.
+registerCostModifier('tyrCostModifier', (_state, _side, card, turnNumber) => {
+  const entered = card.handEnteredTurn
+  if (typeof entered !== 'number' || !Number.isFinite(entered)) return 0
+  return -TYR_HAND_DISCOUNT * Math.max(0, Math.floor(turnNumber - entered))
+})

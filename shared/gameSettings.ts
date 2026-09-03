@@ -172,6 +172,14 @@ export const JUDGEMENT_DISCOUNT = 100_000
 // a defensive loss, which the card does not say (spec §7.3, wave 6).
 export const PURIFIER_LOSS_WINDOW_TURNS = 1
 
+// Tyr: "This card costs 60k less for every turn it spends in your hand". One
+// step per FULL round (ruling R-2) — turn numbers advance in HALF steps, and
+// PURIFIER_LOSS_WINDOW_TURNS above already reads 1.0 as one round for the same
+// reason. A play-time price only: it reaches effectiveCostInGame and never
+// effectiveMaterialCostOf, so a long-held Tyr still deals its printed base
+// damage and still costs its printed repair.
+export const TYR_HAND_DISCOUNT = 60_000
+
 export const EXCALIBUR_COST_DELTA = -200_000 // Excalibur: AI ship in hand costs 200k less
 // Plunderer clause 2: "…draw one card from the enemy deck, but increase its
 // cost by 20k". A POSITIVE costDelta, unlike every other one in this file —

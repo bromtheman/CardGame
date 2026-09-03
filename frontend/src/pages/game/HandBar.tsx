@@ -259,7 +259,7 @@ export function HandBar({
         )}
         {fanLayout(hand.length, fanWidth).map((slot, i) => {
           const c = hand[i]
-          const effectiveCost = effectiveCostInGame(state, mySide, c)
+          const effectiveCost = effectiveCostInGame(state, mySide, c, turnNumber)
           const affordable = state.resources[mySide].materials >= effectiveCost && state.resources[mySide].cp >= c.cpCost
           const selected =
             placingCard?.instanceId === c.instanceId ||

@@ -261,12 +261,14 @@ function surgeCostDeltaFor(state: PublicGameState, side: Side, card: CardInstanc
 // Play-time cost: (base + registered modifier + stored costDelta), Half-Cost
 // halving, clamp ≥ 0. Base damage, repairs, and in-battle resources keep
 // using effectiveMaterialCostOf — these are play-time-only mechanics.
-export function effectiveCostInGame(state: PublicGameState, side: Side, card: CardInstance): number {
+export function effectiveCostInGame(
+  state: PublicGameState, side: Side, card: CardInstance, turnNumber: number,
+): number {
   const name = effectName(card, 'costModifier')
   const fn = name !== null ? costModifierFor(name) : null
   const stored = typeof card.meta.costDelta === 'number' ? card.meta.costDelta : 0
   const delta = stored + surgeCostDeltaFor(state, side, card)
-  const modified = card.materialCost + (fn ? fn(state, side, card) : 0) + delta
+  const modified = card.materialCost + (fn ? fn(state, side, card, turnNumber) : 0) + delta
   // The two arms of ruling B-9: a suppressing surge strips Half-Cost, a
   // granting one adds whatever it grants (which for Paladin includes
   // Half-Cost). The granted list is the SAME one deployVehicle stamps onto
@@ -279,7 +281,7 @@ export function effectiveCostInGame(state: PublicGameState, side: Side, card: Ca
 
 function canAffordInGame(game: EngineGame, side: Side, card: CardInstance): boolean {
   return (
-    game.state.resources[side].materials >= effectiveCostInGame(game.state, side, card) &&
+    game.state.resources[side].materials >= effectiveCostInGame(game.state, side, card, game.turnNumber) &&
     game.state.resources[side].cp >= card.cpCost
   )
 }
@@ -302,7 +304,7 @@ export function spendCard(game: EngineGame, side: Side, card: CardInstance): voi
 }
 
 function pay(game: EngineGame, side: Side, card: CardInstance): void {
-  game.state.resources[side].materials -= effectiveCostInGame(game.state, side, card)
+  game.state.resources[side].materials -= effectiveCostInGame(game.state, side, card, game.turnNumber)
   game.state.resources[side].cp -= card.cpCost
 }
 

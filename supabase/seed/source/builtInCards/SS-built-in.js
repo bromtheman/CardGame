@@ -145,7 +145,7 @@ export const ssVehicles = [
     ,{
         name: 'Tyr',
         isBuiltIn: true,
-        cardText: '',
+        cardText: 'This card costs 60k less for every turn it spends in your hand',
         materialCost: 950000,
         blueprintCost: 983000,
         cpCost: 0,
@@ -157,6 +157,7 @@ export const ssVehicles = [
         blueprintId: null,
         keywords: [KEYWORDS.BLOCKER],
         meta: {
+            costModifier: 'tyrCostModifier',
         }
     }
 

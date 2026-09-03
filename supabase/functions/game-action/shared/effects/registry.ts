@@ -31,7 +31,13 @@ export interface EffectPayload {
   battle?: BattleContext
 }
 export type EffectFn = (payload: EffectPayload) => boolean
-export type CostModifierFn = (state: PublicGameState, side: Side, card: CardInstance) => number
+// `turnNumber` is REQUIRED rather than optional, for the reason legalZonesFor's
+// is: tsc then finds every call site instead of one silently defaulting.
+// PublicGameState does not carry it — it lives on EngineGame — and
+// tyrCostModifier (2026-09-02 spec §4.2) is the first modifier that needs it.
+export type CostModifierFn = (
+  state: PublicGameState, side: Side, card: CardInstance, turnNumber: number,
+) => number
 
 const effects = new Map<string, EffectFn>()
 const costModifiers = new Map<string, CostModifierFn>()

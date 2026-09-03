@@ -118,7 +118,7 @@ export function GameBoardPage() {
   // out of reach — it answers "can I play this?" at the moment it is asked.
   const liftedUnaffordable =
     liftedCard !== null &&
-    state.resources[mySide].materials < effectiveCostInGame(state, mySide, liftedCard)
+    state.resources[mySide].materials < effectiveCostInGame(state, mySide, liftedCard, game.turn_number)
 
   // Placing/fieldTargeting/moveMode/swapMode are mutually exclusive: starting
   // one clears the others. HandBar's handTargeting is internal to that
