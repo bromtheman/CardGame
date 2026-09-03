@@ -462,6 +462,55 @@ describe('plundererRaid', () => {
     expect(game.state.log.join(' ')).toContain('finds nothing to take')
   })
 
+  // The 2026-09-02 clause: "…draw one card from the enemy deck, but increase
+  // its cost by 20k." The number is spelled out rather than imported from
+  // gameSettings — a test that reads its expectation out of the source it is
+  // checking proves nothing.
+  it('stamps a +20k surcharge on the card it takes', () => {
+    const game = armed()
+    const ok = effectFor('plundererRaid')!({
+      game, actor: 'a', card: zoneEntry({ name: 'Plunderer' }), ctx: makeCtx(), battle: raidCtx(),
+    })
+    expect(ok).toBe(true)
+    expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Enemy Top'])
+    expect(game.privates.a.hand[0].meta.costDelta).toBe(20_000)
+    // Still a capture: the copy is a phantom, and the log still names nothing.
+    expect(game.privates.a.hand[0].meta.capturedCopy).toBe(true)
+    expect(game.state.log.join(' ')).not.toContain('Enemy Top')
+  })
+
+  it('adds to a costDelta the raided card already carried, rather than replacing it', () => {
+    const game = makeGame()
+    game.privates.b.deck.push(inst({ name: 'Enemy Top', meta: { costDelta: -50_000 } }))
+    game.state.counts.b.deck = 1
+    effectFor('plundererRaid')!({
+      game, actor: 'a', card: zoneEntry({ name: 'Plunderer' }), ctx: makeCtx(), battle: raidCtx(),
+    })
+    expect(game.privates.a.hand[0].meta.costDelta).toBe(-30_000)
+  })
+
+  // The surcharge belongs to the COPY. Stamping the original would raise the
+  // price of a card sitting in its owner's own deck — a capture is allowed to
+  // reorder that deck and nothing else (docs/claude/card-effects.md).
+  it('leaves the enemy original unsurcharged in their deck', () => {
+    const game = armed()
+    effectFor('plundererRaid')!({
+      game, actor: 'a', card: zoneEntry({ name: 'Plunderer' }), ctx: makeCtx(), battle: raidCtx(),
+    })
+    expect(game.privates.b.deck.map((c) => c.name)).toEqual(['Enemy Top'])
+    expect(game.privates.b.deck[0].meta.costDelta).toBeUndefined()
+  })
+
+  it('stamps nothing when the enemy deck is empty', () => {
+    const game = makeGame()
+    const ok = effectFor('plundererRaid')!({
+      game, actor: 'a', card: zoneEntry({ name: 'Plunderer' }), ctx: makeCtx(), battle: raidCtx(),
+    })
+    expect(ok).toBe(true)
+    expect(game.privates.a.hand).toHaveLength(0)
+    expect(game.state.log.join(' ')).toContain('finds nothing to take')
+  })
+
   it('draws end to end when it bombards the enemy base', () => {
     const game = makeGame({ turnNumber: 3 })
     game.privates.b.deck.push(inst({ name: 'Enemy Top' }))
@@ -1198,6 +1247,9 @@ describe('enemy-deck capture is a copy, for all three cards', () => {
     raid({ game, actor: 'a', card: inst(), ctx, battle: { survived: true, won: true, zoneId: 1 } })
     raid({ game, actor: 'a', card: inst(), ctx, battle: { survived: true, won: true, zoneId: 1 } })
     expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Ship One', 'Ship Two', 'Ship Three'])
+    // Marauder's capture is free; each Plunderer raid costs 20k. One stamp per
+    // raid, on the card that raid took.
+    expect(game.privates.a.hand.map((c) => c.meta.costDelta)).toEqual([undefined, 20_000, 20_000])
     expect(game.privates.b.deck.map((c) => c.name).sort()).toEqual(['Ship One', 'Ship Three', 'Ship Two'])
     expect(game.state.counts.b.deck).toBe(3)
   })

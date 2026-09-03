@@ -167,6 +167,11 @@ export const JUDGEMENT_DISCOUNT = 100_000
 export const PURIFIER_LOSS_WINDOW_TURNS = 1
 
 export const EXCALIBUR_COST_DELTA = -200_000 // Excalibur: AI ship in hand costs 200k less
+// Plunderer clause 2: "…draw one card from the enemy deck, but increase its
+// cost by 20k". A POSITIVE costDelta, unlike every other one in this file —
+// effectiveCostInGame sums it in and clamps only at zero, so it raises the
+// play price and touches nothing else (2026-09-02 spec §6.1).
+export const PLUNDERER_CAPTURE_SURCHARGE = 20_000
 export const REPAIRMEN_READY_DRAW_MAX_COST = 400_000 // Repairmen Ready draws below this
 
 export const FLYING_SQUIRREL_ATTACK_COUNT = 3 // Flying Squirrel Attack: target fights this many summons

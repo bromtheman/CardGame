@@ -1,7 +1,7 @@
 import {
   BASE_DAMAGE_DIVISOR, ONGOING_ATTRITION_DAMAGE_PER_VEHICLE,
   DOUBLE_UP_MAX_COST, DWG_WATERS_GUEST_MAX_COST, FLYING_SQUIRREL_ATTACK_COUNT,
-  HERO_POWER_LABELS, KEYWORDS, RESERVES_CARD_COUNT, VEHICLE_TYPES,
+  HERO_POWER_LABELS, KEYWORDS, PLUNDERER_CAPTURE_SURCHARGE, RESERVES_CARD_COUNT, VEHICLE_TYPES,
 } from '../gameSettings.ts'
 import type { EngineContext, EngineGame, Side, ZoneCardEntry } from '../engine/engineTypes.ts'
 import type { SnapshotCard } from '../engine/gameInit.ts'
@@ -51,9 +51,21 @@ registerEffect('paddlegunEffect', grant({ draw: 1, from: 'enemy' }))
 //
 // takeFromEnemyDeck resyncs both sides' counts and never names the card: it is
 // entering a hidden hand.
+//
+// The 2026-09-02 pass added the price. The stamp goes on the COPY that
+// takeFromEnemyDeck just pushed — `hand[before]` — never on the original, which
+// stays in the enemy's deck. It ADDS to whatever delta the card already carried
+// rather than replacing it, so a card Excalibur had already discounted keeps
+// that discount and merely costs 20k more.
 registerEffect('plundererRaid', ({ game, actor, ctx, battle }) => {
   if (!battle || !battle.survived || !battle.won) return true
-  return takeFromEnemyDeck(game, actor, ctx)
+  const before = game.privates[actor].hand.length
+  const ok = takeFromEnemyDeck(game, actor, ctx)
+  const taken = game.privates[actor].hand[before]
+  if (!taken) return ok
+  const current = typeof taken.meta.costDelta === 'number' ? taken.meta.costDelta : 0
+  taken.meta = { ...taken.meta, costDelta: current + PLUNDERER_CAPTURE_SURCHARGE }
+  return ok
 })
 
 // cost -20k per friendly DWG vehicle on the field (Plunderer)
