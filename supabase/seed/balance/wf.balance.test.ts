@@ -66,6 +66,22 @@ const CARDS: Record<string, Expected> = {
     materialCost: 300_000, blueprintCost: 305_000, keywords: [],
     vehicleType: 'sub', cardText: 'When played, gain 1 cp.',
   },
+  'WF:Pandemonium': {
+    materialCost: 225_000, blueprintCost: 244_000, keywords: ['stealthy', 'subScreen'],
+    vehicleType: 'ship', cardText: '',
+  },
+  'WF:Pulverizer': {
+    materialCost: 78_000, blueprintCost: 78_000, keywords: [], vehicleType: 'sub',
+    cardText: 'Spawn two additional copies of this vehicle into the zone',
+  },
+  // Pontus is absent from spec §6.3's inventory table (a header/table
+  // mismatch — WF is "1 new, 12 updated" but the table lists only 11), so
+  // §7.2's per-card list is the authority for this number, not §6.3.
+  'WF:Pontus': {
+    materialCost: 75_000, blueprintCost: 56_000, keywords: ['fragile'],
+    vehicleType: 'sub',
+    cardText: 'When this sub is played into a zone, spawn two additional copies into that same zone.',
+  },
 }
 
 describe('2026-09-02 balance pass — WF', () => {
@@ -119,6 +135,13 @@ describe('2026-09-02 balance pass — WF', () => {
     const veles = (await bySeedKey()).get('WF:Veles')!
     expect((veles.meta as Record<string, unknown>).defensiveOmission).toBeUndefined()
     expect(veles.keywords).toContain('stealthy')
+  })
+
+  // Pulverizer's whole card text is this key, and it names no effect. Its cost
+  // fell 120k -> 78k without the payload changing, which is the entire balance
+  // change — so the payload is what needs saying out loud.
+  it('Pulverizer still deploys three hulls off one payment', async () => {
+    expect((await bySeedKey()).get('WF:Pulverizer')!.meta?.additionalSpawns).toBe(2)
   })
 
   // The only row this wave ADDS. Asserted as a count as well as a row, so a

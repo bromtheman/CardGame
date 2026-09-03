@@ -87,7 +87,7 @@ const CARDS: Record<string, Expected> = {
     materialCost: 550_000, blueprintCost: 551_000, keywords: ['subScreen'], vehicleType: 'ship',
   },
   'WF:Pontus': {
-    materialCost: 150_000, blueprintCost: 56_000, keywords: ['fragile'], vehicleType: 'sub',
+    materialCost: 75_000, blueprintCost: 56_000, keywords: ['fragile'], vehicleType: 'sub',
   },
   'WF:Basher': {
     materialCost: 210_000, blueprintCost: 214_000, keywords: [], vehicleType: 'ship',
