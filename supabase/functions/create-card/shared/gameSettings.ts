@@ -1,6 +1,12 @@
 // Single source of truth for every tunable game rule (spec §3).
 
 export const STARTING_HAND_SIZE = 5
+// The turn number a new game opens on, and the stamp the opening hand carries.
+// ⚠ ITS TWIN IS IN SQL: `turn_number numeric not null default 1.0` in
+// supabase/migrations/20260825021221_create_lobbies_and_games.sql. buildInitialGame
+// does not set turnNumber — the games row does — so these two literals must
+// agree and nothing but this comment says so.
+export const STARTING_TURN_NUMBER = 1
 export const STARTING_CP_AMOUNT = 3
 export const DECK_SIZE = 20
 export const UNIQUE_COPY_LIMIT = 2

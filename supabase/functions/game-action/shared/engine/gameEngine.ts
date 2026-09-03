@@ -170,16 +170,38 @@ function reshuffleDiscard(game: EngineGame, side: Side, ctx: EngineContext): voi
   )
 }
 
+// THE single way a card enters a hand (2026-09-02 spec §4.2). Stamps
+// handEnteredTurn and resyncs the public counts, which is checklist item 5 in
+// docs/claude/card-effects.md — a rule eleven separate push sites each had to
+// remember, and which reservesEffect only half-remembered (it wrote counts.hand
+// and left counts.deck).
+//
+// It exists because of the failure mode, not the tidiness: a hand-entry path
+// that forgets the stamp yields a Tyr that is silently never discounted, with
+// every unit test green. One helper cannot be half-applied, and
+// handStamp.test.ts's source guard is what stops a twelfth push being written.
+//
+// Mutates and returns the card rather than pushing a copy: drawCard hands over
+// the very instance it shifted off the deck, and a copy there would break
+// identity for anything holding a reference across the move.
+export function putInHand(game: EngineGame, side: Side, card: CardInstance): CardInstance {
+  const priv = game.privates[side]
+  card.handEnteredTurn = game.turnNumber
+  priv.hand.push(card)
+  game.state.counts[side] = { hand: priv.hand.length, deck: priv.deck.length }
+  return card
+}
+
 export function drawCard(game: EngineGame, side: Side, ctx: EngineContext): void {
   const priv = game.privates[side]
   if (priv.deck.length === 0) reshuffleDiscard(game, side, ctx)
   const card = priv.deck.shift()
   if (!card) {
     game.state.log.push(`Player ${side.toUpperCase()} has no cards left to draw`)
+    game.state.counts[side] = { hand: priv.hand.length, deck: priv.deck.length }
   } else {
-    priv.hand.push(card)
+    putInHand(game, side, card)
   }
-  game.state.counts[side] = { hand: priv.hand.length, deck: priv.deck.length }
 }
 
 // A hull minted off a captured copy is a card of the minter's own — it is not
@@ -213,7 +235,14 @@ export function discardSnapshotOf(card: CardInstance): SnapshotCard {
   // forget — extra properties in a rest spread are legal — so it would ride
   // into state.destroyed and, via reshuffleDiscard, into a deck.
   const {
-    instanceId: _instanceId, playedOnTurn: _p, movedOnTurn: _m, activatedOnTurn: _a, ...snapshot
+    instanceId: _instanceId, playedOnTurn: _p, movedOnTurn: _m, activatedOnTurn: _a,
+    // A HAND stamp on a card leaving PLAY (2026-09-02 spec §4.2). Named here for
+    // the reason the four above are: a rest spread swallows it silently, so it
+    // would ride into state.destroyed and — through reshuffleDiscard — back into
+    // a deck, where SnapshotCard has no such field and nothing would notice.
+    // Harmless in effect today (putInHand re-stamps on the way back in) and
+    // named anyway, because "harmless" is not what this destructure promises.
+    handEnteredTurn: _h, ...snapshot
   } = card as ZoneCardEntry
   // `factoryEscort` (wave 7) comes off for exactly costDelta's reason: it is a
   // per-INSTANCE grant, stamped onto one hull on the board by a Havoc/Mirth
@@ -392,8 +421,7 @@ function endTurn(game: EngineGame, ctx: EngineContext): ApplyResult {
       } else {
         const pick = pool[Math.floor(ctx.rng() * pool.length)]
         priv.deck = priv.deck.filter((c) => c.instanceId !== pick.instanceId)
-        priv.hand.push(pick)
-        game.state.counts[side] = { hand: priv.hand.length, deck: priv.deck.length }
+        putInHand(game, side, pick)
         game.state.log.push('Change Order delivers a replacement')
       }
     }

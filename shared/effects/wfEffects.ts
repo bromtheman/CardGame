@@ -7,7 +7,7 @@ import {
 } from '../gameSettings.ts'
 import type { EngineContext, EngineGame, Side, ZoneCardEntry } from '../engine/engineTypes.ts'
 import type { SnapshotCard } from '../engine/gameInit.ts'
-import { discardCard, findVehicle, otherSide, zoneById } from '../engine/gameEngine.ts'
+import { discardCard, findVehicle, otherSide, putInHand, zoneById } from '../engine/gameEngine.ts'
 import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
 import {
   catalogCard, choice, enemyVehicleOptions, grant, poolEligible, shuffled, spawnInto, summonHulls,
@@ -59,14 +59,8 @@ registerEffect('excruciatorOnPlay', ({ game, actor, card, ctx }) => {
     const [drawn] = deck.splice(index, 1)
     const current = typeof drawn.meta.costDelta === 'number' ? drawn.meta.costDelta : 0
     drawn.meta = { ...drawn.meta, costDelta: current + EXCRUCIATOR_COST_DELTA }
-    game.privates[actor].hand.push(drawn)
+    putInHand(game, actor, drawn)
     taken++
-  }
-  // A direct push does not resync the public counts for you (drawCard does),
-  // and BOTH move here: cards left the deck as well as entering the hand.
-  game.state.counts[actor] = {
-    hand: game.privates[actor].hand.length,
-    deck: deck.length,
   }
   // A deck that cannot supply two is routine rather than a data bug, so this
   // resolves instead of failing the play — the same contract drawFromPool's
@@ -144,10 +138,7 @@ registerEffect('buzzsawOnPlay', ({ game, actor, card, ctx }) => {
   // A named card the catalog cannot supply is a data bug, not an empty pool, so
   // this fails the play rather than fizzling — spawnVehicles' contract.
   if (!ambush || !poolEligible(ambush)) return false
-  const hand = game.privates[actor].hand
-  hand.push({ ...ambush, instanceId: ctx.newId() })
-  // A direct push does not resync the public counts for you (drawCard does).
-  game.state.counts[actor].hand = hand.length
+  putInHand(game, actor, { ...ambush, instanceId: ctx.newId() })
   // Never named: state.log is public and this card is entering a hidden hand.
   game.state.log.push(`${card.name} slips a card into player ${actor.toUpperCase()}'s hand`)
   return true
@@ -168,15 +159,13 @@ registerEffect('buzzsawOnPlay', ({ game, actor, card, ctx }) => {
 registerEffect('slasherOnPlay', ({ game, actor, card, ctx }) => {
   const raker = catalogCard(ctx, 'Earth Raker')
   if (!raker || !poolEligible(raker)) return false
-  const hand = game.privates[actor].hand
   for (let i = 0; i < SLASHER_EARTH_RAKER_COUNT; i++) {
-    hand.push({
+    putInHand(game, actor, {
       ...raker,
       instanceId: ctx.newId(),
       meta: { ...raker.meta, costDelta: -raker.materialCost },
     })
   }
-  game.state.counts[actor].hand = hand.length
   // Never named: state.log is public and these are entering a hidden hand.
   game.state.log.push(
     `${card.name} slips ${SLASHER_EARTH_RAKER_COUNT} cards into player ${actor.toUpperCase()}'s hand, free of charge`,

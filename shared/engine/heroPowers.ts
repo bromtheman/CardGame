@@ -4,7 +4,7 @@ import {
 } from '../gameSettings.ts'
 import type { ApplyResult, EngineGame, Side, ZoneCardEntry } from './engineTypes.ts'
 import {
-  battleFrozen, discardCard, drawCard, err, findVehicle, otherSide, registerHandler, zoneById,
+  battleFrozen, discardCard, drawCard, err, findVehicle, otherSide, putInHand, registerHandler, zoneById,
 } from './gameEngine.ts'
 import { biomeAllows, effectiveMaterialCostOf } from './placement.ts'
 import { zoneCapFor } from './zoneCapacity.ts'
@@ -170,10 +170,7 @@ registerHandler('USE_HERO_POWER', (game, actor, action, ctx) => {
       )
       if (index < 0) return err(400, 'No such destroyed vehicle to salvage')
       const [card] = game.state.destroyed[actor].splice(index, 1)
-      game.privates[actor].hand.push({
-        ...card, instanceId: `hp-${card.cardId}-${game.turnNumber}-${actor}`,
-      })
-      game.state.counts[actor].hand = game.privates[actor].hand.length
+      putInHand(game, actor, { ...card, instanceId: `hp-${card.cardId}-${game.turnNumber}-${actor}` })
       game.state.log.push(`${card.name} salvaged back to hand`)
     } else if (action.power === 'rapidRedeployment') {
       const moved = moveEntry(game, actor, action.instanceId ?? '', action.zoneId ?? -1, true)

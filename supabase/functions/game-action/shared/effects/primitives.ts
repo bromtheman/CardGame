@@ -2,7 +2,7 @@ import type { CardInstance, SnapshotCard } from '../engine/gameInit.ts'
 import type {
   BattleCasualty, BattleContext, EngineContext, EngineGame, Side, ZoneCardEntry,
 } from '../engine/engineTypes.ts'
-import { drawCard, findVehicle, otherSide } from '../engine/gameEngine.ts'
+import { drawCard, findVehicle, otherSide, putInHand } from '../engine/gameEngine.ts'
 import { canRevive, reviveEntry, sacrificeEntry } from '../engine/battleTriggers.ts'
 import type { EffectFn, EffectPayload } from './registry.ts'
 
@@ -26,7 +26,7 @@ export function takeFromEnemyDeck(
   // The copy is a phantom with no home: `capturedCopy` tells discardCard
   // (shared/engine/gameEngine.ts) to destroy it outright when it leaves play,
   // rather than file it into a discard — which is a deck's back door.
-  game.privates[actor].hand.push({
+  putInHand(game, actor, {
     ...card, instanceId: ctx.newId(), meta: { ...card.meta, capturedCopy: true },
   })
   // The original goes to the BOTTOM of its deck. A copy leaves the pick in
@@ -38,7 +38,8 @@ export function takeFromEnemyDeck(
   // Only the captor's hand count moves. The enemy's deck count is deliberately
   // left alone because nothing left their deck — so the capture is invisible
   // in the public counts, and the log line below is its only public signal.
-  game.state.counts[actor].hand = game.privates[actor].hand.length
+  // (putInHand writes counts[actor] only, and the actor's own deck did not
+  // move, so this still holds.)
   game.state.log.push(`Player ${actor.toUpperCase()} takes a card from the enemy deck`)
   return true
 }
@@ -149,7 +150,6 @@ export function poolEligible(c: { meta: Record<string, unknown> }): boolean {
 // never names them — they are entering a hidden hand.
 export function drawFromPool(spec: PoolSpec): EffectFn {
   return ({ game, actor, ctx }) => {
-    const hand = game.privates[actor].hand
     const allowEmpty = spec.allowEmpty ?? spec.source === 'deck'
     if (spec.source === 'catalog') {
       const pool = ctx.catalog.filter((c) => c.isBuiltIn && poolEligible(c) && matches(c, spec.filter))
@@ -159,7 +159,7 @@ export function drawFromPool(spec: PoolSpec): EffectFn {
         return true
       }
       for (const pick of shuffled(pool, ctx).slice(0, spec.count)) {
-        hand.push({
+        putInHand(game, actor, {
           ...pick,
           instanceId: ctx.newId(),
           keywords: spec.strip ? pick.keywords.filter((k) => !spec.strip!.includes(k)) : pick.keywords,
@@ -177,11 +177,11 @@ export function drawFromPool(spec: PoolSpec): EffectFn {
         const index = deck.findIndex((c) => c.instanceId === pick.instanceId)
         if (index < 0) continue
         const [card] = deck.splice(index, 1)
-        hand.push(spec.strip ? { ...card, keywords: card.keywords.filter((k) => !spec.strip!.includes(k)) } : card)
+        putInHand(game, actor, spec.strip ? { ...card, keywords: card.keywords.filter((k) => !spec.strip!.includes(k)) } : card)
       }
       game.privates[actor].deck = deck
     }
-    game.state.counts[actor] = { hand: hand.length, deck: game.privates[actor].deck.length }
+    game.state.counts[actor] = { hand: game.privates[actor].hand.length, deck: game.privates[actor].deck.length }
     game.state.log.push(`Player ${actor.toUpperCase()} adds a card to their hand`)
     return true
   }

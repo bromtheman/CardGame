@@ -4,7 +4,7 @@ import type {
   BattleCasualty, BattleContext, EngineContext, EngineGame, Side, ZoneCardEntry,
 } from './engineTypes.ts'
 import {
-  discardCard, discardSnapshotOf, findVehicle, otherSide, zoneById,
+  discardCard, discardSnapshotOf, findVehicle, otherSide, putInHand, zoneById,
 } from './gameEngine.ts'
 import {
   BYSTANDER_EFFECTS, DEPLOY_WATCHER_EFFECTS, RESOLVE_BYSTANDER_EFFECTS, effectFor, effectName,
@@ -511,9 +511,7 @@ export function returnToHand(
   const index = discardIndexOf(game, side, entry)
   if (index < 0) return false
   const [snapshot] = game.state.destroyed[side].splice(index, 1)
-  game.privates[side].hand.push({ ...snapshot, instanceId: ctx.newId() })
-  // Checklist item 5: a direct push must resync the public count by hand.
-  game.state.counts[side].hand = game.privates[side].hand.length
+  putInHand(game, side, { ...snapshot, instanceId: ctx.newId() })
   return true
 }
 

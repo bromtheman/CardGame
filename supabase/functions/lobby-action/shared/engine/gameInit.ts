@@ -1,4 +1,4 @@
-import { STARTING_CP_AMOUNT, STARTING_HAND_SIZE } from '../gameSettings.ts'
+import { STARTING_CP_AMOUNT, STARTING_HAND_SIZE, STARTING_TURN_NUMBER } from '../gameSettings.ts'
 import { materialsPerTurnOf } from '../lobbySettings.ts'
 import type { LobbySettings } from '../lobbySettings.ts'
 
@@ -29,6 +29,18 @@ export interface SnapshotCard {
 
 export interface CardInstance extends SnapshotCard {
   instanceId: string
+  // The half-turn on which this instance entered its owner's HAND (2026-09-02
+  // spec §4.2). Written by putInHand (gameEngine.ts) and by the opening deal
+  // below, and read today only by tyrCostModifier.
+  //
+  // OPTIONAL, and it has to be: hands live in `game_players` rows, which
+  // `normalizeState` cannot reach — it takes a PublicGameState and hands are
+  // not in it. So every card in every in-flight game's hand carries no stamp
+  // and never will until it is played and re-drawn. A reader MUST treat
+  // `undefined` as "no residence", never subtract from it: `turnNumber -
+  // undefined` is NaN, and NaN reaching effectiveCostInGame makes the card
+  // unaffordable AND sets the payer's materials to NaN.
+  handEnteredTurn?: number
 }
 
 export interface ZoneState {
@@ -209,12 +221,18 @@ export function buildInitialGame(input: {
 }) {
   const deckAInstances = shuffleMutating(expandDeck(input.deckA, input.instanceId), input.rng)
   const deckBInstances = shuffleMutating(expandDeck(input.deckB, input.instanceId), input.rng)
+  // The opening hand is stamped here rather than through putInHand: there is no
+  // EngineGame yet — buildInitialGame returns the privates its caller assembles
+  // one from — so STARTING_TURN_NUMBER stands in for game.turnNumber, which the
+  // games row will be created holding.
+  const stampDealt = (c: CardInstance): CardInstance =>
+    ({ ...c, handEnteredTurn: STARTING_TURN_NUMBER })
   const aPrivate = {
-    hand: deckAInstances.slice(0, STARTING_HAND_SIZE),
+    hand: deckAInstances.slice(0, STARTING_HAND_SIZE).map(stampDealt),
     deck: deckAInstances.slice(STARTING_HAND_SIZE),
   }
   const bPrivate = {
-    hand: deckBInstances.slice(0, STARTING_HAND_SIZE),
+    hand: deckBInstances.slice(0, STARTING_HAND_SIZE).map(stampDealt),
     deck: deckBInstances.slice(STARTING_HAND_SIZE),
   }
   const activePlayer = input.rng() < 0.5 ? input.playerA : input.playerB

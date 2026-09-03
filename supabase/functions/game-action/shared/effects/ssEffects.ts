@@ -10,7 +10,7 @@ import {
 import { registerEffect } from './registry.ts'
 import type { EffectPayload } from './registry.ts'
 import type { EngineGame, Side, ZoneCardEntry } from '../engine/engineTypes.ts'
-import { findVehicle, otherSide, zoneById } from '../engine/gameEngine.ts'
+import { findVehicle, otherSide, putInHand, zoneById } from '../engine/gameEngine.ts'
 import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
 
 // SS built-in card effects.
@@ -50,14 +50,11 @@ registerEffect('balmungOnPlay', ({ game, actor, ctx }) => {
   // so this fails the play rather than fizzling — the same contract
   // spawnVehicles uses for the same reason.
   if (!hydra || !poolEligible(hydra)) return false
-  const hand = game.privates[actor].hand
-  hand.push({
+  putInHand(game, actor, {
     ...hydra,
     instanceId: ctx.newId(),
     meta: { ...hydra.meta, costDelta: -hydra.materialCost },
   })
-  // A direct push does not resync the public counts for you (drawCard does).
-  game.state.counts[actor].hand = hand.length
   // Never named: state.log is public and this card is entering a hidden hand.
   game.state.log.push(`Balmung forges a hull into player ${actor.toUpperCase()}'s hand, free of charge`)
   return true
