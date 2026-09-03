@@ -155,8 +155,9 @@ status pill, mirroring `GameBoardPage`'s strip.
 
 Left column, two seat rows (R-1):
 
-- Your own row carries a deck `<select>` over `useDecksQuery()` and your
-  Ready toggle.
+- Your own row carries a deck `<select>` over `useDecksQuery()`. Both rows
+  show ready **state** as a badge; the Ready **control** lives in the
+  bottom action bar, not in the row (see below).
 - The opponent's row shows their username and their deck's **faction**
   only — never the deck name, which would leak strategy with no way to
   un-see it — plus their ready state. The faction is read off
@@ -172,10 +173,22 @@ render as static text. Biome selects commit on `change`; number inputs
 commit on `blur`, so typing a five-digit HP value sends one request, not
 five.
 
-Bottom bar: host gets `Start game` (disabled until both ready) and
-`Cancel lobby`; guest gets `Leave`. Both get their Ready toggle in their
-seat row. Function errors render inline beside the triggering control,
-using the established `FunctionsHttpError` → `errors.join('; ')` pattern.
+Bottom bar: the Ready/Unready toggle for whichever seat you occupy, plus
+`Start game` (host only, disabled until both are ready) and `Cancel lobby`
+(host) or `Leave lobby` (guest).
+
+Every action lives in this bar and the seat rows carry state only. An
+earlier draft of this section put each player's Ready toggle in their own
+seat row, which would have been the more symmetric layout; the
+implementation put it beside Start instead, and that is what this spec now
+records. Two reasons it is the better call: the action bar becomes the one
+place a player looks for something to press, and a Ready control sitting
+next to the Start button makes the gating relationship between them
+legible — you can see that the thing you just pressed is what unlocks the
+host's button.
+
+Function errors render inline beside the triggering control, using the
+established `FunctionsHttpError` → `errors.join('; ')` pattern.
 
 ### 5.4 Navigation and realtime (R-3)
 
