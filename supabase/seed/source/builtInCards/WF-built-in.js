@@ -22,8 +22,8 @@ export const wfVehicles = [
     {
         name: 'Veles',
         isBuiltIn: true,
-        cardText: 'This vehicle may be omitted from defensive battles unless the attacking enemy force contains a ship or tank',
-        materialCost: 280000,
+        cardText: 'This card may be spawned into battle after all enemies are already spawned in',
+        materialCost: 225000,
         blueprintCost: 286922,
         cpCost: 0,
         imageUrl: 'veles.png',
@@ -32,9 +32,18 @@ export const wfVehicles = [
         type: 'vehicle',
         faction: FACTIONS.WF,
         blueprintId: null,
-        keywords: [],
+        keywords: [KEYWORDS.STEALTHY, KEYWORDS.SCRAPPY],
         meta: {
-            defensiveOmission: 'unlessShipOrTank',
+            // Conduct text for the spawn sheet, read by deployOrderFor
+            // (shared/engine/battleDeclare.ts): 'last' on this card's side
+            // means this side puts its fleet down last. The engine has no
+            // deployment-order concept and this pass does not give it one
+            // (2026-09-02 spec §4.3).
+            //
+            // `defensiveOmission` is gone with the old text. STEALTHY replaces
+            // it and is strictly wider — the opt-out no longer depends on what
+            // the attacking force contains.
+            deployOrder: 'last',
         }
     },
     {
@@ -59,8 +68,8 @@ export const wfVehicles = [
     {
         name: 'Purifier',
         isBuiltIn: true,
-        cardText: 'This ship can only be played into a zone in which you have lost a fleet battle the previous turn. This vehicle does no damage to the enemy base.',
-        materialCost: 760000,
+        cardText: 'This vehicle does no damage to the enemy base. Whenever it participates in a fleet battle, the enemy forces must spawn in first, even if they are defending.',
+        materialCost: 750000,
         blueprintCost: 765000,
         cpCost: 0,
         imageUrl: 'purifier.png',
@@ -71,14 +80,18 @@ export const wfVehicles = [
         blueprintId: null,
         keywords: [KEYWORDS.HALF_COST, KEYWORDS.FRAGILE],
         meta: {
-            // "Can only be played into a zone in which you have lost a fleet
-            // battle the previous turn" — read by legalZonesFor against the
-            // per-zone lostBattleOnTurn record (spec §7.3, wave 6).
-            deployRequiresBattleLoss: true,
             // "This vehicle does no damage to the enemy base." A
             // baseStrikersIn exclusion, NOT the INOFFENSIVE keyword, which
             // would also stop it attacking a fleet.
             noBaseDamage: true,
+            // "the enemy forces must spawn in first, even if they are
+            // defending" — the same statement Veles prints, seen from the
+            // other side, which is why one key serves both (2026-09-02 spec
+            // §4.3).
+            deployOrder: 'last',
+            // `deployRequiresBattleLoss` is gone with the deploy prerequisite.
+            // The RULE stays in placement.ts, commented, for the next card
+            // that wants it (spec R-8).
         }
     },
     {

@@ -96,7 +96,7 @@ const CARDS: Record<string, Expected> = {
     materialCost: 540_000, blueprintCost: 546_000, keywords: [], vehicleType: 'ship',
   },
   'WF:Purifier': {
-    materialCost: 760_000, blueprintCost: 765_000, keywords: ['halfCost', 'fragile'],
+    materialCost: 750_000, blueprintCost: 765_000, keywords: ['halfCost', 'fragile'],
     vehicleType: 'ship',
   },
 }
@@ -160,11 +160,14 @@ describe('2026-08-30 balance pass', () => {
   // The Repentance is the sharp one: a WF PLANE at exactly 100_000. It is
   // excluded by the vehicleType filter alone, so this assertion is what
   // proves that filter is doing work.
-  // Purifier's WHOLE card text is these two keys, and it names no effect
-  // either. Two rules, two values, both compared rather than merely present.
+  // Purifier's whole card text is still data keys and it still names no effect
+  // — but the 2026-09-02 pass swapped one of the two rules
+  // (deployRequiresBattleLoss out, deployOrder in). Kept here rather than moved
+  // wholesale to wf.balance.test.ts: the 2026-08-30 file is updated in place
+  // where a later pass moves one of its numbers (2026-09-02 spec §2.3).
   it('Purifier carries both of its data rules', async () => {
     expect((await bySeedKey()).get('WF:Purifier')!.meta).toMatchObject({
-      deployRequiresBattleLoss: true, noBaseDamage: true,
+      noBaseDamage: true, deployOrder: 'last',
     })
   })
 

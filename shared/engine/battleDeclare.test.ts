@@ -426,7 +426,11 @@ describe('defender omission', () => {
     const carriers = cards.filter(
       (c) => c.isBuiltIn && (c.meta as Record<string, unknown> | undefined)?.defensiveOmission !== undefined,
     )
-    expect(carriers.map((c) => c.name).sort()).toEqual(['Buzzsaw', 'Veles'])
+    // Veles gave the key up in the 2026-09-02 pass (spec §6.3); Buzzsaw is the
+    // last carrier and goes in the same wave. Narrowed rather than deleted, so
+    // this assertion keeps proving the VALUE right up to the moment there is
+    // nothing left to prove it about.
+    expect(carriers.map((c) => c.name).sort()).toEqual(['Buzzsaw'])
     for (const card of carriers) {
       expect({ name: card.name, value: (card.meta as Record<string, unknown>).defensiveOmission })
         .toEqual({ name: card.name, value: OMISSION_UNLESS_SHIP_OR_TANK })
