@@ -251,7 +251,7 @@ export interface CustomBattleFile {
 const NEUTRAL_FLEET_COLORS = ['0,0,0,0', '0,0,0,0', '0,0,0,0', '0,0,0,0']
 
 /** Spec §3.5's spawn sheet: "surface vessels/subs at surface, aircraft at 80 m". */
-export const AIRCRAFT_SPAWN_ALTITUDE_M = 80
+export const AIRCRAFT_SPAWN_ALTITUDE_M = 160
 
 /**
  * Yaw applied to every hull on the attacking side, in degrees.
