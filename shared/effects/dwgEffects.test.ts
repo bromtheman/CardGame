@@ -105,6 +105,28 @@ describe('loggerheadOnDeath', () => {
     effectFor('loggerheadOnDeath')!({ game, actor: 'a', card: dying, ctx: makeCtx() })
     expect(game.privates.a.deck.map((c) => c.name)).toEqual(['Loggerhead', 'Three', 'Two', 'One'])
   })
+
+  // Regression: a Loggerhead a Plunderer raid captured (meta.costDelta: +20k,
+  // spec §6.1) and that its captor then played is in exactly this shape when it
+  // dies — copyMeta strips only the phantom capturedCopy stamp, not costDelta,
+  // so without an explicit strip here the free copy would inherit the surcharge
+  // and cost 20k despite its own text promising "It costs 0." — and reseed the
+  // stamp on every later death. toHaveProperty, not toBeUndefined: a fix that
+  // merely zeroed the stamp instead of removing it must still fail this.
+  it('strips a costDelta stamp off the free copy — a raided Loggerhead still costs 0', () => {
+    const game = makeGame()
+    const dying = zoneEntry({
+      name: 'Loggerhead', materialCost: 80_000, meta: { costDelta: 20_000 },
+    })
+    const ok = effectFor('loggerheadOnDeath')!({
+      game, actor: 'a', card: dying, ctx: makeCtx(),
+    })
+    expect(ok).toBe(true)
+    expect(game.privates.a.deck).toHaveLength(1)
+    const copy = game.privates.a.deck[0]
+    expect(copy.materialCost).toBe(0)
+    expect(copy.meta).not.toHaveProperty('costDelta')
+  })
 })
 
 describe('reservesEffect', () => {

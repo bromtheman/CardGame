@@ -40,7 +40,8 @@ registerEffect('ransackOnPlay', grant({ draw: 1, cp: 1 }))
 registerEffect('paddlegunEffect', grant({ draw: 1, from: 'enemy' }))
 
 // Plunderer clause 2: "When this vehicle survives a victorious fleet battle or
-// inflicts damage to the enemy base, draw one card from the enemy deck."
+// inflicts damage to the enemy base, draw one card from the enemy deck, but
+// increase its cost by 20k."
 //
 // One clause, two occasions, one implementation (spec §4.3, DP2 departure 5).
 // `onBattleVictory` at resolve only reaches a participant on the winning side,
@@ -55,8 +56,10 @@ registerEffect('paddlegunEffect', grant({ draw: 1, from: 'enemy' }))
 // The 2026-09-02 pass added the price. The stamp goes on the COPY that
 // takeFromEnemyDeck just pushed — `hand[before]` — never on the original, which
 // stays in the enemy's deck. It ADDS to whatever delta the card already carried
-// rather than replacing it, so a card Excalibur had already discounted keeps
-// that discount and merely costs 20k more.
+// rather than replacing it: the only way a DECK card carries a costDelta at all
+// is a death effect that mints straight into one — loggerheadOnDeath, below, is
+// the one that exists — so a raid landing on such a card compounds the stamp
+// rather than silently erasing it.
 registerEffect('plundererRaid', ({ game, actor, ctx, battle }) => {
   if (!battle || !battle.survived || !battle.won) return true
   const before = game.privates[actor].hand.length
@@ -83,7 +86,13 @@ registerEffect('loggerheadOnDeath', ({ game, actor, card, ctx }) => {
   // card arrives as a ZoneCardEntry at death — strip the zone stamps so the
   // deck copy is a clean CardInstance
   const { playedOnTurn: _p, movedOnTurn: _m, ...snapshot } = card as ZoneCardEntry
-  deck.push({ ...snapshot, instanceId: ctx.newId(), materialCost: 0, meta: copyMeta(snapshot.meta) })
+  // A per-instance price stamp (e.g. a Plunderer raid's +20k surcharge, spec
+  // §6.1) must not ride into the deck on a card whose own text promises it
+  // costs 0. copyMeta strips only the phantom capturedCopy stamp, so strip
+  // costDelta here too — the same shape as the tgEffects.ts:238 precedent
+  // (horrorBattle strips factoryEscort on top of copyMeta the same way).
+  const meta = (({ costDelta: _costDelta, ...rest }) => rest)(copyMeta(snapshot.meta))
+  deck.push({ ...snapshot, instanceId: ctx.newId(), materialCost: 0, meta })
   for (let i = deck.length - 1; i > 0; i--) {
     const j = Math.floor(ctx.rng() * (i + 1))
     ;[deck[i], deck[j]] = [deck[j], deck[i]]
