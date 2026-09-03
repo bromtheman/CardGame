@@ -419,7 +419,7 @@ a later reader scores it backwards.
 | Earth Raker | "When this is played, draw a card" | new `earthRakerOnPlay` |
 | Purifier | 760k→750k; drops the deploy prerequisite, keeps `noBaseDamage`, gains "enemy spawns first" | drop `deployRequiresBattleLoss`; `deployOrder: 'last'` |
 | Judgement | activation becomes free | `activateCpCost: 0` — data. `parsePrice` accepts 0 and `BoardZone` gates on `typeof === 'number'`, so the button survives; assert both |
-| Harbringer | retired | **Wave 0** (§2.1). WF's wave still deletes `HARBRINGER_GUEST_MAX_COST`, whose last reader goes with it |
+| Harbringer | retired | **Wave 0** (§2.1). `harbringerBattle` stays registered and reachable (the retired-but-seeded row still names it), so `harbringerPool()` still reads `HARBRINGER_GUEST_MAX_COST` — WF's wave does not touch either. R-8 keeps the constant |
 
 WF also flips `TG:Anguish` to `deployOrder: 'first'` and removes it from
 `EXEMPT`, because WF owns the mechanic. That is the one edit WF makes to
