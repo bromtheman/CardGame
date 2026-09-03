@@ -76,14 +76,23 @@ function riderBlocks(state: PublicGameState, side: Side, zoneId: number, faction
 // WF Purifier: "This ship can only be played into a zone in which you have
 // lost a fleet battle the previous turn" (spec §7.3, wave 6).
 //
+// ⚠ NO SEEDED CARD CARRIES `deployRequiresBattleLoss` since the 2026-09-02
+// balance pass, which rewrote Purifier's text. The rule is KEPT — and so is
+// the per-zone `lostBattleOnTurn` tracking battleResolve.ts writes for it —
+// for the reason `purifierEffect` is kept registered: an in-flight game dealt
+// before that pass carries a frozen Purifier snapshot that still prints the
+// key (spec R-8, §5).
+//
 // A PREREQUISITE rather than a block — it narrows the legal set to the zones
 // that satisfy it, where every other rule here removes zones from it. Read off
-// `deployRequiresBattleLoss`, another data key, so the rule outlives the card.
+// `deployRequiresBattleLoss`, another data key, so the rule outlives the card —
+// which is now literal rather than hypothetical: the next card wanting the
+// rule needs no engine edit.
 //
 // "The previous turn" is the last full ROUND, current turn included:
 // turnNumber moves in half steps, so the strictly-previous half-turn is the
 // opponent's, and reading it that way would admit only a defensive loss —
-// a restriction the card does not print. `turnNumber - 1` is the start of the
+// a restriction the card did not print. `turnNumber - 1` is the start of the
 // actor's own previous turn, which is what wave 5's "the turn is the actor's
 // own frame" ruling already points at.
 function battleLossMissing(

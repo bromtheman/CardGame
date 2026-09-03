@@ -234,12 +234,15 @@ frontend (supabase-js) ──invoke──> edge function ──applyAction──
   `{zoneId, aggressor, attackerIds, targetIds, stealthyIds, omissibleIds}`.
   **Two** opt-out lists, not one. `stealthyIds` is unconditional (the Stealthy
   keyword). `omissibleIds` (wave 4) holds defenders carrying
-  `meta.defensiveOmission` whose condition is met *for this attack* — Buzzsaw
-  and Veles may sit out unless the attacker's **committed selection** holds a
-  ship or tank, so it cannot be derived from the card alone and is computed in
+  `meta.defensiveOmission` whose condition is met *for this attack* — a carrier
+  may sit out unless the attacker's **committed selection** holds a ship or
+  tank, so it cannot be derived from the card alone and is computed in
   `ATTACK_ENEMY_FLEET`. The window opens when **either** list is non-empty;
   before wave 4 only Stealthy could raise it. `RESPOND_TO_ATTACK` accepts an
   opt-out from either. Spec §4.8; `normalizeState` defaults `omissibleIds`.
+  ⚠ No seeded card has carried `defensiveOmission` since the 2026-09-02 balance
+  pass (Buzzsaw and Veles both traded it for STEALTHY); the list is still built
+  and the rule still enforced, for the frozen in-flight snapshots that print it.
 - Battle freeze: `awaitingResponse` / `activeBattle` / `pendingReport` non-null
   freezes the game to `BATTLE_ACTIONS` only. `CONCEDE`, `ABANDON`, and battle
   actions are also in `OFF_TURN_ACTIONS` (the off-turn player may owe a response).

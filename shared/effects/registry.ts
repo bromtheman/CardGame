@@ -121,11 +121,13 @@ const ALL_META_KEYS = [...Object.values(TRIGGERS), 'costModifier']
 
 // Meta keys that carry plain data rather than an effect name, and which
 // satisfy a card's text on their own (spec §5).
-// Buzzsaw and Veles carry `defensiveOmission` and no registry name at all
-// (spec §4.8): an effect returns a boolean meaning "resolved" and may mutate,
-// so using one as a pure eligibility predicate inverts this registry's
-// contract. It sits OUTSIDE TRIGGERS deliberately, so G3 never inspects it and
-// HandBar's ALL_TRIGGER_KEYS needs no change.
+// Buzzsaw and Veles USED TO carry `defensiveOmission` and no registry name at
+// all (spec §4.8): an effect returns a boolean meaning "resolved" and may
+// mutate, so using one as a pure eligibility predicate inverts this registry's
+// contract. Neither card carries it since the 2026-09-02 pass, and the key
+// stays in this list for the frozen snapshots that still do (spec R-8). It
+// sits OUTSIDE TRIGGERS deliberately, so G3 never inspects it and HandBar's
+// ALL_TRIGGER_KEYS needs no change.
 // `aircraftLock` (wave 6) joins them for the same reason: Albacore and Tarpon
 // print one sentence, that sentence IS a placement rule read by
 // legalZonesFor, and neither card carries a registry name at all.

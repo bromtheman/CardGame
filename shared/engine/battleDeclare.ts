@@ -4,9 +4,18 @@ import type { EngineGame } from './engineTypes.ts'
 import { err, findVehicle, otherSide, registerHandler, zoneById } from './gameEngine.ts'
 import { dispatchBattleLock, lockRoster } from './battleTriggers.ts'
 
-// The one condition meta.defensiveOmission expresses today (spec §4.8). A
-// string rather than a boolean so a second condition is expressible without a
-// second meta key; Buzzsaw and Veles print identical text and share this one.
+// The one condition meta.defensiveOmission expresses (spec §4.8). A string
+// rather than a boolean so a second condition is expressible without a second
+// meta key.
+//
+// ⚠ NO SEEDED CARD CARRIES IT since the 2026-09-02 balance pass: Buzzsaw and
+// Veles, its only two carriers, both traded it for STEALTHY, whose opt-out is
+// unconditional and therefore strictly wider. The rule below is KEPT rather
+// than deleted, for the reason purifierEffect is kept registered — an
+// in-flight game dealt before that pass carries a frozen snapshot that still
+// prints the key, and the opt-out has to keep working for those hulls
+// (spec R-8, §5). battleDeclare.test.ts asserts the carrier set AT ZERO, so
+// the next card to take the key has to come back here.
 export const OMISSION_UNLESS_SHIP_OR_TANK = 'unlessShipOrTank'
 
 // The two directions meta.deployOrder expresses (2026-09-02 spec §4.3), read

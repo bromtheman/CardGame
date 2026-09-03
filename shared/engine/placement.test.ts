@@ -1121,6 +1121,13 @@ describe('aircraftLock — Albacore and Tarpon', () => {
 // Wave 6 — WF Purifier: "This ship can only be played into a zone in which you
 // have lost a fleet battle the previous turn."
 //
+// ⚠ Purifier gave the key up in the 2026-09-02 pass and no seeded card carries
+// it now; these cases are hand-built fixtures, and they are what keeps the
+// KEPT rule (placement.ts, spec R-8) honest for the frozen snapshots that
+// still print it and for the next card that takes it. The 760_000 below is the
+// PRE-pass price deliberately — these fixtures model exactly the snapshot the
+// kept rule serves, not today's 750_000 Purifier.
+//
 // Ruling C-5 (spec §7.3, wave 6): "the previous turn" is the last FULL round,
 // current turn included — lostBattleOnTurn >= turnNumber - 1. The counter moves
 // in half steps, so the strictly-previous half-turn is the OPPONENT'S, and
