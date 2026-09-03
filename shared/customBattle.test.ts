@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 import {
+  AIRCRAFT_SPAWN_ALTITUDE_M,
   BLUEPRINT_OVERRIDES,
   BUILT_IN_BLUEPRINT_ROOT,
   BlueprintResolutionError,
@@ -184,9 +185,12 @@ describe('buildCustomBattle', () => {
     expect(file.Teams[1]!.Blueprints[0]!.SpawnAngle).toBe(0)
   })
 
-  it('spawns aircraft at 80 m and everything else at the surface', () => {
-    // Spec §3.5: "surface vessels/subs at surface, aircraft at 80 m, land
-    // vehicles on land".
+  it('spawns aircraft at the aircraft altitude and everything else at the surface', () => {
+    // Spec §3.5: "surface vessels/subs at surface, aircraft at <altitude>, land
+    // vehicles on land". Asserted against AIRCRAFT_SPAWN_ALTITUDE_M rather than
+    // its value: a hard-coded literal here is invisible to a grep for the
+    // constant's name, so retuning the altitude left this test red and the
+    // player-facing guidance line stale (2026-09-02).
     const file = buildCustomBattle([
       {
         name: 'air',
@@ -204,7 +208,8 @@ describe('buildCustomBattle', () => {
         ],
       },
     ])
-    expect(file.Teams[0]!.Blueprints.map((b) => b.SpawnAltitude)).toEqual([80, 80])
+    expect(file.Teams[0]!.Blueprints.map((b) => b.SpawnAltitude))
+      .toEqual([AIRCRAFT_SPAWN_ALTITUDE_M, AIRCRAFT_SPAWN_ALTITUDE_M])
     expect(file.Teams[1]!.Blueprints.map((b) => b.SpawnAltitude)).toEqual([0, 0, 0])
   })
 

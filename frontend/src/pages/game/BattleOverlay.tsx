@@ -8,6 +8,7 @@ import {
   HERO_POWER_DISTANCE_MOD_M, IN_BATTLE_RESOURCE_RATE, KEYWORDS,
   REPAIR_WINDOW_MIN_PERCENT, SURVIVE_HP_PERCENT,
 } from '@shared/gameSettings'
+import { AIRCRAFT_SPAWN_ALTITUDE_M } from '@shared/customBattle'
 import { shortHandNumber } from '@shared/format'
 
 import { LaunchInFtdButton } from './LaunchInFtdButton'
@@ -551,9 +552,15 @@ export function BattleOverlay({
         <p className="mt-1 text-sm text-ocean-300">
           Spawn distance: <span className="font-bold text-parchment-100">{battle.distanceM} m</span>
         </p>
+        {/*
+          The altitude is DERIVED from AIRCRAFT_SPAWN_ALTITUDE_M, never restated:
+          this sentence hard-coded "80 m" and kept saying it after the constant
+          was retuned to 160, so the panel contradicted the battle file it
+          describes. Keep it derived.
+        */}
         <p className="mt-2 text-sm text-ocean-300">
-          Altitude guidance: surface ships and submarines spawn at the surface; aircraft spawn at 80 m; land vehicles
-          spawn on land.
+          Altitude guidance: surface ships and submarines spawn at the surface; aircraft spawn at{' '}
+          {AIRCRAFT_SPAWN_ALTITUDE_M} m; land vehicles spawn on land.
         </p>
 
         <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
