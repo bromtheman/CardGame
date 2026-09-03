@@ -357,10 +357,11 @@ describe('DP2 lock dispatch', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Wave 4: defender omission (spec §4.8). Buzzsaw and Veles print "this vehicle
-// may be omitted from defensive battles unless the attacking enemy force
-// contains a ship or tank" — a CONDITIONAL opt-out, which pending.stealthyIds
-// has no room for, so awaitingResponse gains a second list.
+// Wave 4: defender omission (spec §4.8). Buzzsaw and Veles used to print
+// "this vehicle may be omitted from defensive battles unless the attacking
+// enemy force contains a ship or tank" — a CONDITIONAL opt-out, which
+// pending.stealthyIds has no room for, so awaitingResponse gained a second
+// list.
 // ---------------------------------------------------------------------------
 
 // The constant, not the literal: a rename of its value must break this fixture

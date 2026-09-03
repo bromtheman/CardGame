@@ -6101,7 +6101,8 @@ describe('2026-09-02 — WF Slasher', () => {
   // silently make them harmless as well as free.
   it('prices them at zero without making them worthless', () => {
     const game = makeGame()
-    fire(game)
+    expect(fire(game)).toBe(true)
+    expect(game.privates.a.hand).toHaveLength(2)
     for (const c of game.privates.a.hand) {
       expect(c.materialCost).toBe(50_000)
       expect(effectiveCostInGame(game.state, 'a', c)).toBe(0)
@@ -6149,7 +6150,8 @@ describe('2026-09-02 — WF Excruciator', () => {
     const game = makeGame()
     game.privates.a.deck = [ai('One'), ai('Two')]
     game.state.counts.a = { hand: 0, deck: 2 }
-    fire(game)
+    expect(fire(game)).toBe(true)
+    expect(game.privates.a.hand).toHaveLength(2)
     for (const c of game.privates.a.hand) {
       expect(c.meta.costDelta).toBe(-100_000)
       expect(c.materialCost).toBe(300_000)          // a PRICE, not a rewrite

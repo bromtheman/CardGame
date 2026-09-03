@@ -1230,7 +1230,7 @@ describe('deployRequiresBattleLoss — an unnormalized zone', () => {
 
 // ---------------------------------------------------------------------------
 // Wave 7, group B — two TG cards that are pure DATA and name no registry
-// effect at all, exactly as Buzzsaw and Veles do (spec §4.8).
+// effect at all, exactly as Buzzsaw and Veles used to (spec §4.8).
 //
 // The literals here are tied to the real seeded rows by
 // supabase/seed/tgFaction.test.ts, which asserts the cards carry these exact
