@@ -322,6 +322,8 @@ export const wfVehicles = [
         keywords: [KEYWORDS.SUB_SCREEN],
         meta: {
             [TRIGGERS.ON_BATTLE_EFFECT]: 'harbringerBattle',
+            // Retired by the 2026-09-02 balance pass — see the comment on OW:Halberd.
+            retired: true,
         }
     },
     {

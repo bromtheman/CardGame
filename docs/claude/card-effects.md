@@ -62,8 +62,10 @@ vehicle deploys n extra copies (capped at `ADDITIONAL_SPAWNS_CAP` = 10, ids from
 
 Some meta keys are **plain data, not effect names**: `additionalSpawns`,
 `resourceSurge`, `defensiveOmission`, `activateCpCost`, `costDelta`,
-`summonOnly`. None carries a registry name, so all six sit outside `TRIGGERS` /
-`ALL_META_KEYS` and **G1 and G3 never look at them**.
+`summonOnly`, `retired` (a balance pass took the card out of drafting and deck
+legality; its row stays seeded so in-flight games and unedited decks still
+resolve it — spec 2026-09-02 §2.1). None carries a registry name, so all seven
+sit outside `TRIGGERS` / `ALL_META_KEYS` and **G1 and G3 never look at them**.
 
 ⚠ **THE SEED HAS ITS OWN COPY OF THE VOCABULARY, and wave 7 walked into it.**
 `supabase/seed/source/*.js` import `"../gameSettings"` — which resolves to
@@ -166,10 +168,20 @@ invisible to G1/G2/G3.
 9. If the effect needs UI (targeting mode, alert badge, …), see
    [frontend.md](frontend.md); HandBar drives targeting modes off meta keys via
    `effectName`.
-10. **A built-in card must not carry both `SCRAPPY` and an `onDeathEffect`.** Scrappy
-    vehicles auto-repair in the 80–89.999% band with no player prompt, so a beneficial
-    death trigger on a Scrappy card would be silently unreachable. (Loggerhead hit this
-    and had `SCRAPPY` removed.)
+10. **`SCRAPPY` narrows an `onDeathEffect`'s window — it does not close it.**
+    `autoRepairIds` (`shared/engine/battleResolve.ts`) repairs a Scrappy hull
+    only when `REPAIR_WINDOW_MIN_PERCENT <= hp < SURVIVE_HP_PERCENT`
+    (80–89.999%). Below 80% the hull is not repaired: it is removed from its
+    zone, discarded and pushed to `destroyedEntries`, which is exactly what
+    dispatches `onDeathEffect`. So the combination is **allowed**, and a card
+    may carry both — SS Argonaut does, deliberately (2026-09-02 spec R-4).
+
+    ⚠ This rule previously claimed such a trigger was "silently unreachable".
+    That was wrong, and it cost Loggerhead its `SCRAPPY` keyword. Loggerhead
+    has not been reverted: restoring it is a balance decision, not a
+    correction. What survives of the original warning is only this — weigh
+    whether a *beneficial* death trigger is worth having on a hull that
+    survives the 80–90% band for free.
 
 ## Primitives (`shared/effects/primitives.ts`)
 

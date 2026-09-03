@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { DECK_FACTIONS, DECK_SIZE } from '@shared/gameSettings'
+import { useCardsQuery } from '../lib/cards'
 import { deckCardCount, useDecksQuery } from '../lib/decks'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../lib/auth'
@@ -12,6 +13,15 @@ export function DecksPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { data: decks, isLoading, error } = useDecksQuery()
+  const { data: allCards } = useCardsQuery()
+  // A Set of ids rather than a per-deck lookup: this renders once per deck and
+  // the card list is ~160 rows.
+  const retiredIds = useMemo(
+    () => new Set((allCards ?? [])
+      .filter((c) => (c.meta as { retired?: boolean } | null)?.retired === true)
+      .map((c) => c.id)),
+    [allCards],
+  )
   const [name, setName] = useState('')
   const [faction, setFaction] = useState<string>(DECK_FACTIONS[0])
   const [formError, setFormError] = useState<string | null>(null)
@@ -62,6 +72,12 @@ export function DecksPage() {
               <span className="font-display text-xl">{d.name}</span>
               <span className="ml-3 rounded bg-ocean-600 px-2 py-0.5 text-sm">{d.faction}</span>
               <span className="ml-3 text-ocean-300">{deckCardCount(d)}/{DECK_SIZE} cards</span>
+              {Object.keys((d.cards ?? {}) as Record<string, number>)
+                .some((id) => retiredIds.has(id)) && (
+                <span className="ml-3 rounded bg-amber-600 px-2 py-0.5 text-sm text-ocean-950">
+                  contains a retired card
+                </span>
+              )}
             </Link>
             <button onClick={() => setPendingDelete({ id: d.id, name: d.name })} className="text-red-400 underline">Delete</button>
           </li>

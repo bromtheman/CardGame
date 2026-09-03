@@ -27,6 +27,18 @@ export interface DeckCardInfo {
   ownerId: string | null
   // Spawned, never drafted (spec §7.1).
   summonOnly?: boolean
+  // Retired by a balance pass (2026-09-02 spec §2.1). The row stays seeded so
+  // in-flight games and unedited decks still resolve the snapshot — this flag
+  // is what stops it being a legal deck card from here on.
+  //
+  // Required, not optional: a lobby-action rebuild once left this unpopulated
+  // and the compiler had nothing to catch it — `undefined` is falsy, so
+  // validateDeck silently let every retired card through. There are exactly
+  // two construction sites (lobby-action/index.ts, DeckBuilderPage.tsx) plus
+  // the test helper; making the field required forces the next one to set it.
+  // `summonOnly` stays optional — it has no live bug — but should follow if
+  // it ever grows a third construction site.
+  retired: boolean
 }
 
 export interface DeckValidationResult {
@@ -63,6 +75,10 @@ export function validateDeck(
     }
     if (card.summonOnly) {
       errors.push(`Card ${cardId} cannot be added to a deck`)
+      continue
+    }
+    if (card.retired) {
+      errors.push(`Card ${cardId} has been retired and can no longer be used in a deck`)
       continue
     }
     if (card.isBuiltIn) {

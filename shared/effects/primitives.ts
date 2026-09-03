@@ -128,6 +128,18 @@ function shuffled<T>(items: T[], ctx: EngineContext): T[] {
   return copy
 }
 
+/**
+ * Cards no pool may mint or draw: never-drafted summons (spec §7.4) and cards
+ * retired by a balance pass (2026-09-02 spec §2.1).
+ *
+ * Extracted because this exclusion was repeated by hand at six sites that
+ * filter `ctx.catalog` directly — and every one of them was a place the NEXT
+ * exclusion would be forgotten. `retired` was that next exclusion.
+ */
+export function poolEligible(c: { meta: Record<string, unknown> }): boolean {
+  return c.meta.summonOnly !== true && c.meta.retired !== true
+}
+
 // Put `count` cards matching `filter` into the actor's hand, either minted
 // from the built-in catalog or moved out of the actor's own deck. The log
 // never names them — they are entering a hidden hand.
@@ -136,7 +148,7 @@ export function drawFromPool(spec: PoolSpec): EffectFn {
     const hand = game.privates[actor].hand
     const allowEmpty = spec.allowEmpty ?? spec.source === 'deck'
     if (spec.source === 'catalog') {
-      const pool = ctx.catalog.filter((c) => c.isBuiltIn && c.meta.summonOnly !== true && matches(c, spec.filter))
+      const pool = ctx.catalog.filter((c) => c.isBuiltIn && poolEligible(c) && matches(c, spec.filter))
       if (pool.length === 0) {
         if (!allowEmpty) return false
         game.state.log.push(`Player ${actor.toUpperCase()} finds no matching card`)

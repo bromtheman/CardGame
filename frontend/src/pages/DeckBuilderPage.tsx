@@ -51,13 +51,15 @@ export function DeckBuilderPage() {
 
   const pool = useMemo(
     () =>
-      (allCards ?? []).filter((c) =>
-        (c.meta as { summonOnly?: boolean } | null)?.summonOnly === true
-          ? false
-          : c.is_built_in
-            ? c.faction === deck?.faction || c.faction === FACTIONS.NEUTRAL
-            : c.owner_id === session?.user.id,
-      ),
+      (allCards ?? []).filter((c) => {
+        const meta = c.meta as { summonOnly?: boolean; retired?: boolean } | null
+        // A retired card is hidden from the pool but NOT from the deck below —
+        // an owner has to be able to see the card they must remove.
+        if (meta?.summonOnly === true || meta?.retired === true) return false
+        return c.is_built_in
+          ? c.faction === deck?.faction || c.faction === FACTIONS.NEUTRAL
+          : c.owner_id === session?.user.id
+      }),
     [allCards, deck, session],
   )
 
@@ -68,10 +70,23 @@ export function DeckBuilderPage() {
         id: c.id, isBuiltIn: c.is_built_in, faction: c.faction,
         vehicleType: c.vehicle_type, ownerId: c.owner_id,
         summonOnly: (c.meta as { summonOnly?: boolean } | null)?.summonOnly === true,
+        retired: (c.meta as { retired?: boolean } | null)?.retired === true,
       }]),
     )
     return validateDeck({ faction: deck.faction, cards }, infoMap, session.user.id)
   }, [deck, allCards, session, cards])
+
+  // The 25 decks affected by the 2026-09-02 retirements land here. validateDeck
+  // already reports the error; this is what turns it into an instruction by
+  // naming the card, which the error (keyed by id) cannot.
+  const retiredHeld = useMemo(
+    () => Object.keys(cards)
+      .map((id) => (allCards ?? []).find((c) => c.id === id))
+      .filter((c): c is NonNullable<typeof c> =>
+        !!c && (c.meta as { retired?: boolean } | null)?.retired === true)
+      .map((c) => c.name),
+    [cards, allCards],
+  )
 
   // Stepping off `prev` rather than off a rendered quantity keeps two clicks
   // batched into one render from both resolving to the same target.
@@ -160,6 +175,13 @@ export function DeckBuilderPage() {
         {/* Deck status sits directly above Save rather than above the list:
             errors appear and disappear on every quantity change, and from up
             there each one shoved the whole card list down under the cursor. */}
+        {retiredHeld.length > 0 && (
+          <p className="mt-4 rounded border border-amber-500 bg-amber-950/40 p-3 text-amber-200">
+            {retiredHeld.join(', ')} {retiredHeld.length === 1 ? 'has' : 'have'} been
+            retired and can no longer be used. Remove {retiredHeld.length === 1 ? 'it' : 'them'} and
+            add {retiredHeld.length === 1 ? 'another card' : 'other cards'} to make this fleet legal again.
+          </p>
+        )}
         {validation && (
           <div className={`mt-3 rounded p-3 ${validation.valid ? 'bg-green-900/60' : 'bg-ocean-900/80'}`}>
             <p className="font-bold">{validation.cardCount} cards — {validation.valid ? 'battle ready' : 'draft'}</p>

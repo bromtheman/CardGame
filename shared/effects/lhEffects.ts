@@ -1,7 +1,8 @@
 import { effectiveCostInGame } from '../engine/placement.ts'
 import { KEYWORDS } from '../gameSettings.ts'
 import {
-  choice, drawFromPool, enemyVehicleOptions, grant, sequence, spawnVehicles, summonHulls, whenPlayed, zoneOccupants,
+  choice, drawFromPool, enemyVehicleOptions, grant, poolEligible, sequence, spawnVehicles, summonHulls,
+  whenPlayed, zoneOccupants,
 } from './primitives.ts'
 import type { EffectFn } from './registry.ts'
 import { registerEffect } from './registry.ts'
@@ -80,7 +81,7 @@ registerEffect(ROBOTIC_ASSEMBLERS, choice({
   effect: ROBOTIC_ASSEMBLERS,
   prompt: 'Choose a [TG] Robotics card to add to your hand',
   options: ({ ctx }) => ctx.catalog
-    .filter((c) => c.isBuiltIn && c.meta[LH_ROBOTICS_POOL] === true && c.meta.summonOnly !== true)
+    .filter((c) => c.isBuiltIn && c.meta[LH_ROBOTICS_POOL] === true && poolEligible(c))
     .sort((x, y) => x.name.localeCompare(y.name))
     .map((c) => ({ id: c.cardId, label: c.name })),
   resolve: ({ game, actor, ctx }, choiceId) => {

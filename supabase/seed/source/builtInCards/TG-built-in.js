@@ -190,8 +190,8 @@ export const tgVehicles = [
         faction: FACTIONS.TG,
         blueprintId: null,
         keywords: [KEYWORDS.UPKEEP_REQUIRED, KEYWORDS.ROBOTIC],
-        meta: {
-        }
+        // Retired by the 2026-09-02 balance pass — see the comment on OW:Halberd.
+        meta: { retired: true }
     },
     {
         name: 'Anguish',
@@ -297,6 +297,8 @@ export const tgVehicles = [
         keywords: [KEYWORDS.HALF_COST, KEYWORDS.TEMPORARY],
         meta: {
             resourceSurge: { materialsAtLeast: 150000, extraSpawns: 1 },
+            // Retired by the 2026-09-02 balance pass — see the comment on OW:Halberd.
+            retired: true,
         }
     },
     {

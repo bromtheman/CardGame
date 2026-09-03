@@ -227,6 +227,8 @@ export const ssVehicles = [
         keywords: [KEYWORDS.BLOCKER],
         meta: {
             [TRIGGERS.ON_BATTLE_EFFECT]: 'dryadBattle',
+            // Retired by the 2026-09-02 balance pass — see the comment on OW:Halberd.
+            retired: true,
         }
     }, {
         name: 'Typhoon',

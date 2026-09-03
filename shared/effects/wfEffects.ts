@@ -9,7 +9,7 @@ import type { SnapshotCard } from '../engine/gameInit.ts'
 import { findVehicle, otherSide, zoneById } from '../engine/gameEngine.ts'
 import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
 import {
-  catalogCard, choice, enemyVehicleOptions, grant, spawnInto, summonHulls,
+  catalogCard, choice, enemyVehicleOptions, grant, poolEligible, spawnInto, summonHulls,
 } from './primitives.ts'
 import { registerCostModifier, registerEffect } from './registry.ts'
 import type { EffectPayload } from './registry.ts'
@@ -208,9 +208,9 @@ const HARBRINGER = 'harbringerBattle'
 // reached as a forced-battle bystander, and this card's text describes only a
 // battle it is in.
 
-// The summonOnly exclusion is repeated by hand because this filters
-// ctx.catalog directly rather than going through drawFromPool, which is the
-// one place that guard comes for free.
+// This filters ctx.catalog directly rather than going through drawFromPool,
+// so it uses the shared poolEligible predicate rather than drawFromPool's
+// own filter.
 function harbringerPool(ctx: EngineContext): SnapshotCard[] {
   return ctx.catalog.filter((c) =>
     c.isBuiltIn &&
@@ -218,7 +218,7 @@ function harbringerPool(ctx: EngineContext): SnapshotCard[] {
     c.type === 'vehicle' &&
     c.vehicleType === VEHICLE_TYPES.SHIP &&
     c.materialCost <= HARBRINGER_GUEST_MAX_COST &&
-    c.meta.summonOnly !== true)
+    poolEligible(c))
 }
 
 // Options are catalog card NAMES — public, like Special Foundries' pools and

@@ -79,7 +79,7 @@ const games = []
     label: 'wave6-smoke-a',
     materialsPerTurn: 400_000,
     p1Faction: 'SS', p1Required: ['Nothung', 'Balmung', 'Victoria', 'Blockade'],
-    p2Faction: 'WF', p2Required: ['Purifier', 'Judgement', 'Harbringer', 'Basher'],
+    p2Faction: 'WF', p2Required: ['Purifier', 'Judgement', 'Slasher', 'Basher'],
   }, cards)
   games.push(g)
   console.log('\n  -- game A: SS (host) vs WF (guest), 400k/turn\n')
