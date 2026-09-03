@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { CATALOG_EFFECTS, RESOLVE_BYSTANDER_EFFECTS, effectFor, registerEffect } from './registry.ts'
 import { choice } from './primitives.ts'
-import { BASE_DAMAGE_DIVISOR, BULL_SHARK_BASE_DAMAGE, KEYWORDS, TYR_HAND_DISCOUNT } from '../gameSettings.ts'
+import {
+  BASE_DAMAGE_DIVISOR, BULL_SHARK_BASE_DAMAGE, CASH_ADVANCE_MATERIALS, KEYWORDS,
+  MATERIALS_PER_TURN, TYR_HAND_DISCOUNT,
+} from '../gameSettings.ts'
 import { inst, makeCtx, makeGame, snap, zoneEntry } from '../engine/testFixtures.ts'
 import {
   applyAction, declareForcedBattle, discardSnapshotOf, effectiveCostInGame, effectiveMaterialCostOf,
@@ -6380,5 +6383,51 @@ describe('SS Bull Shark — 200k to the base on an offensive win', () => {
     const ok = effectFor('bullSharkVictory')!({ game, actor: 'a', card: hull, ctx: makeCtx(), battle: ctxFor() })
     expect(ok).toBe(true)
     expect(game.state.zones[0].baseHp.b).toBe(1000)
+  })
+})
+
+describe('SS Cash advance — 150k and a card', () => {
+  it('grants the materials and draws exactly one card', () => {
+    const game = makeGame()
+    game.privates.a.deck.push(inst({ name: 'Top' }), inst({ name: 'Next' }))
+    const before = game.state.resources.a.materials
+    expect(effectFor('cashAdvanceEffect')!({ game, actor: 'a', card: inst(), ctx: makeCtx() })).toBe(true)
+    expect(game.state.resources.a.materials).toBe(before + CASH_ADVANCE_MATERIALS)
+    expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Top'])
+    expect(game.state.counts.a).toEqual({ hand: 1, deck: 1 })
+  })
+
+  // "This turn": endTurn SETS the incoming side's materials rather than adding
+  // to them, so the grant expires on its own with no rider (CATSHARK_MATERIALS'
+  // reasoning). Asserted so a later "fix" does not add one.
+  it('is gone by the granting player next turn', () => {
+    const game = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+    effectFor('cashAdvanceEffect')!({ game, actor: 'a', card: inst(), ctx: makeCtx() })
+    const afterB = applyAction(game, 'alice', { type: 'END_TURN' })
+    expect(afterB.ok).toBe(true)
+    if (!afterB.ok) return
+    const afterA = applyAction(afterB.game, 'bob', { type: 'END_TURN' })
+    expect(afterA.ok).toBe(true)
+    if (!afterA.ok) return
+    // The brief's no-op ternary (`x % C === 0 ? x : x`) always evaluates to
+    // `x` — replaced with the plain expression it was standing in for.
+    expect(afterA.game.state.resources.a.materials).toBe(
+      Math.floor(afterA.game.turnNumber) * MATERIALS_PER_TURN,
+    )
+  })
+
+  it('the ability costs 2cp and is spent on resolution', () => {
+    const game = makeGame()
+    const card = inst({
+      name: 'Cash advance', faction: 'SS', type: 'ability', vehicleType: null,
+      materialCost: 0, cpCost: 2, meta: { onPlayEffect: 'cashAdvanceEffect' },
+    })
+    game.privates.a.hand.push(card)
+    game.privates.a.deck.push(inst({ name: 'Top' }))
+    const r = applyAction(game, 'alice', { type: 'PLAY_ABILITY_CARD', instanceId: card.instanceId })
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.game.state.resources.a.cp).toBe(1)
+    expect(r.game.state.destroyed.a.map((c) => c.name)).toEqual(['Cash advance'])
   })
 })

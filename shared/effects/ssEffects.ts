@@ -1,5 +1,6 @@
 import {
-  AIR_STRAFE_PREDATOR_COUNT, BASE_DAMAGE_DIVISOR, BULL_SHARK_BASE_DAMAGE, CATSHARK_MATERIALS,
+  AIR_STRAFE_PREDATOR_COUNT, BASE_DAMAGE_DIVISOR, BULL_SHARK_BASE_DAMAGE, CASH_ADVANCE_MATERIALS,
+  CATSHARK_MATERIALS,
   EXCALIBUR_COST_DELTA, KEYWORDS,
   REPAIRMEN_READY_DRAW_MAX_COST, RHEA_MAX_PLANE_COST, SACRILEGO_HP_BOOST,
   SURVIVE_HP_PERCENT, TYR_HAND_DISCOUNT, VEHICLE_TYPES,
@@ -578,3 +579,11 @@ registerEffect('bullSharkVictory', ({ game, actor, card, battle }) => {
   checkVictory(game)
   return true
 })
+
+// "Gain 150k resources this turn, then draw a card."
+//
+// One grant rather than a sequence: grant() draws BEFORE it adds materials, and
+// nothing in a draw reads materials, so the printed order is unobservable. Its
+// own registry id rather than a reuse of ransackOnPlay's draw-plus-CP shape —
+// this grants materials, not CP, and R-6 forbids sharing a name regardless.
+registerEffect('cashAdvanceEffect', grant({ materials: CASH_ADVANCE_MATERIALS, draw: 1 }))

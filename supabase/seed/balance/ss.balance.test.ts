@@ -53,6 +53,12 @@ const CARDS: Record<string, Expected> = {
     keywords: ['blocker', 'subScreen'], vehicleType: 'ship',
     cardText: 'Whenever this survives an offensive fleet battle, deal 200k damage to enemy base in this zone',
   },
+  // An ability, so vehicleType null. cpCost 2 — the card buys itself with CP,
+  // not with resources it is itself printing.
+  'SS:Cash advance': {
+    materialCost: 0, blueprintCost: 0, keywords: [], vehicleType: null, cpCost: 2,
+    cardText: 'Gain 150k resources this turn, then draw a card.',
+  },
 }
 
 describe('2026-09-02 balance pass — SS', () => {

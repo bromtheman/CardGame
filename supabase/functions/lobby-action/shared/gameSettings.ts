@@ -205,6 +205,12 @@ export const AIR_STRAFE_PREDATOR_COUNT = 2    // Air Strafe: PredatorX summons (
 // outright, so the grant lasts exactly until that side's next turn begins.
 export const CATSHARK_MATERIALS = 30_000
 
+// SS Cash advance: "Gain 150k resources this turn, then draw a card." Its own
+// constant, and "this turn" needs no rider — endTurn SETS the incoming side's
+// materials to floor(turnNumber) * materialsPerTurnOf outright, so the grant
+// lasts exactly until that side's next turn begins (CATSHARK_MATERIALS above).
+export const CASH_ADVANCE_MATERIALS = 150_000
+
 // Sacrilego clause 2: "increase the remaining hp percent of a friendly ship by
 // 15". The rescue band is SURVIVE_HP_PERCENT minus this — derive it, never
 // write the number.

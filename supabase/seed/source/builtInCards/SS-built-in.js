@@ -569,6 +569,26 @@ export const ssVehicles = [
             [TRIGGERS.ON_BATTLE_VICTORY]: 'bullSharkVictory',
         }
     },
-
+    {
+        name: 'Cash advance',
+        isBuiltIn: true,
+        // ⚠ Lowercase "a". This is the delivered name and transform.ts derives
+        // the row's uuid from `card:SS:Cash advance` — retitling it mints a new
+        // card and orphans every deck holding the old one.
+        cardText: 'Gain 150k resources this turn, then draw a card.',
+        materialCost: 0,
+        blueprintCost: 0,
+        cpCost: 2,
+        imageUrl: 'cashAdvance.png',
+        playerId: null,
+        vehicleType: null,
+        type: 'ability',
+        faction: FACTIONS.SS,
+        blueprintId: null,
+        keywords: [],
+        meta: {
+            [TRIGGERS.ON_PLAY]: 'cashAdvanceEffect',
+        }
+    },
 
 ];
