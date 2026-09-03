@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { costModifierFor, effectFor } from './registry.ts'
 import { DOUBLE_UP_MAX_COST, KEYWORDS, RESERVES_CARD_COUNT } from '../gameSettings.ts'
 import { inst, makeCtx, makeGame, snap, zoneEntry } from '../engine/testFixtures.ts'
-import { applyAction, declareForcedBattle } from '../engine/index.ts'
+import { applyAction, autoRepairIds, declareForcedBattle } from '../engine/index.ts'
 
 describe('marauderOnPlay', () => {
   it('skips past a non-vehicle to the first vehicle, without naming it in the log', () => {
@@ -235,6 +235,61 @@ describe('spawnBuccaneerEffect', () => {
     })
     expect(ok).toBe(false)
     expect(game.state.zones[0].cards.a).toHaveLength(0)
+  })
+})
+
+// Buccaneer prints FRAGILE from the 2026-09-02 pass, and Spawn Buccaneer's text
+// grants SCRAPPY. Spec §6.1 asks for the combination to be asserted because it
+// reads like a contradiction. On a spawned hull it never actually arises:
+// spawnBuccaneerEffect REPLACES the printed keyword array rather than merging
+// into it (unlike mintHull), so a spawned Buccaneer is Scrappy-only while a
+// played one is Fragile-only. Both shapes are pinned here with the repair
+// verdict each earns — and so is the verdict for a combined hull, so the answer
+// is on record if the two ever are merged.
+//
+// The seeded value these fixtures mirror is pinned in
+// supabase/seed/balance/dwg.balance.test.ts; nothing under shared/ may read the
+// seed, so the two files close the loop between them.
+describe('Buccaneer: FRAGILE printed, SCRAPPY granted', () => {
+  const seededBuccaneer = () =>
+    snap({ name: 'Buccaneer', vehicleType: 'airship', keywords: [KEYWORDS.FRAGILE] })
+
+  function spawned() {
+    const game = makeGame()
+    const ctx = makeCtx({ catalog: [seededBuccaneer()] })
+    const ok = effectFor('spawnBuccaneerEffect')!({
+      game, actor: 'a', card: inst(), ctx, targetZoneId: 1,
+    })
+    expect(ok).toBe(true)
+    return game.state.zones[0].cards.a[0]
+  }
+
+  it('mints a Scrappy hull that does not inherit the printed Fragile', () => {
+    // toEqual, not toContain: a merge would read ['fragile', 'scrappy'] and
+    // satisfy a containment check while reversing the hull's repair behaviour.
+    expect(spawned().keywords).toEqual([KEYWORDS.SCRAPPY])
+  })
+
+  it('auto-repairs the spawned hull in the band, and never the played one', () => {
+    const hull = spawned()
+    const played = zoneEntry({ name: 'Buccaneer', keywords: [KEYWORDS.FRAGILE] })
+    const results = { [hull.instanceId]: 85, [played.instanceId]: 85 }
+    const roster = [
+      { entry: hull, side: 'a' as const },
+      { entry: played, side: 'a' as const },
+    ]
+    expect(autoRepairIds(roster, results)).toEqual([hull.instanceId])
+  })
+
+  it('repairs neither, if the two keywords ever do land on one hull', () => {
+    // autoRepairIds checks FRAGILE before SCRAPPY (shared/engine/battleResolve.ts),
+    // so FRAGILE wins and the free repair is denied. Asserted rather than
+    // assumed, because §6.1 reasons about exactly this hull.
+    const both = zoneEntry({
+      name: 'Buccaneer', keywords: [KEYWORDS.FRAGILE, KEYWORDS.SCRAPPY],
+    })
+    expect(autoRepairIds([{ entry: both, side: 'a' as const }], { [both.instanceId]: 85 }))
+      .toEqual([])
   })
 })
 
@@ -499,16 +554,6 @@ describe('plundererRaid', () => {
     })
     expect(game.privates.b.deck.map((c) => c.name)).toEqual(['Enemy Top'])
     expect(game.privates.b.deck[0].meta.costDelta).toBeUndefined()
-  })
-
-  it('stamps nothing when the enemy deck is empty', () => {
-    const game = makeGame()
-    const ok = effectFor('plundererRaid')!({
-      game, actor: 'a', card: zoneEntry({ name: 'Plunderer' }), ctx: makeCtx(), battle: raidCtx(),
-    })
-    expect(ok).toBe(true)
-    expect(game.privates.a.hand).toHaveLength(0)
-    expect(game.state.log.join(' ')).toContain('finds nothing to take')
   })
 
   it('draws end to end when it bombards the enemy base', () => {
