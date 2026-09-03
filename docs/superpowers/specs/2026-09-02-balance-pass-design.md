@@ -234,7 +234,8 @@ Under R-1 the cap is **derived, not stored** — no new persistent state.
   `MAX_VEHICLES_PER_ZONE_SIDE − max(slotDenial of live enemy hulls in that zone)`.
   **`max`, not `sum`** — that is what "does not stack" means, and it makes a
   second Tiger Shark inert rather than lethal.
-- Eight read sites move onto it: `placement.ts` (`legalZonesFor`, and the
+- **Ten** read sites move onto it (this section said eight; the real count was
+  verified after Wave 0): `placement.ts` (`legalZonesFor`, and the
   `room` calculation for `additionalSpawns`), `heroPowers.ts` (`moveEntry`),
   and frontend `BoardZone.tsx`, `GameBoardPage.tsx`, `laneLayout.ts`. The lane
   grid must render the reduced slot count, or the board lies about capacity.
