@@ -265,9 +265,13 @@ export type Database = {
           created_at: string
           game_id: string | null
           guest_deck_id: string | null
+          guest_faction: string | null
           guest_id: string | null
-          host_deck_id: string
+          guest_ready: boolean
+          host_deck_id: string | null
+          host_faction: string | null
           host_id: string
+          host_ready: boolean
           id: string
           name: string
           settings: Json
@@ -277,9 +281,13 @@ export type Database = {
           created_at?: string
           game_id?: string | null
           guest_deck_id?: string | null
+          guest_faction?: string | null
           guest_id?: string | null
-          host_deck_id: string
+          guest_ready?: boolean
+          host_deck_id?: string | null
+          host_faction?: string | null
           host_id: string
+          host_ready?: boolean
           id?: string
           name: string
           settings?: Json
@@ -289,9 +297,13 @@ export type Database = {
           created_at?: string
           game_id?: string | null
           guest_deck_id?: string | null
+          guest_faction?: string | null
           guest_id?: string | null
-          host_deck_id?: string
+          guest_ready?: boolean
+          host_deck_id?: string | null
+          host_faction?: string | null
           host_id?: string
+          host_ready?: boolean
           id?: string
           name?: string
           settings?: Json
