@@ -36,7 +36,10 @@ Deno.serve(async (req) => {
   if (userError || !userData.user) return json(401, { errors: ['Not signed in'] })
   const userId = userData.user.id
 
-  let body: { action?: unknown; lobbyId?: unknown; deckId?: unknown }
+  let body: {
+    action?: unknown; lobbyId?: unknown; deckId?: unknown
+    ready?: unknown; settings?: unknown
+  }
   try {
     body = await req.json()
   } catch {
@@ -50,16 +53,20 @@ Deno.serve(async (req) => {
   const admin = createClient(supabaseUrl, serviceKey)
 
   if (action === 'JOIN') {
-    if (!deckId) return json(400, { errors: ['deckId required to join'] })
-    const { data: deck } = await admin
-      .from('decks').select('id, owner_id').eq('id', deckId).maybeSingle()
-    if (!deck || deck.owner_id !== userId) {
-      return json(403, { errors: ['That deck is not yours'] })
+    // deckId is optional now: seats are claimed first and decked in the lobby
+    // (spec R-2). It is still accepted so a frontend deployed before this
+    // function keeps working through the rollout window.
+    if (deckId) {
+      const { data: deck } = await admin
+        .from('decks').select('id, owner_id').eq('id', deckId).maybeSingle()
+      if (!deck || deck.owner_id !== userId) {
+        return json(403, { errors: ['That deck is not yours'] })
+      }
     }
     // Atomic claim: only succeeds while the seat is empty and the lobby open.
     const { data: claimed, error: claimError } = await admin
       .from('lobbies')
-      .update({ guest_id: userId, guest_deck_id: deckId })
+      .update({ guest_id: userId, guest_deck_id: deckId || null })
       .eq('id', lobbyId)
       .eq('status', 'open')
       .is('guest_id', null)
@@ -74,7 +81,7 @@ Deno.serve(async (req) => {
   if (action === 'LEAVE') {
     const { data: left, error: leaveError } = await admin
       .from('lobbies')
-      .update({ guest_id: null, guest_deck_id: null })
+      .update({ guest_id: null, guest_deck_id: null, guest_faction: null, guest_ready: false })
       .eq('id', lobbyId)
       .eq('status', 'open')
       .eq('guest_id', userId)
@@ -82,6 +89,96 @@ Deno.serve(async (req) => {
       .maybeSingle()
     if (leaveError) return json(500, { errors: [leaveError.message] })
     if (!left) return json(409, { errors: ['You are not the guest of that open lobby'] })
+    return json(200, { ok: true })
+  }
+
+  // Every op below is conditioned on status = 'open' inside its own WHERE, so
+  // none of them can mutate a lobby that START has already locked to
+  // 'starting'. Reading the row first and updating second would leave exactly
+  // that window open.
+
+  if (action === 'SET_DECK') {
+    if (!deckId) return json(400, { errors: ['deckId required'] })
+    const { data: deck } = await admin
+      .from('decks').select('id, owner_id, faction').eq('id', deckId).maybeSingle()
+    if (!deck || deck.owner_id !== userId) {
+      return json(403, { errors: ['That deck is not yours'] })
+    }
+    const { data: lobby } = await admin
+      .from('lobbies').select('host_id, guest_id').eq('id', lobbyId).maybeSingle()
+    if (!lobby) return json(404, { errors: ['Lobby not found'] })
+
+    // Two things happen here. The faction is copied onto the lobby (spec
+    // §3.1.1) because decks_select_own means the opponent's deck row is
+    // unreadable by the client — faction is the ONLY field that crosses, so
+    // the deck's name and contents stay structurally out of reach rather than
+    // merely unrendered. And changing your deck drops your OWN ready flag
+    // (§4.1): you re-affirm after changing what you are bringing.
+    const patch = lobby.host_id === userId
+      ? { host_deck_id: deckId, host_faction: deck.faction, host_ready: false }
+      : lobby.guest_id === userId
+        ? { guest_deck_id: deckId, guest_faction: deck.faction, guest_ready: false }
+        : null
+    if (!patch) return json(403, { errors: ['You are not in that lobby'] })
+
+    const { data: updated, error: updateError } = await admin
+      .from('lobbies').update(patch).eq('id', lobbyId).eq('status', 'open')
+      .select().maybeSingle()
+    if (updateError) return json(500, { errors: [updateError.message] })
+    if (!updated) return json(409, { errors: ['Lobby is no longer open'] })
+    return json(200, { ok: true })
+  }
+
+  if (action === 'SET_READY') {
+    if (typeof body.ready !== 'boolean') return json(400, { errors: ['ready must be a boolean'] })
+    const ready = body.ready
+    const { data: lobby } = await admin
+      .from('lobbies').select('host_id, guest_id, host_deck_id, guest_deck_id')
+      .eq('id', lobbyId).maybeSingle()
+    if (!lobby) return json(404, { errors: ['Lobby not found'] })
+
+    const isHost = lobby.host_id === userId
+    const isGuest = lobby.guest_id === userId
+    if (!isHost && !isGuest) return json(403, { errors: ['You are not in that lobby'] })
+
+    const myDeck = isHost ? lobby.host_deck_id : lobby.guest_deck_id
+    if (ready && !myDeck) return json(409, { errors: ['Pick a deck before readying up'] })
+
+    const { data: updated, error: updateError } = await admin
+      .from('lobbies')
+      .update(isHost ? { host_ready: ready } : { guest_ready: ready })
+      .eq('id', lobbyId).eq('status', 'open')
+      .select().maybeSingle()
+    if (updateError) return json(500, { errors: [updateError.message] })
+    if (!updated) return json(409, { errors: ['Lobby is no longer open'] })
+    return json(200, { ok: true })
+  }
+
+  if (action === 'UPDATE_SETTINGS') {
+    const parsed = validateLobbySettings(body.settings)
+    if ('errors' in parsed) return json(400, { errors: parsed.errors })
+
+    // Clears guest_ready, never host_ready (spec §4.1): the host authored the
+    // change, so their consent is implicit; the guest re-affirms against the
+    // battlefield they can now see in the preview.
+    const { data: updated, error: updateError } = await admin
+      .from('lobbies')
+      .update({ settings: parsed.settings, guest_ready: false })
+      .eq('id', lobbyId).eq('status', 'open').eq('host_id', userId)
+      .select().maybeSingle()
+    if (updateError) return json(500, { errors: [updateError.message] })
+    if (!updated) return json(409, { errors: ['Only the host can change an open lobby'] })
+    return json(200, { ok: true })
+  }
+
+  if (action === 'KICK') {
+    const { data: updated, error: updateError } = await admin
+      .from('lobbies')
+      .update({ guest_id: null, guest_deck_id: null, guest_faction: null, guest_ready: false })
+      .eq('id', lobbyId).eq('status', 'open').eq('host_id', userId)
+      .select().maybeSingle()
+    if (updateError) return json(500, { errors: [updateError.message] })
+    if (!updated) return json(409, { errors: ['Only the host can remove a player from an open lobby'] })
     return json(200, { ok: true })
   }
 
@@ -107,10 +204,15 @@ Deno.serve(async (req) => {
       .eq('status', 'open')
       .not('guest_id', 'is', null)
       .not('guest_deck_id', 'is', null)
+      .not('host_deck_id', 'is', null)
+      .eq('host_ready', true)
+      .eq('guest_ready', true)
       .select()
       .maybeSingle()
-    if (!locked || !locked.guest_id || !locked.guest_deck_id) {
-      return json(409, { errors: ['Waiting for an opponent with a deck (or already starting)'] })
+    if (!locked || !locked.guest_id || !locked.guest_deck_id || !locked.host_deck_id) {
+      return json(409, {
+        errors: ['Both players need a deck and a ready check before the battle can begin'],
+      })
     }
 
     try {
