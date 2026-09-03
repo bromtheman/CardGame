@@ -327,7 +327,7 @@ export const tgVehicles = [
     {
         name: 'Spite',
         isBuiltIn: true,
-        cardText: '',
+        cardText: 'When played, grant an enemy vehicle FRAGILE',
         materialCost: 120000,
         blueprintCost: 128000,
         cpCost: 0,
@@ -339,6 +339,7 @@ export const tgVehicles = [
         blueprintId: null,
         keywords: [],
         meta: {
+            [TRIGGERS.ON_PLAY]: 'spiteOnPlay',
         }
     },
     {

@@ -138,6 +138,54 @@ registerEffect(HYSTERIA, choice({
   },
 }))
 
+// "When played, grant an enemy vehicle FRAGILE." Printed identically on TG
+// Spite and TG Agony (2026-09-02 spec §6.4), so the behaviour is one factory —
+// and TWO registrations, under two names.
+//
+// ⚠ `effect` is a PARAMETER rather than a constant closed over inside, and
+// that is the whole safety of sharing the shape. `choice` never sees the name
+// registerEffect files it under, so each registration must hand in its own;
+// passing the other card's name compiles, passes any test that calls the
+// effect directly, and fails only when a live player answers the dialog.
+// Reusing one id for both is the Kraken/Paddlegun collision (spec R-6): the
+// name is frozen into dealt game state, the implementation is redeployed for
+// every game at once.
+//
+// ⚠ NOT a grantKeywords composition, and composing it would fail SILENTLY —
+// grantKeywords reads payload.targetInstanceId, which PLAY_CARD_TO_ZONE never
+// sets for an onPlayEffect and RESOLVE_PENDING_EFFECT never sets at all. This
+// is hysteriaOnPlay's shape, and its comment is the long version.
+//
+// `zoneId: null` scopes the offer to the WHOLE board: the text says "an enemy
+// vehicle", with no zone qualifier. On-field vehicles are already public, so
+// pendingEffect.options leaks nothing.
+function fragileGrant(effect: string, prompt: string): EffectFn {
+  return choice({
+    effect,
+    prompt,
+    options: ({ game, actor }) => enemyVehicleOptions(game, actor, null),
+    resolve: ({ game, actor }, choiceId) => {
+      // No enemy vehicle anywhere: choice() resolves straight through with
+      // null, and that is a success — the hull still deploys.
+      if (choiceId === null) return true
+      // Re-checked against the board rather than trusted from the first entry:
+      // the hull can be gone by the time the dialog is answered.
+      const found = findVehicle(game.state, choiceId)
+      if (!found || found.side !== otherSide(actor)) return false
+      // Idempotent, matching grantKeywords: a keyword already carried is not
+      // duplicated.
+      if (!found.entry.keywords.includes(KEYWORDS.FRAGILE)) {
+        found.entry.keywords = [...found.entry.keywords, KEYWORDS.FRAGILE]
+      }
+      game.state.log.push(`${found.entry.name} is made Fragile`)
+      return true
+    },
+  })
+}
+
+const SPITE = 'spiteOnPlay'
+registerEffect(SPITE, fragileGrant(SPITE, 'Choose an enemy vehicle to make Fragile'))
+
 // "When this vehicle is played, sacrifice a target friendly AI vehicle in this
 // zone." Clause 1 (the deploy prerequisite) is a data key read by
 // legalZonesFor; this is clause 2.

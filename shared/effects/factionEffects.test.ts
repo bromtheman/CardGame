@@ -6433,3 +6433,114 @@ describe('2026-09-02 balance pass — OW', () => {
     )
   })
 })
+
+// ---------------------------------------------------------------------------
+// 2026-09-02 — TG Spite and TG Agony, the pass's two FRAGILE grants.
+//
+// Identical printed text, one shared factory, and TWO registry ids (spec R-6).
+// Reusing one name for both is the Kraken/Paddlegun collision: the name is
+// frozen into every dealt game's snapshot, the implementation behind it is
+// redeployed for all of them at once.
+//
+// Hysteria's shape rather than grantKeywords: grantKeywords reads
+// payload.targetInstanceId, which PLAY_CARD_TO_ZONE never sets for an
+// onPlayEffect and RESOLVE_PENDING_EFFECT never sets at all — so composing it
+// would fail SILENTLY.
+describe('TG Spite — grant an enemy vehicle FRAGILE (2026-09-02)', () => {
+  const spiteCard = () => inst({
+    instanceId: 'spite1', name: 'Spite', faction: 'TG', type: 'vehicle',
+    vehicleType: 'sub', materialCost: 120_000, meta: { onPlayEffect: 'spiteOnPlay' },
+  })
+
+  // Enemies in TWO zones — the text says "an enemy vehicle" with no zone
+  // qualifier, so the offer must not be scoped to the played one.
+  const armed = () => {
+    const card = spiteCard()
+    const game = makeGame({
+      turnNumber: 3, activePlayer: 'alice',
+      privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } },
+    })
+    game.state.resources.a.materials = 900_000
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'near1', name: 'Near Foe', playedOnTurn: 1 }))
+    game.state.zones[2].cards.b.push(zoneEntry({ instanceId: 'far1', name: 'Far Foe', playedOnTurn: 1 }))
+    return { game, card }
+  }
+
+  // Driven through applyAction rather than by calling the effect with a
+  // hand-built resolution — the shape every other choice-backed TG card is
+  // tested with (Hysteria, Alarmed), and the only one that exercises
+  // RESOLVE_PENDING_EFFECT's own re-entry by name.
+  const play = (game: EngineGame, card: CardInstance, zoneId = 1) => {
+    const r = applyAction(game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    return r.game
+  }
+
+  it('offers every enemy vehicle on the board, not just the played zone', () => {
+    const { game, card } = armed()
+    const after = play(game, card)
+    expect(after.state.pendingEffect?.options?.map((o) => o.id).sort()).toEqual(['far1', 'near1'])
+  })
+
+  // The assertion that catches a copy-pasted const in Task 5. `choice` cannot
+  // infer the name it is registered under; passing the wrong one compiles,
+  // passes any test that calls the effect directly, and fails only when a real
+  // player answers the dialog — which is exactly what this route does.
+  it('suspends under its OWN registry name', () => {
+    const { game, card } = armed()
+    expect(play(game, card).state.pendingEffect?.effect).toBe('spiteOnPlay')
+  })
+
+  it('makes the chosen hull Fragile, and no other', () => {
+    const { game, card } = armed()
+    const done = applyAction(
+      play(game, card), 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'far1' }, makeCtx(),
+    )
+    if (!done.ok) throw new Error(done.error)
+    expect(findVehicle(done.game.state, 'far1')!.entry.keywords).toContain(KEYWORDS.FRAGILE)
+    expect(findVehicle(done.game.state, 'near1')!.entry.keywords).not.toContain(KEYWORDS.FRAGILE)
+  })
+
+  it('is idempotent on a hull that already prints FRAGILE', () => {
+    const { game, card } = armed()
+    findVehicle(game.state, 'near1')!.entry.keywords.push(KEYWORDS.FRAGILE)
+    const done = applyAction(
+      play(game, card), 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'near1' }, makeCtx(),
+    )
+    if (!done.ok) throw new Error(done.error)
+    const kw = findVehicle(done.game.state, 'near1')!.entry.keywords
+    expect(kw.filter((k) => k === KEYWORDS.FRAGILE)).toHaveLength(1)
+  })
+
+  // No enemy vehicle is not a failure: choice() resolves straight through with
+  // null, so the hull still deploys.
+  it('resolves without suspending when there is no enemy vehicle anywhere', () => {
+    const card = spiteCard()
+    const game = makeGame({
+      turnNumber: 3, activePlayer: 'alice',
+      privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } },
+    })
+    game.state.resources.a.materials = 900_000
+    const after = play(game, card)
+    expect(after.state.pendingEffect).toBeNull()
+    expect(after.state.zones[0].cards.a.map((c) => c.name)).toContain('Spite')
+  })
+
+  it('refuses cleanly when the chosen hull has left the board', () => {
+    const { game, card } = armed()
+    const suspended = play(game, card)
+    suspended.state.zones[2].cards.b = []
+    const done = applyAction(suspended, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'far1' }, makeCtx())
+    expect(done).toMatchObject({ ok: false, status: 400 })
+  })
+
+  it('never offers the actor’s own hulls', () => {
+    const { game, card } = armed()
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'mine1', name: 'Mine', playedOnTurn: 1 }))
+    expect(play(game, card).state.pendingEffect?.options?.map((o) => o.id)).not.toContain('mine1')
+  })
+
+  it('does not need the catalog', () => {
+    expect(CATALOG_EFFECTS.has('spiteOnPlay')).toBe(false)
+  })
+})
