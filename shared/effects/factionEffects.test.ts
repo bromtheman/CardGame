@@ -3648,7 +3648,7 @@ describe('SS Victoria — a discount on an SS ship in hand', () => {
   it.each([
     ['a non-SS ship', { faction: 'DWG' }],
     ['an SS sub', { vehicleType: 'sub' }],
-    ['an SS ability', { type: 'ability', vehicleType: null }],
+    ['an SS ability', { type: 'ability' }],
   ])('refuses %s', (_label, over) => {
     const game = makeGame()
     const target = ssShip(over)
@@ -3663,7 +3663,7 @@ describe('SS Victoria — a discount on an SS ship in hand', () => {
   it('deploys as a hull and then discounts, through PLAY_CARD_TARGETING_CARD_IN_HAND', () => {
     const game = makeGame()
     const card = victoria()
-    const target = ssShip()
+    const target = ssShip({ name: 'Hidden Hull' })
     game.privates.a.hand.push(card, target)
     game.state.resources.a.materials = 500_000
     const r = applyAction(game, 'alice', {
@@ -3682,6 +3682,50 @@ describe('SS Victoria — a discount on an SS ship in hand', () => {
   // still name it, and no new card may ever take the name (R-6).
   it('victoriaActivate stays registered even though no card names it', () => {
     expect(effectFor('victoriaActivate')).not.toBeNull()
+  })
+})
+
+// Not a card the current seed names any more (Victoria's meta carries only
+// playOnCardEffect since this pass), but victoriaActivate stays registered and
+// keeps executing for any game dealt before it — a frozen board snapshot still
+// carries the old onActivate/activateMaterialCost pair. This is the ruling B-5
+// pin that lived in the pre-fix 'wave 6 — SS Victoria' block; restored here so
+// the orphaned behaviour keeps at least one regression test, adapted only to
+// compile against the current fixtures (a locally-scoped armed()/vicCtx()
+// rather than the ones the discount block above no longer needs).
+describe('SS victoriaActivate — retained for in-flight games (orphaned 2026-09-02)', () => {
+  const victoriaSnap = snap({
+    name: 'Victoria', faction: 'SS', vehicleType: 'ship', materialCost: 250_000,
+    keywords: [], meta: { onActivate: 'victoriaActivate', activateMaterialCost: 200_000 },
+  })
+  const vicCtx = () => makeCtx({ catalog: [victoriaSnap] })
+
+  function armed(zoneIndex = 0) {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.resources.a.materials = 500_000
+    const victoria = zoneEntry({
+      instanceId: 'vic-1', name: 'Victoria', faction: 'SS', vehicleType: 'ship',
+      materialCost: 250_000, playedOnTurn: 2,
+      meta: { onActivate: 'victoriaActivate', activateMaterialCost: 200_000 },
+    })
+    game.state.zones[zoneIndex].cards.a.push(victoria)
+    return { game, victoria }
+  }
+
+  // Ruling B-5 (spec §7.3, wave 6). ACTIVATE_VEHICLE passes the
+  // client-supplied action.zoneId straight through as targetZoneId, so an
+  // effect that read it could be redirected by a stale or malicious client.
+  // Braveheart is the precedent: re-derive the zone from the hull itself.
+  it('ignores a client-supplied zoneId and uses the hull own zone', () => {
+    const { game, victoria } = armed(1)
+    const r = applyAction(
+      game, 'alice',
+      { type: 'ACTIVATE_VEHICLE', instanceId: victoria.instanceId, zoneId: 3 },
+      vicCtx(),
+    )
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.zones[1].cards.a.map((c) => c.name)).toEqual(['Victoria', 'Victoria'])
+    expect(r.game.state.zones[2].cards.a).toEqual([])
   })
 })
 

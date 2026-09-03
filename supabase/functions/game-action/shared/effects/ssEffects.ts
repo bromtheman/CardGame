@@ -28,13 +28,19 @@ const SS_SHIP_FILTER = {
   faction: FACTIONS.SS, type: 'vehicle', vehicleType: VEHICLE_TYPES.SHIP,
 } as const
 
-const isSsShip = (c: CardInstance): boolean =>
+// Exported: unused within this task, but Nothung, Sacrilego, Argonaut,
+// Trondheim and Resolute (Tasks 11, 13, 15, 16, 21) all call these two. An
+// unexported symbol with no call site inside this file trips
+// frontend/tsconfig.app.json's noUnusedLocals (TS6133) the moment
+// npm --prefix frontend run build pulls in ../shared — export makes both
+// exempt while the call sites land.
+export const isSsShip = (c: CardInstance): boolean =>
   c.faction === FACTIONS.SS && c.type === 'vehicle' && c.vehicleType === VEHICLE_TYPES.SHIP
 
 // The accumulate-don't-replace stamp, matching primitives.ts's costDelta() so a
 // card discounted twice is discounted twice. Used by the four effects that hit
 // a card already in hand without a player picking it.
-function discountInHand(card: CardInstance, delta: number): void {
+export function discountInHand(card: CardInstance, delta: number): void {
   const current = typeof card.meta.costDelta === 'number' ? card.meta.costDelta : 0
   card.meta = { ...card.meta, costDelta: current + delta }
 }
