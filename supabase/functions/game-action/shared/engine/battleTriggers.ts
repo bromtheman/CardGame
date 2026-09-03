@@ -84,7 +84,12 @@ function fire(
 // side field — membership in one of those two lists decides it (spec §4.4) —
 // so the zone lookup falls back to the summon map exactly as participantsOf
 // does in battleResolve.ts.
-function lockRoster(game: EngineGame): BattleParticipant[] {
+//
+// Exported since the 2026-09-02 pass: battleDeclare's deployment-order note
+// needs the same roster, including the board-wide fallback a cross-zone battle
+// depends on. One builder, two consumers — the hand-written mirror that cost
+// wave 7 a stuck game is not worth repeating here.
+export function lockRoster(game: EngineGame): BattleParticipant[] {
   const battle = game.state.activeBattle!
   const zone = zoneById(game.state, battle.zoneId)
   if (!zone) return []

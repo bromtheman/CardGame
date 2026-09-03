@@ -81,14 +81,17 @@ carries a drift guard asserting the two maps agree in both directions; add a
 keyword to **both** files, and run the suite.
 
 ⚠ **G2 does.** The first three are `DATA_EFFECT_KEYS`, the subset that
-*satisfies a card's text on its own* — which is the whole reason Buzzsaw and
-Veles can close with no effect name at all (spec §4.8). But G2 and
-`noteUnimplemented` both test for the key's **presence**, never its value, so a
-mistyped value (`'unlessShipOrTanks'`) yields a card that is inert AND
-invisible: the guard stays green and no "plays as vanilla" note is logged
-either. **A data key whose VALUE the engine compares needs its own seed-backed
-assertion** — `battleDeclare.test.ts`'s "the two real seeded cards carry
-exactly the value the engine compares" is the worked example.
+*satisfies a card's text on its own* — which used to be the whole reason
+Buzzsaw and Veles could close with no effect name at all (spec §4.8); neither
+carries `defensiveOmission` since the 2026-09-02 pass, and no seeded card does
+today (spec R-8). But G2 and `noteUnimplemented` both test for the key's
+**presence**, never its value, so a mistyped value (`'unlessShipOrTanks'`)
+yields a card that is inert AND invisible: the guard stays green and no "plays
+as vanilla" note is logged either. **A data key whose VALUE the engine
+compares needs its own seed-backed assertion** — `wf.balance.test.ts`'s
+`it.each` pinning `deployOrder`'s exact string on WF:Veles, WF:Purifier and
+TG:Anguish (`supabase/seed/balance/wf.balance.test.ts:117-124`) is the worked
+example.
 
 **A second, separate vocabulary of plain data lives in `ZoneEffect.data`** —
 written by an effect at play time rather than seeded on a card, so no guard

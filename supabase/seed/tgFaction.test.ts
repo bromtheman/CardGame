@@ -301,7 +301,7 @@ describe('the seed vocabulary matches shared/gameSettings', () => {
 
 // ---------------------------------------------------------------------------
 // Group B — the two cards whose whole behaviour is a data key, with no
-// registry name at all (spec §4.8, as Buzzsaw and Veles do).
+// registry name at all (spec §4.8, as Buzzsaw and Veles used to).
 //
 // ⚠ The guard checks a data key's PRESENCE, never its VALUE (blind spot 4), so
 // a mistyped `materialsAtLeast` or an `additionalSpawns: true` would leave the

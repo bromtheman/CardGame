@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "seed:build": "tsx supabase/seed/cli.ts",
+    "seed:verify": "node scripts/verify-seed.mjs",
     "test": "vitest run",
     "functions:sync": "node scripts/sync-function-shared.mjs",
     "functions:deploy": "node scripts/deploy-function.mjs"

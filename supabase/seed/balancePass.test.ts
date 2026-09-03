@@ -44,12 +44,16 @@ const CARDS: Record<string, Expected> = {
     materialCost: 260_000, blueprintCost: 261_000, keywords: ['fragile'],
     vehicleType: 'airship', cardText: AIRCRAFT_LOCK,
   },
+  // Tarpon and Buccaneer were moved again by the 2026-09-02 pass (§6.1) and are
+  // updated in place, per §2.3 — this file stays the record of what 2026-08-30
+  // moved, not a frozen snapshot of what it moved them to. The current values
+  // are also pinned, with their card text, in balance/dwg.balance.test.ts.
   'DWG:Tarpon': {
-    materialCost: 510_000, blueprintCost: 511_605, keywords: ['fragile'],
+    materialCost: 510_000, blueprintCost: 511_605, keywords: ['fragile', 'subScreen'],
     vehicleType: 'airship', cardText: AIRCRAFT_LOCK,
   },
   'DWG:Buccaneer': {
-    materialCost: 200_000, blueprintCost: 296_000, keywords: [],
+    materialCost: 225_000, blueprintCost: 296_000, keywords: ['fragile'],
     vehicleType: 'airship', cardText: '',
   },
   // ----------------------------------------------------------------- SS
@@ -87,7 +91,7 @@ const CARDS: Record<string, Expected> = {
     materialCost: 550_000, blueprintCost: 551_000, keywords: ['subScreen'], vehicleType: 'ship',
   },
   'WF:Pontus': {
-    materialCost: 150_000, blueprintCost: 56_000, keywords: ['fragile'], vehicleType: 'sub',
+    materialCost: 75_000, blueprintCost: 56_000, keywords: ['fragile'], vehicleType: 'sub',
   },
   'WF:Basher': {
     materialCost: 210_000, blueprintCost: 214_000, keywords: [], vehicleType: 'ship',
@@ -96,7 +100,7 @@ const CARDS: Record<string, Expected> = {
     materialCost: 540_000, blueprintCost: 546_000, keywords: [], vehicleType: 'ship',
   },
   'WF:Purifier': {
-    materialCost: 760_000, blueprintCost: 765_000, keywords: ['halfCost', 'fragile'],
+    materialCost: 750_000, blueprintCost: 765_000, keywords: ['halfCost', 'fragile'],
     vehicleType: 'ship',
   },
 }
@@ -160,11 +164,14 @@ describe('2026-08-30 balance pass', () => {
   // The Repentance is the sharp one: a WF PLANE at exactly 100_000. It is
   // excluded by the vehicleType filter alone, so this assertion is what
   // proves that filter is doing work.
-  // Purifier's WHOLE card text is these two keys, and it names no effect
-  // either. Two rules, two values, both compared rather than merely present.
+  // Purifier's whole card text is still data keys and it still names no effect
+  // — but the 2026-09-02 pass swapped one of the two rules
+  // (deployRequiresBattleLoss out, deployOrder in). Kept here rather than moved
+  // wholesale to wf.balance.test.ts: the 2026-08-30 file is updated in place
+  // where a later pass moves one of its numbers (2026-09-02 spec §2.3).
   it('Purifier carries both of its data rules', async () => {
     expect((await bySeedKey()).get('WF:Purifier')!.meta).toMatchObject({
-      deployRequiresBattleLoss: true, noBaseDamage: true,
+      noBaseDamage: true, deployOrder: 'last',
     })
   })
 
@@ -202,15 +209,16 @@ describe('2026-08-30 balance pass', () => {
     })
   })
 
-  // Judgement's text says "pay 1cp", and ACTIVATE_VEHICLE refuses a card with
-  // no price key at all — so without this, the card would have a registered
-  // ability, a card text promising it, and no way to press it. The same
-  // silent-pair trap Braveheart's assertion above exists for.
-  it('Judgement carries the 1cp price its text prints', async () => {
+  // Judgement's text used to say "pay 1cp"; the 2026-09-02 pass made the
+  // activation free and rewrote the sentence. ACTIVATE_VEHICLE refuses a card
+  // with no price key AT ALL — so 0 and "absent" are different things, and this
+  // still exists to say the key is present. The same silent-pair trap
+  // Braveheart's assertion above exists for.
+  it('Judgement carries the free activation its text now prints', async () => {
     expect((await bySeedKey()).get('WF:Judgement')!.meta).toMatchObject({
       costModifier: 'judgementCostModifier',
       onActivate: 'judgementActivate',
-      activateCpCost: 1,
+      activateCpCost: 0,
     })
   })
 

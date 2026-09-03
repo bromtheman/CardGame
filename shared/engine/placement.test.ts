@@ -152,7 +152,7 @@ describe('additionalSpawns', () => {
 })
 
 describe('play-pipeline effect dispatch', () => {
-  it('vehicle with onPlayEffect marauderOnPlay takes an enemy vehicle and discounts it by 50k after deploy', () => {
+  it('vehicle with onPlayEffect marauderOnPlay takes an enemy vehicle at full price after deploy', () => {
     const { g, card } = withHand({ vehicleType: 'ship', materialCost: 10000, meta: { onPlayEffect: 'marauderOnPlay' } })
     g.privates.b.deck.push(inst({ name: 'Enemy Ship', type: 'vehicle', materialCost: 200000 }))
     g.state.counts.b.deck = 1
@@ -160,7 +160,9 @@ describe('play-pipeline effect dispatch', () => {
     if (!r.ok) throw new Error(r.error)
     expect(r.game.state.zones[0].cards.a).toHaveLength(1)
     expect(r.game.privates.a.hand.map((c) => c.name)).toEqual(['Enemy Ship'])
-    expect(r.game.privates.a.hand[0].meta.costDelta).toBe(-50000)
+    // The 2026-09-02 pass paid for the 50k discount with 15k of printed cost
+    // (40k -> 55k) and dropped the clause. No costDelta stamp at all now.
+    expect(r.game.privates.a.hand[0].meta.costDelta).toBeUndefined()
     expect(r.game.state.resources.a.cp).toBe(3) // unchanged — Marauder's card text grants no CP
   })
 
@@ -1121,6 +1123,13 @@ describe('aircraftLock — Albacore and Tarpon', () => {
 // Wave 6 — WF Purifier: "This ship can only be played into a zone in which you
 // have lost a fleet battle the previous turn."
 //
+// ⚠ Purifier gave the key up in the 2026-09-02 pass and no seeded card carries
+// it now; these cases are hand-built fixtures, and they are what keeps the
+// KEPT rule (placement.ts, spec R-8) honest for the frozen snapshots that
+// still print it and for the next card that takes it. The 760_000 below is the
+// PRE-pass price deliberately — these fixtures model exactly the snapshot the
+// kept rule serves, not today's 750_000 Purifier.
+//
 // Ruling C-5 (spec §7.3, wave 6): "the previous turn" is the last FULL round,
 // current turn included — lostBattleOnTurn >= turnNumber - 1. The counter moves
 // in half steps, so the strictly-previous half-turn is the OPPONENT'S, and
@@ -1223,7 +1232,7 @@ describe('deployRequiresBattleLoss — an unnormalized zone', () => {
 
 // ---------------------------------------------------------------------------
 // Wave 7, group B — two TG cards that are pure DATA and name no registry
-// effect at all, exactly as Buzzsaw and Veles do (spec §4.8).
+// effect at all, exactly as Buzzsaw and Veles used to (spec §4.8).
 //
 // The literals here are tied to the real seeded rows by
 // supabase/seed/tgFaction.test.ts, which asserts the cards carry these exact

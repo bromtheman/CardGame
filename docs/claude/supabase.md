@@ -119,6 +119,42 @@ Two consequences worth knowing before you touch anything here:
   the same DAG, so migration drift silently blocks function deploys rather than
   reporting a function error. If a deploy "did nothing", read the migrate log
   first.
+- **The seed step does NOT apply `seed_data.sql`.** It is in the workflow's DAG,
+  but this project's `config.toml` deliberately carries no seed settings (see the
+  bullet above — adding one would push CLI defaults over the dashboard), and no
+  migration inserts cards. **So merging ships code and never card data.**
+
+  Nothing surfaces the mismatch on its own: every seed guard in the suite
+  (`seedDataSync`, `balancePass`, `balance/*`, `effectCoverage`) reads
+  `supabase/seed/source/**`, not the database. A green suite says the generated
+  SQL is correct, never that production ran it.
+
+  It has cost two production defects already. Wave 0 of the 2026-09-02 balance
+  pass shipped hard retirement — `validateDeck`'s rejection, `poolEligible`'s
+  filter, the required `DeckCardInfo.retired`, the DecksPage badge — and all of
+  it sat **inert**, because the five `retired: true` flags never reached the
+  `cards` table, leaving retired cards legal in decks and live in draw pools.
+  The DWG/OW/WF waves then deployed rewritten effects against the old rows, so
+  Marauder's printed text promised a 50k discount its code no longer gave.
+
+  After any merge touching `supabase/seed/source/**`:
+
+  ```bash
+  npm run seed:verify
+  ```
+
+  It fetches every `is_built_in` row through the Management API and deep-compares
+  all nine data columns against `seed_data.sql`, exiting non-zero on drift. On
+  drift, apply that file's upserts against the project and re-run. They are
+  idempotent (`on conflict (id) do update`) and contain no `delete`/`truncate`,
+  so re-applying is safe and never removes a row — which matters, because
+  `gameInit.ts`'s `expandDeck` **throws** on a dangling card id.
+
+  ⚠ When comparing card `meta`, canonicalise **deeply**. `JSON.stringify(v,
+  Object.keys(v).sort())` looks like a canonicaliser but the key array is a
+  replacer that filters at *every* nesting level, so `{"resourceSurge":{...}}`
+  compares as `{"resourceSurge":{}}` and all nested drift reads as a match.
+  `scripts/verify-seed.mjs` carries the correct version and a comment saying why.
 
 **For a manual/out-of-band deploy, use the script, not the MCP tool:**
 

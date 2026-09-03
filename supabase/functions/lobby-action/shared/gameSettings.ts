@@ -166,8 +166,12 @@ export const JUDGEMENT_DISCOUNT = 100_000
 // a defensive loss, which the card does not say (spec §7.3, wave 6).
 export const PURIFIER_LOSS_WINDOW_TURNS = 1
 
-export const MARAUDER_DISCOUNT = 50_000  // Marauder: enemy vehicle costs 50k less
 export const EXCALIBUR_COST_DELTA = -200_000 // Excalibur: AI ship in hand costs 200k less
+// Plunderer clause 2: "…draw one card from the enemy deck, but increase its
+// cost by 20k". A POSITIVE costDelta, unlike every other one in this file —
+// effectiveCostInGame sums it in and clamps only at zero, so it raises the
+// play price and touches nothing else (2026-09-02 spec §6.1).
+export const PLUNDERER_CAPTURE_SURCHARGE = 20_000
 export const REPAIRMEN_READY_DRAW_MAX_COST = 400_000 // Repairmen Ready draws below this
 
 export const FLYING_SQUIRREL_ATTACK_COUNT = 3 // Flying Squirrel Attack: target fights this many summons
@@ -197,6 +201,17 @@ export const DWG_WATERS_GUEST_MAX_COST = 60_000
 // ships only: The Repentance is a WF PLANE at exactly 100k, so the type
 // filter is what excludes it rather than the cost.
 export const HARBRINGER_GUEST_MAX_COST = 100_000
+
+// Slasher: "add two earth rakers to your hand". Its own constant rather than a
+// bare literal, matching MARTYR_ATTACK_COUNT and RESERVES_CARD_COUNT — the
+// card text is then the only other place the number appears.
+export const SLASHER_EARTH_RAKER_COUNT = 2
+
+// Excruciator: "draw two AI vehicles from your deck and reduce their cost by
+// 100k". A costDelta, so the sign lives with the number here rather than at the
+// call site — the same convention EXCALIBUR_COST_DELTA follows.
+export const EXCRUCIATOR_DRAW_COUNT = 2
+export const EXCRUCIATOR_COST_DELTA = -100_000
 
 // Human-readable names for the seven hero powers, used wherever a power id
 // is shown to a player (Kraken's refresh choice).

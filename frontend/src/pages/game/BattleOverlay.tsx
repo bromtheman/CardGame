@@ -2,12 +2,14 @@ import { useState, type ReactNode } from 'react'
 import type { PublicGameState } from '@shared/engine/gameInit'
 import type { GameAction, Side, ZoneCardEntry } from '@shared/engine/engineTypes'
 import {
-  autoRepairIds, battleParticipants, effectiveMaterialCostOf, otherSide, repairCostOf,
+  autoRepairIds, battleParticipants, deployOrderFor, effectiveMaterialCostOf, otherSide,
+  repairCostOf,
 } from '@shared/engine/index'
 import {
   HERO_POWER_DISTANCE_MOD_M, IN_BATTLE_RESOURCE_RATE, KEYWORDS,
   REPAIR_WINDOW_MIN_PERCENT, SURVIVE_HP_PERCENT,
 } from '@shared/gameSettings'
+import { AIRCRAFT_SPAWN_ALTITUDE_M } from '@shared/customBattle'
 import { shortHandNumber } from '@shared/format'
 
 import { LaunchInFtdButton } from './LaunchInFtdButton'
@@ -465,6 +467,11 @@ export function BattleOverlay({
   const attackers = participants.filter((p) => p.side === battle.aggressor)
   const defenders = participants.filter((p) => p.side === defenderSide)
   const report = state.pendingReport
+  // Conduct text, not a rule the engine applies (spec §4.3). Derived from the
+  // same public roster the fleet columns below render, so both captains read
+  // the identical instruction from their own side of it — which is the point:
+  // the captain who must WAIT is the one who has to be told.
+  const deploy = deployOrderFor(participants)
 
   function onHpChange(id: string, hp: number) {
     setResults((r) => ({ ...r, [id]: hp }))
@@ -551,9 +558,24 @@ export function BattleOverlay({
         <p className="mt-1 text-sm text-ocean-300">
           Spawn distance: <span className="font-bold text-parchment-100">{battle.distanceM} m</span>
         </p>
+        {deploy && (
+          <p className="mt-1 text-sm font-bold text-brass-400">
+            {deploy.cancelled
+              ? 'Deployment order: the two fleets demand opposite directives — they cancel. Spawn in the normal order.'
+              : deploy.firstSide === mySide
+                ? 'Deployment order: you spawn in first — put your fleet down before your opponent puts theirs.'
+                : 'Deployment order: your opponent spawns in first — hold until their fleet is down.'}
+          </p>
+        )}
+        {/*
+          The altitude is DERIVED from AIRCRAFT_SPAWN_ALTITUDE_M, never restated:
+          this sentence hard-coded "80 m" and kept saying it after the constant
+          was retuned to 160, so the panel contradicted the battle file it
+          describes. Keep it derived.
+        */}
         <p className="mt-2 text-sm text-ocean-300">
-          Altitude guidance: surface ships and submarines spawn at the surface; aircraft spawn at 80 m; land vehicles
-          spawn on land.
+          Altitude guidance: surface ships and submarines spawn at the surface; aircraft spawn at{' '}
+          {AIRCRAFT_SPAWN_ALTITUDE_M} m; land vehicles spawn on land.
         </p>
 
         <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
