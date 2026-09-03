@@ -2,7 +2,7 @@ import {
   AMBUSH_DISTANCE_M, SPAWN_DISTANCE_MIN_M,
   ALL_FOR_THE_CAUSE_DOUBLE_COST, HARBRINGER_GUEST_MAX_COST, JUDGEMENT_DISCOUNT, KEYWORDS,
   MARTYR_ATTACK_BOOST_MIN_COST,
-  MARTYR_ATTACK_BOOSTED_COUNT, MARTYR_ATTACK_COUNT, VEHICLE_TYPES,
+  MARTYR_ATTACK_BOOSTED_COUNT, MARTYR_ATTACK_COUNT, SLASHER_EARTH_RAKER_COUNT, VEHICLE_TYPES,
 } from '../gameSettings.ts'
 import type { EngineContext, EngineGame, Side, ZoneCardEntry } from '../engine/engineTypes.ts'
 import type { SnapshotCard } from '../engine/gameInit.ts'
@@ -25,6 +25,10 @@ registerEffect('purifierEffect', grant({ draw: 1 }))
 // cannot hit the SCRAPPY-plus-onDeathEffect prohibition that cost Loggerhead
 // its keyword (docs/claude/card-effects.md).
 registerEffect('basherOnDeath', grant({ draw: 1 }))
+// "When this is played, draw a card." Earth Raker prints STEALTHY and nothing
+// else, so the SCRAPPY-plus-death-trigger question does not arise — and this is
+// an on-play trigger in any case.
+registerEffect('earthRakerOnPlay', grant({ draw: 1 }))
 
 // "Target an enemy submarine, remove it from play."
 //
@@ -84,6 +88,37 @@ registerEffect('buzzsawOnPlay', ({ game, actor, card, ctx }) => {
   game.state.counts[actor].hand = hand.length
   // Never named: state.log is public and this card is entering a hidden hand.
   game.state.log.push(`${card.name} slips a card into player ${actor.toUpperCase()}'s hand`)
+  return true
+}, { needsCatalog: true })
+
+// "When this is played, add two earth rakers to your hand. they cost 0."
+//
+// balmungOnPlay's shape, twice, and with balmungOnPlay's ruling on what "cost
+// 0" means: a costDelta PRICE, never a rewritten materialCost. costDelta is
+// summed into effectiveCostInGame and never reaches effectiveMaterialCostOf, so
+// a free Earth Raker still deals its printed base damage and still costs its
+// printed repair — which is exactly what "they cost 0" says. loggerheadOnDeath
+// DOES mint at materialCost: 0 and is not the precedent: its copy goes into a
+// DECK, where nothing but the price ever reads that number.
+//
+// ⚠ The seeded card is 'Earth Raker', two words. 'EarthRaker' compiles, reviews
+// clean and returns null.
+registerEffect('slasherOnPlay', ({ game, actor, card, ctx }) => {
+  const raker = catalogCard(ctx, 'Earth Raker')
+  if (!raker || !poolEligible(raker)) return false
+  const hand = game.privates[actor].hand
+  for (let i = 0; i < SLASHER_EARTH_RAKER_COUNT; i++) {
+    hand.push({
+      ...raker,
+      instanceId: ctx.newId(),
+      meta: { ...raker.meta, costDelta: -raker.materialCost },
+    })
+  }
+  game.state.counts[actor].hand = hand.length
+  // Never named: state.log is public and these are entering a hidden hand.
+  game.state.log.push(
+    `${card.name} slips ${SLASHER_EARTH_RAKER_COUNT} cards into player ${actor.toUpperCase()}'s hand, free of charge`,
+  )
   return true
 }, { needsCatalog: true })
 

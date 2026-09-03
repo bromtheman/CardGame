@@ -186,8 +186,8 @@ export const wfVehicles = [
     {
         name: 'Slasher',
         isBuiltIn: true,
-        cardText: '',
-        materialCost: 350000,
+        cardText: 'When this is played, add two earth rakers to your hand. they cost 0.',
+        materialCost: 300000,
         blueprintCost: 353000,
         cpCost: 0,
         imageUrl: 'Slasher.png',
@@ -198,12 +198,13 @@ export const wfVehicles = [
         blueprintId: null,
         keywords: [],
         meta: {
+            [TRIGGERS.ON_PLAY]: 'slasherOnPlay',
         }
     },
     {
         name: 'Earth Raker',
         isBuiltIn: true,
-        cardText: '',
+        cardText: 'When this is played, draw a card',
         materialCost: 50000,
         blueprintCost: 51000,
         cpCost: 0,
@@ -215,6 +216,7 @@ export const wfVehicles = [
         blueprintId: null,
         keywords: [KEYWORDS.STEALTHY],
         meta: {
+            [TRIGGERS.ON_PLAY]: 'earthRakerOnPlay',
         }
     },
     {

@@ -37,6 +37,9 @@ const DRAW_ONE = [
   // It prints BLOCKER and nothing else, so the SCRAPPY + onDeathEffect
   // prohibition is clear here too.
   'jealousyOnDeath',
+  // 2026-09-02. Earth Raker: "When this is played, draw a card". It prints
+  // STEALTHY and nothing else, so rule 10's SCRAPPY concern does not arise.
+  'earthRakerOnPlay',
 ]
 const CP_ONLY: [string, number][] = [
   ['bulwarkOnPlay', 2], ['maelstromOnPlay', 1], ['maceEffect', 1],
@@ -3261,8 +3264,10 @@ describe('wave 6 — SS Nothung', () => {
 describe('wave 6 — effects that must carry needsCatalog', () => {
   it.each([
     'nothungOnPlay', 'balmungOnPlay', 'harbringerBattle', 'victoriaActivate',
-    // 2026-09-02: mints from ctx.catalog by name. slasherOnPlay joins in Task 6.
+    // 2026-09-02: mints from ctx.catalog by name.
     'buzzsawOnPlay',
+    // 2026-09-02, Task 6: mints two Earth Rakers from ctx.catalog by name.
+    'slasherOnPlay',
   ])(
     '%s', (name) => { expect(CATALOG_EFFECTS.has(name)).toBe(true) },
   )
@@ -6052,5 +6057,63 @@ describe('2026-09-02 — WF Buzzsaw', () => {
     const game = makeGame()
     fire(game)
     expect(game.state.log.join(' ')).not.toContain('Ambush')
+  })
+})
+
+describe('2026-09-02 — WF Slasher', () => {
+  const raker = snap({
+    name: 'Earth Raker', faction: 'WF', type: 'vehicle', vehicleType: 'ship',
+    materialCost: 50_000, blueprintCost: 51_000, keywords: ['stealthy'],
+    meta: { onPlayEffect: 'earthRakerOnPlay' },
+  })
+  const fire = (game: EngineGame, catalog = [raker]) =>
+    effectFor('slasherOnPlay')!({
+      game, actor: 'a', card: inst({ name: 'Slasher', faction: 'WF' }), ctx: makeCtx({ catalog }),
+    })
+
+  it('puts exactly two Earth Rakers into hand and resyncs the count', () => {
+    const game = makeGame()
+    expect(fire(game)).toBe(true)
+    expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Earth Raker', 'Earth Raker'])
+    expect(game.state.counts.a.hand).toBe(2)
+  })
+
+  it('gives the two copies distinct instanceIds', () => {
+    const game = makeGame()
+    fire(game)
+    const [one, two] = game.privates.a.hand
+    expect(one.instanceId).not.toBe(two.instanceId)
+  })
+
+  // "They cost 0" is a PRICE, not a rewrite — balmungOnPlay's ruling. costDelta
+  // is summed into effectiveCostInGame and never reaches
+  // effectiveMaterialCostOf, so a free Earth Raker still deals its printed base
+  // damage and still costs its printed repair. Minting at materialCost: 0 would
+  // silently make them harmless as well as free.
+  it('prices them at zero without making them worthless', () => {
+    const game = makeGame()
+    fire(game)
+    for (const c of game.privates.a.hand) {
+      expect(c.materialCost).toBe(50_000)
+      expect(effectiveCostInGame(game.state, 'a', c)).toBe(0)
+    }
+  })
+
+  it('keeps the minted copies own on-play trigger', () => {
+    const game = makeGame()
+    fire(game)
+    expect(game.privates.a.hand[0].meta.onPlayEffect).toBe('earthRakerOnPlay')
+  })
+
+  // The seeded name is TWO WORDS. A one-word lookup compiles, passes review and
+  // returns null.
+  it('fails the play when the catalog has no card called "Earth Raker"', () => {
+    expect(fire(makeGame(), [snap({ ...raker, name: 'EarthRaker' })])).toBe(false)
+  })
+
+  it('never names the cards it put in the hand', () => {
+    const game = makeGame()
+    fire(game)
+    expect(game.state.log.join(' ')).not.toContain('Earth Raker')
   })
 })

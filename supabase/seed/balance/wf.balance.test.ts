@@ -45,6 +45,14 @@ const CARDS: Record<string, Expected> = {
     materialCost: 75_000, blueprintCost: 88_000, keywords: ['stealthy', 'scrappy'],
     vehicleType: 'ship', cardText: 'When played, put an ambush card into your hand',
   },
+  'WF:Slasher': {
+    materialCost: 300_000, blueprintCost: 353_000, keywords: [], vehicleType: 'ship',
+    cardText: 'When this is played, add two earth rakers to your hand. they cost 0.',
+  },
+  'WF:Earth Raker': {
+    materialCost: 50_000, blueprintCost: 51_000, keywords: ['stealthy'], vehicleType: 'ship',
+    cardText: 'When this is played, draw a card',
+  },
 }
 
 describe('2026-09-02 balance pass — WF', () => {
