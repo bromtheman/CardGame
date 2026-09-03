@@ -144,10 +144,16 @@ const ALL_META_KEYS = [...Object.values(TRIGGERS), 'costModifier']
 // deployment-order rule, and neither card names a registry effect. Without it
 // here, G2 reports both as silent and noteUnimplemented logs a
 // player-visible "plays as vanilla" note that is false.
+// `slotDenial` (2026-09-02 spec §4.1) joins them for aircraftLock's exact
+// reason: SS Tiger Shark prints one sentence, that sentence IS a rule read by
+// zoneCapFor (shared/engine/zoneCapacity.ts), and the card carries no registry
+// name at all. Without this entry G2 reports the card as silent and the only
+// escapes are a KNOWN_GAPS entry the pass forbids or an EXEMPT one that would
+// be a lie.
 export const DATA_EFFECT_KEYS = [
   'additionalSpawns', 'resourceSurge', 'defensiveOmission', 'aircraftLock',
   'deployRequiresBattleLoss', 'noBaseDamage', 'deployRequiresAiVehicle',
-  'deployOrder',
+  'deployOrder', 'slotDenial',
 ] as const
 
 // Spec §3.9: cards referencing unimplemented effects play as vanilla, with a

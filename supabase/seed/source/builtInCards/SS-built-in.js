@@ -502,6 +502,29 @@ export const ssVehicles = [
         meta: {
         }
     },
-    
+    {
+        name: 'Tiger Shark',
+        isBuiltIn: true,
+        // Text REWRITTEN by ruling R-1. The changes file printed "whenever this
+        // vehicle is played into a zone", which reads as a permanent stacking
+        // stamp; the rule shipped is while-alive and non-stacking, and the text
+        // says so. zoneCapFor takes the MAX slotDenial in the zone, never the
+        // sum, which is what makes a second Tiger Shark inert.
+        cardText: 'While this vehicle is alive, your opponent has 3 fewer vehicle slots in this zone. This does not stack.',
+        materialCost: 690000,
+        blueprintCost: 914000,
+        cpCost: 0,
+        imageUrl: 'tigerShark.png',
+        playerId: null,
+        vehicleType: 'ship',
+        type: 'vehicle',
+        faction: FACTIONS.SS,
+        blueprintId: null,
+        keywords: [],
+        meta: {
+            slotDenial: 3,
+        }
+    },
+
 
 ];

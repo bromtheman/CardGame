@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { loadSeedData } from '../transform'
 import type { SeedCard } from '../../../shared/types'
+import { DATA_EFFECT_KEYS } from '../../../shared/effects/registry'
+import { MAX_VEHICLES_PER_ZONE_SIDE } from '../../../shared/gameSettings'
+import { makeGame, zoneEntry } from '../../../shared/engine/testFixtures'
+import { zoneCapFor } from '../../../shared/engine/zoneCapacity'
 
 // The 2026-09-02 balance pass — SS's share, pinned against the seed source.
 //
@@ -35,6 +39,10 @@ const CARDS: Record<string, Expected> = {
     vehicleType: 'ship',
     cardText: 'This card costs 60k less for every turn it spends in your hand',
   },
+  'SS:Tiger Shark': {
+    materialCost: 690_000, blueprintCost: 914_000, keywords: [], vehicleType: 'ship',
+    cardText: 'While this vehicle is alive, your opponent has 3 fewer vehicle slots in this zone. This does not stack.',
+  },
 }
 
 describe('2026-09-02 balance pass — SS', () => {
@@ -62,5 +70,34 @@ describe('2026-09-02 balance pass — SS', () => {
     expect((await bySeedKey()).get('SS:Tyr')!.meta).toMatchObject({
       costModifier: 'tyrCostModifier',
     })
+  })
+
+  // A data key's VALUE is never checked by any guard, only its presence
+  // (docs/claude/card-effects.md, blind spot 4) — and this value IS the rule:
+  // zoneCapFor subtracts exactly this number. `2` or `"3"` would leave a card
+  // that is inert AND invisible, with no guard failure and no "plays as
+  // vanilla" note either.
+  it('Tiger Shark denies exactly three slots', async () => {
+    expect((await bySeedKey()).get('SS:Tiger Shark')!.meta?.slotDenial).toBe(3)
+  })
+
+  // The whole card is that one data key, so if it ever left DATA_EFFECT_KEYS
+  // the card would become a G2 offender with no other symptom.
+  it('slotDenial is a recognised data key', () => {
+    expect([...DATA_EFFECT_KEYS]).toContain('slotDenial')
+  })
+
+  // Reads the SEED rather than a fixture: the engine rule and the printed
+  // number have to agree, and only a seed-backed test can say they do. Lives
+  // here rather than shared/engine/zoneCapacity.test.ts per the task-6 brief's
+  // own escape hatch — dwgEffects.test.ts documents "nothing under shared/
+  // may read the seed", and this file already loads it for every other
+  // seed-backed cross-check of this shape.
+  it('a seeded Tiger Shark takes three slots off the enemy cap', async () => {
+    const { cards } = await loadSeedData()
+    const row = cards.find((c) => c.faction === 'SS' && c.name === 'Tiger Shark')!
+    const g = makeGame()
+    g.state.zones[0].cards.b.push(zoneEntry({ name: row.name, meta: row.meta ?? {} }))
+    expect(zoneCapFor(g.state, 'a', 1)).toBe(MAX_VEHICLES_PER_ZONE_SIDE - 3)
   })
 })
