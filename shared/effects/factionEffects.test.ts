@@ -5929,7 +5929,7 @@ describe('2026-09-02 balance pass — OW', () => {
   // game's snapshot, while the code behind it is redeployed for all of them at
   // once — so a shared name silently rebinds one card the moment the other is
   // registered. Sharing the `gtAirship` CLOSURE is not the same thing and is
-  // fine; the three names above already do it.
+  // fine; halberdOnDeath, jormangundOnDeath and partisanEffect already do it.
   it('brandistockOnDeath and halberdOnDeath are two independent registrations', () => {
     expect(effectFor('brandistockOnDeath')).toBeDefined()
     expect(effectFor('halberdOnDeath')).toBeDefined()
