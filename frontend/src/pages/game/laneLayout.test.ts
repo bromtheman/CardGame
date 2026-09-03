@@ -28,16 +28,33 @@ describe('laneColumnsAt', () => {
 })
 
 describe('laneRowsAt', () => {
-  it('lays the full cap out in two rows on a full-width panel', () => {
-    expect(laneRowsAt(PANEL_INNER, MAX_VEHICLES_PER_ZONE_SIDE)).toBe(2)
+  it('reserves the whole cap even when the lane is empty', () => {
+    expect(laneRowsAt(PANEL_INNER, 0, MAX_VEHICLES_PER_ZONE_SIDE))
+      .toBe(laneRowsAt(PANEL_INNER, MAX_VEHICLES_PER_ZONE_SIDE, MAX_VEHICLES_PER_ZONE_SIDE))
   })
-  it('reserves the whole cap even for an empty lane, so the height cannot jump', () => {
-    expect(laneRowsAt(PANEL_INNER, 0)).toBe(laneRowsAt(PANEL_INNER, MAX_VEHICLES_PER_ZONE_SIDE))
+
+  it('lays the full cap out in two rows at a real panel width', () => {
+    expect(laneRowsAt(PANEL_INNER, MAX_VEHICLES_PER_ZONE_SIDE, MAX_VEHICLES_PER_ZONE_SIDE)).toBe(2)
   })
-  it('grows a row for an over-cap lane rather than dropping a hull', () => {
-    // Spawns, revives and Boarding Party deliberately bypass the cap
-    // (gameSettings.MAX_VEHICLES_PER_ZONE_SIDE), so a side can sit above it.
-    expect(laneRowsAt(PANEL_INNER, MAX_VEHICLES_PER_ZONE_SIDE + 1)).toBe(3)
+
+  it('grows a row rather than dropping a hull when a side sits above the cap', () => {
+    expect(laneRowsAt(PANEL_INNER, MAX_VEHICLES_PER_ZONE_SIDE + 1, MAX_VEHICLES_PER_ZONE_SIDE)).toBe(3)
+  })
+
+  // Spec §4.1: the grid must render the REDUCED slot count or the board lies
+  // about capacity. A denied lane reserves five slots, not eight — at this
+  // panel's 4 columns both round up to 2 rows, so the row COUNT doesn't
+  // distinguish them here (`still shows every hull…` below does), but this
+  // still pins that the function takes the reduced cap rather than the flat
+  // constant, and would diverge from the full-cap case at a narrower panel.
+  it('reserves only the reduced cap when a denier has shrunk it', () => {
+    expect(laneRowsAt(PANEL_INNER, 0, MAX_VEHICLES_PER_ZONE_SIDE - 3)).toBe(2)
+  })
+
+  // The over-cap case AND the denied case at once — the board a player actually
+  // sees the turn a Tiger Shark lands opposite a full lane.
+  it('still shows every hull of a lane that is over the reduced cap', () => {
+    expect(laneRowsAt(PANEL_INNER, MAX_VEHICLES_PER_ZONE_SIDE, MAX_VEHICLES_PER_ZONE_SIDE - 3)).toBe(2)
   })
 })
 
@@ -50,13 +67,13 @@ describe('laneHeightAt', () => {
   // two lanes. A chip tall enough to bust this budget is what pushed the hand
   // below the fold in the first place.
   it('keeps a full-cap lane inside the one-screen budget', () => {
-    expect(laneHeightAt(PANEL_INNER, MAX_VEHICLES_PER_ZONE_SIDE)).toBeLessThanOrEqual(LANE_HEIGHT_BUDGET_PX)
+    expect(laneHeightAt(PANEL_INNER, MAX_VEHICLES_PER_ZONE_SIDE, MAX_VEHICLES_PER_ZONE_SIDE)).toBeLessThanOrEqual(LANE_HEIGHT_BUDGET_PX)
   })
   it('is the same height empty as it is full', () => {
-    expect(laneHeightAt(PANEL_INNER, 0)).toBe(laneHeightAt(PANEL_INNER, MAX_VEHICLES_PER_ZONE_SIDE))
+    expect(laneHeightAt(PANEL_INNER, 0, MAX_VEHICLES_PER_ZONE_SIDE)).toBe(laneHeightAt(PANEL_INNER, MAX_VEHICLES_PER_ZONE_SIDE, MAX_VEHICLES_PER_ZONE_SIDE))
   })
   it('is a whole number of slot rows plus the gaps between them', () => {
-    const rows = laneRowsAt(PANEL_INNER, MAX_VEHICLES_PER_ZONE_SIDE)
-    expect(laneHeightAt(PANEL_INNER, MAX_VEHICLES_PER_ZONE_SIDE)).toBeGreaterThanOrEqual(rows * SLOT_HEIGHT_PX)
+    const rows = laneRowsAt(PANEL_INNER, MAX_VEHICLES_PER_ZONE_SIDE, MAX_VEHICLES_PER_ZONE_SIDE)
+    expect(laneHeightAt(PANEL_INNER, MAX_VEHICLES_PER_ZONE_SIDE, MAX_VEHICLES_PER_ZONE_SIDE)).toBeGreaterThanOrEqual(rows * SLOT_HEIGHT_PX)
   })
 })
