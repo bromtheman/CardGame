@@ -43,6 +43,11 @@ const CARDS: Record<string, Expected> = {
     materialCost: 690_000, blueprintCost: 914_000, keywords: [], vehicleType: 'ship',
     cardText: 'While this vehicle is alive, your opponent has 3 fewer vehicle slots in this zone. This does not stack.',
   },
+  'SS:Thresher Shark': {
+    materialCost: 580_000, blueprintCost: 914_000,
+    keywords: ['blocker', 'subScreen'], vehicleType: 'ship',
+    cardText: 'While you have less resources than this costs, you may play it with HALFCOST and INOFFENSIVE',
+  },
 }
 
 describe('2026-09-02 balance pass — SS', () => {
@@ -99,5 +104,21 @@ describe('2026-09-02 balance pass — SS', () => {
     const g = makeGame()
     g.state.zones[0].cards.b.push(zoneEntry({ name: row.name, meta: row.meta ?? {} }))
     expect(zoneCapFor(g.state, 'a', 1)).toBe(MAX_VEHICLES_PER_ZONE_SIDE - 3)
+  })
+
+  // resourceSurge is a DATA_EFFECT_KEY, so G2 closes the card on the key
+  // EXISTING and never looks inside. Compared field by field: a materialsOver
+  // where the card says "less than" would invert the whole card silently.
+  //
+  // The threshold IS the printed cost. Asserted against the row's own
+  // materialCost as well as against the literal, because those two numbers
+  // moving apart is exactly how this card would quietly stop working.
+  it('Thresher Shark surges UNDER its own printed cost, granting halfCost and inoffensive', async () => {
+    const card = (await bySeedKey()).get('SS:Thresher Shark')!
+    expect(card.meta?.resourceSurge).toEqual({
+      materialsUnder: 580_000, grantKeywords: ['halfCost', 'inoffensive'],
+    })
+    expect((card.meta?.resourceSurge as { materialsUnder: number }).materialsUnder)
+      .toBe(card.materialCost)
   })
 })

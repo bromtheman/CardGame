@@ -525,6 +525,32 @@ export const ssVehicles = [
             slotDenial: 3,
         }
     },
+    {
+        name: 'Thresher Shark',
+        isBuiltIn: true,
+        cardText: 'While you have less resources than this costs, you may play it with HALFCOST and INOFFENSIVE',
+        materialCost: 580000,
+        blueprintCost: 914000,
+        cpCost: 0,
+        imageUrl: 'thresherShark.png',
+        playerId: null,
+        vehicleType: 'ship',
+        type: 'vehicle',
+        faction: FACTIONS.SS,
+        blueprintId: null,
+        keywords: [KEYWORDS.BLOCKER, KEYWORDS.SUB_SCREEN],
+        meta: {
+            // "While you have less resources than THIS COSTS" — the threshold is
+            // the card's own printed materialCost, which materialsUnder expresses
+            // exactly. Ruling B-9's GRANTING arm: a surge that names keywords adds
+            // them (to the price AND to the hull) rather than suppressing
+            // Half-Cost, which is what the older suppressing surges do.
+            resourceSurge: {
+                materialsUnder: 580000,
+                grantKeywords: [KEYWORDS.HALF_COST, KEYWORDS.INOFFENSIVE],
+            },
+        }
+    },
 
 
 ];

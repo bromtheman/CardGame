@@ -6,6 +6,7 @@ import { registerCostModifier, registerEffect } from '../effects/registry.ts'
 import { takeFromEnemyDeck } from '../effects/primitives.ts'
 import { ADDITIONAL_SPAWNS_CAP, KEYWORDS, MAX_VEHICLES_PER_ZONE_SIDE } from '../gameSettings.ts'
 import { inst, makeCtx, makeGame, snap, zoneEntry } from './testFixtures'
+import { baseDamageFrom } from './baseAttack.ts'
 
 function withHand(cardOver: Record<string, unknown>) {
   const g = makeGame()
@@ -1548,5 +1549,57 @@ describe('MAX_VEHICLES_PER_ZONE_SIDE — the zone-side cap', () => {
     expect(r.ok).toBe(true)
     if (!r.ok) return
     expect(r.game.state.zones[0].cards.a).toHaveLength(MAX_VEHICLES_PER_ZONE_SIDE - 3)
+  })
+})
+
+describe('SS Thresher Shark — a granting surge', () => {
+  const thresher = () => inst({
+    name: 'Thresher Shark', faction: 'SS', vehicleType: 'ship', type: 'vehicle',
+    materialCost: 580_000, keywords: ['blocker', 'subScreen'],
+    meta: { resourceSurge: { materialsUnder: 580_000, grantKeywords: ['halfCost', 'inoffensive'] } },
+  })
+
+  it('costs half when you cannot afford it, and full when you can', () => {
+    const g = makeGame()
+    g.state.resources.a.materials = 579_999
+    expect(effectiveCostInGame(g.state, 'a', thresher(), g.turnNumber)).toBe(290_000)
+    g.state.resources.a.materials = 580_000
+    expect(effectiveCostInGame(g.state, 'a', thresher(), g.turnNumber)).toBe(580_000)
+  })
+
+  // Ruling B-9's granting arm stamps the keywords onto the HULL, not only onto
+  // the price. INOFFENSIVE is read off the BOARD (baseStrikersIn), so a
+  // price-only grant would leave a half-price hull that still bombards.
+  it('stamps halfCost AND inoffensive onto the hull that lands', () => {
+    const g = makeGame()
+    g.state.resources.a.materials = 400_000
+    const card = thresher()
+    g.privates.a.hand.push(card)
+    const r = applyAction(g, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 })
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    const hull = r.game.state.zones[0].cards.a[0]
+    expect([...hull.keywords].sort()).toEqual(['blocker', 'halfCost', 'inoffensive', 'subScreen'])
+    expect(r.game.state.resources.a.materials).toBe(400_000 - 290_000)
+  })
+
+  // BLOCKER + INOFFENSIVE on one hull looks like a contradiction and is not:
+  // Blocker protects the base from bombardment, Inoffensive is "cannot attack".
+  // Asserted rather than left to a reader, the same way DWG's FRAGILE+SCRAPPY
+  // pairing is (spec §6.1).
+  it('a surged Thresher still blocks the base it cannot strike', () => {
+    const g = makeGame()
+    const hull = zoneEntry({
+      name: 'Thresher Shark', vehicleType: 'ship', playedOnTurn: 0,
+      keywords: ['blocker', 'halfCost', 'inoffensive', 'subScreen'], materialCost: 580_000,
+    })
+    g.state.zones[0].cards.b.push(hull)
+    g.state.zones[0].cards.a.push(zoneEntry({ vehicleType: 'ship', playedOnTurn: 0, materialCost: 100_000 }))
+    const r = applyAction(g, 'alice', { type: 'ATTACK_ENEMY_BASE', zoneId: 1 })
+    expect(r.ok).toBe(false)
+    if (r.ok) return
+    expect(r.error).toContain('Blocker')
+    // …and it deals no damage of its own.
+    expect(baseDamageFrom([hull], g.turnNumber)).toBe(0)
   })
 })
