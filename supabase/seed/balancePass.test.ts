@@ -133,13 +133,15 @@ describe('2026-08-30 balance pass', () => {
     expect((await bySeedKey()).get('WF:Pontus')!.meta?.additionalSpawns).toBe(2)
   })
 
+  // Repairmen Ready's 'AI' became 'SS' in the 2026-09-02 pass (ruling R-5);
+  // the 400k threshold it exists to pin is unchanged.
   it('Double Up and Repairmen Ready print the thresholds their code enforces', async () => {
     const cards = await bySeedKey()
     expect(cards.get('DWG:Double Up')!.cardText).toBe(
       'Target DWG ship card in hand That costs less than 400k. spawns an additional copy of that ship when played',
     )
     expect(cards.get('SS:Repairmen Ready')!.cardText).toBe(
-      'Grant target vehicle scrappy. If the target is an AI vehicle that costs less than 400k, draw a card.',
+      'Grant target vehicle scrappy. If the target is an SS vehicle that costs less than 400k, draw a card.',
     )
   })
 

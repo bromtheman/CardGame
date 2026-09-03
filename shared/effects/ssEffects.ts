@@ -119,27 +119,34 @@ registerEffect('rheaOnPlay', drawFromPool({
   strip: ['temporary'],
 }), { needsCatalog: true })
 
-// "Pick one AI ship in hand and reduce its cost by 200k." AI means built-in
-// (design spec §7.3, "AI" === isBuiltIn true). Dispatched by DP6's hand
-// direction (PLAY_CARD_TARGETING_CARD_IN_HAND, spec §4.3): Excalibur deploys
-// to its zone first, then this fires against the hand target, and Excalibur
-// itself is not spendCard'd — it is a hull, not a spent ability.
+// "Pick one SS ship in hand and reduce its cost by 200k." The filter moved
+// AI -> SS in the 2026-09-02 pass (ruling R-5), so it is now a FACTION test
+// rather than isBuiltIn — which both narrows it (a built-in DWG ship no longer
+// qualifies) and widens it (a player-made SS ship now does). WF Excruciator's
+// text still says "AI" and keeps the built-in meaning; the phrase is not
+// global. Dispatched by DP6's hand direction (PLAY_CARD_TARGETING_CARD_IN_HAND,
+// spec §4.3): Excalibur deploys to its zone first, then this fires against the
+// hand target, and Excalibur itself is not spendCard'd — it is a hull, not a
+// spent ability.
 registerEffect('excaliburEffect', costDelta({
   delta: EXCALIBUR_COST_DELTA,
-  filter: { type: 'vehicle', vehicleType: 'ship', isBuiltIn: true },
+  filter: SS_SHIP_FILTER,
 }))
 
-// "Grant target vehicle scrappy. If the target is an AI vehicle that costs
+// "Grant target vehicle scrappy. If the target is an SS vehicle that costs
 // less than 400k, draw a card." The threshold moved 200k -> 400k in the
 // 2026-08-30 balance pass; it lives in REPAIRMEN_READY_DRAW_MAX_COST, so the
-// card text is the only other place the number appears.
+// card text is the only other place the number appears. The gate read
+// "an SS vehicle" since the 2026-09-02 pass (R-5) — it read `isBuiltIn` when
+// the text said "AI". Note this clause tests the FACTION and not the ship
+// type: the card says "vehicle", where Excalibur says "ship".
 registerEffect('repairmenReadyEffect', sequence(
   grantKeywords({ keywords: [KEYWORDS.SCRAPPY], target: 'field' }),
   (payload) => {
     const found = findVehicle(payload.game.state, payload.targetInstanceId ?? '')
     if (!found) return false
     const { entry } = found
-    if (entry.isBuiltIn && entry.materialCost < REPAIRMEN_READY_DRAW_MAX_COST) {
+    if (entry.faction === FACTIONS.SS && entry.materialCost < REPAIRMEN_READY_DRAW_MAX_COST) {
       return grant({ draw: 1 })(payload)
     }
     return true
@@ -159,7 +166,7 @@ function legalTarget(game: EngineGame, actor: Side, targetInstanceId: unknown) {
   return found
 }
 
-// "Choose an enemy ship, it fights alone against two PredatorX. If the
+// "Choose an enemy vehicle, it fights alone against two PredatorX. If the
 // target is a player design, also spawn your choice of Hydra or Cyclone."
 // Seed corrected PLAY_ON_ZONE -> PLAY_ON_VEHICLE — the card targets a
 // vehicle, not a zone. The printed "spawn" is loose: spec §4.4 puts all

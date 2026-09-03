@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { CATALOG_EFFECTS, RESOLVE_BYSTANDER_EFFECTS, effectFor, registerEffect } from './registry.ts'
 import { choice } from './primitives.ts'
 import {
-  BASE_DAMAGE_DIVISOR, BULL_SHARK_BASE_DAMAGE, CASH_ADVANCE_MATERIALS, KEYWORDS,
+  BASE_DAMAGE_DIVISOR, BULL_SHARK_BASE_DAMAGE, CASH_ADVANCE_MATERIALS, EXCALIBUR_COST_DELTA, KEYWORDS,
   MATERIALS_PER_TURN, RESOLUTE_COST_DELTA, TRONDHEIM_COST_DELTA, TYR_HAND_DISCOUNT, VICTORIA_COST_DELTA,
 } from '../gameSettings.ts'
 import { inst, makeCtx, makeGame, snap, zoneEntry } from '../engine/testFixtures.ts'
@@ -248,7 +248,7 @@ describe('excaliburEffect', () => {
 
   it('deploys to a legal zone and stamps -200k costDelta on an AI ship targeted in hand', () => {
     const card = excalibur()
-    const target = inst({ name: 'Victoria', isBuiltIn: true, type: 'vehicle', vehicleType: 'ship', materialCost: 270_000 })
+    const target = inst({ name: 'Victoria', faction: 'SS', isBuiltIn: true, type: 'vehicle', vehicleType: 'ship', materialCost: 270_000 })
     const game = makeGame({ privates: { a: { hand: [card, target], deck: [] }, b: { hand: [], deck: [] } } })
     game.state.resources.a.materials = 600_000
     const before = effectiveCostInGame(game.state, 'a', target)
@@ -294,7 +294,7 @@ describe('excaliburEffect', () => {
   it('stacks two Excaliburs to -400k on the same target', () => {
     const first = excalibur()
     const second = excalibur()
-    const target = inst({ name: 'Victoria', isBuiltIn: true, type: 'vehicle', vehicleType: 'ship', materialCost: 270_000 })
+    const target = inst({ name: 'Victoria', faction: 'SS', isBuiltIn: true, type: 'vehicle', vehicleType: 'ship', materialCost: 270_000 })
     const game = makeGame({ privates: { a: { hand: [first, second, target], deck: [] }, b: { hand: [], deck: [] } } })
     game.state.resources.a.materials = 1_200_000
     const r1 = applyAction(game, 'alice', {
@@ -316,7 +316,7 @@ describe('excaliburEffect', () => {
 
   it('leaves effectiveMaterialCostOf on the target unchanged — the discount is play-time only', () => {
     const card = excalibur()
-    const target = inst({ name: 'Victoria', isBuiltIn: true, type: 'vehicle', vehicleType: 'ship', materialCost: 270_000 })
+    const target = inst({ name: 'Victoria', faction: 'SS', isBuiltIn: true, type: 'vehicle', vehicleType: 'ship', materialCost: 270_000 })
     const game = makeGame({ privates: { a: { hand: [card, target], deck: [] }, b: { hand: [], deck: [] } } })
     game.state.resources.a.materials = 600_000
     const before = effectiveMaterialCostOf(target)
@@ -351,6 +351,29 @@ describe('excaliburEffect', () => {
     expect(r.game.state.zones[0].cards.a.map((e) => e.instanceId)).toContain(card.instanceId)
     expect(r.game.privates.a.hand).toHaveLength(0)
     expect(r.game.state.log.some((l) => l.includes('deployed to zone 1'))).toBe(true)
+  })
+
+  // R-5: the filter narrowed from "built-in" to faction SS. A built-in DWG ship
+  // used to qualify and now does not.
+  it('refuses a built-in ship of another faction', () => {
+    const game = makeGame()
+    const target = inst({ faction: 'DWG', isBuiltIn: true, type: 'vehicle', vehicleType: 'ship' })
+    game.privates.a.hand.push(target)
+    expect(effectFor('excaliburEffect')!({
+      game, actor: 'a', card: inst(), ctx: makeCtx(), targetInstanceId: target.instanceId,
+    })).toBe(false)
+  })
+
+  // …and a PLAYER-MADE SS ship now does qualify, which the old isBuiltIn
+  // filter refused. This is the half of R-5 a "narrowing" summary hides.
+  it('accepts a player-made SS ship', () => {
+    const game = makeGame()
+    const target = inst({ faction: 'SS', isBuiltIn: false, type: 'vehicle', vehicleType: 'ship' })
+    game.privates.a.hand.push(target)
+    expect(effectFor('excaliburEffect')!({
+      game, actor: 'a', card: inst(), ctx: makeCtx(), targetInstanceId: target.instanceId,
+    })).toBe(true)
+    expect(game.privates.a.hand[0].meta.costDelta).toBe(EXCALIBUR_COST_DELTA)
   })
 })
 
@@ -396,20 +419,20 @@ describe('repairmenReadyEffect', () => {
   }
 
   it('grants Scrappy and draws for a cheap built-in target', () => {
-    const { ok, game, target } = run({ isBuiltIn: true, materialCost: 150_000 })
+    const { ok, game, target } = run({ faction: 'SS', isBuiltIn: true, materialCost: 150_000 })
     expect(ok).toBe(true)
     expect(target.keywords).toContain('scrappy')
     expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Top'])
   })
 
   it('draws for a 250k built-in target, which the 2026-08-30 threshold move now admits', () => {
-    const { game, target } = run({ isBuiltIn: true, materialCost: 250_000 })
+    const { game, target } = run({ faction: 'SS', isBuiltIn: true, materialCost: 250_000 })
     expect(target.keywords).toContain('scrappy')
     expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Top'])
   })
 
   it('grants Scrappy but draws nothing for an expensive built-in target', () => {
-    const { game, target } = run({ isBuiltIn: true, materialCost: 450_000 })
+    const { game, target } = run({ faction: 'SS', isBuiltIn: true, materialCost: 450_000 })
     expect(target.keywords).toContain('scrappy')
     expect(game.privates.a.hand).toHaveLength(0)
   })
@@ -421,9 +444,32 @@ describe('repairmenReadyEffect', () => {
   })
 
   it('grants Scrappy but draws nothing for a built-in target at exactly the 400k boundary — the card says "less than 400k"', () => {
-    const { game, target } = run({ isBuiltIn: true, materialCost: 400_000 })
+    const { game, target } = run({ faction: 'SS', isBuiltIn: true, materialCost: 400_000 })
     expect(target.keywords).toContain('scrappy')
     expect(game.privates.a.hand).toHaveLength(0)
+  })
+
+  it('grants scrappy but does not draw for a built-in vehicle of another faction', () => {
+    const game = makeGame()
+    const target = zoneEntry({ faction: 'DWG', isBuiltIn: true, materialCost: 100_000 })
+    game.state.zones[0].cards.a.push(target)
+    game.privates.a.deck.push(inst({ name: 'Top' }))
+    expect(effectFor('repairmenReadyEffect')!({
+      game, actor: 'a', card: inst(), ctx: makeCtx(), targetInstanceId: target.instanceId,
+    })).toBe(true)
+    expect(target.keywords).toContain('scrappy')
+    expect(game.privates.a.hand).toHaveLength(0)
+  })
+
+  it('draws for a player-made SS vehicle under the threshold', () => {
+    const game = makeGame()
+    const target = zoneEntry({ faction: 'SS', isBuiltIn: false, materialCost: 100_000 })
+    game.state.zones[0].cards.a.push(target)
+    game.privates.a.deck.push(inst({ name: 'Top' }))
+    effectFor('repairmenReadyEffect')!({
+      game, actor: 'a', card: inst(), ctx: makeCtx(), targetInstanceId: target.instanceId,
+    })
+    expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Top'])
   })
 })
 
@@ -865,7 +911,7 @@ describe('wave 3 — forced battles', () => {
     const cyclone = snap({ name: 'Cyclone', faction: 'SS', vehicleType: 'sub', materialCost: 280_000 })
     const catalog = [predatorX, hydra, cyclone]
     const airStrafeCard = () => inst({
-      instanceId: 'as1', name: 'Air Strafe', type: 'ability', materialCost: 180_000,
+      instanceId: 'as1', name: 'Air Strafe', type: 'ability', materialCost: 150_000,
       meta: { playOnVehicleEffect: 'airStrafeEffect' },
     })
 
@@ -929,6 +975,7 @@ describe('wave 3 — forced battles', () => {
         game, actor: 'a', card: inst({ name: 'Air Strafe' }), ctx: makeCtx(),
         targetInstanceId: mine.instanceId,
       })).toBe(false)
+      expect(game.state.pendingEffect).toBeNull()
     })
 
     it('a player-design target suspends offering exactly Hydra and Cyclone, and declares no battle yet', () => {
@@ -3963,7 +4010,7 @@ describe('wave 6 — SS Blockade', () => {
         name: 'Excalibur', faction: 'SS', vehicleType: 'ship', materialCost: 0,
         meta: { playOnCardEffect: 'excaliburEffect' },
       })
-      const target = inst({ name: 'AI Ship', vehicleType: 'ship', materialCost: 100_000, isBuiltIn: true })
+      const target = inst({ name: 'SS Ship', faction: 'SS', vehicleType: 'ship', materialCost: 100_000, isBuiltIn: true })
       game.privates.a.hand = [excalibur, target]
       game.state.counts.a.hand = 2
       const r = applyAction(game, 'alice', {

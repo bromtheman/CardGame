@@ -75,6 +75,14 @@ const CARDS: Record<string, Expected> = {
     materialCost: 150_000, blueprintCost: 0, keywords: [], vehicleType: null,
     cardText: 'Choose an enemy vehicle, it fights alone against two predatorX. If the target is a player design, also spawn your choice of hydra or cyclone',
   },
+  'SS:Repairmen Ready': {
+    materialCost: 0, blueprintCost: 0, keywords: [], vehicleType: null,
+    cardText: 'Grant target vehicle scrappy. If the target is an SS vehicle that costs less than 400k, draw a card.',
+  },
+  'SS:Excalibur': {
+    materialCost: 550_000, blueprintCost: 553_900, keywords: ['blocker'], vehicleType: 'ship',
+    cardText: 'Pick one SS ship in hand and reduce its cost by 200k',
+  },
 }
 
 describe('2026-09-02 balance pass — SS', () => {

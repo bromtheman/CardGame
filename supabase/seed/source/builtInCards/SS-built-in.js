@@ -73,7 +73,7 @@ export const ssVehicles = [
     },{
         name: 'Repairmen Ready',
         isBuiltIn: true,
-        cardText: 'Grant target vehicle scrappy. If the target is an AI vehicle that costs less than 400k, draw a card.',
+        cardText: 'Grant target vehicle scrappy. If the target is an SS vehicle that costs less than 400k, draw a card.',
         materialCost: 0,
         blueprintCost: 0,
         cpCost: 0,
@@ -89,7 +89,7 @@ export const ssVehicles = [
     },{
         name: 'Excalibur',
         isBuiltIn: true,
-        cardText: 'Pick one AI ship in hand and reduce its cost by 200k',
+        cardText: 'Pick one SS ship in hand and reduce its cost by 200k',
         materialCost: 550000,
         blueprintCost: 553900,
         cpCost: 0,
