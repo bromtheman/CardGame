@@ -47,6 +47,9 @@ const DRAW_ONE = [
 ]
 const CP_ONLY: [string, number][] = [
   ['bulwarkOnPlay', 2], ['maelstromOnPlay', 1], ['maceEffect', 1],
+  // 2026-09-02. Two WF cards, two registry names — identical bodies, but a
+  // shared name would rebind one the moment the other changed (spec R-6).
+  ['scourgeOnPlay', 1], ['disembowelerOnPlay', 1],
 ]
 
 describe('grant-backed cards', () => {

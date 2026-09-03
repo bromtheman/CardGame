@@ -100,9 +100,9 @@ export const wfVehicles = [
     {
         name: 'Scourge',
         isBuiltIn: true,
-        cardText: '',
-        materialCost: 240000,
-        blueprintCost: 249000,
+        cardText: 'When played, gain 1cp',
+        materialCost: 225000,
+        blueprintCost: 209000,
         cpCost: 0,
         imageUrl: 'scourge.png',
         playerId: null,
@@ -112,6 +112,7 @@ export const wfVehicles = [
         blueprintId: null,
         keywords: [KEYWORDS.SCRAPPY],
         meta: {
+            [TRIGGERS.ON_PLAY]: 'scourgeOnPlay',
         }
     },
     {
@@ -151,7 +152,7 @@ export const wfVehicles = [
     {
         name: 'Disemboweler',
         isBuiltIn: true,
-        cardText: '',
+        cardText: 'When played, gain 1 cp.',
         materialCost: 300000,
         blueprintCost: 305000,
         cpCost: 0,
@@ -163,6 +164,7 @@ export const wfVehicles = [
         blueprintId: null,
         keywords: [],
         meta: {
+            [TRIGGERS.ON_PLAY]: 'disembowelerOnPlay',
         }
     },
     {

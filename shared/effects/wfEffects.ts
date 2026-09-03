@@ -454,6 +454,13 @@ function judgementSelf(game: EngineGame, actor: Side, card: { instanceId: string
   return found && found.side === actor ? found : null
 }
 
+// "When played, gain 1cp" (Scourge) and "When played, gain 1 cp." (Disemboweler).
+// Identical bodies, two registry ids: a name two cards could carry is the
+// Kraken/Paddlegun collision, and the implementation behind it is redeployed
+// for every in-flight game at once (spec R-6).
+registerEffect('scourgeOnPlay', grant({ cp: 1 }))
+registerEffect('disembowelerOnPlay', grant({ cp: 1 }))
+
 registerEffect(JUDGEMENT, choice({
   effect: JUDGEMENT,
   prompt: 'Choose an enemy submarine or airship for Judgement to fight',

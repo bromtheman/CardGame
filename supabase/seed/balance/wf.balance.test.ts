@@ -58,6 +58,14 @@ const CARDS: Record<string, Expected> = {
     vehicleType: 'ship',
     cardText: 'When played, draw two AI vehicles from your deck and reduce their cost by 100k.',
   },
+  'WF:Scourge': {
+    materialCost: 225_000, blueprintCost: 209_000, keywords: ['scrappy'],
+    vehicleType: 'ship', cardText: 'When played, gain 1cp',
+  },
+  'WF:Disemboweler': {
+    materialCost: 300_000, blueprintCost: 305_000, keywords: [],
+    vehicleType: 'sub', cardText: 'When played, gain 1 cp.',
+  },
 }
 
 describe('2026-09-02 balance pass — WF', () => {
