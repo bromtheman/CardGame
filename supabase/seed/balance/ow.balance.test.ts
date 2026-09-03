@@ -46,6 +46,16 @@ const CARDS: Record<string, Expected> = {
     keywords: ['blocker', 'inoffensive'], vehicleType: 'ship',
     cardText: 'Whenever this vehicle would partake in a defensive battle, spawn an allied parapet to fight alongside it. Once per turn, you may pay 1cp to draw a GT heavy airship card.',
   },
+  // HALF_COST out, FRAGILE in — and this is a bigger swing than the material
+  // cost suggests. effectiveMaterialCostOf halves a halfCost hull for damage,
+  // repairs and in-battle resources, so Eyrie's effective price goes 390k
+  // (half of 780k) to 575k while its sticker price falls. FRAGILE then blocks
+  // repair outright. Recorded here because a reader checking only materialCost
+  // would score this as a buff.
+  'OW:Eyrie': {
+    materialCost: 575_000, blueprintCost: 809_000,
+    keywords: ['blocker', 'fragile'], vehicleType: 'airship', cardText: '',
+  },
 }
 
 describe('2026-09-02 balance pass — OW', () => {

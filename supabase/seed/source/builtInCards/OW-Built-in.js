@@ -277,8 +277,8 @@ export const owVehicles = [
         name: 'Eyrie',
         isBuiltIn: true,
         cardText: '',
-        materialCost: 780000,
-        blueprintCost: 781362,
+        materialCost: 575000,
+        blueprintCost: 809000,
         cpCost: 0,
         imageUrl: 'Eyrie.png',
         playerId: null,
@@ -286,7 +286,7 @@ export const owVehicles = [
         type: 'vehicle',
         faction: FACTIONS.OW,
         blueprintId: null,
-        keywords: [KEYWORDS.HALF_COST, KEYWORDS.BLOCKER]
+        keywords: [KEYWORDS.BLOCKER, KEYWORDS.FRAGILE]
     },
     {
         name: 'Rook',
