@@ -1,9 +1,9 @@
 import {
   AIR_STRAFE_PREDATOR_COUNT, BASE_DAMAGE_DIVISOR, BULL_SHARK_BASE_DAMAGE, CASH_ADVANCE_MATERIALS,
   CATSHARK_MATERIALS,
-  EXCALIBUR_COST_DELTA, KEYWORDS,
+  EXCALIBUR_COST_DELTA, FACTIONS, KEYWORDS,
   REPAIRMEN_READY_DRAW_MAX_COST, RHEA_MAX_PLANE_COST, SACRILEGO_HP_BOOST,
-  SURVIVE_HP_PERCENT, TYR_HAND_DISCOUNT, VEHICLE_TYPES,
+  SURVIVE_HP_PERCENT, TYR_HAND_DISCOUNT, VEHICLE_TYPES, VICTORIA_COST_DELTA,
 } from '../gameSettings.ts'
 import {
   catalogCard, costDelta, choice, drawFromPool, enemyVehicleOptions, grant, grantKeywords,
@@ -14,6 +14,30 @@ import type { EffectPayload } from './registry.ts'
 import type { EngineGame, Side, ZoneCardEntry } from '../engine/engineTypes.ts'
 import { checkVictory, findVehicle, otherSide, putInHand, zoneById } from '../engine/gameEngine.ts'
 import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
+import type { CardInstance } from '../engine/gameInit.ts'
+
+// "an SS ship" — the pool five cards in this wave share (Victoria, Trondheim,
+// Nothung, Sacrilego, Argonaut, Resolute). Written once so a later card cannot
+// disagree with an earlier one about what the phrase means.
+//
+// It is a FACTION filter, not a card list, so it grows with the faction —
+// which is the trap ruling L-1 records for the LH robotics pool. That is fine
+// here and was not there: these cards print "SS ship", the faction IS the
+// intended pool, and SS is fully seeded.
+const SS_SHIP_FILTER = {
+  faction: FACTIONS.SS, type: 'vehicle', vehicleType: VEHICLE_TYPES.SHIP,
+} as const
+
+const isSsShip = (c: CardInstance): boolean =>
+  c.faction === FACTIONS.SS && c.type === 'vehicle' && c.vehicleType === VEHICLE_TYPES.SHIP
+
+// The accumulate-don't-replace stamp, matching primitives.ts's costDelta() so a
+// card discounted twice is discounted twice. Used by the four effects that hit
+// a card already in hand without a player picking it.
+function discountInHand(card: CardInstance, delta: number): void {
+  const current = typeof card.meta.costDelta === 'number' ? card.meta.costDelta : 0
+  card.meta = { ...card.meta, costDelta: current + delta }
+}
 
 // SS built-in card effects.
 registerEffect('resoluteOnPlay', grant({ draw: 1 }))
@@ -208,6 +232,21 @@ registerEffect(AIR_STRAFE, choice({
   },
 }), { needsCatalog: true })
 
+// "When this vehicle is played, pick one SS ship in hand and reduce its cost
+// by 75k." Excalibur's mechanism exactly — DP6's hand direction
+// (PLAY_CARD_TARGETING_CARD_IN_HAND): Victoria deploys to her zone first, then
+// this fires against the hand target, and she is not spendCard'd because she is
+// a hull, not a spent ability.
+//
+// The 2026-08-30 pass replaced Victoria's draw-on-death with an activated
+// ability; this pass replaces THAT with an on-play effect, which orphans
+// `victoriaActivate` below (spec §5). It stays registered and its name may
+// never be reused.
+registerEffect('victoriaOnPlay', costDelta({
+  delta: VICTORIA_COST_DELTA,
+  filter: SS_SHIP_FILTER,
+}))
+
 // "Each turn you may spend 200k resources to spawn another victoria into this
 // zone." DP1 with a MATERIAL price rather than a CP one (spec §7.3, wave 6):
 // ACTIVATE_VEHICLE charges meta.activateMaterialCost and stamps
@@ -223,6 +262,10 @@ registerEffect(AIR_STRAFE, choice({
 // and can be activated in its own right. That chain is per-hull and
 // per-turn, and every link costs a further 200k against income that is SET
 // each turn — a hard bound, unlike Trebuchet's free repeat.
+//
+// Orphaned by the 2026-09-02 pass, which replaced this activated ability with
+// `victoriaOnPlay`. Kept registered for `rheaOnPlay`'s reason, one entry down;
+// see `DELIBERATE_ORPHANS`.
 registerEffect('victoriaActivate', ({ game, actor, ctx, card }) => {
   const self = findVehicle(game.state, card.instanceId)
   if (!self || self.side !== actor) return false

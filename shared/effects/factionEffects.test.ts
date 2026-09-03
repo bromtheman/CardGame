@@ -3,7 +3,7 @@ import { CATALOG_EFFECTS, RESOLVE_BYSTANDER_EFFECTS, effectFor, registerEffect }
 import { choice } from './primitives.ts'
 import {
   BASE_DAMAGE_DIVISOR, BULL_SHARK_BASE_DAMAGE, CASH_ADVANCE_MATERIALS, KEYWORDS,
-  MATERIALS_PER_TURN, TYR_HAND_DISCOUNT,
+  MATERIALS_PER_TURN, TYR_HAND_DISCOUNT, VICTORIA_COST_DELTA,
 } from '../gameSettings.ts'
 import { inst, makeCtx, makeGame, snap, zoneEntry } from '../engine/testFixtures.ts'
 import {
@@ -3614,96 +3614,74 @@ describe('wave 6 — WF Judgement', () => {
   })
 })
 
-describe('wave 6 — SS Victoria', () => {
-  const victoriaSnap = snap({
-    name: 'Victoria', faction: 'SS', vehicleType: 'ship', materialCost: 250_000,
-    keywords: [], meta: { onActivate: 'victoriaActivate', activateMaterialCost: 200_000 },
+describe('SS Victoria — a discount on an SS ship in hand', () => {
+  const victoria = () => inst({
+    name: 'Victoria', faction: 'SS', vehicleType: 'ship', type: 'vehicle',
+    materialCost: 250_000, meta: { playOnCardEffect: 'victoriaOnPlay' },
   })
-  const vicCtx = () => makeCtx({ catalog: [victoriaSnap] })
+  const ssShip = (over = {}) => inst({
+    faction: 'SS', type: 'vehicle', vehicleType: 'ship', materialCost: 400_000, ...over,
+  })
 
-  function armed(zoneIndex = 0) {
-    const game = makeGame({ turnNumber: 3 })
+  it('stamps -75k onto the chosen SS ship in hand', () => {
+    const game = makeGame()
+    const target = ssShip()
+    game.privates.a.hand.push(target)
+    const ok = effectFor('victoriaOnPlay')!({
+      game, actor: 'a', card: victoria(), ctx: makeCtx(), targetInstanceId: target.instanceId,
+    })
+    expect(ok).toBe(true)
+    expect(game.privates.a.hand[0].meta.costDelta).toBe(VICTORIA_COST_DELTA)
+  })
+
+  // Excalibur's precedent: the discount ACCUMULATES rather than replacing.
+  it('stacks with a discount the card already carries', () => {
+    const game = makeGame()
+    const target = ssShip({ meta: { costDelta: -100_000 } })
+    game.privates.a.hand.push(target)
+    effectFor('victoriaOnPlay')!({
+      game, actor: 'a', card: victoria(), ctx: makeCtx(), targetInstanceId: target.instanceId,
+    })
+    expect(game.privates.a.hand[0].meta.costDelta).toBe(-100_000 + VICTORIA_COST_DELTA)
+  })
+
+  it.each([
+    ['a non-SS ship', { faction: 'DWG' }],
+    ['an SS sub', { vehicleType: 'sub' }],
+    ['an SS ability', { type: 'ability', vehicleType: null }],
+  ])('refuses %s', (_label, over) => {
+    const game = makeGame()
+    const target = ssShip(over)
+    game.privates.a.hand.push(target)
+    expect(effectFor('victoriaOnPlay')!({
+      game, actor: 'a', card: victoria(), ctx: makeCtx(), targetInstanceId: target.instanceId,
+    })).toBe(false)
+  })
+
+  // DP6, Excalibur's own path: a VEHICLE carrying playOnCardEffect deploys to
+  // its zone first, then fires against the hand target, and is NOT spendCard'd.
+  it('deploys as a hull and then discounts, through PLAY_CARD_TARGETING_CARD_IN_HAND', () => {
+    const game = makeGame()
+    const card = victoria()
+    const target = ssShip()
+    game.privates.a.hand.push(card, target)
     game.state.resources.a.materials = 500_000
-    const victoria = zoneEntry({
-      instanceId: 'vic-1', name: 'Victoria', faction: 'SS', vehicleType: 'ship',
-      materialCost: 250_000, playedOnTurn: 2,
-      meta: { onActivate: 'victoriaActivate', activateMaterialCost: 200_000 },
+    const r = applyAction(game, 'alice', {
+      type: 'PLAY_CARD_TARGETING_CARD_IN_HAND',
+      instanceId: card.instanceId, targetInstanceId: target.instanceId, zoneId: 1,
     })
-    game.state.zones[zoneIndex].cards.a.push(victoria)
-    return { game, victoria }
-  }
-
-  it('spawns a second Victoria into its own zone and charges 200k', () => {
-    const { game, victoria } = armed()
-    const r = applyAction(
-      game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: victoria.instanceId }, vicCtx(),
-    )
-    if (!r.ok) throw new Error(r.error)
-    expect(r.game.state.zones[0].cards.a.map((c) => c.name)).toEqual(['Victoria', 'Victoria'])
-    expect(r.game.state.resources.a.materials).toBe(300_000)
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.game.state.zones[0].cards.a.map((c) => c.name)).toEqual(['Victoria'])
+    expect(r.game.privates.a.hand[0].meta.costDelta).toBe(VICTORIA_COST_DELTA)
+    // Never named: the target is in a hidden hand.
+    expect(r.game.state.log.join('\n')).not.toContain(target.name)
   })
 
-  // Ruling B-5 (spec §7.3, wave 6). ACTIVATE_VEHICLE passes the
-  // client-supplied action.zoneId straight through as targetZoneId, so an
-  // effect that read it could be redirected by a stale or malicious client.
-  // Braveheart is the precedent: re-derive the zone from the hull itself.
-  it('ignores a client-supplied zoneId and uses the hull own zone', () => {
-    const { game, victoria } = armed(1)
-    const r = applyAction(
-      game, 'alice',
-      { type: 'ACTIVATE_VEHICLE', instanceId: victoria.instanceId, zoneId: 3 },
-      vicCtx(),
-    )
-    if (!r.ok) throw new Error(r.error)
-    expect(r.game.state.zones[1].cards.a.map((c) => c.name)).toEqual(['Victoria', 'Victoria'])
-    expect(r.game.state.zones[2].cards.a).toEqual([])
-  })
-
-  // Ruling B-4. Spawning is not playing, so the new hull carries its printed
-  // meta — which means it can be activated in its own right. The chain is
-  // per-hull, per-turn, and hard-bounded by materials; this asserts the
-  // mechanism rather than assuming it.
-  it('the spawned Victoria carries its own activated ability, unstamped', () => {
-    const { game, victoria } = armed()
-    const r = applyAction(
-      game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: victoria.instanceId }, vicCtx(),
-    )
-    if (!r.ok) throw new Error(r.error)
-    const spawned = r.game.state.zones[0].cards.a.find((c) => c.instanceId !== victoria.instanceId)!
-    expect(spawned.meta).toMatchObject({
-      onActivate: 'victoriaActivate', activateMaterialCost: 200_000,
-    })
-    expect(spawned).toHaveProperty('activatedOnTurn', null)
-  })
-
-  it('refuses when the actor cannot afford the 200k, spawning nothing', () => {
-    const { game, victoria } = armed()
-    game.state.resources.a.materials = 199_999
-    const r = applyAction(
-      game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: victoria.instanceId }, vicCtx(),
-    )
-    expect(r.ok).toBe(false)
-    expect(game.state.zones[0].cards.a).toHaveLength(1)
-  })
-
-  it('cannot be activated twice in one turn', () => {
-    const { game, victoria } = armed()
-    const first = applyAction(
-      game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: victoria.instanceId }, vicCtx(),
-    )
-    if (!first.ok) throw new Error(first.error)
-    const second = applyAction(
-      first.game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: victoria.instanceId }, vicCtx(),
-    )
-    expect(second).toMatchObject({ ok: false, status: 409 })
-  })
-
-  it('fails when the catalog has no Victoria — a data bug, not an empty pool', () => {
-    const { game, victoria } = armed()
-    const r = applyAction(
-      game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: victoria.instanceId }, makeCtx(),
-    )
-    expect(r.ok).toBe(false)
+  // Spec §5. The old activate keeps its implementation for the snapshots that
+  // still name it, and no new card may ever take the name (R-6).
+  it('victoriaActivate stays registered even though no card names it', () => {
+    expect(effectFor('victoriaActivate')).not.toBeNull()
   })
 })
 

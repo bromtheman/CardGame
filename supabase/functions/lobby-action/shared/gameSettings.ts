@@ -239,6 +239,12 @@ export const SLASHER_EARTH_RAKER_COUNT = 2
 export const EXCRUCIATOR_DRAW_COUNT = 2
 export const EXCRUCIATOR_COST_DELTA = -100_000
 
+// SS Victoria: "pick one SS ship in hand and reduce its cost by 75k". Its own
+// constant, not shared with Trondheim's identical -75k (Task 11) — the two are
+// equal by coincidence, which VENGEFUL_BASE_DAMAGE's comment above already
+// records as a reason to keep them apart.
+export const VICTORIA_COST_DELTA = -75_000
+
 // Human-readable names for the seven hero powers, used wherever a power id
 // is shown to a player (Kraken's refresh choice).
 export const HERO_POWER_LABELS: Record<string, string> = {

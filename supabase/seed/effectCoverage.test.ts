@@ -241,6 +241,7 @@ const DELIBERATE_ORPHANS: Record<string, string> = {
   victoriaOnDeath: 'balance 2026-08-30 replaced SS Victoria\'s draw-on-death with an activated ability',
   rheaOnPlay: 'balance 2026-08-30 retired SS Rhea outright',
   bulwarkOnPlay: 'balance 2026-09-02 cleared OW Bulwark\'s card text and removed its onPlayEffect key',
+  victoriaActivate: 'balance 2026-09-02 replaced SS Victoria\'s activated ability with an on-play discount',
 }
 
 describe('G4: every registered implementation is reachable from a seeded card', () => {
@@ -290,6 +291,7 @@ describe('G4: every registered implementation is reachable from a seeded card', 
       'bulwarkOnPlay',
       'purifierEffect',
       'rheaOnPlay',
+      'victoriaActivate',
       'victoriaOnDeath',
     ])
   })

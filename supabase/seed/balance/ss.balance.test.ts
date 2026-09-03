@@ -59,6 +59,10 @@ const CARDS: Record<string, Expected> = {
     materialCost: 0, blueprintCost: 0, keywords: [], vehicleType: null, cpCost: 2,
     cardText: 'Gain 150k resources this turn, then draw a card.',
   },
+  'SS:Victoria': {
+    materialCost: 250_000, blueprintCost: 270_185, keywords: [], vehicleType: 'ship',
+    cardText: 'When this vehicle is played, pick one SS ship in hand and reduce its cost by 75k',
+  },
 }
 
 describe('2026-09-02 balance pass — SS', () => {

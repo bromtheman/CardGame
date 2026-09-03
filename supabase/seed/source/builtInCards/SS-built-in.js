@@ -21,7 +21,7 @@ export const ssVehicles = [
     },{
         name: 'Victoria',
         isBuiltIn: true,
-        cardText: 'Each turn you may spend 200k resources to spawn another victoria into this zone',
+        cardText: 'When this vehicle is played, pick one SS ship in hand and reduce its cost by 75k',
         materialCost: 250000,
         blueprintCost: 270185,
         cpCost: 0,
@@ -33,11 +33,7 @@ export const ssVehicles = [
         blueprintId: null,
         keywords: [],
         meta: {
-            [TRIGGERS.ON_ACTIVATE]: 'victoriaActivate',
-            // "spend 200k resources" — a MATERIAL price, not a CP one. An
-            // activated ability needs onActivate plus at least one price, or
-            // ACTIVATE_VEHICLE refuses it and BoardZone renders no button.
-            activateMaterialCost: 200000,
+            [TRIGGERS.PLAY_ON_CARD]: 'victoriaOnPlay',
         }
     },
     {

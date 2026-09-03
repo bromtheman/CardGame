@@ -200,13 +200,15 @@ describe('2026-08-30 balance pass', () => {
     })
   })
 
-  // Victoria's text says "spend 200k resources" — a MATERIAL price, the first
-  // in the game. Same silent-pair trap as Judgement below: without the key the
-  // card has a registered ability and no way to press it.
-  it('Victoria carries the 200k material price its text prints', async () => {
-    expect((await bySeedKey()).get('SS:Victoria')!.meta).toMatchObject({
-      onActivate: 'victoriaActivate', activateMaterialCost: 200_000,
-    })
+  // ⚠ REWRITTEN by the 2026-09-02 pass (spec §7.2). Victoria's activated
+  // ability was replaced by an on-play discount, so there is no material price
+  // left to pin. The pair rule the old assertion existed for still holds — it
+  // just has no subject here any more, and Braveheart above still carries it.
+  it('Victoria carries the on-play effect its text prints, and no stale activation price', async () => {
+    const meta = (await bySeedKey()).get('SS:Victoria')!.meta ?? {}
+    expect(meta).toMatchObject({ playOnCardEffect: 'victoriaOnPlay' })
+    expect(meta).not.toHaveProperty('onActivate')
+    expect(meta).not.toHaveProperty('activateMaterialCost')
   })
 
   // Judgement's text used to say "pay 1cp"; the 2026-09-02 pass made the
