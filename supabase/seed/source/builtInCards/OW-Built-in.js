@@ -132,11 +132,15 @@ export const GT_HEAVY_AIRSHIP = [
 
 export const owVehicles = [
     {
+        // 2026-09-02 balance pass: the "gain 2cp" clause is gone and the meta
+        // key with it, so bulwarkOnPlay now names no card. The implementation
+        // STAYS registered and is recorded in DELIBERATE_ORPHANS — a game
+        // dealt before this pass still carries a snapshot naming it (spec §5).
         name: 'Bulwark',
         isBuiltIn: true,
-        cardText: 'When played, gain 2cp',
-        materialCost: 400000,
-        blueprintCost: 466000,
+        cardText: '',
+        materialCost: 450000,
+        blueprintCost: 848000,
         cpCost: 0,
         imageUrl: 'bulwark.png',
         playerId: null,
@@ -146,7 +150,6 @@ export const owVehicles = [
         blueprintId: null,
         keywords: [KEYWORDS.BLOCKER],
         meta: {
-            [TRIGGERS.ON_PLAY]: 'bulwarkOnPlay',
         }
     },
     {
@@ -253,7 +256,7 @@ export const owVehicles = [
     },{
         name: 'The Onyx Throne',
         isBuiltIn: true,
-        cardText: 'Whenever this vehicle would partake in a defensive battle, spawn an allied Parapet alongside it for that battle. Once per turn, you may pay 1cp to draw a GT heavy airship card.',
+        cardText: 'Whenever this vehicle would partake in a defensive battle, spawn an allied parapet to fight alongside it for that battle. Once per turn, you may pay 1cp to draw a GT heavy airship card.',
         materialCost: 500000,
         blueprintCost: 492482,
         cpCost: 0,
@@ -274,8 +277,8 @@ export const owVehicles = [
         name: 'Eyrie',
         isBuiltIn: true,
         cardText: '',
-        materialCost: 780000,
-        blueprintCost: 781362,
+        materialCost: 575000,
+        blueprintCost: 809000,
         cpCost: 0,
         imageUrl: 'Eyrie.png',
         playerId: null,
@@ -283,7 +286,7 @@ export const owVehicles = [
         type: 'vehicle',
         faction: FACTIONS.OW,
         blueprintId: null,
-        keywords: [KEYWORDS.HALF_COST, KEYWORDS.BLOCKER]
+        keywords: [KEYWORDS.BLOCKER, KEYWORDS.FRAGILE]
     },
     {
         name: 'Rook',
@@ -294,7 +297,22 @@ export const owVehicles = [
         cpCost: 0,
         imageUrl: 'Rook.png',
         playerId: null,
-        vehicleType: VEHICLE_TYPES.ship,
+        // Stated here since the 2026-09-02 balance pass. It used to be written
+        // `VEHICLE_TYPES.ship` — a lowercase key that evaluates to undefined,
+        // the upstream bug nine other cards in this file still carry — and
+        // transform.ts patched it back at load time. The patch is gone; this
+        // is now the only place the fact lives.
+        //
+        // Airship, not ship, and not plane. From The Depths' own Neter.faction
+        // entry gives Rook BlueprintType 9, the air class (Eyrie, Nimbus,
+        // Damacy), where the other nine carry BlueprintType 2 — as do 53 of
+        // the cards already typed 'ship'. It also spawns through the air
+        // delegate at 200 m and puts its lowest block at y=+3, the only one of
+        // the ten whose hull sits entirely above the waterline. Airship rather
+        // than plane is a balance call: 3,180 blocks at a 98,841 blueprint
+        // cost is a heavy castle-flyer, so it is Judgement prey and takes
+        // Martyr's boosted attack count.
+        vehicleType: VEHICLE_TYPES.AIRSHIP,
         type: 'vehicle',
         faction: FACTIONS.OW,
         blueprintId: null,
@@ -340,6 +358,28 @@ export const owVehicles = [
             // the snapshot. `retired: true` is what makes it undraftable from here on.
             // See docs/superpowers/specs/2026-09-02-balance-pass-design.md §2.1.
             retired: true,
+        }
+    },
+    {
+        // New in the 2026-09-02 balance pass (spec §6.2). Its text is Halberd's
+        // word for word; its registry id is its OWN — see R-6, and
+        // shared/effects/owEffects.ts, where brandistockOnDeath is registered
+        // beside halberdOnDeath rather than aliased to it.
+        name: 'Brandistock',
+        isBuiltIn: true,
+        cardText: 'When this card is destroyed, draw a random GT Airship',
+        materialCost: 250000,
+        blueprintCost: 258000,
+        cpCost: 0,
+        imageUrl: 'brandistock.png',
+        playerId: null,
+        vehicleType: VEHICLE_TYPES.SHIP,
+        type: 'vehicle',
+        faction: FACTIONS.OW,
+        blueprintId: null,
+        keywords: [KEYWORDS.SUB_SCREEN],
+        meta: {
+            [TRIGGERS.ON_DEATH]: 'brandistockOnDeath',
         }
     },
     {

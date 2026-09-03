@@ -105,6 +105,14 @@ const gtAirship = drawFromPool({
 registerEffect('halberdOnDeath', gtAirship, { needsCatalog: true })
 registerEffect('jormangundOnDeath', gtAirship, { needsCatalog: true })
 registerEffect('partisanEffect', gtAirship, { needsCatalog: true })
+// Brandistock (2026-09-02 balance pass, spec §6.2) prints Halberd's sentence
+// verbatim — "When this card is destroyed, draw a random GT Airship" — and
+// still gets its own id, per R-6. Sharing the CLOSURE above is what the three
+// names already do and costs nothing; sharing a NAME would be the
+// Kraken/Paddlegun collision, because the name is what a dealt game's frozen
+// snapshot carries and the implementation behind it is redeployed for every
+// live game at once.
+registerEffect('brandistockOnDeath', gtAirship, { needsCatalog: true })
 
 // OW has no built-in submarines, so a player's only subs are custom cards in
 // their own deck — which is why the card says "if you have one".
@@ -182,9 +190,19 @@ registerEffect(SPECIAL_FOUNDRIES, choice({
 }), { needsCatalog: true })
 
 // Wave 4, DP2 (spec §4.3). "Whenever this vehicle would partake in a defensive
-// battle, spawn an allied Parapet alongside it for that battle" — the card
-// text's missing noun is authored in spec §7.2, and "for that battle" is what
-// makes it a battle SUMMON rather than a free 259k hull every time.
+// battle, spawn an allied parapet to fight alongside it for that battle" — the
+// missing noun was authored in the 2026-08-27 spec §7.2, and the 2026-09-02
+// balance pass reworded "to fight" and lowercased "parapet" to prose. The code
+// below is unchanged: summonHulls returns entries for ActiveBattle.summons and
+// never touches zone.cards, so the Parapet is battle-scoped and vanishes when
+// the battle ends regardless of what the card says — "for that battle" is in
+// the text only because that is the one place a player learns it. "To fight"
+// is still joinBattle rather than a spectator — the same correction Dryad
+// took in wave 7.
+//
+// ⚠ summonHulls looks the hull up by the catalog card's exact NAME, 'Parapet'.
+// The reworded text's lowercase "parapet" is prose. Do not follow it into the
+// string argument below.
 //
 // It joins the battle that already exists rather than declaring one:
 // declareForcedBattle refuses outright while state.activeBattle is non-null,

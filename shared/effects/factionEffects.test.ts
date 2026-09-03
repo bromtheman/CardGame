@@ -107,7 +107,7 @@ describe('drawFromPool-backed cards', () => {
     },
   )
 
-  it.each(['halberdOnDeath', 'jormangundOnDeath', 'partisanEffect'])(
+  it.each(['halberdOnDeath', 'jormangundOnDeath', 'partisanEffect', 'brandistockOnDeath'])(
     '%s draws a GT airship',
     (name) => {
       const game = makeGame()
@@ -6241,5 +6241,33 @@ describe('2026-09-02 — WF Excruciator', () => {
   // test for the flag. Trondheim and Resolute are the same case and carry none.
   it('needs no catalog', () => {
     expect(CATALOG_EFFECTS.has('excruciatorOnPlay')).toBe(false)
+  })
+})
+
+describe('2026-09-02 balance pass — OW', () => {
+  // R-6 (2026-09-02 spec §3). Brandistock prints Halberd's sentence word for
+  // word and is registered under its OWN id anyway. Reusing 'halberdOnDeath'
+  // is the Kraken/Paddlegun collision: the NAME is frozen into every dealt
+  // game's snapshot, while the code behind it is redeployed for all of them at
+  // once — so a shared name silently rebinds one card the moment the other is
+  // registered. Sharing the `gtAirship` CLOSURE is not the same thing and is
+  // fine; halberdOnDeath, jormangundOnDeath and partisanEffect already do it.
+  it('brandistockOnDeath and halberdOnDeath are both registered under their own names', () => {
+    expect(effectFor('brandistockOnDeath')).not.toBeNull()
+    expect(effectFor('halberdOnDeath')).not.toBeNull()
+    expect(effectFor('brandistockOnDeath')).toBe(effectFor('halberdOnDeath'))
+  })
+
+  // Spec §7.1. A missing { needsCatalog: true } is invisible to every other test
+  // in this file, because makeCtx hands each one a hand-built catalog. In
+  // production game-action fetches the catalog ONLY for names in this set, so
+  // without the flag the effect runs against an empty one, finds no GT airship,
+  // and 400s on every real play: green suite, dead card. Asserted off the derived
+  // set at runtime, which is the only check that reads what was really
+  // registered rather than what a comment claims.
+  describe('catalog-minting death triggers carry needsCatalog', () => {
+    it.each(['brandistockOnDeath', 'halberdOnDeath', 'jormangundOnDeath', 'partisanEffect'])(
+      '%s', (name) => { expect(CATALOG_EFFECTS.has(name)).toBe(true) },
+    )
   })
 })

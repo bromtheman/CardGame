@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { costModifierFor, effectFor } from './registry.ts'
 import { DOUBLE_UP_MAX_COST, KEYWORDS, RESERVES_CARD_COUNT } from '../gameSettings.ts'
 import { inst, makeCtx, makeGame, snap, zoneEntry } from '../engine/testFixtures.ts'
-import { applyAction, declareForcedBattle } from '../engine/index.ts'
+import { applyAction, autoRepairIds, declareForcedBattle } from '../engine/index.ts'
 
 describe('marauderOnPlay', () => {
   it('skips past a non-vehicle to the first vehicle, without naming it in the log', () => {
@@ -23,6 +23,20 @@ describe('marauderOnPlay', () => {
     game.privates.b.deck.push(inst({ type: 'vehicle' }))
     effectFor('marauderOnPlay')!({ game, actor: 'a', card: inst(), ctx: makeCtx() })
     expect(game.state.resources.a.cp).toBe(3)
+  })
+
+  // The discriminating test: an implementation that merely swapped the constant
+  // for 0 would still rewrite meta and pass the assertion above. This one fails
+  // unless the arithmetic is gone — `current - 50_000` on a card already
+  // carrying -30_000 reads -80_000.
+  it('leaves a costDelta the captured card already carried exactly as it was', () => {
+    const game = makeGame()
+    game.privates.b.deck.push(
+      inst({ name: 'Discounted Ship', type: 'vehicle', meta: { costDelta: -30_000 } }),
+    )
+    game.state.counts.b.deck = 1
+    effectFor('marauderOnPlay')!({ game, actor: 'a', card: inst(), ctx: makeCtx() })
+    expect(game.privates.a.hand[0].meta.costDelta).toBe(-30_000)
   })
 })
 
@@ -90,6 +104,28 @@ describe('loggerheadOnDeath', () => {
     //  i=1 j=floor(0.9*2)=1 -> swap(1,1): [Loggerhead, Three, Two, One]
     effectFor('loggerheadOnDeath')!({ game, actor: 'a', card: dying, ctx: makeCtx() })
     expect(game.privates.a.deck.map((c) => c.name)).toEqual(['Loggerhead', 'Three', 'Two', 'One'])
+  })
+
+  // Regression: a Loggerhead a Plunderer raid captured (meta.costDelta: +20k,
+  // spec §6.1) and that its captor then played is in exactly this shape when it
+  // dies — copyMeta strips only the phantom capturedCopy stamp, not costDelta,
+  // so without an explicit strip here the free copy would inherit the surcharge
+  // and cost 20k despite its own text promising "It costs 0." — and reseed the
+  // stamp on every later death. toHaveProperty, not toBeUndefined: a fix that
+  // merely zeroed the stamp instead of removing it must still fail this.
+  it('strips a costDelta stamp off the free copy — a raided Loggerhead still costs 0', () => {
+    const game = makeGame()
+    const dying = zoneEntry({
+      name: 'Loggerhead', materialCost: 80_000, meta: { costDelta: 20_000 },
+    })
+    const ok = effectFor('loggerheadOnDeath')!({
+      game, actor: 'a', card: dying, ctx: makeCtx(),
+    })
+    expect(ok).toBe(true)
+    expect(game.privates.a.deck).toHaveLength(1)
+    const copy = game.privates.a.deck[0]
+    expect(copy.materialCost).toBe(0)
+    expect(copy.meta).not.toHaveProperty('costDelta')
   })
 })
 
@@ -221,6 +257,61 @@ describe('spawnBuccaneerEffect', () => {
     })
     expect(ok).toBe(false)
     expect(game.state.zones[0].cards.a).toHaveLength(0)
+  })
+})
+
+// Buccaneer prints FRAGILE from the 2026-09-02 pass, and Spawn Buccaneer's text
+// grants SCRAPPY. Spec §6.1 asks for the combination to be asserted because it
+// reads like a contradiction. On a spawned hull it never actually arises:
+// spawnBuccaneerEffect REPLACES the printed keyword array rather than merging
+// into it (unlike mintHull), so a spawned Buccaneer is Scrappy-only while a
+// played one is Fragile-only. Both shapes are pinned here with the repair
+// verdict each earns — and so is the verdict for a combined hull, so the answer
+// is on record if the two ever are merged.
+//
+// The seeded value these fixtures mirror is pinned in
+// supabase/seed/balance/dwg.balance.test.ts; nothing under shared/ may read the
+// seed, so the two files close the loop between them.
+describe('Buccaneer: FRAGILE printed, SCRAPPY granted', () => {
+  const seededBuccaneer = () =>
+    snap({ name: 'Buccaneer', vehicleType: 'airship', keywords: [KEYWORDS.FRAGILE] })
+
+  function spawned() {
+    const game = makeGame()
+    const ctx = makeCtx({ catalog: [seededBuccaneer()] })
+    const ok = effectFor('spawnBuccaneerEffect')!({
+      game, actor: 'a', card: inst(), ctx, targetZoneId: 1,
+    })
+    expect(ok).toBe(true)
+    return game.state.zones[0].cards.a[0]
+  }
+
+  it('mints a Scrappy hull that does not inherit the printed Fragile', () => {
+    // toEqual, not toContain: a merge would read ['fragile', 'scrappy'] and
+    // satisfy a containment check while reversing the hull's repair behaviour.
+    expect(spawned().keywords).toEqual([KEYWORDS.SCRAPPY])
+  })
+
+  it('auto-repairs the spawned hull in the band, and never the played one', () => {
+    const hull = spawned()
+    const played = zoneEntry({ name: 'Buccaneer', keywords: [KEYWORDS.FRAGILE] })
+    const results = { [hull.instanceId]: 85, [played.instanceId]: 85 }
+    const roster = [
+      { entry: hull, side: 'a' as const },
+      { entry: played, side: 'a' as const },
+    ]
+    expect(autoRepairIds(roster, results)).toEqual([hull.instanceId])
+  })
+
+  it('repairs neither, if the two keywords ever do land on one hull', () => {
+    // autoRepairIds checks FRAGILE before SCRAPPY (shared/engine/battleResolve.ts),
+    // so FRAGILE wins and the free repair is denied. Asserted rather than
+    // assumed, because §6.1 reasons about exactly this hull.
+    const both = zoneEntry({
+      name: 'Buccaneer', keywords: [KEYWORDS.FRAGILE, KEYWORDS.SCRAPPY],
+    })
+    expect(autoRepairIds([{ entry: both, side: 'a' as const }], { [both.instanceId]: 85 }))
+      .toEqual([])
   })
 })
 
@@ -446,6 +537,45 @@ describe('plundererRaid', () => {
     expect(ok).toBe(true)
     expect(game.privates.a.hand).toHaveLength(0)
     expect(game.state.log.join(' ')).toContain('finds nothing to take')
+  })
+
+  // The 2026-09-02 clause: "…draw one card from the enemy deck, but increase
+  // its cost by 20k." The number is spelled out rather than imported from
+  // gameSettings — a test that reads its expectation out of the source it is
+  // checking proves nothing.
+  it('stamps a +20k surcharge on the card it takes', () => {
+    const game = armed()
+    const ok = effectFor('plundererRaid')!({
+      game, actor: 'a', card: zoneEntry({ name: 'Plunderer' }), ctx: makeCtx(), battle: raidCtx(),
+    })
+    expect(ok).toBe(true)
+    expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Enemy Top'])
+    expect(game.privates.a.hand[0].meta.costDelta).toBe(20_000)
+    // Still a capture: the copy is a phantom, and the log still names nothing.
+    expect(game.privates.a.hand[0].meta.capturedCopy).toBe(true)
+    expect(game.state.log.join(' ')).not.toContain('Enemy Top')
+  })
+
+  it('adds to a costDelta the raided card already carried, rather than replacing it', () => {
+    const game = makeGame()
+    game.privates.b.deck.push(inst({ name: 'Enemy Top', meta: { costDelta: -50_000 } }))
+    game.state.counts.b.deck = 1
+    effectFor('plundererRaid')!({
+      game, actor: 'a', card: zoneEntry({ name: 'Plunderer' }), ctx: makeCtx(), battle: raidCtx(),
+    })
+    expect(game.privates.a.hand[0].meta.costDelta).toBe(-30_000)
+  })
+
+  // The surcharge belongs to the COPY. Stamping the original would raise the
+  // price of a card sitting in its owner's own deck — a capture is allowed to
+  // reorder that deck and nothing else (docs/claude/card-effects.md).
+  it('leaves the enemy original unsurcharged in their deck', () => {
+    const game = armed()
+    effectFor('plundererRaid')!({
+      game, actor: 'a', card: zoneEntry({ name: 'Plunderer' }), ctx: makeCtx(), battle: raidCtx(),
+    })
+    expect(game.privates.b.deck.map((c) => c.name)).toEqual(['Enemy Top'])
+    expect(game.privates.b.deck[0].meta.costDelta).toBeUndefined()
   })
 
   it('draws end to end when it bombards the enemy base', () => {
@@ -1126,7 +1256,7 @@ describe('wave 5 — Ongoing Attrition', () => {
 // inherit the copy model. Pinned per card so a future branch in one of them
 // cannot quietly revert to moving the card.
 describe('enemy-deck capture is a copy, for all three cards', () => {
-  it('marauderOnPlay copies a vehicle, discounts it 50k, and leaves the deck intact', () => {
+  it('marauderOnPlay copies a vehicle at full price, and leaves the deck intact', () => {
     const game = makeGame()
     game.privates.b.deck.push(
       inst({ name: 'Enemy Ability', type: 'ability' }),
@@ -1135,7 +1265,10 @@ describe('enemy-deck capture is a copy, for all three cards', () => {
     game.state.counts.b.deck = 2
     effectFor('marauderOnPlay')!({ game, actor: 'a', card: inst(), ctx: makeCtx() })
     expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Enemy Ship'])
-    expect(game.privates.a.hand[0].meta.costDelta).toBe(-50_000)
+    // The 2026-09-02 pass paid for the 50k discount with 15k of printed cost
+    // (40k -> 55k) and dropped the clause from the card text. No stamp at all
+    // now — not a zero one, which would still read as a deliberate discount.
+    expect(game.privates.a.hand[0].meta.costDelta).toBeUndefined()
     expect(game.privates.a.hand[0].meta.capturedCopy).toBe(true)
     expect(game.privates.b.deck.map((c) => c.name)).toEqual(['Enemy Ability', 'Enemy Ship'])
     expect(game.state.counts.b.deck).toBe(2)
@@ -1181,6 +1314,9 @@ describe('enemy-deck capture is a copy, for all three cards', () => {
     raid({ game, actor: 'a', card: inst(), ctx, battle: { survived: true, won: true, zoneId: 1 } })
     raid({ game, actor: 'a', card: inst(), ctx, battle: { survived: true, won: true, zoneId: 1 } })
     expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Ship One', 'Ship Two', 'Ship Three'])
+    // Marauder's capture is free; each Plunderer raid costs 20k. One stamp per
+    // raid, on the card that raid took.
+    expect(game.privates.a.hand.map((c) => c.meta.costDelta)).toEqual([undefined, 20_000, 20_000])
     expect(game.privates.b.deck.map((c) => c.name).sort()).toEqual(['Ship One', 'Ship Three', 'Ship Two'])
     expect(game.state.counts.b.deck).toBe(3)
   })
