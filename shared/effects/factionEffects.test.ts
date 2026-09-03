@@ -4880,9 +4880,10 @@ describe('TG Alarmed — sacrifice a friendly AI vehicle (wave 7)', () => {
 // ---------------------------------------------------------------------------
 // Wave 7, group D — TG Horror.
 //
-// "Whenever a horror survives a fleet battle, create anther copy of it in this
-// zone. Max one spawn per zone." (`anther` is the card's own typo; cardText is
-// data, and it is reproduced verbatim rather than silently corrected.)
+// "Whenever a horror participates in an offensive fleet battle, create anther
+// copy of it in this zone. Max one spawn per zone." (`anther` is the card's own
+// typo; cardText is data, and it is reproduced verbatim rather than silently
+// corrected.)
 //
 // ⚠ Ruling D-3: "a horror" is read as THIS Horror. The sentence continues
 // "create another copy OF IT", which points back at the same hull, and DP2
@@ -4891,10 +4892,10 @@ describe('TG Alarmed — sacrifice a friendly AI vehicle (wave 7)', () => {
 // "a Horror in this zone already has playedOnTurn === game.turnNumber". Each
 // fire() is an isolated invocation with no shared scratchpad, so any counter
 // has to be read off the board; this reading needs no new state.
-describe('TG Horror — a self-copy on surviving a battle (wave 7)', () => {
+describe('TG Horror — a self-copy on an OFFENSIVE battle (2026-09-02)', () => {
   const horrorEntry = (over = {}) => zoneEntry({
     instanceId: 'h1', name: 'Horror', faction: 'TG', vehicleType: 'ship',
-    materialCost: 70_000, keywords: [KEYWORDS.ROBOTIC, KEYWORDS.UPKEEP_REQUIRED],
+    materialCost: 50_000, keywords: [KEYWORDS.ROBOTIC],
     meta: { onBattleEffect: 'horrorBattle' }, playedOnTurn: 1, ...over,
   })
 
@@ -4914,11 +4915,56 @@ describe('TG Horror — a self-copy on surviving a battle (wave 7)', () => {
     expect(game.state.zones[0].cards.a.map((c) => c.name)).toEqual(['Horror', 'Horror'])
   })
 
-  it('does nothing when it did not survive', () => {
+  // The whole point of the 2026-09-02 change: the copy no longer depends on
+  // the original living through the fight. A 50k hull that trades itself for
+  // an enemy still leaves a replacement behind.
+  it('copies even when it did NOT survive', () => {
     const game = makeGame({ turnNumber: 3 })
     const entry = horrorEntry()
     game.state.zones[0].cards.a.push(entry)
     expect(fire(game, entry, resolveCtx({ survived: false }))).toBe(true)
+    expect(game.state.zones[0].cards.a.map((c) => c.name)).toEqual(['Horror', 'Horror'])
+  })
+
+  // ⚠ The half of the change a reader will miss. A destroyed hull is spliced
+  // out of zone.cards by the destruction branch BEFORE the resolve dispatch
+  // runs, so findVehicle returns null — dropping the `survived` gate alone
+  // leaves the card doing nothing. The zone falls back to battle.zoneId and
+  // the source entry falls back to `card`, which fire() hands us verbatim.
+  it('copies into the battle zone when the hull is already off the board', () => {
+    const game = makeGame({ turnNumber: 3 })
+    // Nothing pushed: the Horror died and has been removed.
+    expect(fire(game, horrorEntry(), resolveCtx({ zoneId: 2, survived: false }))).toBe(true)
+    expect(game.state.zones[1].cards.a.map((c) => c.name)).toEqual(['Horror'])
+    expect(game.state.zones[0].cards.a).toHaveLength(0)
+  })
+
+  // The dead hull's copy still carries what the hull carried into the fight,
+  // because `card` is the participant entry, not a catalog snapshot.
+  it('a dead Horror’s copy still carries its granted keywords', () => {
+    const game = makeGame({ turnNumber: 3 })
+    const entry = horrorEntry({ keywords: [KEYWORDS.ROBOTIC, KEYWORDS.SCRAPPY] })
+    fire(game, entry, resolveCtx({ survived: false }))
+    expect(game.state.zones[0].cards.a[0].keywords).toContain(KEYWORDS.SCRAPPY)
+  })
+
+  it('does nothing on a DEFENSIVE battle, survived or not', () => {
+    for (const survived of [true, false]) {
+      const game = makeGame({ turnNumber: 3 })
+      const entry = horrorEntry()
+      game.state.zones[0].cards.a.push(entry)
+      expect(fire(game, entry, resolveCtx({ isDefender: true, survived }))).toBe(true)
+      expect(game.state.zones[0].cards.a).toHaveLength(1)
+    }
+  })
+
+  // D-4 still holds across the new path: two Horrors dying out of one zone in
+  // one turn leave ONE replacement between them, because the first copy is
+  // already stamped with this turn when the second fires.
+  it('D-4: two dead Horrors in one zone still leave one copy', () => {
+    const game = makeGame({ turnNumber: 3 })
+    expect(fire(game, horrorEntry(), resolveCtx({ survived: false }))).toBe(true)
+    expect(fire(game, horrorEntry({ instanceId: 'h2' }), resolveCtx({ survived: false }))).toBe(true)
     expect(game.state.zones[0].cards.a).toHaveLength(1)
   })
 
@@ -5008,12 +5054,6 @@ describe('TG Horror — a self-copy on surviving a battle (wave 7)', () => {
     expect(copy.instanceId).not.toBe('h1')
   })
 
-  it('does nothing when the hull has left the board', () => {
-    const game = makeGame({ turnNumber: 3 })
-    expect(fire(game, horrorEntry())).toBe(true)
-    expect(game.state.zones[0].cards.a).toHaveLength(0)
-  })
-
   // ✅ It copies the ENTRY, so it never reads ctx.catalog — and so, unlike
   // Fear and Obelisk, it must NOT be registered as needing one. Asserted
   // rather than commented, because the claim is easy to get wrong either way.
@@ -5038,6 +5078,23 @@ describe('TG Horror — a self-copy on surviving a battle (wave 7)', () => {
     const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, ctx)
     if (!decided.ok) throw new Error(decided.error)
     expect(decided.game.state.zones[0].cards.a.filter((c) => c.name === 'Horror')).toHaveLength(2)
+  })
+
+  it('fires from a real DECIDE_BATTLE_REPORT even when the Horror dies', () => {
+    const game = makeGame({ turnNumber: 3, activePlayer: 'alice' })
+    game.state.zones[0].cards.a.push(horrorEntry())
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe1', name: 'Foe', playedOnTurn: 1 }))
+    const ctx = makeCtx()
+    if (!declareForcedBattle(game, ctx, {
+      zoneId: 1, aggressor: 'a', attackerIds: ['h1'], defenderIds: ['foe1'], cause: 'Test',
+    })) throw new Error('battle not declared')
+    const submitted = applyAction(game, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT', results: { h1: 0, foe1: 0 }, repairs: [],
+    }, ctx)
+    if (!submitted.ok) throw new Error(submitted.error)
+    const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, ctx)
+    if (!decided.ok) throw new Error(decided.error)
+    expect(decided.game.state.zones[0].cards.a.filter((c) => c.name === 'Horror')).toHaveLength(1)
   })
 })
 
@@ -5873,6 +5930,112 @@ describe('TG Duel — a cross-zone 1v1 (wave 7)', () => {
     const done = answer(answer(play(game, card), 'mine1'), 'foe1')
     expect(done.state.activeBattle?.zoneId).toBe(1)
   })
+
+  // The 2026-09-02 clause: "If the opponents vehicle dies, draw a card."
+  //
+  // The kill is read off battle.casualties, which DECIDE_BATTLE_REPORT hands
+  // the continuation. Nothing else can supply it: by then activeBattle is
+  // null, the hull is out of zone.cards, and state.destroyed holds a bare
+  // snapshot with no instanceId.
+  const withDeck = () => {
+    const card = duelCard()
+    const game = makeGame({
+      turnNumber: 3, activePlayer: 'alice',
+      privates: {
+        a: { hand: [card], deck: [inst({ name: 'Spare One' }), inst({ name: 'Spare Two' })] },
+        b: { hand: [], deck: [] },
+      },
+    })
+    game.state.zones[2].cards.a.push(zoneEntry({ instanceId: 'mine2', name: 'Mine Two', playedOnTurn: 1 }))
+    game.state.zones[1].cards.b.push(zoneEntry({ instanceId: 'foe1', name: 'Foe', playedOnTurn: 1 }))
+    return { game, card }
+  }
+
+  const fightOut = (game: EngineGame, results: Record<string, number>) => {
+    const submitted = applyAction(game, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT', results, repairs: [],
+    }, makeCtx())
+    if (!submitted.ok) throw new Error(submitted.error)
+    const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, makeCtx())
+    if (!decided.ok) throw new Error(decided.error)
+    return decided.game
+  }
+
+  it('draws a card when the duelled enemy hull dies', () => {
+    const { game, card } = withDeck()
+    const locked = answer(answer(play(game, card), 'mine2'), 'foe1')
+    const before = locked.privates.a.hand.length
+    const after = fightOut(locked, { mine2: 100, foe1: 0 })
+    expect(after.privates.a.hand).toHaveLength(before + 1)
+    expect(after.state.counts.a.hand).toBe(after.privates.a.hand.length)
+  })
+
+  it('draws nothing when the enemy hull survives', () => {
+    const { game, card } = withDeck()
+    const locked = answer(answer(play(game, card), 'mine2'), 'foe1')
+    const before = locked.privates.a.hand.length
+    const after = fightOut(locked, { mine2: 0, foe1: 100 })
+    expect(after.privates.a.hand).toHaveLength(before)
+  })
+
+  // The draw is for the ENEMY's death, not for any death. A duel in which only
+  // the duelling player's own hull dies pays nothing.
+  // The draw keys off the NAMED enemy hull's death, not off "any casualty" —
+  // and a duel has exactly one hull on each side, so no live scenario can
+  // separate the two readings. Driven directly for that reason alone.
+  it('pays only for the hull it named', () => {
+    // `'a' | 'b'` inline rather than the `Side` alias, which this test file
+    // does not import.
+    const casualty = (instanceId: string, side: 'a' | 'b'): BattleCasualty => ({
+      entry: zoneEntry({ instanceId, name: 'Dead', playedOnTurn: 1 }), side, hp: 0,
+    })
+    const run = (casualties: BattleCasualty[]) => {
+      const game = makeGame({
+        turnNumber: 3,
+        privates: { a: { hand: [], deck: [inst({ name: 'Spare' })] }, b: { hand: [], deck: [] } },
+      })
+      const card = duelCard()
+      effectFor('duelEffect')!({
+        game, actor: 'a', card, ctx: makeCtx(),
+        continuation: { effect: 'duelEffect', side: 'a', card, data: { enemyId: 'foe1' } },
+        battle: {
+          phase: 'resolve', zoneId: 1, isDefender: false, isParticipant: false,
+          forced: false, survived: false, won: true, casualties,
+        },
+      })
+      return game.privates.a.hand.length
+    }
+    expect(run([casualty('mine2', 'a')])).toBe(0)   // my own hull died
+    expect(run([casualty('other', 'b')])).toBe(0)   // a different enemy hull died
+    expect(run([casualty('foe1', 'b')])).toBe(1)    // the hull Duel named died
+  })
+
+  // ⚠ The router trap. A continuation carries neither `resolution` nor
+  // `pending`, so a router that checks pending.data first falls through to
+  // hop 1 and offers a brand-new duel off the back of the battle that just
+  // resolved. dwgWatersEffect and trebuchetEffect both check `continuation`
+  // first for this reason.
+  it('does not re-offer a duel after the battle resolves', () => {
+    const { game, card } = withDeck()
+    const locked = answer(answer(play(game, card), 'mine2'), 'foe1')
+    const after = fightOut(locked, { mine2: 100, foe1: 0 })
+    expect(after.state.pendingEffect).toBeNull()
+    expect(after.state.activeBattle).toBeNull()
+  })
+
+  it('names the kill in the log without naming the card drawn', () => {
+    const { game, card } = withDeck()
+    const locked = answer(answer(play(game, card), 'mine2'), 'foe1')
+    const after = fightOut(locked, { mine2: 100, foe1: 0 })
+    expect(after.state.log.some((l) => l.includes('Duel') && /draw/i.test(l))).toBe(true)
+    expect(after.state.log.some((l) => l.includes('Spare One') || l.includes('Spare Two'))).toBe(false)
+  })
+
+  // §7.1's near-miss list: "it draws a card" is not the test for needsCatalog.
+  // Duel draws from the owner's DECK via grant(), never from ctx.catalog.
+  it('still does not need the catalog', () => {
+    expect(CATALOG_EFFECTS.has('duelEffect')).toBe(false)
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -6269,5 +6432,596 @@ describe('2026-09-02 balance pass — OW', () => {
     it.each(['brandistockOnDeath', 'halberdOnDeath', 'jormangundOnDeath', 'partisanEffect'])(
       '%s', (name) => { expect(CATALOG_EFFECTS.has(name)).toBe(true) },
     )
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 2026-09-02 — TG Spite and TG Agony, the pass's two FRAGILE grants.
+//
+// Identical printed text, one shared factory, and TWO registry ids (spec R-6).
+// Reusing one name for both is the Kraken/Paddlegun collision: the name is
+// frozen into every dealt game's snapshot, the implementation behind it is
+// redeployed for all of them at once.
+//
+// Hysteria's shape rather than grantKeywords: grantKeywords reads
+// payload.targetInstanceId, which PLAY_CARD_TO_ZONE never sets for an
+// onPlayEffect and RESOLVE_PENDING_EFFECT never sets at all — so composing it
+// would fail SILENTLY.
+describe('TG Spite — grant an enemy vehicle FRAGILE (2026-09-02)', () => {
+  const spiteCard = () => inst({
+    instanceId: 'spite1', name: 'Spite', faction: 'TG', type: 'vehicle',
+    vehicleType: 'sub', materialCost: 120_000, meta: { onPlayEffect: 'spiteOnPlay' },
+  })
+
+  // Enemies in TWO zones — the text says "an enemy vehicle" with no zone
+  // qualifier, so the offer must not be scoped to the played one.
+  const armed = () => {
+    const card = spiteCard()
+    const game = makeGame({
+      turnNumber: 3, activePlayer: 'alice',
+      privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } },
+    })
+    game.state.resources.a.materials = 900_000
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'near1', name: 'Near Foe', playedOnTurn: 1 }))
+    game.state.zones[2].cards.b.push(zoneEntry({ instanceId: 'far1', name: 'Far Foe', playedOnTurn: 1 }))
+    return { game, card }
+  }
+
+  // Driven through applyAction rather than by calling the effect with a
+  // hand-built resolution — the shape every other choice-backed TG card is
+  // tested with (Hysteria, Alarmed), and the only one that exercises
+  // RESOLVE_PENDING_EFFECT's own re-entry by name.
+  const play = (game: EngineGame, card: CardInstance, zoneId = 1) => {
+    const r = applyAction(game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    return r.game
+  }
+
+  it('offers every enemy vehicle on the board, not just the played zone', () => {
+    const { game, card } = armed()
+    const after = play(game, card)
+    expect(after.state.pendingEffect?.options?.map((o) => o.id).sort()).toEqual(['far1', 'near1'])
+  })
+
+  // The assertion that catches a copy-pasted const in Task 5. `choice` cannot
+  // infer the name it is registered under; passing the wrong one compiles,
+  // passes any test that calls the effect directly, and fails only when a real
+  // player answers the dialog — which is exactly what this route does.
+  it('suspends under its OWN registry name', () => {
+    const { game, card } = armed()
+    expect(play(game, card).state.pendingEffect?.effect).toBe('spiteOnPlay')
+  })
+
+  it('makes the chosen hull Fragile, and no other', () => {
+    const { game, card } = armed()
+    const done = applyAction(
+      play(game, card), 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'far1' }, makeCtx(),
+    )
+    if (!done.ok) throw new Error(done.error)
+    expect(findVehicle(done.game.state, 'far1')!.entry.keywords).toContain(KEYWORDS.FRAGILE)
+    expect(findVehicle(done.game.state, 'near1')!.entry.keywords).not.toContain(KEYWORDS.FRAGILE)
+  })
+
+  it('is idempotent on a hull that already prints FRAGILE', () => {
+    const { game, card } = armed()
+    findVehicle(game.state, 'near1')!.entry.keywords.push(KEYWORDS.FRAGILE)
+    const done = applyAction(
+      play(game, card), 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'near1' }, makeCtx(),
+    )
+    if (!done.ok) throw new Error(done.error)
+    const kw = findVehicle(done.game.state, 'near1')!.entry.keywords
+    expect(kw.filter((k) => k === KEYWORDS.FRAGILE)).toHaveLength(1)
+  })
+
+  // No enemy vehicle is not a failure: choice() resolves straight through with
+  // null, so the hull still deploys.
+  it('resolves without suspending when there is no enemy vehicle anywhere', () => {
+    const card = spiteCard()
+    const game = makeGame({
+      turnNumber: 3, activePlayer: 'alice',
+      privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } },
+    })
+    game.state.resources.a.materials = 900_000
+    const after = play(game, card)
+    expect(after.state.pendingEffect).toBeNull()
+    expect(after.state.zones[0].cards.a.map((c) => c.name)).toContain('Spite')
+  })
+
+  it('refuses cleanly when the chosen hull has left the board', () => {
+    const { game, card } = armed()
+    const suspended = play(game, card)
+    suspended.state.zones[2].cards.b = []
+    const done = applyAction(suspended, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'far1' }, makeCtx())
+    expect(done).toMatchObject({ ok: false, status: 400 })
+  })
+
+  it('never offers the actor’s own hulls', () => {
+    const { game, card } = armed()
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'mine1', name: 'Mine', playedOnTurn: 1 }))
+    expect(play(game, card).state.pendingEffect?.options?.map((o) => o.id)).not.toContain('mine1')
+  })
+
+  it('does not need the catalog', () => {
+    expect(CATALOG_EFFECTS.has('spiteOnPlay')).toBe(false)
+  })
+})
+
+// TG Agony — Spite's printed text on a 375k Blocker sub. Same factory, its own
+// id. The two tests below are the ones that would catch a copy-pasted const:
+// nothing else in the suite distinguishes them.
+describe('TG Agony — the same grant, a different id (2026-09-02)', () => {
+  const agonyCard = () => inst({
+    instanceId: 'agony1', name: 'Agony', faction: 'TG', type: 'vehicle',
+    vehicleType: 'sub', materialCost: 375_000, keywords: [KEYWORDS.BLOCKER],
+    meta: { onPlayEffect: 'agonyOnPlay' },
+  })
+
+  const armed = () => {
+    const card = agonyCard()
+    const game = makeGame({
+      turnNumber: 3, activePlayer: 'alice',
+      privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } },
+    })
+    game.state.resources.a.materials = 900_000
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe1', name: 'Foe', playedOnTurn: 1 }))
+    return { game, card }
+  }
+
+  const play = (game: EngineGame, card: CardInstance) => {
+    const r = applyAction(game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    return r.game
+  }
+
+  it('is registered under its own name, distinct from Spite’s', () => {
+    expect(effectFor('agonyOnPlay')).not.toBeNull()
+    expect(effectFor('spiteOnPlay')).not.toBeNull()
+    expect(effectFor('agonyOnPlay')).not.toBe(effectFor('spiteOnPlay'))
+  })
+
+  // The failure this catches is invisible to every other test: a shared const
+  // would make Agony's dialog re-enter spiteOnPlay, which resolves correctly
+  // in isolation and mis-attributes the effect in a live game.
+  it('suspends under agonyOnPlay, not spiteOnPlay', () => {
+    const { game, card } = armed()
+    expect(play(game, card).state.pendingEffect?.effect).toBe('agonyOnPlay')
+  })
+
+  it('makes the chosen hull Fragile', () => {
+    const { game, card } = armed()
+    const done = applyAction(
+      play(game, card), 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'foe1' }, makeCtx(),
+    )
+    if (!done.ok) throw new Error(done.error)
+    expect(findVehicle(done.game.state, 'foe1')!.entry.keywords).toContain(KEYWORDS.FRAGILE)
+  })
+
+  it('does not need the catalog', () => {
+    expect(CATALOG_EFFECTS.has('agonyOnPlay')).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 2026-09-02 — TG Loathing. Hysteria's grant, scoped to the played zone.
+//
+// ⚠ The zone MUST be stashed. targetZoneId is a first-entry-only field and
+// RESOLVE_PENDING_EFFECT never sets it, so resolve cannot re-derive "this
+// zone" — alarmedOnPlay carries the same stash for the same reason. Without
+// it the re-check silently degenerates to board-wide.
+describe('TG Loathing — Inoffensive, in this zone only (2026-09-02)', () => {
+  const loathingCard = () => inst({
+    instanceId: 'loath1', name: 'Loathing', faction: 'TG', type: 'vehicle',
+    vehicleType: 'ship', materialCost: 225_000, meta: { onPlayEffect: 'loathingOnPlay' },
+  })
+
+  const armed = () => {
+    const card = loathingCard()
+    const game = makeGame({
+      turnNumber: 3, activePlayer: 'alice',
+      privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } },
+    })
+    game.state.resources.a.materials = 900_000
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'here', name: 'Near Foe', playedOnTurn: 1 }))
+    game.state.zones[2].cards.b.push(zoneEntry({ instanceId: 'away', name: 'Far Foe', playedOnTurn: 1 }))
+    return { game, card }
+  }
+
+  const play = (game: EngineGame, card: CardInstance, zoneId = 1) => {
+    const r = applyAction(game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    return r.game
+  }
+
+  // Loathing's whole difference from Hysteria, in one assertion.
+  it('offers only the enemies in the zone it was played into', () => {
+    const { game, card } = armed()
+    expect(play(game, card).state.pendingEffect?.options?.map((o) => o.id)).toEqual(['here'])
+  })
+
+  it('suspends under its own registry name and stashes the zone', () => {
+    const { game, card } = armed()
+    const after = play(game, card)
+    expect(after.state.pendingEffect?.effect).toBe('loathingOnPlay')
+    expect(after.state.pendingEffect?.data?.zoneId).toBe(1)
+  })
+
+  it('makes the chosen hull Inoffensive', () => {
+    const { game, card } = armed()
+    const done = applyAction(
+      play(game, card), 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'here' }, makeCtx(),
+    )
+    if (!done.ok) throw new Error(done.error)
+    expect(findVehicle(done.game.state, 'here')!.entry.keywords).toContain(KEYWORDS.INOFFENSIVE)
+  })
+
+  // The stash is what makes this refusal possible. Without it, resolve has no
+  // "this zone" to compare against and a hull that moved away would still be
+  // granted the keyword.
+  it('refuses a hull that left the zone before the answer', () => {
+    const { game, card } = armed()
+    const suspended = play(game, card)
+    const [moved] = suspended.state.zones[0].cards.b.splice(0, 1)
+    suspended.state.zones[1].cards.b.push(moved)
+    const done = applyAction(suspended, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'here' }, makeCtx())
+    expect(done).toMatchObject({ ok: false, status: 400 })
+  })
+
+  it('resolves without suspending when the played zone holds no enemy', () => {
+    const { game, card } = armed()
+    const after = play(game, card, 2)
+    expect(after.state.pendingEffect).toBeNull()
+    expect(after.state.zones[1].cards.a.map((c) => c.name)).toContain('Loathing')
+  })
+
+  it('is idempotent', () => {
+    const { game, card } = armed()
+    findVehicle(game.state, 'here')!.entry.keywords.push(KEYWORDS.INOFFENSIVE)
+    const done = applyAction(
+      play(game, card), 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'here' }, makeCtx(),
+    )
+    if (!done.ok) throw new Error(done.error)
+    const kw = findVehicle(done.game.state, 'here')!.entry.keywords
+    expect(kw.filter((k) => k === KEYWORDS.INOFFENSIVE)).toHaveLength(1)
+  })
+
+  it('does not need the catalog', () => {
+    expect(CATALOG_EFFECTS.has('loathingOnPlay')).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 2026-09-02 — TG Wonder. "When played, refresh all your hero powers and gain
+// 1cp."
+//
+// ⚠ Deliberately NOT Kraken's shape. Kraken refreshes ONE power and needs
+// choice(); Wonder refreshes all of them, so there is nothing to choose — and
+// taking no suspension slot means its CP can never be lost to another card's
+// offer in the same action (the failure choice()'s one-slot rule creates and
+// Kraken has to write around).
+describe('TG Wonder — refresh every hero power, then 1cp (2026-09-02)', () => {
+  const wonderCard = () => inst({
+    instanceId: 'wonder1', name: 'Wonder', faction: 'TG', type: 'vehicle',
+    vehicleType: 'ship', materialCost: 700_000, meta: { onPlayEffect: 'wonderOnPlay' },
+  })
+
+  const fire = (game: EngineGame) =>
+    effectFor('wonderOnPlay')!({ game, actor: 'a', card: wonderCard(), ctx: makeCtx(), targetZoneId: 1 })
+
+  it('clears every used power for its own side', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.usedHeroPowers.a = ['draw', 'salvage', 'tacticalPositioning']
+    expect(fire(game)).toBe(true)
+    expect(game.state.usedHeroPowers.a).toEqual([])
+  })
+
+  it('leaves the opponent’s used powers alone', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.usedHeroPowers.a = ['draw']
+    game.state.usedHeroPowers.b = ['salvage']
+    fire(game)
+    expect(game.state.usedHeroPowers.b).toEqual(['salvage'])
+  })
+
+  it('grants 1cp', () => {
+    const game = makeGame({ turnNumber: 3 })
+    const before = game.state.resources.a.cp
+    fire(game)
+    expect(game.state.resources.a.cp).toBe(before + 1)
+  })
+
+  // The tail runs either way — the same guarantee Kraken's empty-options path
+  // gives, reached here without a suspension at all.
+  it('still grants the cp when nothing was used', () => {
+    const game = makeGame({ turnNumber: 3 })
+    const before = game.state.resources.a.cp
+    expect(fire(game)).toBe(true)
+    expect(game.state.resources.a.cp).toBe(before + 1)
+  })
+
+  it('never suspends', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.usedHeroPowers.a = ['draw', 'salvage']
+    fire(game)
+    expect(game.state.pendingEffect).toBeNull()
+  })
+
+  // End to end: a power used and refused, then refreshed and accepted.
+  it('a refreshed power can actually be used again', () => {
+    const game = makeGame({ turnNumber: 3, activePlayer: 'alice' })
+    game.state.usedHeroPowers.a = ['draw']
+    game.privates.a.deck = [inst({ name: 'Spare' })]
+    const refused = applyAction(game, 'alice', { type: 'USE_HERO_POWER', power: 'draw' }, makeCtx())
+    expect(refused).toMatchObject({ ok: false })
+    fire(game)
+    const allowed = applyAction(game, 'alice', { type: 'USE_HERO_POWER', power: 'draw' }, makeCtx())
+    expect(allowed.ok).toBe(true)
+  })
+
+  it('does not need the catalog', () => {
+    expect(CATALOG_EFFECTS.has('wonderOnPlay')).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 2026-09-02 — TG Repurpose. "Target a friendly TG vehicle. destroy it. gain
+// resources this turn equal to its cost."
+//
+// Ruling TG-1: "its cost" is effectiveMaterialCostOf, never
+// effectiveCostInGame. The latter is play-time-only (costModifier, costDelta,
+// resourceSurge) and this target is a deployed hull — spec U-1 makes the same
+// call for upkeep, and repairCostOf / baseDamageFrom / Boarding Party all read
+// the same authority.
+//
+// Ruling TG-2: "destroy it" FIRES onDeathEffect. Spec R-7 rules the mirror
+// case for Sub Strike ("remove it from play" does not), and the two phrasings
+// are one line apart in the engine.
+//
+// "this turn" needs no mechanic: endTurn ASSIGNS the material pool from the
+// turn number (gameEngine.ts), so every material gain already expires with the
+// turn.
+describe('TG Repurpose — scrap a friendly TG hull (2026-09-02)', () => {
+  const repurposeCard = () => inst({
+    instanceId: 'rep1', name: 'Repurpose', faction: 'TG', type: 'ability',
+    vehicleType: null, materialCost: 0, cpCost: 1,
+    meta: { playOnVehicleEffect: 'repurposeEffect' },
+  })
+
+  const tgHull = (over = {}) => zoneEntry({
+    instanceId: 'hull1', name: 'Ecstasy', faction: 'TG', vehicleType: 'ship',
+    materialCost: 224_000, playedOnTurn: 1, ...over,
+  })
+
+  const fire = (game: EngineGame, targetInstanceId: string) =>
+    effectFor('repurposeEffect')!({
+      game, actor: 'a', card: repurposeCard(), ctx: makeCtx(), targetInstanceId,
+    })
+
+  it('destroys the hull and pays its printed cost', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zones[0].cards.a.push(tgHull())
+    const before = game.state.resources.a.materials
+    expect(fire(game, 'hull1')).toBe(true)
+    expect(game.state.zones[0].cards.a).toHaveLength(0)
+    expect(game.state.resources.a.materials).toBe(before + 224_000)
+    expect(game.state.destroyed.a.map((c) => c.name)).toEqual(['Ecstasy'])
+  })
+
+  // TG-1: pins effectiveMaterialCostOf's own Half-Cost floor against a naive
+  // entry.materialCost read (660_000, which this test would wrongly pay if
+  // the effect ever regressed to reading the raw field). It does NOT
+  // discriminate effectiveMaterialCostOf from effectiveCostInGame — with no
+  // active resourceSurge both return 330_000 here, since effectiveCostInGame
+  // applies the same Half-Cost halving via the same effectiveMaterialCostOf
+  // (placement.ts). The costDelta test below is the one that actually tells
+  // the two authorities apart.
+  it('TG-1: pays the HALF-COST price for a Half-Cost hull', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zones[0].cards.a.push(tgHull({
+      name: 'Audacious', materialCost: 660_000, keywords: [KEYWORDS.HALF_COST],
+    }))
+    const before = game.state.resources.a.materials
+    fire(game, 'hull1')
+    expect(game.state.resources.a.materials).toBe(before + 330_000)
+  })
+
+  // TG-1 again, from the other side: a stale play-time costDelta stamp must
+  // not reach the payout. effectiveCostInGame would add it; the correct
+  // authority never looks.
+  it('TG-1: ignores a play-time costDelta stamp on the hull', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zones[0].cards.a.push(tgHull({ meta: { costDelta: -100_000 } }))
+    const before = game.state.resources.a.materials
+    fire(game, 'hull1')
+    expect(game.state.resources.a.materials).toBe(before + 224_000)
+  })
+
+  // TG-2: "destroy" fires the death trigger. Jealousy is the shortest proof.
+  it('TG-2: fires the target’s onDeathEffect', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.privates.a.deck = [inst({ name: 'Spare' })]
+    game.state.zones[0].cards.a.push(tgHull({
+      name: 'Jealousy', materialCost: 400_000, meta: { onDeathEffect: 'jealousyOnDeath' },
+    }))
+    expect(fire(game, 'hull1')).toBe(true)
+    expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Spare'])
+    expect(game.state.counts.a.hand).toBe(1)
+  })
+
+  // The ordering TG-2 depends on: returnToHand pulls the snapshot back OUT of
+  // the discard, so the hull must reach the discard before the trigger fires.
+  it('TG-2: a Nostalgia scrapped this way still returns to hand', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zones[0].cards.a.push(tgHull({
+      name: 'Nostalgia', materialCost: 75_000, meta: { onDeathEffect: 'nostalgiaOnDeath' },
+    }))
+    expect(fire(game, 'hull1')).toBe(true)
+    expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Nostalgia'])
+    expect(game.state.destroyed.a).toHaveLength(0)
+    expect(game.state.resources.a.materials).toBeGreaterThan(0)
+  })
+
+  // PLAY_CARD_TARGETING_CARD_ON_FIELD checks only that the target is ON the
+  // field, never whose it is (ruling E-5), so both refusals live here or
+  // nowhere.
+  //
+  // This one does NOT pin the effect's own `found.side !== actor` guard:
+  // sacrificeEntry(game, actor, targetInstanceId, …) below searches
+  // zone.cards[actor], never zone.cards[found.side], so an enemy target
+  // already fails there and this test passes with or without the guard. The
+  // guard is kept as defence in depth against a future sacrificeEntry call
+  // that passes found.side instead of actor (see the effect's own comment).
+  it('refuses an enemy hull', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zones[0].cards.b.push(tgHull())
+    expect(fire(game, 'hull1')).toBe(false)
+    expect(game.state.zones[0].cards.b).toHaveLength(1)
+  })
+
+  // Unlike the enemy-hull case above, this DOES pin real behaviour: the
+  // faction guard is load-bearing. Drop it and this hull (found.side ===
+  // actor, so sacrificeEntry's own lookup succeeds) is scrapped and paid out.
+  it('refuses a friendly hull of another faction', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zones[0].cards.a.push(tgHull({ faction: 'DWG' }))
+    expect(fire(game, 'hull1')).toBe(false)
+    expect(game.state.zones[0].cards.a).toHaveLength(1)
+  })
+
+  it('refuses with no target at all', () => {
+    const game = makeGame({ turnNumber: 3 })
+    expect(effectFor('repurposeEffect')!({
+      game, actor: 'a', card: repurposeCard(), ctx: makeCtx(),
+    })).toBe(false)
+  })
+
+  // End to end, so the handler's own gates (ability type, playOnVehicleEffect
+  // key, cp payment) are exercised rather than only the effect body.
+  it('resolves through PLAY_CARD_TARGETING_CARD_ON_FIELD and costs 1cp', () => {
+    const card = repurposeCard()
+    const game = makeGame({
+      turnNumber: 3, activePlayer: 'alice',
+      privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } },
+    })
+    game.state.zones[0].cards.a.push(tgHull())
+    const cpBefore = game.state.resources.a.cp
+    const r = applyAction(game, 'alice', {
+      type: 'PLAY_CARD_TARGETING_CARD_ON_FIELD', instanceId: 'rep1', targetInstanceId: 'hull1',
+    }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.resources.a.cp).toBe(cpBefore - 1)
+    expect(r.game.state.zones[0].cards.a).toHaveLength(0)
+  })
+
+  it('does not need the catalog', () => {
+    expect(CATALOG_EFFECTS.has('repurposeEffect')).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 2026-09-02 — TG Spawn Audacious. "Spawn an audacious into target zone. It is
+// not temporary."
+//
+// spawnBuccaneerEffect's SHAPE with its own id (spec R-6) and a different
+// keyword line. Buccaneer prints no keywords, so DWG's `keywords: [SCRAPPY]`
+// adds one and drops none; Audacious prints HALF_COST and TEMPORARY, so the
+// same literal would strip both and grant a Scrappy the card never mentions.
+describe('TG Spawn Audacious — a non-temporary Audacious (2026-09-02)', () => {
+  const audaciousSnap = () => snap({
+    name: 'Audacious', faction: 'TG', type: 'vehicle', vehicleType: 'plane',
+    materialCost: 660_000, blueprintCost: 665_000,
+    keywords: [KEYWORDS.HALF_COST, KEYWORDS.TEMPORARY],
+  })
+
+  const spawnCard = () => inst({
+    instanceId: 'spawn1', name: 'Spawn Audacious', faction: 'TG', type: 'ability',
+    vehicleType: null, materialCost: 40_000, meta: { playOnZoneEffect: 'spawnAudaciousEffect' },
+  })
+
+  const fire = (game: EngineGame, targetZoneId: number | undefined, catalog = [audaciousSnap()]) =>
+    effectFor('spawnAudaciousEffect')!({
+      game, actor: 'a', card: spawnCard(), ctx: makeCtx({ catalog }), targetZoneId,
+    })
+
+  it('puts an Audacious into the target zone', () => {
+    const game = makeGame({ turnNumber: 3 })
+    expect(fire(game, 2)).toBe(true)
+    expect(game.state.zones[1].cards.a.map((c) => c.name)).toEqual(['Audacious'])
+    expect(game.state.zones[0].cards.a).toHaveLength(0)
+  })
+
+  // The whole card text, in one assertion.
+  it('strips TEMPORARY and keeps HALF_COST', () => {
+    const game = makeGame({ turnNumber: 3 })
+    fire(game, 1)
+    expect(game.state.zones[0].cards.a[0].keywords).toEqual([KEYWORDS.HALF_COST])
+  })
+
+  // The card says only "it is not temporary". It says nothing about Scrappy,
+  // and copying DWG's literal is the way one would arrive.
+  it('grants nothing the card does not mention', () => {
+    const game = makeGame({ turnNumber: 3 })
+    fire(game, 1)
+    expect(game.state.zones[0].cards.a[0].keywords).not.toContain(KEYWORDS.SCRAPPY)
+  })
+
+  // Not temporary means it survives the cull endTurn runs at every turn start.
+  it('survives the temporary cull', () => {
+    const game = makeGame({ turnNumber: 3, activePlayer: 'alice' })
+    fire(game, 1)
+    const r = applyAction(game, 'alice', { type: 'END_TURN' }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.zones[0].cards.a.map((c) => c.name)).toEqual(['Audacious'])
+  })
+
+  it('stamps a fresh instanceId and this turn', () => {
+    const game = makeGame({ turnNumber: 3 })
+    fire(game, 1)
+    const hull = game.state.zones[0].cards.a[0]
+    expect(hull.playedOnTurn).toBe(3)
+    expect(hull.movedOnTurn).toBeNull()
+    expect(hull.activatedOnTurn).toBeNull()
+    expect(hull.instanceId).not.toBe('spawn1')
+  })
+
+  it('refuses with no target zone, and with a missing catalog row', () => {
+    expect(fire(makeGame({ turnNumber: 3 }), undefined)).toBe(false)
+    expect(fire(makeGame({ turnNumber: 3 }), 1, [])).toBe(false)
+  })
+
+  // Spec R-6: shared shape, separate implementations.
+  it('is not DWG’s implementation', () => {
+    // Registered at all — otherwise the .not.toBe below passes vacuously
+    // (effectFor returns null for an unregistered name, and would pass this
+    // check even if the body were filed under spawnBuccaneerEffect).
+    expect(effectFor('spawnAudaciousEffect')).toBeTruthy()
+    expect(effectFor('spawnAudaciousEffect')).not.toBe(effectFor('spawnBuccaneerEffect'))
+  })
+
+  // §7.1. A unit test cannot catch a MISSING flag — makeCtx hand-builds a
+  // catalog — so the registration itself is what gets asserted.
+  it('carries needsCatalog', () => {
+    expect(CATALOG_EFFECTS.has('spawnAudaciousEffect')).toBe(true)
+  })
+
+  // End to end, so the handler's own gates (ability type, playOnZoneEffect
+  // key, materials payment) are exercised rather than only the effect body —
+  // every other test above calls spawnAudaciousEffect directly.
+  it('resolves through PLAY_CARD_TO_ZONE and pays its printed cost', () => {
+    const card = spawnCard()
+    const game = makeGame({
+      turnNumber: 3, activePlayer: 'alice',
+      privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } },
+    })
+    const materialsBefore = game.state.resources.a.materials
+    const ctx = makeCtx({ catalog: [audaciousSnap()] })
+    const res = applyAction(
+      game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, ctx,
+    )
+    if (!res.ok) throw new Error(res.error)
+    expect(res.game.state.zones[0].cards.a.map((c) => c.name)).toEqual(['Audacious'])
+    expect(res.game.state.zones[0].cards.a[0].keywords).toEqual([KEYWORDS.HALF_COST])
+    expect(res.game.state.resources.a.materials).toBe(materialsBefore - 40_000)
+    expect(res.game.privates.a.hand).toHaveLength(0)
+    expect(res.game.state.destroyed.a.map((c) => c.name)).toEqual(['Spawn Audacious'])
   })
 })

@@ -116,7 +116,7 @@ describe('L-1: the four borrowed [TG] rows are otherwise untouched', () => {
 // Read off the file rather than off the handoff's tables: card text is
 // authoritative (spec decision 1), and every wave so far has found at least
 // one place where a summary had drifted from the card.
-describe('the 26 TG faction cards (wave 7)', () => {
+describe('the TG faction cards, as the 2026-09-02 pass left them', () => {
   interface Expected {
     materialCost: number
     blueprintCost: number
@@ -128,47 +128,52 @@ describe('the 26 TG faction cards (wave 7)', () => {
   const V = 'vehicle'
   const A = 'ability'
   const CARDS: Record<string, Expected> = {
-    Jealousy: { materialCost: 400_000, blueprintCost: 406_000, vehicleType: 'airship', type: V, keywords: ['blocker'] },
-    Obsession: { materialCost: 330_000, blueprintCost: 337_000, vehicleType: 'ship', type: V, keywords: ['robotic', 'upkeepRequired'] },
-    Euphoria: { materialCost: 580_000, blueprintCost: 581_000, vehicleType: 'ship', type: V, keywords: ['robotic', 'upkeepRequired'] },
+    Jealousy: { materialCost: 375_000, blueprintCost: 406_000, vehicleType: 'airship', type: V, keywords: ['blocker'] },
+    Obsession: { materialCost: 300_000, blueprintCost: 337_000, vehicleType: 'ship', type: V, keywords: ['robotic', 'upkeepRequired'] },
+    Euphoria: { materialCost: 300_000, blueprintCost: 581_000, vehicleType: 'ship', type: V, keywords: ['robotic', 'upkeepRequired'] },
     Ecstasy: { materialCost: 224_000, blueprintCost: 224_000, vehicleType: 'ship', type: V, keywords: [] },
-    Horror: { materialCost: 70_000, blueprintCost: 77_000, vehicleType: 'ship', type: V, keywords: ['robotic', 'upkeepRequired'] },
-    Nostalgia: { materialCost: 90_000, blueprintCost: 98_000, vehicleType: 'ship', type: V, keywords: ['robotic', 'upkeepRequired'] },
+    Horror: { materialCost: 50_000, blueprintCost: 77_000, vehicleType: 'ship', type: V, keywords: ['robotic'] },
+    Nostalgia: { materialCost: 75_000, blueprintCost: 98_000, vehicleType: 'ship', type: V, keywords: ['robotic'] },
     Optimism: { materialCost: 410_000, blueprintCost: 419_000, vehicleType: 'airship', type: V, keywords: [] },
     // An airship carrying SUB_SCREEN — every other Sub Screen in the game is a
     // ship. screenBlocks does not care what type the screening hull is, so it
     // works; pinned because it reads like a data error to the next reader.
     Frustration: { materialCost: 90_000, blueprintCost: 96_000, vehicleType: 'airship', type: V, keywords: ['stealthy', 'subScreen'] },
     Joy: { materialCost: 390_000, blueprintCost: 398_000, vehicleType: 'airship', type: V, keywords: ['upkeepRequired'] },
-    Alarmed: { materialCost: 230_000, blueprintCost: 250_000, vehicleType: 'airship', type: V, keywords: ['robotic', 'upkeepRequired'] },
+    Alarmed: { materialCost: 0, blueprintCost: 250_000, vehicleType: 'airship', type: V, keywords: ['robotic'] },
     Amusement: { materialCost: 330_000, blueprintCost: 334_000, vehicleType: 'airship', type: V, keywords: ['robotic', 'upkeepRequired'] },
     // blueprintCost UNDER materialCost here and on Curiosity, Obelisk, both
     // Factories and Duel: intentional buffs, not typos. blueprintCost is
     // display-only for built-ins and drives nothing mechanical.
-    Anguish: { materialCost: 260_000, blueprintCost: 202_000, vehicleType: 'airship', type: V, keywords: ['robotic', 'upkeepRequired'] },
-    Curiosity: { materialCost: 80_000, blueprintCost: 46_000, vehicleType: 'airship', type: V, keywords: [] },
+    Anguish: { materialCost: 200_000, blueprintCost: 202_000, vehicleType: 'airship', type: V, keywords: ['robotic', 'upkeepRequired'] },
+    Curiosity: { materialCost: 40_000, blueprintCost: 46_000, vehicleType: 'airship', type: V, keywords: [] },
     Duel: { materialCost: 0, blueprintCost: 0, vehicleType: null, type: A, keywords: [] },
-    Fear: { materialCost: 800_000, blueprintCost: 800_000, vehicleType: 'ship', type: V, keywords: ['blocker', 'robotic', 'upkeepRequired'] },
+    Fear: { materialCost: 500_000, blueprintCost: 800_000, vehicleType: 'ship', type: V, keywords: ['blocker', 'robotic', 'upkeepRequired'] },
     Hysteria: { materialCost: 730_000, blueprintCost: 733_000, vehicleType: 'ship', type: V, keywords: ['blocker', 'robotic', 'upkeepRequired'] },
     Acceptance: { materialCost: 150_000, blueprintCost: 159_000, vehicleType: 'plane', type: V, keywords: ['halfCost', 'temporary'] },
     Audacious: { materialCost: 660_000, blueprintCost: 665_000, vehicleType: 'plane', type: V, keywords: ['halfCost', 'temporary'] },
     Spite: { materialCost: 120_000, blueprintCost: 128_000, vehicleType: 'sub', type: V, keywords: [] },
-    Vengeful: { materialCost: 160_000, blueprintCost: 168_000, vehicleType: 'sub', type: V, keywords: [] },
+    Agony: { materialCost: 375_000, blueprintCost: 440_000, vehicleType: 'sub', type: V, keywords: ['blocker'] },
+    Vengeful: { materialCost: 150_000, blueprintCost: 168_000, vehicleType: 'sub', type: V, keywords: [] },
     // 120k, not the supplied 1,200,000 — its blueprint cost was already 120k.
     'Havoc Swarm': { materialCost: 120_000, blueprintCost: 120_000, vehicleType: 'plane', type: V, keywords: ['halfCost', 'robotic', 'temporary'] },
     'Mirth Swarm': { materialCost: 200_000, blueprintCost: 200_000, vehicleType: 'plane', type: V, keywords: ['halfCost', 'robotic', 'temporary'] },
-    'Havoc Factory': { materialCost: 120_000, blueprintCost: 0, vehicleType: null, type: A, keywords: [] },
-    'Mirth Factory': { materialCost: 200_000, blueprintCost: 0, vehicleType: null, type: A, keywords: [] },
-    Obelisk: { materialCost: 40_000, blueprintCost: 32_000, vehicleType: 'sub', type: V, keywords: ['stealthy'] },
-    Loathing: { materialCost: 260_000, blueprintCost: 268_000, vehicleType: 'ship', type: V, keywords: [] },
+    'Havoc Factory': { materialCost: 25_000, blueprintCost: 0, vehicleType: null, type: A, keywords: [] },
+    'Mirth Factory': { materialCost: 60_000, blueprintCost: 0, vehicleType: null, type: A, keywords: [] },
+    Obelisk: { materialCost: 40_000, blueprintCost: 32_000, vehicleType: 'ship', type: V, keywords: ['stealthy'] },
+    Loathing: { materialCost: 225_000, blueprintCost: 268_000, vehicleType: 'ship', type: V, keywords: [] },
+    Wonder: { materialCost: 700_000, blueprintCost: 865_000, vehicleType: 'ship', type: V, keywords: [] },
+    Repurpose: { materialCost: 0, blueprintCost: 0, vehicleType: null, type: A, keywords: [] },
+    'Spawn Audacious': { materialCost: 40_000, blueprintCost: 0, vehicleType: null, type: A, keywords: [] },
+    Mania: { materialCost: 270_000, blueprintCost: 574_000, vehicleType: 'ship', type: V, keywords: ['robotic', 'upkeepRequired'] },
   }
 
-  it('seeds exactly 26 new cards, and 30 TG rows in total with the borrowed four', async () => {
+  it('seeds exactly 31 new cards, and 35 TG rows in total with the borrowed four', async () => {
     const { cards } = await loadSeedData()
     const tg = cards.filter((c) => c.isBuiltIn && c.faction === 'TG')
     const fresh = tg.filter((c) => !c.name.startsWith('[TG] '))
-    expect(fresh).toHaveLength(26)
-    expect(tg).toHaveLength(30)
+    expect(fresh).toHaveLength(31)
+    expect(tg).toHaveLength(35)
     expect(fresh.map((c) => c.name).sort()).toEqual(Object.keys(CARDS).sort())
   })
 
@@ -182,15 +187,15 @@ describe('the 26 TG faction cards (wave 7)', () => {
     expect(keywordsOf(card!)).toEqual([...want.keywords].sort())
   })
 
-  it('splits 8 airship / 8 ship / 4 plane / 3 sub / 3 ability', async () => {
+  it('splits 8 airship / 11 ship / 4 plane / 3 sub / 5 ability', async () => {
     const { cards } = await loadSeedData()
     const fresh = cards.filter((c) => c.isBuiltIn && c.faction === 'TG' && !c.name.startsWith('[TG] '))
     const count = (fn: (c: SeedCard) => boolean) => fresh.filter(fn).length
     expect(count((c) => c.vehicleType === 'airship')).toBe(8)
-    expect(count((c) => c.vehicleType === 'ship')).toBe(8)
+    expect(count((c) => c.vehicleType === 'ship')).toBe(11)
     expect(count((c) => c.vehicleType === 'plane')).toBe(4)
     expect(count((c) => c.vehicleType === 'sub')).toBe(3)
-    expect(count((c) => c.type === 'ability')).toBe(3)
+    expect(count((c) => c.type === 'ability')).toBe(5)
   })
 
   it('renames Extasy to Ecstasy — a correction that had to precede the first seed', async () => {
@@ -212,23 +217,21 @@ describe('the 26 TG faction cards (wave 7)', () => {
 
 // ---------------------------------------------------------------------------
 // UPKEEP_REQUIRED, priced (spec §7.3, U-0 … U-2).
-describe('the ten upkeep cards and what they cost per turn', () => {
+describe('the upkeep cards and what they cost per turn', () => {
   // Spelled out rather than computed from materialCost — a test that
   // recalculates its expectation from the source it is checking proves nothing.
   const UPKEEP: Record<string, number> = {
-    Horror: 10_500,
-    Nostalgia: 13_500,
-    Alarmed: 34_500,
-    Anguish: 39_000,
-    Obsession: 49_500,
+    Anguish: 30_000,
+    Mania: 40_500,
+    Obsession: 45_000,
+    Euphoria: 45_000,
     Amusement: 49_500,
     Joy: 58_500,
-    Euphoria: 87_000,
+    Fear: 75_000,
     Hysteria: 109_500,
-    Fear: 120_000,
   }
 
-  it('is carried by exactly these ten', async () => {
+  it('is carried by exactly the cards in this map', async () => {
     const { cards } = await loadSeedData()
     const carriers = cards
       .filter((c) => c.isBuiltIn && (c.keywords ?? []).includes('upkeepRequired'))
