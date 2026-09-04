@@ -211,11 +211,6 @@ export const CATSHARK_MATERIALS = 30_000
 // lasts exactly until that side's next turn begins (CATSHARK_MATERIALS above).
 export const CASH_ADVANCE_MATERIALS = 150_000
 
-// Sacrilego clause 2: "increase the remaining hp percent of a friendly ship by
-// 15". The rescue band is SURVIVE_HP_PERCENT minus this — derive it, never
-// write the number.
-export const SACRILEGO_HP_BOOST = 15
-
 // DWG Waters clause 2: "one DWG vehicle with a cost <60k from the game".
 // Exclusive, on printed materialCost — the same authority every other pool
 // filter reads.

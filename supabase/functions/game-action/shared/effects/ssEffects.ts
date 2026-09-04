@@ -358,7 +358,9 @@ registerEffect('paladinOnPlay', grant({ cp: 1 }))
 // Spawning is not playing (spec §7.4), so the new hull runs no onPlayEffect —
 // the chain does NOT print free CP — but it keeps its printed meta and can be
 // activated in its own right. Every link costs a further 1cp against a pool of
-// three, which is a harder bound than Victoria's 200k ever was.
+// three — with the +1 paladinOnPlay grants, that is up to four hulls the turn
+// Paladin lands, a LOOSER bound than Victoria's 200k ever was (at
+// MATERIALS_PER_TURN=75k, 200k bought roughly one spawn every 2-3 turns).
 registerEffect('paladinActivate', ({ game, actor, ctx, card }) => {
   const self = findVehicle(game.state, card.instanceId)
   if (!self || self.side !== actor) return false

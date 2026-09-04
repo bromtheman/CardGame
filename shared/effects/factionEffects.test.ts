@@ -6934,7 +6934,7 @@ describe('SS Paladin — a CP now, another Paladin later', () => {
     expect(r.game.state.resources.a.cp).toBe(2) // 3 − 1, no on-play grant
   })
 
-  it('is once per turn, and refuses without the CP', () => {
+  it('is once per turn — a second activation the same turn is refused', () => {
     const game = makeGame()
     game.state.zones[0].cards.a.push(zoneEntry({ ...paladinSnap(), instanceId: 'pal-1' }))
     const one = applyAction(game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: 'pal-1' },
@@ -6948,11 +6948,24 @@ describe('SS Paladin — a CP now, another Paladin later', () => {
     expect(two.error).toMatch(/already activated/)
   })
 
+  it('refuses without the CP', () => {
+    const game = makeGame()
+    game.state.resources.a.cp = 0
+    game.state.zones[0].cards.a.push(zoneEntry({ ...paladinSnap(), instanceId: 'pal-1' }))
+    const r = applyAction(game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: 'pal-1' },
+      makeCtx({ catalog: [paladinSnap()] }))
+    expect(r.ok).toBe(false)
+    if (r.ok) return
+    expect(r.error).toMatch(/CP/i)
+  })
+
   it('fails when the catalog has no Paladin — a data bug, not an empty pool', () => {
     const game = makeGame()
     game.state.zones[0].cards.a.push(zoneEntry({ ...paladinSnap(), instanceId: 'pal-1' }))
     const r = applyAction(game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: 'pal-1' }, makeCtx())
     expect(r.ok).toBe(false)
+    if (r.ok) return
+    expect(r.error).toMatch(/could not resolve/)
   })
 
   // ⚠ R-6: the shape is Victoria's retired activate, the NAME must not be.
