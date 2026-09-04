@@ -198,10 +198,16 @@ describe('2026-08-30 balance pass', () => {
     })
   })
 
-  it('Paladin surges UNDER 240k, granting halfCost and temporary', async () => {
-    expect((await bySeedKey()).get('SS:Paladin')!.meta?.resourceSurge).toEqual({
-      materialsUnder: 240_000, grantKeywords: ['halfCost', 'temporary'],
+  // ⚠ REWRITTEN by the 2026-09-02 pass (spec §7.2). Paladin dropped
+  // resourceSurge entirely for an on-play CP and a 1cp self-spawn. Ruling B-9's
+  // granting arm, which this assertion used to be the guard for, is now carried
+  // by SS Thresher Shark (supabase/seed/balance/ss.balance.test.ts).
+  it('Paladin carries the on-play and activated pair its text prints, and no stale surge', async () => {
+    const meta = (await bySeedKey()).get('SS:Paladin')!.meta ?? {}
+    expect(meta).toMatchObject({
+      onPlayEffect: 'paladinOnPlay', onActivate: 'paladinActivate', activateCpCost: 1,
     })
+    expect(meta).not.toHaveProperty('resourceSurge')
   })
 
   // ⚠ REWRITTEN by the 2026-09-02 pass (spec §7.2). Victoria's activated

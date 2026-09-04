@@ -335,6 +335,42 @@ registerEffect('victoriaActivate', ({ game, actor, ctx, card }) => {
   return true
 }, { needsCatalog: true })
 
+// "When this vehicle is played, gain 1cp." Its OWN registry id rather than a
+// reuse of maelstromOnPlay, which is the identical grant({ cp: 1 }) — R-6
+// forbids sharing a name however small the implementation.
+registerEffect('paladinOnPlay', grant({ cp: 1 }))
+
+// "Each turn you may pay 1cp to spawn another paladin into this zone."
+//
+// DP1 with a CP price: ACTIVATE_VEHICLE charges meta.activateCpCost and stamps
+// activatedOnTurn BEFORE this runs, so "each turn" needs no code here.
+//
+// ⚠ This is the shape SS Victoria's activated ability had before the
+// 2026-09-02 pass retired it — and it carries its OWN id for that exact reason
+// (R-6). `victoriaActivate` stays registered for the snapshots that name it and
+// may never be reused.
+//
+// The zone is re-derived from the hull rather than read off payload.targetZoneId,
+// which ACTIVATE_VEHICLE fills from the CLIENT-supplied action.zoneId — a stale
+// or malicious client could otherwise land the spawn in a zone Paladin is not
+// in. Braveheart's precedent.
+//
+// Spawning is not playing (spec §7.4), so the new hull runs no onPlayEffect —
+// the chain does NOT print free CP — but it keeps its printed meta and can be
+// activated in its own right. Every link costs a further 1cp against a pool of
+// three, which is a harder bound than Victoria's 200k ever was.
+registerEffect('paladinActivate', ({ game, actor, ctx, card }) => {
+  const self = findVehicle(game.state, card.instanceId)
+  if (!self || self.side !== actor) return false
+  const snapshot = catalogCard(ctx, 'Paladin')
+  // A named card the catalog cannot supply is a data bug, not an empty pool —
+  // the same contract spawnVehicles and summonHulls both use.
+  if (!snapshot || !poolEligible(snapshot)) return false
+  if (!spawnInto(game, ctx, actor, self.zone.id, snapshot)) return false
+  game.state.log.push(`Paladin musters another hull in zone ${self.zone.id}`)
+  return true
+}, { needsCatalog: true })
+
 const BRAVEHEART = 'braveheartActivate'
 
 // "Once per turn, you may pay 1cp to have one of your ships in this zone 1v1

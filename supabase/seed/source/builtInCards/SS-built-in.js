@@ -308,7 +308,7 @@ export const ssVehicles = [
      {
         name: 'Paladin',
         isBuiltIn: true,
-        cardText: 'While you have less than 240k materials, this can be played with halfcost and temporary',
+        cardText: 'When this vehicle is played, gain 1cp. Each turn you may pay 1cp to spawn another paladin into this zone',
         materialCost: 240000,
         blueprintCost: 240000,
         cpCost: 0,
@@ -320,14 +320,12 @@ export const ssVehicles = [
         blueprintId: null,
         keywords: [],
         meta: {
-            // "While you have less than 240k materials, this can be played
-            // with halfcost and temporary." Both keywords land on the HULL
-            // (spec §4.6, departure 2) — endTurn's cull reads `temporary` off
-            // the board, so a price-only grant would never despawn it.
-            resourceSurge: {
-                materialsUnder: 240000,
-                grantKeywords: [KEYWORDS.HALF_COST, KEYWORDS.TEMPORARY],
-            },
+            [TRIGGERS.ON_PLAY]: 'paladinOnPlay',
+            [TRIGGERS.ON_ACTIVATE]: 'paladinActivate',
+            // An activated ability needs onActivate AND a price, or
+            // ACTIVATE_VEHICLE refuses it and BoardZone renders no button —
+            // silently, in both cases.
+            activateCpCost: 1,
         }
     },
      {

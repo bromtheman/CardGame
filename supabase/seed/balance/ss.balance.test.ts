@@ -119,6 +119,10 @@ const CARDS: Record<string, Expected> = {
     materialCost: 90_000, blueprintCost: 94_000, keywords: ['scrappy'], vehicleType: 'ship',
     cardText: 'When this vehicle is destroyed, reduce the cost of a random SS ship in your hand by 50k',
   },
+  'SS:Paladin': {
+    materialCost: 240_000, blueprintCost: 240_000, keywords: [], vehicleType: 'ship',
+    cardText: 'When this vehicle is played, gain 1cp. Each turn you may pay 1cp to spawn another paladin into this zone',
+  },
 }
 
 describe('2026-09-02 balance pass — SS', () => {

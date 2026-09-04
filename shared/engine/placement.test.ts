@@ -946,7 +946,14 @@ describe('resourceSurge — Chrysaor raises its own price', () => {
   })
 })
 
-describe('resourceSurge — Paladin grants keywords onto the hull', () => {
+// ⚠ The live SS Paladin card no longer carries resourceSurge at all — the
+// 2026-09-02 pass (spec §7.2) replaced it with paladinOnPlay/paladinActivate
+// (shared/effects/ssEffects.ts, supabase/seed/balancePass.test.ts). This block
+// keeps its old fixture NAME and PALADIN_META constant only because they were
+// convenient labels; it is exercising the generic grantKeywords branch of the
+// resourceSurge mechanic through a synthetic `inst()` fixture, not the seeded
+// card, and stays green regardless of what Paladin's row says.
+describe('resourceSurge — grantKeywords lands on the hull (mechanic once used by SS Paladin)', () => {
   const paladin = () => inst({
     name: 'Paladin', vehicleType: 'ship', materialCost: 240_000, keywords: [], meta: PALADIN_META,
   })

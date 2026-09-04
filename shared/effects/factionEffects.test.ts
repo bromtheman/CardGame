@@ -6877,3 +6877,87 @@ describe('SS Argonaut — a parting discount', () => {
     expect(game.state.log.join('\n')).not.toContain('Secret')
   })
 })
+
+describe('SS Paladin — a CP now, another Paladin later', () => {
+  const paladinSnap = () => snap({
+    name: 'Paladin', faction: 'SS', vehicleType: 'ship', type: 'vehicle',
+    materialCost: 240_000, blueprintCost: 240_000, keywords: [],
+    meta: { onPlayEffect: 'paladinOnPlay', onActivate: 'paladinActivate', activateCpCost: 1 },
+  })
+
+  it('grants a CP when played', () => {
+    const game = makeGame()
+    expect(effectFor('paladinOnPlay')!({ game, actor: 'a', card: inst({ name: 'Paladin' }), ctx: makeCtx() })).toBe(true)
+    expect(game.state.resources.a.cp).toBe(4)
+  })
+
+  it('spawns a second Paladin into its OWN zone for 1cp', () => {
+    const game = makeGame()
+    const hull = zoneEntry({ ...paladinSnap(), instanceId: 'pal-1' })
+    game.state.zones[1].cards.a.push(hull)
+    const r = applyAction(game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: 'pal-1' },
+      makeCtx({ catalog: [paladinSnap()] }))
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.game.state.zones[1].cards.a.map((c) => c.name)).toEqual(['Paladin', 'Paladin'])
+    expect(r.game.state.zones[0].cards.a).toHaveLength(0)
+    expect(r.game.state.resources.a.cp).toBe(2)
+  })
+
+  // Braveheart's and Victoria's precedent: the zone is re-derived from the hull
+  // itself, never read off the CLIENT-supplied action.zoneId, which
+  // ACTIVATE_VEHICLE forwards unvalidated as payload.targetZoneId.
+  it('ignores a client-supplied zone', () => {
+    const game = makeGame()
+    game.state.zones[1].cards.a.push(zoneEntry({ ...paladinSnap(), instanceId: 'pal-1' }))
+    const r = applyAction(game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: 'pal-1', zoneId: 3 },
+      makeCtx({ catalog: [paladinSnap()] }))
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.game.state.zones[2].cards.a).toHaveLength(0)
+    expect(r.game.state.zones[1].cards.a).toHaveLength(2)
+  })
+
+  // Spawning is not playing (spec §7.4): the new hull runs NO onPlayEffect, so
+  // the chain does not print free CP — but it keeps its printed meta and can be
+  // activated in its own right next turn, at a further 1cp each time.
+  it('the spawned Paladin grants no CP and carries its own ability, unstamped', () => {
+    const game = makeGame()
+    game.state.zones[0].cards.a.push(zoneEntry({ ...paladinSnap(), instanceId: 'pal-1' }))
+    const r = applyAction(game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: 'pal-1' },
+      makeCtx({ catalog: [paladinSnap()] }))
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    const spawned = r.game.state.zones[0].cards.a[1]
+    expect(spawned.meta.onActivate).toBe('paladinActivate')
+    expect(spawned.activatedOnTurn).toBeNull()
+    expect(r.game.state.resources.a.cp).toBe(2) // 3 − 1, no on-play grant
+  })
+
+  it('is once per turn, and refuses without the CP', () => {
+    const game = makeGame()
+    game.state.zones[0].cards.a.push(zoneEntry({ ...paladinSnap(), instanceId: 'pal-1' }))
+    const one = applyAction(game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: 'pal-1' },
+      makeCtx({ catalog: [paladinSnap()] }))
+    expect(one.ok).toBe(true)
+    if (!one.ok) return
+    const two = applyAction(one.game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: 'pal-1' },
+      makeCtx({ catalog: [paladinSnap()] }))
+    expect(two.ok).toBe(false)
+    if (two.ok) return
+    expect(two.error).toMatch(/already activated/)
+  })
+
+  it('fails when the catalog has no Paladin — a data bug, not an empty pool', () => {
+    const game = makeGame()
+    game.state.zones[0].cards.a.push(zoneEntry({ ...paladinSnap(), instanceId: 'pal-1' }))
+    const r = applyAction(game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: 'pal-1' }, makeCtx())
+    expect(r.ok).toBe(false)
+  })
+
+  // ⚠ R-6: the shape is Victoria's retired activate, the NAME must not be.
+  it('is registered under its own id, distinct from the orphaned victoriaActivate', () => {
+    expect(effectFor('paladinActivate')).not.toBeNull()
+    expect(effectFor('paladinActivate')).not.toBe(effectFor('victoriaActivate'))
+  })
+})
