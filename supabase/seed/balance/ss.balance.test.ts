@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { loadSeedData } from '../transform'
 import type { SeedCard } from '../../../shared/types'
-import { DATA_EFFECT_KEYS } from '../../../shared/effects/registry'
+import { CATALOG_EFFECTS, DATA_EFFECT_KEYS, isImplemented } from '../../../shared/effects/registry'
 import { MAX_VEHICLES_PER_ZONE_SIDE } from '../../../shared/gameSettings'
 import { makeGame, zoneEntry } from '../../../shared/engine/testFixtures'
 import { zoneCapFor } from '../../../shared/engine/zoneCapacity'
+import '../../../shared/engine/index'
 
 // The 2026-09-02 balance pass — SS's share, pinned against the seed source.
 //
@@ -251,5 +252,60 @@ describe('2026-09-02 balance pass — SS', () => {
     expect((await bySeedKey()).get('SS:Chrysaor')!.meta?.resourceSurge).toEqual({
       materialsOver: 150_000, extraSpawns: 1, costDelta: 75_000,
     })
+  })
+})
+
+describe('2026-09-02 balance pass — SS, the checks a unit test cannot make', () => {
+  // ⚠ A MISSING { needsCatalog: true } IS INVISIBLE TO THE SUITE. makeCtx
+  // hand-builds a catalog, so every unit test passes while game-action runs the
+  // effect against an empty one and 400s on every real play. Read off the
+  // registry at runtime, which is the only check that works.
+  it('paladinActivate needs the catalog', () => {
+    expect(CATALOG_EFFECTS.has('paladinActivate')).toBe(true)
+  })
+
+  // Spec §7.1's near misses, asserted in the NEGATIVE so nobody adds the flag
+  // "to be safe": Trondheim and Resolute draw from the owner's DECK, Typhoon's
+  // second hull is additionalSpawns which placement.ts resolves, and Nothung no
+  // longer spawns anything. None of the four touches ctx.catalog.
+  it.each(['trondheimOnDeath', 'resoluteOnPlay', 'nothungOnPlay', 'cycloneOnPlay',
+    'spectreOnPlay', 'argonautOnDeath', 'bullSharkVictory', 'sacrilegoBattle',
+    'victoriaOnPlay', 'paladinOnPlay', 'cashAdvanceEffect'])(
+    '%s does NOT need the catalog', (name) => {
+      expect(CATALOG_EFFECTS.has(name)).toBe(false)
+    },
+  )
+
+  // ⚠ AN ACTIVATED ABILITY NEEDS BOTH KEYS. ACTIVATE_VEHICLE refuses a card
+  // with onActivate and no price, and BoardZone gates its button on the
+  // identical pair — so half a pair is a card with a registered ability, card
+  // text promising it, and no way to press it. Silently, in both places.
+  it.each([
+    ['SS:Paladin', 'paladinActivate'],
+    ['SS:Braveheart', 'braveheartActivate'],
+  ])('%s carries onActivate AND a price', async (key, effect) => {
+    const meta = (await bySeedKey()).get(key)!.meta as Record<string, unknown>
+    expect(meta.onActivate).toBe(effect)
+    expect(typeof meta.activateCpCost).toBe('number')
+    expect(isImplemented(effect)).toBe(true)
+  })
+
+  // The four new rows, by name. transform.ts derives each id from
+  // `card:SS:<name>`, so a retitle mints a different card — "Cash advance"'s
+  // lowercase "a" included.
+  it('seeds exactly the four new SS cards, under their delivered names', async () => {
+    const keys = new Set((await bySeedKey()).keys())
+    for (const k of ['SS:Thresher Shark', 'SS:Bull Shark', 'SS:Tiger Shark', 'SS:Cash advance']) {
+      expect(keys.has(k), `${k} is missing`).toBe(true)
+    }
+    expect(keys.has('SS:Cash Advance')).toBe(false)
+  })
+
+  // Every SS card this wave gave text to resolves an implemented effect or a
+  // data key. G2 says this too — but G2 covers the WHOLE catalog and would keep
+  // passing if an SS row were quietly dropped, and this is scoped to the 26.
+  it('every card in CARDS is seeded', async () => {
+    const seeded = await bySeedKey()
+    for (const k of Object.keys(CARDS)) expect(seeded.has(k), `${k} is missing`).toBe(true)
   })
 })
