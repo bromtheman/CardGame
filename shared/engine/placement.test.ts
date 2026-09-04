@@ -152,6 +152,29 @@ describe('additionalSpawns', () => {
   })
 })
 
+// Spec §7.1 near miss: Typhoon's second hull is additionalSpawns, resolved by
+// deployVehicle from the card already in hand — not an effect, and ctx.catalog
+// is never touched. No registry id is involved at all.
+describe('SS Typhoon — one payment, two hulls', () => {
+  it('lands two hulls off one payment', () => {
+    const g = makeGame()
+    const card = inst({
+      name: 'Typhoon', faction: 'SS', vehicleType: 'sub', type: 'vehicle',
+      materialCost: 130_000, keywords: [], meta: { additionalSpawns: 1 },
+    })
+    g.privates.a.hand.push(card)
+    g.state.resources.a.materials = 130_000
+    const r = applyAction(g, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 })
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.game.state.zones[0].cards.a.map((c) => c.name)).toEqual(['Typhoon', 'Typhoon'])
+    expect(r.game.state.resources.a.materials).toBe(0)
+    // Distinct instances, both freshly stamped.
+    const [one, two] = r.game.state.zones[0].cards.a
+    expect(one.instanceId).not.toBe(two.instanceId)
+  })
+})
+
 describe('play-pipeline effect dispatch', () => {
   it('vehicle with onPlayEffect marauderOnPlay takes an enemy vehicle at full price after deploy', () => {
     const { g, card } = withHand({ vehicleType: 'ship', materialCost: 10000, meta: { onPlayEffect: 'marauderOnPlay' } })

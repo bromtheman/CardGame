@@ -230,7 +230,7 @@ export const ssVehicles = [
     }, {
         name: 'Typhoon',
         isBuiltIn: true,
-        cardText: '',
+        cardText: 'When played into a zone, summon a second copy of it in that zone',
         materialCost: 130000,
         blueprintCost: 135323,
         cpCost: 0,
@@ -240,8 +240,12 @@ export const ssVehicles = [
         type: 'vehicle',
         faction: FACTIONS.SS,
         blueprintId: null,
-        keywords: [KEYWORDS.BLOCKER],
+        keywords: [],
         meta: {
+            // Plain placement data, not an effect: deployVehicle mints the copy
+            // from the card in hand, so no catalog is involved and the card
+            // names no registry id at all (spec §7.1).
+            additionalSpawns: 1,
         }
     },
      {

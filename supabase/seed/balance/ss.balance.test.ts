@@ -99,6 +99,10 @@ const CARDS: Record<string, Expected> = {
     keywords: ['scrappy', 'stealthy', 'mobile'], vehicleType: 'ship',
     cardText: 'Whenever this vehicle participates in a fleet battle, friendly ships receive SCRAPPY keyword for that battle. Whenever this vehicle survives a fleet battle, reduce the cost of SS ships in hand by 30k.',
   },
+  'SS:Typhoon': {
+    materialCost: 130_000, blueprintCost: 135_323, keywords: [], vehicleType: 'sub',
+    cardText: 'When played into a zone, summon a second copy of it in that zone',
+  },
 }
 
 describe('2026-09-02 balance pass — SS', () => {
@@ -171,5 +175,19 @@ describe('2026-09-02 balance pass — SS', () => {
     })
     expect((card.meta?.resourceSurge as { materialsUnder: number }).materialsUnder)
       .toBe(card.materialCost)
+  })
+
+  // A DATA_EFFECT_KEY, so G2 closes the card on the key existing and never
+  // looks at the number. `2` here would land three hulls for one payment.
+  it('Typhoon deploys exactly one extra hull', async () => {
+    expect((await bySeedKey()).get('SS:Typhoon')!.meta?.additionalSpawns).toBe(1)
+  })
+
+  // Spec §7.1's near miss: additionalSpawns is resolved by deployVehicle from
+  // the card in hand, so no catalog is involved and Typhoon names no effect at
+  // all. Asserted so nobody "fixes" it by writing one.
+  it('Typhoon names no effect — the extra hull is placement, not an effect', async () => {
+    const meta = (await bySeedKey()).get('SS:Typhoon')!.meta ?? {}
+    expect(Object.keys(meta)).toEqual(['additionalSpawns'])
   })
 })
