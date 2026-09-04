@@ -65,7 +65,9 @@ const CARDS: Record<string, Expected> = {
   },
   'SS:Argonaut': {
     materialCost: 90_000, blueprintCost: 94_000, keywords: ['scrappy'],
-    vehicleType: 'ship', cardText: '',
+    vehicleType: 'ship',
+    // Death trigger added by the 2026-09-02 pass (ruling R-4); costs unchanged.
+    cardText: 'When this vehicle is destroyed, reduce the cost of a random SS ship in your hand by 50k',
   },
   'SS:Nothung': {
     materialCost: 400_000, blueprintCost: 478_000, keywords: ['blocker'], vehicleType: 'ship', // 2026-09-02 pass

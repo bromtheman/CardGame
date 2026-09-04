@@ -1,6 +1,6 @@
 import {
-  AIR_STRAFE_PREDATOR_COUNT, BASE_DAMAGE_DIVISOR, BULL_SHARK_BASE_DAMAGE, CASH_ADVANCE_MATERIALS,
-  CATSHARK_MATERIALS,
+  AIR_STRAFE_PREDATOR_COUNT, ARGONAUT_COST_DELTA, BASE_DAMAGE_DIVISOR, BULL_SHARK_BASE_DAMAGE,
+  CASH_ADVANCE_MATERIALS, CATSHARK_MATERIALS,
   EXCALIBUR_COST_DELTA, FACTIONS, HERO_POWER_LABELS, KEYWORDS, NOTHUNG_COST_DELTA,
   REPAIRMEN_READY_DRAW_MAX_COST, RESOLUTE_COST_DELTA, RHEA_MAX_PLANE_COST, SACRILEGO_COST_DELTA,
   TRONDHEIM_COST_DELTA, TYR_HAND_DISCOUNT, VEHICLE_TYPES, VICTORIA_COST_DELTA,
@@ -846,3 +846,28 @@ registerEffect(HYDRA, choice({
     return true
   },
 }))
+
+// "When this vehicle is destroyed, reduce the cost of a random SS ship in your
+// hand by 50k."
+//
+// ⚠ Argonaut KEEPS SCRAPPY (ruling R-4). card-effects.md rule 10 used to forbid
+// SCRAPPY beside an onDeathEffect on the false ground that the trigger would be
+// unreachable; wave 0 corrected it. autoRepairIds repairs a Scrappy hull only in
+// the 80–89.999% band — below 80% it is removed, discarded and pushed to
+// destroyedEntries, which is exactly what dispatches this. The free repair
+// narrows the window; it does not close it.
+//
+// ctx.rng(), never Math.random() (checklist item 4) — a direct Math.random in an
+// effect makes every outcome test flaky.
+//
+// The log names nothing: state.log is public and the hand is hidden.
+registerEffect('argonautOnDeath', ({ game, actor, card, ctx }) => {
+  const pool = game.privates[actor].hand.filter(isSsShip)
+  if (pool.length === 0) {
+    game.state.log.push(`${card.name} goes down with nothing to bequeath`)
+    return true
+  }
+  discountInHand(pool[Math.floor(ctx.rng() * pool.length)], ARGONAUT_COST_DELTA)
+  game.state.log.push(`${card.name} leaves its yard credit to player ${actor.toUpperCase()}`)
+  return true
+})

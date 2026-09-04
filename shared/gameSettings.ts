@@ -262,6 +262,10 @@ export const NOTHUNG_COST_DELTA = -40_000
 // oversight.
 export const SACRILEGO_COST_DELTA = -30_000
 
+// SS Argonaut: "reduce the cost of a random SS ship in your hand by 50k" on
+// death. Its own constant, like every other SS hand discount in this pass.
+export const ARGONAUT_COST_DELTA = -50_000
+
 // Human-readable names for the seven hero powers, used wherever a power id
 // is shown to a player (Kraken's refresh choice).
 export const HERO_POWER_LABELS: Record<string, string> = {

@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { CATALOG_EFFECTS, RESOLVE_BYSTANDER_EFFECTS, effectFor, registerEffect } from './registry.ts'
 import { choice } from './primitives.ts'
 import {
-  BASE_DAMAGE_DIVISOR, BULL_SHARK_BASE_DAMAGE, CASH_ADVANCE_MATERIALS, EXCALIBUR_COST_DELTA, KEYWORDS,
-  MATERIALS_PER_TURN, NOTHUNG_COST_DELTA, RESOLUTE_COST_DELTA, SACRILEGO_COST_DELTA, TRONDHEIM_COST_DELTA,
-  TYR_HAND_DISCOUNT, VICTORIA_COST_DELTA,
+  ARGONAUT_COST_DELTA, BASE_DAMAGE_DIVISOR, BULL_SHARK_BASE_DAMAGE, CASH_ADVANCE_MATERIALS,
+  EXCALIBUR_COST_DELTA, KEYWORDS, MATERIALS_PER_TURN, NOTHUNG_COST_DELTA, RESOLUTE_COST_DELTA,
+  SACRILEGO_COST_DELTA, TRONDHEIM_COST_DELTA, TYR_HAND_DISCOUNT, VICTORIA_COST_DELTA,
 } from '../gameSettings.ts'
 import { inst, makeCtx, makeGame, snap, zoneEntry } from '../engine/testFixtures.ts'
 import {
@@ -3491,8 +3491,8 @@ describe('wave 6 — effects that must carry needsCatalog', () => {
 
 describe('wave 6 — SS Balmung', () => {
   const hydraSnap = snap({
-    name: 'Hydra', faction: 'SS', vehicleType: 'airship', materialCost: 230_000,
-    blueprintCost: 231_000, keywords: ['mobile'], meta: { onPlayEffect: 'hydraOnPlay' },
+    name: 'Hydra', faction: 'SS', vehicleType: 'airship', materialCost: 220_000,
+    blueprintCost: 238_000, keywords: ['mobile'], meta: { onPlayEffect: 'hydraOnPlay' },
   })
   const balmung = () => inst({
     name: 'Balmung', faction: 'SS', vehicleType: 'ship', materialCost: 0,
@@ -3523,8 +3523,8 @@ describe('wave 6 — SS Balmung', () => {
   // harmless as well as free — this is the assertion that catches it.
   it('reduces the price with costDelta and leaves the printed materialCost alone', () => {
     const hydra = play().privates.a.hand[0]
-    expect(hydra.meta.costDelta).toBe(-230_000)
-    expect(hydra.materialCost).toBe(230_000)
+    expect(hydra.meta.costDelta).toBe(-220_000)
+    expect(hydra.materialCost).toBe(220_000)
   })
 
   it('costs nothing to play but still does its printed damage and repair', () => {
@@ -3532,7 +3532,7 @@ describe('wave 6 — SS Balmung', () => {
     const hydra = game.privates.a.hand[0]
     expect(effectiveCostInGame(game.state, 'a', hydra)).toBe(0)
     // The figure base damage, repairs and in-battle resources all read.
-    expect(effectiveMaterialCostOf(hydra)).toBe(230_000)
+    expect(effectiveMaterialCostOf(hydra)).toBe(220_000)
   })
 
   it('resyncs the public hand count, which a direct push does not do for you', () => {
@@ -6823,5 +6823,57 @@ describe('SS Hydra — refresh one power, then a CP', () => {
   it('is registered under its own id, distinct from Kraken', () => {
     expect(effectFor('hydraOnPlay')).not.toBeNull()
     expect(effectFor('hydraOnPlay')).not.toBe(effectFor('krakenOnPlay'))
+  })
+})
+
+describe('SS Argonaut — a parting discount', () => {
+  const argonaut = () => zoneEntry({ name: 'Argonaut', vehicleType: 'ship', keywords: ['scrappy'] })
+
+  it('discounts exactly one SS ship in hand', () => {
+    const game = makeGame()
+    game.privates.a.hand.push(
+      inst({ name: 'A', faction: 'SS', type: 'vehicle', vehicleType: 'ship' }),
+      inst({ name: 'B', faction: 'SS', type: 'vehicle', vehicleType: 'ship' }),
+    )
+    expect(effectFor('argonautOnDeath')!({ game, actor: 'a', card: argonaut(), ctx: makeCtx() })).toBe(true)
+    const cut = game.privates.a.hand.filter((c) => c.meta.costDelta === ARGONAUT_COST_DELTA)
+    expect(cut).toHaveLength(1)
+  })
+
+  it('ignores SS subs, SS abilities and other factions', () => {
+    const game = makeGame()
+    game.privates.a.hand.push(
+      inst({ name: 'Sub', faction: 'SS', type: 'vehicle', vehicleType: 'sub' }),
+      inst({ name: 'Ability', faction: 'SS', type: 'ability', vehicleType: null }),
+      inst({ name: 'DWG', faction: 'DWG', type: 'vehicle', vehicleType: 'ship' }),
+    )
+    effectFor('argonautOnDeath')!({ game, actor: 'a', card: argonaut(), ctx: makeCtx() })
+    expect(game.privates.a.hand.every((c) => c.meta.costDelta === undefined)).toBe(true)
+  })
+
+  // A death effect that returns false logs a failed trigger without rejecting
+  // the report — but "no SS ship in hand" is an ordinary outcome, not a
+  // failure, so it resolves.
+  it('resolves with no SS ship in hand', () => {
+    const game = makeGame()
+    expect(effectFor('argonautOnDeath')!({ game, actor: 'a', card: argonaut(), ctx: makeCtx() })).toBe(true)
+  })
+
+  it('picks through ctx.rng, so a fixed rng picks deterministically', () => {
+    const game = makeGame()
+    game.privates.a.hand.push(
+      inst({ name: 'A', faction: 'SS', type: 'vehicle', vehicleType: 'ship' }),
+      inst({ name: 'B', faction: 'SS', type: 'vehicle', vehicleType: 'ship' }),
+    )
+    effectFor('argonautOnDeath')!({ game, actor: 'a', card: argonaut(), ctx: makeCtx({ rng: () => 0 }) })
+    expect(game.privates.a.hand[0].meta.costDelta).toBe(ARGONAUT_COST_DELTA)
+    expect(game.privates.a.hand[1].meta.costDelta).toBeUndefined()
+  })
+
+  it('never names the chosen card in the public log', () => {
+    const game = makeGame()
+    game.privates.a.hand.push(inst({ name: 'Secret', faction: 'SS', type: 'vehicle', vehicleType: 'ship' }))
+    effectFor('argonautOnDeath')!({ game, actor: 'a', card: argonaut(), ctx: makeCtx() })
+    expect(game.state.log.join('\n')).not.toContain('Secret')
   })
 })

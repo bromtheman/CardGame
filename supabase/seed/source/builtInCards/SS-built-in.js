@@ -269,7 +269,7 @@ export const ssVehicles = [
      {
         name: 'Argonaut',
         isBuiltIn: true,
-        cardText: '',
+        cardText: 'When this vehicle is destroyed, reduce the cost of a random SS ship in your hand by 50k',
         materialCost: 90000,
         blueprintCost: 94000,
         cpCost: 0,
@@ -281,6 +281,7 @@ export const ssVehicles = [
         blueprintId: null,
         keywords: [KEYWORDS.SCRAPPY],
         meta: {
+            [TRIGGERS.ON_DEATH]: 'argonautOnDeath',
         }
     },
      {

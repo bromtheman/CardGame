@@ -115,6 +115,10 @@ const CARDS: Record<string, Expected> = {
     materialCost: 220_000, blueprintCost: 238_000, keywords: ['mobile'], vehicleType: 'airship',
     cardText: 'When this vehicle is played, refresh one of your used hero powers then gain 1cp',
   },
+  'SS:Argonaut': {
+    materialCost: 90_000, blueprintCost: 94_000, keywords: ['scrappy'], vehicleType: 'ship',
+    cardText: 'When this vehicle is destroyed, reduce the cost of a random SS ship in your hand by 50k',
+  },
 }
 
 describe('2026-09-02 balance pass — SS', () => {
@@ -201,5 +205,14 @@ describe('2026-09-02 balance pass — SS', () => {
   it('Typhoon names no effect — the extra hull is placement, not an effect', async () => {
     const meta = (await bySeedKey()).get('SS:Typhoon')!.meta ?? {}
     expect(Object.keys(meta)).toEqual(['additionalSpawns'])
+  })
+
+  // ⚠ Ruling R-4, and it needs a SEED-backed assertion because it is a rule the
+  // docs used to forbid. Wave 0 corrected card-effects.md rule 10: SCRAPPY
+  // narrows an onDeathEffect's window (to below 80% HP) rather than closing it.
+  it('Argonaut carries SCRAPPY and a death trigger together, deliberately', async () => {
+    const card = (await bySeedKey()).get('SS:Argonaut')!
+    expect(card.keywords).toContain('scrappy')
+    expect(card.meta?.onDeathEffect).toBe('argonautOnDeath')
   })
 })
