@@ -6717,3 +6717,50 @@ describe('SS Trondheim and Resolute — a discounted SS ship out of the deck', (
     expect(CATALOG_EFFECTS.has(name)).toBe(false)
   })
 })
+
+describe('SS Cyclone — FRAGILE across the enemy half', () => {
+  it('grants FRAGILE to every enemy vehicle in that zone only', () => {
+    const game = makeGame()
+    const here1 = zoneEntry({ instanceId: 'e1', vehicleType: 'ship' })
+    const here2 = zoneEntry({ instanceId: 'e2', vehicleType: 'plane' })
+    const elsewhere = zoneEntry({ instanceId: 'e3', vehicleType: 'ship' })
+    const mine = zoneEntry({ instanceId: 'm1', vehicleType: 'ship' })
+    game.state.zones[0].cards.b.push(here1, here2)
+    game.state.zones[1].cards.b.push(elsewhere)
+    game.state.zones[0].cards.a.push(mine)
+    const ok = effectFor('cycloneOnPlay')!({
+      game, actor: 'a', card: inst({ name: 'Cyclone' }), ctx: makeCtx(), targetZoneId: 1,
+    })
+    expect(ok).toBe(true)
+    expect(here1.keywords).toContain('fragile')
+    expect(here2.keywords).toContain('fragile')
+    expect(elsewhere.keywords).not.toContain('fragile')
+    expect(mine.keywords).not.toContain('fragile')
+  })
+
+  it('is idempotent on a hull that already prints FRAGILE', () => {
+    const game = makeGame()
+    const already = zoneEntry({ keywords: ['fragile', 'blocker'] })
+    game.state.zones[0].cards.b.push(already)
+    effectFor('cycloneOnPlay')!({
+      game, actor: 'a', card: inst({ name: 'Cyclone' }), ctx: makeCtx(), targetZoneId: 1,
+    })
+    expect(already.keywords.filter((k) => k === 'fragile')).toHaveLength(1)
+  })
+
+  it('resolves against an empty enemy half', () => {
+    const game = makeGame()
+    expect(effectFor('cycloneOnPlay')!({
+      game, actor: 'a', card: inst({ name: 'Cyclone' }), ctx: makeCtx(), targetZoneId: 1,
+    })).toBe(true)
+  })
+
+  // A vehicle's onPlayEffect always arrives with a zone. Refusing rather than
+  // fizzling on a missing one matches every other zone-reading effect.
+  it('fails without a target zone', () => {
+    const game = makeGame()
+    expect(effectFor('cycloneOnPlay')!({
+      game, actor: 'a', card: inst({ name: 'Cyclone' }), ctx: makeCtx(),
+    })).toBe(false)
+  })
+})

@@ -85,6 +85,27 @@ registerEffect('nothungOnPlay', ({ game, actor, card }) => {
   return true
 })
 
+// "When this vehicle is played into a zone, grant every enemy vehicle in that
+// zone FRAGILE."
+//
+// A loop rather than grantKeywords(): that primitive takes exactly one
+// targetInstanceId, and this card names a whole side of a zone. TG Hysteria and
+// TG Spite are its single-target cousins.
+//
+// No placedInstanceIds exclusion is needed — this walks the ENEMY's half, and
+// PLAY_CARD_TO_ZONE places Cyclone on the actor's.
+registerEffect('cycloneOnPlay', ({ game, actor, card, targetZoneId }) => {
+  if (typeof targetZoneId !== 'number') return false
+  const zone = zoneById(game.state, targetZoneId)
+  if (!zone) return false
+  for (const entry of zone.cards[otherSide(actor)]) {
+    if (entry.keywords.includes(KEYWORDS.FRAGILE)) continue
+    entry.keywords = [...entry.keywords, KEYWORDS.FRAGILE]
+  }
+  game.state.log.push(`${card.name} batters the enemy hulls in zone ${targetZoneId}`)
+  return true
+})
+
 // "When this is played into a zone, create a hydra card in hand and reduce its
 // cost to zero."
 //

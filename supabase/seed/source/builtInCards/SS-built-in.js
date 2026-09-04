@@ -251,7 +251,7 @@ export const ssVehicles = [
      {
         name: 'Cyclone',
         isBuiltIn: true,
-        cardText: '',
+        cardText: 'When this vehicle is played into a zone, grant every enemy vehicle in that zone FRAGILE',
         materialCost: 280000,
         blueprintCost: 281000,
         cpCost: 0,
@@ -263,6 +263,7 @@ export const ssVehicles = [
         blueprintId: null,
         keywords: [],
         meta: {
+            [TRIGGERS.ON_PLAY]: 'cycloneOnPlay',
         }
     },
      {

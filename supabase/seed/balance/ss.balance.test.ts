@@ -103,6 +103,10 @@ const CARDS: Record<string, Expected> = {
     materialCost: 130_000, blueprintCost: 135_323, keywords: [], vehicleType: 'sub',
     cardText: 'When played into a zone, summon a second copy of it in that zone',
   },
+  'SS:Cyclone': {
+    materialCost: 280_000, blueprintCost: 281_000, keywords: [], vehicleType: 'sub',
+    cardText: 'When this vehicle is played into a zone, grant every enemy vehicle in that zone FRAGILE',
+  },
 }
 
 describe('2026-09-02 balance pass — SS', () => {
