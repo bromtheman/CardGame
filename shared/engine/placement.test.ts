@@ -946,6 +946,26 @@ describe('resourceSurge — Chrysaor raises its own price', () => {
   })
 })
 
+// The surged price is now EXACTLY the threshold (75k + 75k = 150k), so paying
+// for Chrysaor turns Chrysaor's own condition off. PLAY_CARD_TO_ZONE captures
+// `surged` BEFORE pay() for this reason and names the card in its comment;
+// this is what would notice if that ordering were ever inverted.
+it('Chrysaor still spawns its second hull when the payment lands it on its own threshold', () => {
+  const g = makeGame()
+  const card = inst({
+    name: 'Chrysaor', faction: 'SS', vehicleType: 'ship', type: 'vehicle',
+    materialCost: 75_000, keywords: ['stealthy'],
+    meta: { resourceSurge: { materialsOver: 150_000, extraSpawns: 1, costDelta: 75_000 } },
+  })
+  g.privates.a.hand.push(card)
+  g.state.resources.a.materials = 150_001
+  const r = applyAction(g, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 })
+  expect(r.ok).toBe(true)
+  if (!r.ok) return
+  expect(r.game.state.zones[0].cards.a.map((c) => c.name)).toEqual(['Chrysaor', 'Chrysaor'])
+  expect(r.game.state.resources.a.materials).toBe(150_001 - 150_000)
+})
+
 // ⚠ The live SS Paladin card no longer carries resourceSurge at all — the
 // 2026-09-02 pass (spec §7.2) replaced it with paladinOnPlay/paladinActivate
 // (shared/effects/ssEffects.ts, supabase/seed/balancePass.test.ts). This block

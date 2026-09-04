@@ -5,7 +5,7 @@ export const ssVehicles = [
         name: 'Iron Maiden',
         isBuiltIn: true,
         cardText: 'When this vehicle is destroyed, draw a card',
-        materialCost: 170000,
+        materialCost: 150000,
         blueprintCost: 174000,
         cpCost: 0,
         imageUrl: 'ironMaiden.png',
@@ -107,7 +107,7 @@ export const ssVehicles = [
         name: 'Asphodel',
         isBuiltIn: true,
         cardText: '',
-        materialCost: 470000,
+        materialCost: 400000,
         blueprintCost: 544000,
         cpCost: 0,
         imageUrl: 'asphodel.png',
@@ -116,7 +116,7 @@ export const ssVehicles = [
         type: 'vehicle',
         faction: FACTIONS.SS,
         blueprintId: null,
-        keywords: [KEYWORDS.AIR_SCREEN],
+        keywords: [KEYWORDS.AIR_SCREEN, KEYWORDS.STEALTHY],
         meta: {
         }
     } ,{
@@ -287,8 +287,8 @@ export const ssVehicles = [
      {
         name: 'Chrysaor',
         isBuiltIn: true,
-        cardText: 'While you have more than 200k resources, this card costs 100k more and spawns in a second Chrysaor',
-        materialCost: 100000,
+        cardText: 'While you have more than 150k resources, this card costs 75k more and spawns in a second Chrysaor',
+        materialCost: 75000,
         blueprintCost: 116000,
         cpCost: 0,
         imageUrl: 'Chrysaor.png',
@@ -299,10 +299,14 @@ export const ssVehicles = [
         blueprintId: null,
         keywords: [KEYWORDS.STEALTHY],
         meta: {
-            // "While you have more than 200k resources, this card costs 100k
-            // more and spawns in a second Chrysaor." costDelta raises the
-            // PLAY price only — base damage and repairs still read 100k.
-            resourceSurge: { materialsOver: 200000, extraSpawns: 1, costDelta: 100000 },
+            // "While you have more than 150k resources, this card costs 75k
+            // more and spawns in a second Chrysaor." costDelta raises the PLAY
+            // price only — base damage and repairs still read 75k.
+            //
+            // ⚠ The surged price is now EXACTLY the threshold (75k + 75k), so
+            // paying for this card turns its own condition off.
+            // PLAY_CARD_TO_ZONE reads `surged` BEFORE pay() for that reason.
+            resourceSurge: { materialsOver: 150000, extraSpawns: 1, costDelta: 75000 },
         }
     },
      {
@@ -350,7 +354,7 @@ export const ssVehicles = [
         name: 'Balmung',
         isBuiltIn: true,
         cardText: 'When this is played into a zone, create a hydra card in hand and reduce its cost to zero',
-        materialCost: 630000,
+        materialCost: 620000,
         blueprintCost: 636000,
         cpCost: 0,
         imageUrl: 'balmung.png',
@@ -385,7 +389,7 @@ export const ssVehicles = [
         name: 'Wolin',
         isBuiltIn: true,
         cardText: '',
-        materialCost: 270000,
+        materialCost: 250000,
         blueprintCost: 271000,
         cpCost: 0,
         imageUrl: 'wolin.png',
@@ -473,7 +477,7 @@ export const ssVehicles = [
         name: 'Mobula',
         isBuiltIn: true,
         cardText: '',
-        materialCost: 600000,
+        materialCost: 500000,
         blueprintCost: 603000,
         cpCost: 0,
         imageUrl: 'mobula.png',

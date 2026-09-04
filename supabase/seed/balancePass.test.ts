@@ -58,7 +58,7 @@ const CARDS: Record<string, Expected> = {
   },
   // ----------------------------------------------------------------- SS
   'SS:Chrysaor': {
-    materialCost: 100_000, blueprintCost: 116_000, keywords: ['stealthy'], vehicleType: 'ship',
+    materialCost: 75_000, blueprintCost: 116_000, keywords: ['stealthy'], vehicleType: 'ship', // 2026-09-02 pass
   },
   'SS:Paladin': {
     materialCost: 240_000, blueprintCost: 240_000, keywords: [], vehicleType: 'ship',
@@ -73,10 +73,10 @@ const CARDS: Record<string, Expected> = {
     materialCost: 400_000, blueprintCost: 478_000, keywords: ['blocker'], vehicleType: 'ship', // 2026-09-02 pass
   },
   'SS:Balmung': {
-    materialCost: 630_000, blueprintCost: 636_000, keywords: ['blocker'], vehicleType: 'ship',
+    materialCost: 620_000, blueprintCost: 636_000, keywords: ['blocker'], vehicleType: 'ship', // 2026-09-02 pass
   },
   'SS:Asphodel': {
-    materialCost: 470_000, blueprintCost: 544_000, keywords: ['airScreen'],
+    materialCost: 400_000, blueprintCost: 544_000, keywords: ['airScreen', 'stealthy'], // 2026-09-02 pass
     vehicleType: 'ship', cardText: '',
   },
   'SS:Victoria': {
@@ -192,9 +192,13 @@ describe('2026-08-30 balance pass', () => {
   // (materialsOver where the card says "less than") would leave a card that
   // is inert AND invisible — no guard failure, and no "plays as vanilla" note
   // either.
-  it('Chrysaor surges over 200k for +100k and a second hull', async () => {
+  //
+  // ⚠ MOVED by the 2026-09-02 pass (spec §2.3, §7.2): threshold and costDelta
+  // both dropped from 200k/100k to 150k/75k. The current triple is also pinned
+  // in supabase/seed/balance/ss.balance.test.ts.
+  it('Chrysaor surges over 150k for +75k and a second hull', async () => {
     expect((await bySeedKey()).get('SS:Chrysaor')!.meta?.resourceSurge).toEqual({
-      materialsOver: 200_000, extraSpawns: 1, costDelta: 100_000,
+      materialsOver: 150_000, extraSpawns: 1, costDelta: 75_000,
     })
   })
 

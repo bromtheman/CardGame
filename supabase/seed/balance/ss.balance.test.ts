@@ -123,6 +123,29 @@ const CARDS: Record<string, Expected> = {
     materialCost: 240_000, blueprintCost: 240_000, keywords: [], vehicleType: 'ship',
     cardText: 'When this vehicle is played, gain 1cp. Each turn you may pay 1cp to spawn another paladin into this zone',
   },
+  'SS:Iron Maiden': {
+    materialCost: 150_000, blueprintCost: 174_000, keywords: ['blocker'], vehicleType: 'ship',
+    cardText: 'When this vehicle is destroyed, draw a card',
+  },
+  'SS:Asphodel': {
+    materialCost: 400_000, blueprintCost: 544_000,
+    keywords: ['airScreen', 'stealthy'], vehicleType: 'ship', cardText: '',
+  },
+  'SS:Wolin': {
+    materialCost: 250_000, blueprintCost: 271_000, keywords: [], vehicleType: 'sub', cardText: '',
+  },
+  'SS:Mobula': {
+    materialCost: 500_000, blueprintCost: 603_000,
+    keywords: ['halfCost', 'temporary'], vehicleType: 'plane', cardText: '',
+  },
+  'SS:Balmung': {
+    materialCost: 620_000, blueprintCost: 636_000, keywords: ['blocker'], vehicleType: 'ship',
+    cardText: 'When this is played into a zone, create a hydra card in hand and reduce its cost to zero',
+  },
+  'SS:Chrysaor': {
+    materialCost: 75_000, blueprintCost: 116_000, keywords: ['stealthy'], vehicleType: 'ship',
+    cardText: 'While you have more than 150k resources, this card costs 75k more and spawns in a second Chrysaor',
+  },
 }
 
 describe('2026-09-02 balance pass — SS', () => {
@@ -218,5 +241,15 @@ describe('2026-09-02 balance pass — SS', () => {
     const card = (await bySeedKey()).get('SS:Argonaut')!
     expect(card.keywords).toContain('scrappy')
     expect(card.meta?.onDeathEffect).toBe('argonautOnDeath')
+  })
+
+  // resourceSurge is a DATA_EFFECT_KEY, so G2 closes the card on the key
+  // existing and never looks inside. Compared FIELD BY FIELD: a materialsUnder
+  // where the card says "more than" would invert it silently, and a costDelta
+  // that no longer matches the printed number would go unnoticed by everything.
+  it('Chrysaor surges over 150k for +75k and a second hull', async () => {
+    expect((await bySeedKey()).get('SS:Chrysaor')!.meta?.resourceSurge).toEqual({
+      materialsOver: 150_000, extraSpawns: 1, costDelta: 75_000,
+    })
   })
 })
