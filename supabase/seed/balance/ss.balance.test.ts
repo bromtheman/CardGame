@@ -87,6 +87,10 @@ const CARDS: Record<string, Expected> = {
     materialCost: 350_000, blueprintCost: 371_000, keywords: [], vehicleType: 'ship',
     cardText: 'Once per turn, you may pay 1cp to have one of your ships in this zone 1v1 an enemy vehicle in the same zone',
   },
+  'SS:Nothung': {
+    materialCost: 400_000, blueprintCost: 478_000, keywords: ['blocker'], vehicleType: 'ship',
+    cardText: 'When this vehicle is played, reduce the cost of every SS ship in your hand by 40k',
+  },
 }
 
 describe('2026-09-02 balance pass — SS', () => {

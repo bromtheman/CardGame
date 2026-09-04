@@ -1,13 +1,13 @@
 import {
   AIR_STRAFE_PREDATOR_COUNT, BASE_DAMAGE_DIVISOR, BULL_SHARK_BASE_DAMAGE, CASH_ADVANCE_MATERIALS,
   CATSHARK_MATERIALS,
-  EXCALIBUR_COST_DELTA, FACTIONS, KEYWORDS,
+  EXCALIBUR_COST_DELTA, FACTIONS, KEYWORDS, NOTHUNG_COST_DELTA,
   REPAIRMEN_READY_DRAW_MAX_COST, RESOLUTE_COST_DELTA, RHEA_MAX_PLANE_COST, SACRILEGO_HP_BOOST,
   SURVIVE_HP_PERCENT, TRONDHEIM_COST_DELTA, TYR_HAND_DISCOUNT, VEHICLE_TYPES, VICTORIA_COST_DELTA,
 } from '../gameSettings.ts'
 import {
   catalogCard, costDelta, choice, drawFromPool, enemyVehicleOptions, friendlyVehicleOptions, grant,
-  grantKeywords, poolEligible, sacrificeToSave, sequence, spawnInto, spawnVehicles, summonHulls,
+  grantKeywords, poolEligible, sacrificeToSave, sequence, spawnInto, summonHulls,
 } from './primitives.ts'
 import { registerCostModifier, registerEffect } from './registry.ts'
 import type { EffectFn, EffectPayload } from './registry.ts'
@@ -28,12 +28,13 @@ const SS_SHIP_FILTER = {
   faction: FACTIONS.SS, type: 'vehicle', vehicleType: VEHICLE_TYPES.SHIP,
 } as const
 
-// Exported: unused within this task, but Nothung, Sacrilego, Argonaut,
-// Trondheim and Resolute (Tasks 11, 13, 15, 16, 21) all call these two. An
-// unexported symbol with no call site inside this file trips
-// frontend/tsconfig.app.json's noUnusedLocals (TS6133) the moment
-// npm --prefix frontend run build pulls in ../shared — export makes both
-// exempt while the call sites land.
+// Exported: only Nothung (this file, below), Sacrilego and Argonaut (Tasks
+// 16, 21) call these two — Trondheim/Resolute (Task 11) and Excalibur
+// (Task 13) go through SS_SHIP_FILTER via drawFromPool/costDelta instead.
+// Kept exported for the not-yet-landed callers: an unexported symbol with no
+// call site inside this file trips frontend/tsconfig.app.json's
+// noUnusedLocals (TS6133) the moment npm --prefix frontend run build pulls in
+// ../shared — export makes both exempt while the remaining call sites land.
 export const isSsShip = (c: CardInstance): boolean =>
   c.faction === FACTIONS.SS && c.type === 'vehicle' && c.vehicleType === VEHICLE_TYPES.SHIP
 
@@ -66,14 +67,23 @@ registerEffect('resoluteOnPlay', drawFromPool({
   source: 'deck', filter: SS_SHIP_FILTER, count: 1, costDelta: RESOLUTE_COST_DELTA,
 }))
 
-// "Whenever this vehicle is played into a zone, also create a friendly
-// Sacrilego in that zone." Spawning is not playing (spec §7.4), which skips
-// the spawned hull's onPlayEffect and NOTHING else — so the Sacrilego keeps
-// its printed onBattleEffect and will fire it when it fights (spec §7.3,
-// wave 6). That is the point of naming Sacrilego rather than a vanilla hull.
-registerEffect('nothungOnPlay', spawnVehicles({
-  cardName: 'Sacrilego', count: 1, zones: 'target',
-}), { needsCatalog: true })
+// "When this vehicle is played, reduce the cost of every SS ship in your hand
+// by 40k." This REPLACES the Sacrilego spawn the card used to print — same
+// registry id, new behaviour, which is what a balance pass is and is not the
+// R-6 collision (that is two DIFFERENT cards sharing a name).
+//
+// No { needsCatalog: true } any more: the spawn read ctx.catalog, this reads
+// only the hand.
+//
+// ⚠ The log carries neither names NOR a count. state.log is public, and "refits
+// 3 ships" tells the opponent how many SS ships are in a hidden hand.
+registerEffect('nothungOnPlay', ({ game, actor, card }) => {
+  for (const held of game.privates[actor].hand) {
+    if (isSsShip(held)) discountInHand(held, NOTHUNG_COST_DELTA)
+  }
+  game.state.log.push(`${card.name} refits the SS ships in player ${actor.toUpperCase()}'s hand`)
+  return true
+})
 
 // "When this is played into a zone, create a hydra card in hand and reduce its
 // cost to zero."

@@ -3,7 +3,8 @@ import { CATALOG_EFFECTS, RESOLVE_BYSTANDER_EFFECTS, effectFor, registerEffect }
 import { choice } from './primitives.ts'
 import {
   BASE_DAMAGE_DIVISOR, BULL_SHARK_BASE_DAMAGE, CASH_ADVANCE_MATERIALS, EXCALIBUR_COST_DELTA, KEYWORDS,
-  MATERIALS_PER_TURN, RESOLUTE_COST_DELTA, TRONDHEIM_COST_DELTA, TYR_HAND_DISCOUNT, VICTORIA_COST_DELTA,
+  MATERIALS_PER_TURN, NOTHUNG_COST_DELTA, RESOLUTE_COST_DELTA, TRONDHEIM_COST_DELTA, TYR_HAND_DISCOUNT,
+  VICTORIA_COST_DELTA,
 } from '../gameSettings.ts'
 import { inst, makeCtx, makeGame, snap, zoneEntry } from '../engine/testFixtures.ts'
 import {
@@ -3384,60 +3385,57 @@ describe('wave 5 — Sabotage', () => {
 // the handler wiring were wrong.
 // ===========================================================================
 
-describe('wave 6 — SS Nothung', () => {
-  const sacrilegoSnap = snap({
-    name: 'Sacrilego', faction: 'SS', vehicleType: 'ship', materialCost: 80_000,
-    keywords: ['scrappy', 'stealthy', 'mobile'],
-    meta: { onBattleEffect: 'sacrilegoBattle' },
-  })
-  const nothung = () => inst({
-    name: 'Nothung', faction: 'SS', vehicleType: 'ship', materialCost: 0,
-    keywords: ['blocker'], meta: { onPlayEffect: 'nothungOnPlay' },
-  })
-  const nothungCtx = () => makeCtx({ catalog: [sacrilegoSnap] })
-
-  function play(zoneId: number) {
-    const card = nothung()
-    const game = makeGame({ privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } } })
-    const r = applyAction(
-      game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId }, nothungCtx(),
+describe('SS Nothung — a discount across the whole hand', () => {
+  const hand = (game: EngineGame) => {
+    game.privates.a.hand.push(
+      inst({ name: 'SS Ship', faction: 'SS', type: 'vehicle', vehicleType: 'ship' }),
+      inst({ name: 'SS Ship 2', faction: 'SS', type: 'vehicle', vehicleType: 'ship', meta: { costDelta: -10_000 } }),
+      inst({ name: 'SS Sub', faction: 'SS', type: 'vehicle', vehicleType: 'sub' }),
+      inst({ name: 'SS Ability', faction: 'SS', type: 'ability', vehicleType: null }),
+      inst({ name: 'DWG Ship', faction: 'DWG', type: 'vehicle', vehicleType: 'ship' }),
     )
-    if (!r.ok) throw new Error(r.error)
-    return r.game
   }
 
-  it('puts a friendly Sacrilego into the zone Nothung was played into', () => {
-    const game = play(1)
-    expect(game.state.zones[0].cards.a.map((c) => c.name)).toEqual(['Nothung', 'Sacrilego'])
-    // …and nowhere else, on neither side.
-    expect(game.state.zones[1].cards.a).toEqual([])
-    expect(game.state.zones[0].cards.b).toEqual([])
+  it('discounts every SS ship in hand and nothing else', () => {
+    const game = makeGame()
+    hand(game)
+    expect(effectFor('nothungOnPlay')!({ game, actor: 'a', card: inst({ name: 'Nothung' }), ctx: makeCtx() })).toBe(true)
+    const byName = new Map(game.privates.a.hand.map((c) => [c.name, c.meta.costDelta]))
+    expect(byName.get('SS Ship')).toBe(NOTHUNG_COST_DELTA)
+    expect(byName.get('SS Ship 2')).toBe(-10_000 + NOTHUNG_COST_DELTA)
+    expect(byName.get('SS Sub')).toBeUndefined()
+    expect(byName.get('SS Ability')).toBeUndefined()
+    expect(byName.get('DWG Ship')).toBeUndefined()
   })
 
-  it('follows Nothung into whichever zone it was played into', () => {
-    const game = play(2)
-    expect(game.state.zones[1].cards.a.map((c) => c.name)).toEqual(['Nothung', 'Sacrilego'])
-    expect(game.state.zones[0].cards.a).toEqual([])
+  it('leaves the OPPONENT hand alone', () => {
+    const game = makeGame()
+    game.privates.b.hand.push(inst({ faction: 'SS', type: 'vehicle', vehicleType: 'ship' }))
+    effectFor('nothungOnPlay')!({ game, actor: 'a', card: inst({ name: 'Nothung' }), ctx: makeCtx() })
+    expect(game.privates.b.hand[0].meta.costDelta).toBeUndefined()
   })
 
-  // Ruling A-1 (spec §7.3, wave 6). Spawning is not playing skips
-  // onPlayEffect and NOTHING else, so the spawned hull's own battle trigger
-  // survives — which is why the card names Sacrilego rather than a vanilla
-  // hull. Asserted rather than assumed: the alternative is discovering it in
-  // a battle report.
-  it('the spawned Sacrilego keeps its printed battle trigger', () => {
-    const spawned = play(1).state.zones[0].cards.a.find((c) => c.name === 'Sacrilego')!
-    expect(spawned.meta.onBattleEffect).toBe('sacrilegoBattle')
-    expect(spawned.keywords).toEqual(['scrappy', 'stealthy', 'mobile'])
+  it('resolves on an empty hand', () => {
+    const game = makeGame()
+    expect(effectFor('nothungOnPlay')!({ game, actor: 'a', card: inst({ name: 'Nothung' }), ctx: makeCtx() })).toBe(true)
   })
 
-  it('fails the play when the catalog has no Sacrilego — a data bug, not an empty pool', () => {
-    const card = nothung()
-    const game = makeGame({ privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } } })
-    const r = applyAction(
-      game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx(),
-    )
-    expect(r.ok).toBe(false)
+  // ⚠ state.log is public. A COUNT of matching cards leaks how many SS ships
+  // sit in a hidden hand, so the line carries neither names nor a number.
+  it('logs without naming or counting the hand', () => {
+    const game = makeGame()
+    hand(game)
+    effectFor('nothungOnPlay')!({ game, actor: 'a', card: inst({ name: 'Nothung' }), ctx: makeCtx() })
+    const log = game.state.log.join('\n')
+    expect(log).not.toContain('SS Ship')
+    expect(log).not.toMatch(/\d/)
+  })
+
+  // The old implementation spawned a Sacrilego from the catalog. The new one
+  // reads none, so the flag must come OFF — a stale one costs a catalog fetch
+  // per play and lies about what the effect does.
+  it('no longer needs the catalog', () => {
+    expect(CATALOG_EFFECTS.has('nothungOnPlay')).toBe(false)
   })
 })
 
@@ -3445,9 +3443,12 @@ describe('wave 6 — SS Nothung', () => {
 // as the rider block above: makeCtx hands every test a catalog, so a missing
 // flag is invisible to unit tests and shows up only as a dead card in
 // production. Asserted at runtime rather than by reading the source.
+//
+// nothungOnPlay left this list in the 2026-09-02 pass — it no longer reads
+// ctx.catalog at all (see the describe block above).
 describe('wave 6 — effects that must carry needsCatalog', () => {
   it.each([
-    'nothungOnPlay', 'balmungOnPlay', 'harbringerBattle', 'victoriaActivate',
+    'balmungOnPlay', 'harbringerBattle', 'victoriaActivate',
     // 2026-09-02: mints from ctx.catalog by name.
     'buzzsawOnPlay',
     // 2026-09-02, Task 6: mints two Earth Rakers from ctx.catalog by name.

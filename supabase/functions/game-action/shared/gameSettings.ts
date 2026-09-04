@@ -252,6 +252,10 @@ export const TRONDHEIM_COST_DELTA = -75_000
 // SS Resolute: the same clause at 40k.
 export const RESOLUTE_COST_DELTA = -40_000
 
+// SS Nothung: "reduce the cost of every SS ship in your hand by 40k". Its own
+// constant, not shared with RESOLUTE_COST_DELTA's identical -40k.
+export const NOTHUNG_COST_DELTA = -40_000
+
 // Human-readable names for the seven hero powers, used wherever a power id
 // is shown to a player (Kraken's refresh choice).
 export const HERO_POWER_LABELS: Record<string, string> = {

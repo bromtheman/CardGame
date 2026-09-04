@@ -68,7 +68,7 @@ const CARDS: Record<string, Expected> = {
     vehicleType: 'ship', cardText: '',
   },
   'SS:Nothung': {
-    materialCost: 470_000, blueprintCost: 478_000, keywords: ['blocker'], vehicleType: 'ship',
+    materialCost: 400_000, blueprintCost: 478_000, keywords: ['blocker'], vehicleType: 'ship', // 2026-09-02 pass
   },
   'SS:Balmung': {
     materialCost: 630_000, blueprintCost: 636_000, keywords: ['blocker'], vehicleType: 'ship',

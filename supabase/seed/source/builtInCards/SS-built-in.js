@@ -327,8 +327,8 @@ export const ssVehicles = [
      {
         name: 'Nothung',
         isBuiltIn: true,
-        cardText: 'Whenever this vehicle is played into a zone, also create a friendly Sacrilego in that zone',
-        materialCost: 470000,
+        cardText: 'When this vehicle is played, reduce the cost of every SS ship in your hand by 40k',
+        materialCost: 400000,
         blueprintCost: 478000,
         cpCost: 0,
         imageUrl: 'nothung.png',
