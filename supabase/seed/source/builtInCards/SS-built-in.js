@@ -490,8 +490,8 @@ export const ssVehicles = [
     {
         name: 'Hydra',
         isBuiltIn: true,
-        cardText: '',
-        materialCost: 230000,
+        cardText: 'When this vehicle is played, refresh one of your used hero powers then gain 1cp',
+        materialCost: 220000,
         blueprintCost: 238000,
         cpCost: 0,
         imageUrl: 'hydra.png',
@@ -502,6 +502,7 @@ export const ssVehicles = [
         blueprintId: null,
         keywords: [KEYWORDS.MOBILE],
         meta: {
+            [TRIGGERS.ON_PLAY]: 'hydraOnPlay',
         }
     },
     {

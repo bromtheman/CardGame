@@ -3492,7 +3492,7 @@ describe('wave 6 — effects that must carry needsCatalog', () => {
 describe('wave 6 — SS Balmung', () => {
   const hydraSnap = snap({
     name: 'Hydra', faction: 'SS', vehicleType: 'airship', materialCost: 230_000,
-    blueprintCost: 231_000, keywords: ['mobile'], meta: {},
+    blueprintCost: 231_000, keywords: ['mobile'], meta: { onPlayEffect: 'hydraOnPlay' },
   })
   const balmung = () => inst({
     name: 'Balmung', faction: 'SS', vehicleType: 'ship', materialCost: 0,
@@ -6786,5 +6786,42 @@ describe('SS Spectre — a CP off the opponent', () => {
     game.state.resources.a.cp = 2
     effectFor('spectreOnPlay')!({ game, actor: 'b', card: inst({ name: 'Spectre' }), ctx: makeCtx() })
     expect(game.state.resources.a.cp).toBe(1)
+  })
+})
+
+describe('SS Hydra — refresh one power, then a CP', () => {
+  it('suspends with one option per used power and refreshes the pick', () => {
+    const game = makeGame()
+    game.state.usedHeroPowers.a = ['draw', 'salvage']
+    const card = inst({ name: 'Hydra', faction: 'SS', vehicleType: 'airship', meta: { onPlayEffect: 'hydraOnPlay' } })
+    game.privates.a.hand.push(card)
+    const one = applyAction(game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 })
+    expect(one.ok).toBe(true)
+    if (!one.ok) return
+    // ⚠ The re-entry name. A wrong `effect:` compiles and passes every direct
+    // call — it fails only when a real player answers the dialog.
+    expect(one.game.state.pendingEffect?.effect).toBe('hydraOnPlay')
+    expect(one.game.state.pendingEffect?.options.map((o) => o.id).sort()).toEqual(['draw', 'salvage'])
+    const two = applyAction(one.game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'salvage' })
+    expect(two.ok).toBe(true)
+    if (!two.ok) return
+    expect(two.game.state.usedHeroPowers.a).toEqual(['draw'])
+    expect(two.game.state.resources.a.cp).toBe(4)
+  })
+
+  // choice()'s empty-options rule, which is why Kraken's tail runs at all.
+  it('still grants the CP to a player with no used powers, without suspending', () => {
+    const game = makeGame()
+    const ok = effectFor('hydraOnPlay')!({ game, actor: 'a', card: inst({ name: 'Hydra' }), ctx: makeCtx() })
+    expect(ok).toBe(true)
+    expect(game.state.pendingEffect).toBeNull()
+    expect(game.state.resources.a.cp).toBe(4)
+  })
+
+  // ⚠ R-6. The behaviour is Kraken's; the NAME must not be. A shared name
+  // rebinds every in-flight Kraken snapshot to Hydra's implementation.
+  it('is registered under its own id, distinct from Kraken', () => {
+    expect(effectFor('hydraOnPlay')).not.toBeNull()
+    expect(effectFor('hydraOnPlay')).not.toBe(effectFor('krakenOnPlay'))
   })
 })

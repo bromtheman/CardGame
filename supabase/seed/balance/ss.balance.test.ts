@@ -111,6 +111,10 @@ const CARDS: Record<string, Expected> = {
     materialCost: 200_000, blueprintCost: 214_000, keywords: ['stealthy'], vehicleType: 'ship',
     cardText: 'When this vehicle is played, reduce your opponent CP by 1',
   },
+  'SS:Hydra': {
+    materialCost: 220_000, blueprintCost: 238_000, keywords: ['mobile'], vehicleType: 'airship',
+    cardText: 'When this vehicle is played, refresh one of your used hero powers then gain 1cp',
+  },
 }
 
 describe('2026-09-02 balance pass — SS', () => {

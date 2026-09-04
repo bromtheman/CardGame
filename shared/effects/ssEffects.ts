@@ -1,7 +1,7 @@
 import {
   AIR_STRAFE_PREDATOR_COUNT, BASE_DAMAGE_DIVISOR, BULL_SHARK_BASE_DAMAGE, CASH_ADVANCE_MATERIALS,
   CATSHARK_MATERIALS,
-  EXCALIBUR_COST_DELTA, FACTIONS, KEYWORDS, NOTHUNG_COST_DELTA,
+  EXCALIBUR_COST_DELTA, FACTIONS, HERO_POWER_LABELS, KEYWORDS, NOTHUNG_COST_DELTA,
   REPAIRMEN_READY_DRAW_MAX_COST, RESOLUTE_COST_DELTA, RHEA_MAX_PLANE_COST, SACRILEGO_COST_DELTA,
   TRONDHEIM_COST_DELTA, TYR_HAND_DISCOUNT, VEHICLE_TYPES, VICTORIA_COST_DELTA,
 } from '../gameSettings.ts'
@@ -811,3 +811,38 @@ registerEffect('spectreOnPlay', ({ game, actor, card }) => {
   game.state.log.push(`${card.name} drains a command point from player ${enemy.toUpperCase()}`)
   return true
 })
+
+const HYDRA = 'hydraOnPlay'
+
+// "When this vehicle is played, refresh one of your used hero powers then gain
+// 1cp."
+//
+// ⚠ Kraken's SHAPE, deliberately NOT Kraken's NAME (ruling R-6). Every DWG
+// Kraken snapshot in every in-flight game names `krakenOnPlay`, and pointing a
+// second card at that string is the Kraken/Paddlegun collision itself — it
+// would rebind those snapshots to whatever this card does next.
+//
+// `effect: HYDRA` is bound to a const and used twice: choice() returns a plain
+// closure and never learns the name registerEffect files it under, so it has to
+// be told which name RESOLVE_PENDING_EFFECT should re-enter.
+//
+// Empty options do NOT suspend — a player with no used powers still gets the
+// CP, because choice() calls resolve(payload, null) in the same action.
+// pendingEffect.options is public, and used hero powers already are, so this
+// leaks nothing.
+registerEffect(HYDRA, choice({
+  effect: HYDRA,
+  prompt: 'Refresh one of your used hero powers',
+  options: ({ game, actor }) =>
+    game.state.usedHeroPowers[actor].map((p) => ({ id: p, label: HERO_POWER_LABELS[p] ?? p })),
+  resolve: ({ game, actor, card }, choiceId) => {
+    if (choiceId === null) {
+      game.state.log.push(`${card.name} finds no used hero power to refresh`)
+    } else {
+      game.state.usedHeroPowers[actor] = game.state.usedHeroPowers[actor].filter((p) => p !== choiceId)
+      game.state.log.push(`${card.name} refreshes ${HERO_POWER_LABELS[choiceId] ?? choiceId}`)
+    }
+    game.state.resources[actor].cp += 1 // the tail runs either way
+    return true
+  },
+}))
