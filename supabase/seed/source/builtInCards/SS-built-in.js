@@ -177,8 +177,8 @@ export const ssVehicles = [
     }, {
         name: 'Sacrilego',
         isBuiltIn: true,
-        cardText: 'Whenever this vehicle survives a fleet battle, gain 1cp. Additionally you may sacrifice it to increase the remaining hp percent of a friendly ship by 15',
-        materialCost: 80000,
+        cardText: 'Whenever this vehicle participates in a fleet battle, friendly ships receive SCRAPPY keyword for that battle. Whenever this vehicle survives a fleet battle, reduce the cost of SS ships in hand by 30k.',
+        materialCost: 10000,
         blueprintCost: 86000,
         cpCost: 0,
         imageUrl: 'sacrilego.png',

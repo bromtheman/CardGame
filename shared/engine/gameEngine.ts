@@ -251,7 +251,17 @@ export function discardSnapshotOf(card: CardInstance): SnapshotCard {
   // Factory'd hull would return PERMANENTLY upgraded, and again after every
   // later death. This is the strip list the comment above warns about; nothing
   // in TypeScript would have caught the omission.
-  const { costDelta: _costDelta, factoryEscort: _factoryEscort, ...withoutCostDelta } = snapshot.meta
+  //
+  // `scrappyOnLoan` (2026-09-02) comes off for factoryEscort's exact reason: it
+  // is a per-INSTANCE marker for a keyword Sacrilego lends only for the
+  // duration of one battle. Left on, a hull that dies mid-battle would file it
+  // into state.destroyed and return through reshuffleDiscard permanently
+  // Scrappy — and would then be stripped by a LATER Sacrilego resolve that
+  // never lent it anything.
+  const {
+    costDelta: _costDelta, factoryEscort: _factoryEscort,
+    scrappyOnLoan: _scrappyOnLoan, ...withoutCostDelta
+  } = snapshot.meta
   snapshot.meta = withoutCostDelta
   return snapshot as SnapshotCard
 }

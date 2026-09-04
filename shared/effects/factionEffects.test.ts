@@ -3,8 +3,8 @@ import { CATALOG_EFFECTS, RESOLVE_BYSTANDER_EFFECTS, effectFor, registerEffect }
 import { choice } from './primitives.ts'
 import {
   BASE_DAMAGE_DIVISOR, BULL_SHARK_BASE_DAMAGE, CASH_ADVANCE_MATERIALS, EXCALIBUR_COST_DELTA, KEYWORDS,
-  MATERIALS_PER_TURN, NOTHUNG_COST_DELTA, RESOLUTE_COST_DELTA, TRONDHEIM_COST_DELTA, TYR_HAND_DISCOUNT,
-  VICTORIA_COST_DELTA,
+  MATERIALS_PER_TURN, NOTHUNG_COST_DELTA, RESOLUTE_COST_DELTA, SACRILEGO_COST_DELTA, TRONDHEIM_COST_DELTA,
+  TYR_HAND_DISCOUNT, VICTORIA_COST_DELTA,
 } from '../gameSettings.ts'
 import { inst, makeCtx, makeGame, snap, zoneEntry } from '../engine/testFixtures.ts'
 import {
@@ -2044,177 +2044,116 @@ describe('wave 4 — battle triggers at resolve', () => {
   }
 
   describe('sacrilegoBattle', () => {
-    function board() {
+    const lockCtx = (over: Partial<BattleContext> = {}): BattleContext => ({
+      phase: 'lock', zoneId: 1, isDefender: true, isParticipant: true,
+      forced: false, survived: false, won: false, casualties: [], ...over,
+    })
+    const resolveCtx = (over: Partial<BattleContext> = {}): BattleContext => ({
+      ...lockCtx(), phase: 'resolve', survived: true, ...over,
+    })
+
+    const staged = () => {
       const game = makeGame()
-      const sacrilego = zoneEntry({ name: 'Sacrilego', instanceId: 'sac-1', vehicleType: 'ship' })
-      game.state.zones[0].cards.a.push(sacrilego)
-      const dead = zoneEntry({ name: 'Wreck', instanceId: 'wreck-1', vehicleType: 'ship' })
-      bury(game, 'a', dead)
-      return { game, sacrilego, dead, casualties: [{ entry: dead, side: 'a' as const, hp: 78 }] }
+      const sac = zoneEntry({ instanceId: 'sac', name: 'Sacrilego', vehicleType: 'ship',
+        keywords: ['scrappy', 'stealthy', 'mobile'] })
+      const mate = zoneEntry({ instanceId: 'mate', name: 'Escort', vehicleType: 'ship' })
+      const printed = zoneEntry({ instanceId: 'printed', name: 'Catshark', vehicleType: 'ship',
+        keywords: ['scrappy'] })
+      const sub = zoneEntry({ instanceId: 'sub', name: 'Diver', vehicleType: 'sub' })
+      const foe = zoneEntry({ instanceId: 'foe', name: 'Foe', vehicleType: 'ship' })
+      game.state.zones[0].cards.a.push(sac, mate, printed, sub)
+      game.state.zones[0].cards.b.push(foe)
+      game.state.activeBattle = {
+        zoneId: 1, aggressor: 'b',
+        attackerIds: ['foe'], defenderIds: ['sac', 'mate', 'printed', 'sub'],
+        distanceM: 1200, distanceModifiedBy: [], summons: [], continuation: null,
+      }
+      return { game, sac, mate, printed, sub, foe }
     }
 
-    it('grants 1 CP for surviving, before any choice is offered', () => {
-      const { game, sacrilego, casualties } = board()
-      const before = game.state.resources.a.cp
-      const ok = effectFor('sacrilegoBattle')!({
-        game, actor: 'a', card: sacrilego, ctx: makeCtx(), battle: resolveCtx(casualties),
-      })
+    it('grants SCRAPPY at lock to friendly SHIPS in the battle, and marks the loan', () => {
+      const { game, sac, mate, printed, sub, foe } = staged()
+      const ok = effectFor('sacrilegoBattle')!({ game, actor: 'a', card: sac, ctx: makeCtx(), battle: lockCtx() })
       expect(ok).toBe(true)
-      expect(game.state.resources.a.cp).toBe(before + 1)
-      expect(game.state.pendingEffect?.options.map((o) => o.id)).toEqual(['wreck-1'])
+      expect(mate.keywords).toContain('scrappy')
+      expect(mate.meta.scrappyOnLoan).toBe(true)
+      // A hull that already PRINTS scrappy is never marked, so it never loses it.
+      expect(printed.meta.scrappyOnLoan).toBeUndefined()
+      // Ships, not every vehicle — the text says "friendly ships".
+      expect(sub.keywords).not.toContain('scrappy')
+      // And never the enemy's.
+      expect(foe.keywords).not.toContain('scrappy')
     })
 
-    it('grants nothing and offers nothing when it did not survive', () => {
-      const { game, sacrilego, casualties } = board()
-      const before = game.state.resources.a.cp
-      const ok = effectFor('sacrilegoBattle')!({
-        game, actor: 'a', card: sacrilego, ctx: makeCtx(),
-        battle: resolveCtx(casualties, { survived: false }),
-      })
-      expect(ok).toBe(true)
-      expect(game.state.resources.a.cp).toBe(before) // "whenever this vehicle survives"
-      expect(game.state.pendingEffect).toBeNull()
+    it('takes the loan back at resolve, and leaves a printed or previously granted SCRAPPY alone', () => {
+      const { game, sac, mate, printed } = staged()
+      effectFor('sacrilegoBattle')!({ game, actor: 'a', card: sac, ctx: makeCtx(), battle: lockCtx() })
+      game.state.activeBattle = null
+      effectFor('sacrilegoBattle')!({ game, actor: 'a', card: sac, ctx: makeCtx(), battle: resolveCtx() })
+      expect(mate.keywords).not.toContain('scrappy')
+      expect(mate.meta.scrappyOnLoan).toBeUndefined()
+      expect(printed.keywords).toContain('scrappy')
     })
 
-    // Two friendly ships die — one inside the +15 band, one below it — so a
-    // mutated boundary changes WHICH option is offered rather than producing a
-    // rejected action that never reaches the assertion (handoff §3).
-    it('offers only the ship the +15 would actually have saved', () => {
-      const game = makeGame()
-      const sacrilego = zoneEntry({ name: 'Sacrilego', instanceId: 'sac-1', vehicleType: 'ship' })
-      game.state.zones[0].cards.a.push(sacrilego)
-      const inBand = zoneEntry({ name: 'Nearly', instanceId: 'near-1', vehicleType: 'ship' })
-      const tooFar = zoneEntry({ name: 'Gone', instanceId: 'gone-1', vehicleType: 'ship' })
-      bury(game, 'a', inBand)
-      bury(game, 'a', tooFar)
-      const ok = effectFor('sacrilegoBattle')!({
-        game, actor: 'a', card: sacrilego, ctx: makeCtx(),
-        battle: resolveCtx([
-          { entry: inBand, side: 'a', hp: 78 }, // 78 + 15 = 93 >= 90, saved
-          { entry: tooFar, side: 'a', hp: 70 }, // 70 + 15 = 85 < 90, beyond reach
-        ]),
-      })
-      expect(ok).toBe(true)
-      expect(game.state.pendingEffect?.options.map((o) => o.id)).toEqual(['near-1'])
-    })
-
-    it('ignores an enemy casualty and a friendly non-ship', () => {
-      const game = makeGame()
-      const sacrilego = zoneEntry({ name: 'Sacrilego', instanceId: 'sac-1', vehicleType: 'ship' })
-      game.state.zones[0].cards.a.push(sacrilego)
-      const enemyShip = zoneEntry({ name: 'Foe', instanceId: 'foe-1', vehicleType: 'ship' })
-      const friendlyPlane = zoneEntry({ name: 'Flyer', instanceId: 'fly-1', vehicleType: 'plane' })
-      bury(game, 'b', enemyShip)
-      bury(game, 'a', friendlyPlane)
-      const ok = effectFor('sacrilegoBattle')!({
-        game, actor: 'a', card: sacrilego, ctx: makeCtx(),
-        battle: resolveCtx([
-          { entry: enemyShip, side: 'b', hp: 78 },
-          { entry: friendlyPlane, side: 'a', hp: 78 },
-        ]),
-      })
-      expect(ok).toBe(true)
-      expect(game.state.pendingEffect).toBeNull() // no options — no suspension
-      expect(game.state.resources.a.cp).toBe(4)
-    })
-
-    it('accepting revives the ship, removes one snapshot, and sacrifices Sacrilego', () => {
-      const { game, sacrilego, casualties } = board()
+    // The loan is returned even when Sacrilego dies: `participants` still holds
+    // a destroyed hull's entry at resolve, so the trigger still fires for it.
+    it('takes the loan back even when Sacrilego did not survive', () => {
+      const { game, sac, mate } = staged()
+      effectFor('sacrilegoBattle')!({ game, actor: 'a', card: sac, ctx: makeCtx(), battle: lockCtx() })
+      game.state.activeBattle = null
+      game.state.zones[0].cards.a = game.state.zones[0].cards.a.filter((c) => c.instanceId !== 'sac')
       effectFor('sacrilegoBattle')!({
-        game, actor: 'a', card: sacrilego, ctx: makeCtx(), battle: resolveCtx(casualties),
+        game, actor: 'a', card: sac, ctx: makeCtx(), battle: resolveCtx({ survived: false }),
       })
-      const r = applyAction(game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'wreck-1' }, makeCtx())
-      if (!r.ok) throw new Error(r.error)
-      const zone = r.game.state.zones[0]
-      expect(zone.cards.a.map((c) => c.name)).toEqual(['Wreck'])
-      expect(r.game.state.destroyed.a.map((c) => c.name)).toEqual(['Sacrilego'])
+      expect(mate.keywords).not.toContain('scrappy')
     })
 
-    it('declining leaves both the wreck destroyed and Sacrilego alive', () => {
-      const { game, sacrilego, casualties } = board()
+    it('cuts 30k off every SS ship in hand on a survival', () => {
+      const { game, sac } = staged()
+      game.privates.a.hand.push(
+        inst({ name: 'SS Ship', faction: 'SS', type: 'vehicle', vehicleType: 'ship' }),
+        inst({ name: 'SS Sub', faction: 'SS', type: 'vehicle', vehicleType: 'sub' }),
+      )
+      game.state.activeBattle = null
+      effectFor('sacrilegoBattle')!({ game, actor: 'a', card: sac, ctx: makeCtx(), battle: resolveCtx() })
+      expect(game.privates.a.hand[0].meta.costDelta).toBe(SACRILEGO_COST_DELTA)
+      expect(game.privates.a.hand[1].meta.costDelta).toBeUndefined()
+    })
+
+    it('cuts nothing when it did not survive', () => {
+      const { game, sac } = staged()
+      game.privates.a.hand.push(inst({ faction: 'SS', type: 'vehicle', vehicleType: 'ship' }))
+      game.state.activeBattle = null
       effectFor('sacrilegoBattle')!({
-        game, actor: 'a', card: sacrilego, ctx: makeCtx(), battle: resolveCtx(casualties),
+        game, actor: 'a', card: sac, ctx: makeCtx(), battle: resolveCtx({ survived: false }),
       })
-      const r = applyAction(game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', cancel: true }, makeCtx())
-      if (!r.ok) throw new Error(r.error)
-      expect(r.game.state.zones[0].cards.a.map((c) => c.name)).toEqual(['Sacrilego'])
-      expect(r.game.state.destroyed.a.map((c) => c.name)).toEqual(['Wreck'])
-      expect(r.game.state.resources.a.cp).toBe(4) // the CP landed either way
+      expect(game.privates.a.hand[0].meta.costDelta).toBeUndefined()
     })
 
-    // Regression: a death trigger dispatched EARLIER in the same
-    // DECIDE_BATTLE_REPORT can empty the discard — grant({ draw: 1 }) on an
-    // empty deck reshuffles the whole pile into it — leaving the casualty
-    // unrevivable. Offering it anyway gave a choice whose only working answer
-    // was Decline.
-    it('does not offer a casualty whose snapshot has already left the discard', () => {
-      const { game, sacrilego, casualties } = board()
-      game.state.destroyed.a = [] // what reshuffleDiscard leaves behind
-      const ok = effectFor('sacrilegoBattle')!({
-        game, actor: 'a', card: sacrilego, ctx: makeCtx(), battle: resolveCtx(casualties),
-      })
-      expect(ok).toBe(true)
-      expect(game.state.pendingEffect).toBeNull()
-      expect(game.state.resources.a.cp).toBe(4) // clause 1 is unaffected
+    // R-3's build-around: each survival COMPOUNDS.
+    it('compounds across two battles', () => {
+      const { game, sac } = staged()
+      game.privates.a.hand.push(inst({ faction: 'SS', type: 'vehicle', vehicleType: 'ship' }))
+      game.state.activeBattle = null
+      effectFor('sacrilegoBattle')!({ game, actor: 'a', card: sac, ctx: makeCtx(), battle: resolveCtx() })
+      effectFor('sacrilegoBattle')!({ game, actor: 'a', card: sac, ctx: makeCtx(), battle: resolveCtx() })
+      expect(game.privates.a.hand[0].meta.costDelta).toBe(2 * SACRILEGO_COST_DELTA)
     })
 
-    // Regression: the dispatcher used to skip a whole effect once the slot was
-    // taken, so a second Sacrilego lost its unconditional CP as well as its
-    // offer. UNIQUE_COPY_LIMIT is 2, so two on the field is a legal deck.
-    it('grants a CP to EVERY surviving Sacrilego, even when only one can be offered', () => {
-      const game = makeGame({ turnNumber: 3 })
-      const attacker = zoneEntry({ playedOnTurn: 2 })
-      const meta = { onBattleEffect: 'sacrilegoBattle' }
-      const first = zoneEntry({ name: 'Sacrilego', vehicleType: 'ship', meta })
-      const second = zoneEntry({ name: 'Sacrilego', vehicleType: 'ship', meta })
-      const doomed = zoneEntry({ name: 'Wreck', vehicleType: 'ship' })
-      game.state.zones[0].cards.a.push(attacker)
-      game.state.zones[0].cards.b.push(first, second, doomed)
-      game.privates.b.deck.push(inst({ name: 'Spare' })) // so a death draw does not empty the pile
-      const declared = applyAction(game, 'alice', {
-        type: 'ATTACK_ENEMY_FLEET', zoneId: 1, attackerIds: [attacker.instanceId],
-        targetIds: [first.instanceId, second.instanceId, doomed.instanceId],
-      }, makeCtx())
-      if (!declared.ok) throw new Error(declared.error)
-      const before = declared.game.state.resources.b.cp
-      const submitted = applyAction(declared.game, 'alice', {
-        type: 'SUBMIT_BATTLE_REPORT',
-        results: {
-          [attacker.instanceId]: 95, [first.instanceId]: 95,
-          [second.instanceId]: 95, [doomed.instanceId]: 78,
-        },
-        repairs: [],
-      }, makeCtx())
-      if (!submitted.ok) throw new Error(submitted.error)
-      const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, makeCtx())
-      if (!decided.ok) throw new Error(decided.error)
-      expect(decided.game.state.resources.b.cp).toBe(before + 2)
-      // One offer, not two: the second is dropped rather than overwriting.
-      expect(decided.game.state.pendingEffect).not.toBeNull()
-      expect(decided.game.state.log.join('\n')).toContain("Sacrilego's offer was not made")
-    })
-
-    // Two casualties of the SAME card would otherwise render as two identical
-    // buttons — the dialog shows the label alone.
-    it('disambiguates same-named casualties by their ending HP', () => {
-      const game = makeGame()
-      const sacrilego = zoneEntry({ name: 'Sacrilego', instanceId: 'sac-1', vehicleType: 'ship' })
-      game.state.zones[0].cards.a.push(sacrilego)
-      const one = zoneEntry({ name: 'Cyclone', instanceId: 'cy-1', vehicleType: 'ship', cardId: 'cyclone' })
-      const two = zoneEntry({ name: 'Cyclone', instanceId: 'cy-2', vehicleType: 'ship', cardId: 'cyclone' })
-      bury(game, 'a', one)
-      bury(game, 'a', two)
+    it('does nothing at all for a battle it is not in', () => {
+      const { game, sac, mate } = staged()
       effectFor('sacrilegoBattle')!({
-        game, actor: 'a', card: sacrilego, ctx: makeCtx(),
-        battle: resolveCtx([
-          { entry: one, side: 'a', hp: 76 },
-          { entry: two, side: 'a', hp: 88 },
-        ]),
+        game, actor: 'a', card: sac, ctx: makeCtx(), battle: lockCtx({ isParticipant: false }),
       })
-      expect(game.state.pendingEffect?.options).toEqual([
-        { id: 'cy-1', label: 'Cyclone (76%)' },
-        { id: 'cy-2', label: 'Cyclone (88%)' },
-      ])
+      expect(mate.keywords).not.toContain('scrappy')
+    })
+
+    // The strip list (docs/claude/architecture.md). A hull that dies holding the
+    // loan would file it into state.destroyed and come back through
+    // reshuffleDiscard permanently Scrappy — factoryEscort's exact bug.
+    it('discardSnapshotOf strips scrappyOnLoan', () => {
+      const snapshot = discardSnapshotOf(zoneEntry({ meta: { scrappyOnLoan: true } }))
+      expect((snapshot.meta as Record<string, unknown>).scrappyOnLoan).toBeUndefined()
     })
   })
 

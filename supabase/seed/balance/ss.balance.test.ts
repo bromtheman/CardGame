@@ -31,6 +31,9 @@ interface Expected {
   cardText?: string
 }
 
+// ⚠ Ruling R-3 — Sacrilego is **10,000**, not a dropped zero. Pinned here so
+// it cannot drift back to 80k or 100k silently.
+//
 // Every SS card the 2026-09-02 pass touched, spelled out. Keywords compare as
 // SETS — order in the seed literal is not meaningful.
 const CARDS: Record<string, Expected> = {
@@ -90,6 +93,11 @@ const CARDS: Record<string, Expected> = {
   'SS:Nothung': {
     materialCost: 400_000, blueprintCost: 478_000, keywords: ['blocker'], vehicleType: 'ship',
     cardText: 'When this vehicle is played, reduce the cost of every SS ship in your hand by 40k',
+  },
+  'SS:Sacrilego': {
+    materialCost: 10_000, blueprintCost: 86_000,
+    keywords: ['scrappy', 'stealthy', 'mobile'], vehicleType: 'ship',
+    cardText: 'Whenever this vehicle participates in a fleet battle, friendly ships receive SCRAPPY keyword for that battle. Whenever this vehicle survives a fleet battle, reduce the cost of SS ships in hand by 30k.',
   },
 }
 

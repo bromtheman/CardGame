@@ -2,12 +2,12 @@ import {
   AIR_STRAFE_PREDATOR_COUNT, BASE_DAMAGE_DIVISOR, BULL_SHARK_BASE_DAMAGE, CASH_ADVANCE_MATERIALS,
   CATSHARK_MATERIALS,
   EXCALIBUR_COST_DELTA, FACTIONS, KEYWORDS, NOTHUNG_COST_DELTA,
-  REPAIRMEN_READY_DRAW_MAX_COST, RESOLUTE_COST_DELTA, RHEA_MAX_PLANE_COST, SACRILEGO_HP_BOOST,
-  SURVIVE_HP_PERCENT, TRONDHEIM_COST_DELTA, TYR_HAND_DISCOUNT, VEHICLE_TYPES, VICTORIA_COST_DELTA,
+  REPAIRMEN_READY_DRAW_MAX_COST, RESOLUTE_COST_DELTA, RHEA_MAX_PLANE_COST, SACRILEGO_COST_DELTA,
+  TRONDHEIM_COST_DELTA, TYR_HAND_DISCOUNT, VEHICLE_TYPES, VICTORIA_COST_DELTA,
 } from '../gameSettings.ts'
 import {
   catalogCard, costDelta, choice, drawFromPool, enemyVehicleOptions, friendlyVehicleOptions, grant,
-  grantKeywords, poolEligible, sacrificeToSave, sequence, spawnInto, summonHulls,
+  grantKeywords, poolEligible, sequence, spawnInto, summonHulls,
 } from './primitives.ts'
 import { registerCostModifier, registerEffect } from './registry.ts'
 import type { EffectFn, EffectPayload } from './registry.ts'
@@ -501,38 +501,78 @@ registerEffect('dryadBattle', ({ game, actor, ctx, battle }) => {
 }, { needsCatalog: true })
 
 const SACRILEGO = 'sacrilegoBattle'
+const SCRAPPY_ON_LOAN = 'scrappyOnLoan'
 
-// Clause 2. "Increase the remaining hp percent of a friendly ship by 15" is
-// implemented where the boost is observable and nowhere else (spec §7.3, the
-// same reasoning applied to Trebuchet's "fully heal it"): the board tracks no
-// HP, so the only difference +15 can make is turning a destroyed ship into a
-// surviving one. Eligible = a friendly SHIP destroyed at SURVIVE_HP_PERCENT −
-// SACRILEGO_HP_BOOST or better, where the boost would have carried it over the
-// line. The band is derived, never written as a literal.
-const sacrilegoSave = sacrificeToSave({
-  effect: SACRILEGO,
-  prompt: 'Sacrifice Sacrilego to save a friendly ship?',
-  eligible: (battle, actor) => battle.casualties.filter((c) =>
-    c.side === actor &&
-    c.entry.vehicleType === VEHICLE_TYPES.SHIP &&
-    c.hp >= SURVIVE_HP_PERCENT - SACRILEGO_HP_BOOST),
-})
-
-// "Whenever this vehicle survives a fleet battle, gain 1cp. Additionally you
-// may sacrifice it to increase the remaining hp percent of a friendly ship by
-// 15." Two clauses, one registry name, told apart by the payload: a DP2
-// resolve trigger carries `battle`, and RESOLVE_PENDING_EFFECT's re-entry
-// carries `resolution` and no battle at all.
+// "Whenever this vehicle participates in a fleet battle, friendly ships receive
+// SCRAPPY keyword for that battle. Whenever this vehicle survives a fleet
+// battle, reduce the cost of SS ships in hand by 30k."
 //
-// Clause 1 does not depend on clause 2 and runs first, so the CP lands even
-// when nothing is eligible — `choice`'s empty-options rule then resolves in
-// the same action without suspending.
-registerEffect(SACRILEGO, (payload) => {
-  if (payload.resolution !== undefined) return sacrilegoSave(payload)
-  const { battle } = payload
-  if (!battle || battle.phase !== 'resolve' || !battle.isParticipant || !battle.survived) return true
-  grant({ cp: 1 })(payload)
-  return sacrilegoSave(payload)
+// ⚠ "FOR THAT BATTLE" IS A REAL WINDOW, not a rounding of "permanently".
+// SCRAPPY is read in exactly two places, both inside DECIDE_BATTLE_REPORT:
+// repairCostOf and autoRepairIds (battleResolve.ts). So the interval between
+// LOCK and RESOLVE is precisely the span in which the keyword can be observed —
+// grant at lock, take it back at resolve, and no reader sees it outside the
+// battle. A permanent grant would make every FUTURE repair free too, which the
+// card does not say.
+//
+// The loan is remembered per HULL under `scrappyOnLoan`, the shape TG's
+// Havoc/Mirth Factory established with `factoryEscort`. A hull that already
+// carries SCRAPPY — printed (Catshark), or granted permanently by Repairmen
+// Ready — is never marked and so is never stripped.
+//
+// ⚠ `scrappyOnLoan` is in discardSnapshotOf's strip list. Nothing in TypeScript
+// would have caught its absence.
+//
+// Both clauses read the ROSTER off game.state.activeBattle, which is set before
+// dispatchBattleLock runs (battleDeclare.ts's setBattle). By RESOLVE it is
+// already null — which is why the strip walks the actor's board rather than the
+// roster, and is also why a second Sacrilego in the same battle is harmless:
+// both want the same hulls stripped.
+registerEffect(SACRILEGO, ({ game, actor, card, battle }) => {
+  if (!battle || !battle.isParticipant) return true
+
+  if (battle.phase === 'lock') {
+    const live = game.state.activeBattle
+    if (!live) return true
+    const mine = battle.isDefender ? live.defenderIds : live.attackerIds
+    for (const id of mine) {
+      const found = findVehicle(game.state, id)
+      // Board hulls only. A battle SUMMON evaporates on report approval whatever
+      // its HP (spec §4.4), so a free repair means nothing to one.
+      if (!found || found.side !== actor) continue
+      const entry = found.entry
+      if (entry.vehicleType !== VEHICLE_TYPES.SHIP) continue
+      if (entry.keywords.includes(KEYWORDS.SCRAPPY)) continue
+      entry.keywords = [...entry.keywords, KEYWORDS.SCRAPPY]
+      entry.meta = { ...entry.meta, [SCRAPPY_ON_LOAN]: true }
+    }
+    game.state.log.push(`${card.name} rigs the fleet for field repairs`)
+    return true
+  }
+
+  if (battle.phase !== 'resolve') return true
+
+  // Clause 1's other half: take the loan back. Runs whether or not Sacrilego
+  // survived — `participants` still holds a destroyed hull's entry at resolve,
+  // so this trigger fires for a dead Sacrilego too, which is what stops the
+  // keyword outliving the battle that lent it.
+  for (const zone of game.state.zones) {
+    for (const entry of zone.cards[actor]) {
+      if (entry.meta[SCRAPPY_ON_LOAN] !== true) continue
+      entry.keywords = entry.keywords.filter((k) => k !== KEYWORDS.SCRAPPY)
+      const { [SCRAPPY_ON_LOAN]: _loan, ...rest } = entry.meta
+      entry.meta = rest
+    }
+  }
+
+  // Clause 2. The log carries neither names nor a count — state.log is public
+  // and the hand is hidden (Nothung's rule).
+  if (!battle.survived) return true
+  for (const held of game.privates[actor].hand) {
+    if (isSsShip(held)) discountInHand(held, SACRILEGO_COST_DELTA)
+  }
+  game.state.log.push(`${card.name} survives and cuts the yard's price for player ${actor.toUpperCase()}`)
+  return true
 })
 
 const BLOCKADE = 'blockadeEffect'

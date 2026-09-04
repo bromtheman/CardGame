@@ -256,6 +256,12 @@ export const RESOLUTE_COST_DELTA = -40_000
 // constant, not shared with RESOLUTE_COST_DELTA's identical -40k.
 export const NOTHUNG_COST_DELTA = -40_000
 
+// SS Sacrilego: "reduce the cost of SS ships in hand by 30k" on each survival.
+// R-3 keeps the card at 10,000 materials, so this discount COMPOUNDS behind a
+// near-free Stealthy Mobile hull — that is the intended build-around, not an
+// oversight.
+export const SACRILEGO_COST_DELTA = -30_000
+
 // Human-readable names for the seven hero powers, used wherever a power id
 // is shown to a player (Kraken's refresh choice).
 export const HERO_POWER_LABELS: Record<string, string> = {
