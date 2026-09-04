@@ -447,8 +447,9 @@ export function choice(spec: {
 }
 
 // "You may sacrifice this vehicle to save one of the hulls that just died."
-// Iron Cordon and Sacrilego's clause 2 are the same shape with different
-// eligibility rules, so the whole two-phase dance lives here once.
+// OW Iron Cordon is the customer (Sacrilego's own clause 2 had the same shape
+// before the 2026-09-02 pass rewrote the card away from it), so the whole
+// two-phase dance lives here rather than inline on that one effect.
 //
 // First entry (a DP2 resolve trigger, so `battle` is set) offers the choice
 // and STASHES the eligible casualties. That stash is not an optimisation: by

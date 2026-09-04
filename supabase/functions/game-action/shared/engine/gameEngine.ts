@@ -258,11 +258,22 @@ export function discardSnapshotOf(card: CardInstance): SnapshotCard {
   // into state.destroyed and return through reshuffleDiscard permanently
   // Scrappy — and would then be stripped by a LATER Sacrilego resolve that
   // never lent it anything.
-  const {
-    costDelta: _costDelta, factoryEscort: _factoryEscort,
-    scrappyOnLoan: _scrappyOnLoan, ...withoutCostDelta
-  } = snapshot.meta
+  //
+  // ⚠ Fix round 1 (2026-09-02): the loan is TWO mutations, not one — the
+  // marker above, AND the `scrappy` keyword itself, pushed onto entry.keywords
+  // at lock. Dropping only the marker left the keyword riding the rest-spread
+  // below out into the snapshot unchanged: a hull that died mid-battle came
+  // back through reshuffleDiscard permanently Scrappy anyway, and with no
+  // marker left, no LATER Sacrilego resolve could ever find it to strip —
+  // that strip walks the board keyed on the marker, and the marker was
+  // already gone. So the keyword has to come off HERE, before the marker
+  // itself is dropped, using the marker's value one last time to know whether
+  // this hull's `scrappy` is a loan or its own.
+  const { costDelta: _costDelta, factoryEscort: _factoryEscort, scrappyOnLoan, ...withoutCostDelta } = snapshot.meta
   snapshot.meta = withoutCostDelta
+  if (scrappyOnLoan === true) {
+    snapshot.keywords = snapshot.keywords.filter((k) => k !== KEYWORDS.SCRAPPY)
+  }
   return snapshot as SnapshotCard
 }
 

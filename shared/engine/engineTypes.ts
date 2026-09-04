@@ -53,7 +53,9 @@ export interface BattleContext {
   // hulls died in this battle, and at what HP" — by the time a resolve trigger
   // runs, activeBattle and pendingReport are both null and state.destroyed
   // holds bare snapshots with no instanceId, no HP, and no battle of origin.
-  // Iron Cordon and Sacrilego's clause 2 both read it.
+  // OW Iron Cordon reads it (the sacrificeToSave customer — Sacrilego's own
+  // sacrifice-and-revive clause was rewritten by the 2026-09-02 pass and no
+  // longer does).
   casualties: BattleCasualty[]
 }
 

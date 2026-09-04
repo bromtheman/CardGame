@@ -59,8 +59,10 @@ export function battleOutcome(
 // one-slot rule is enforced inside choice() (primitives.ts), which drops a
 // second OFFER rather than skipping a whole effect (spec §4.3, DP2 departure
 // 4). Enforcing it here instead would starve an unconditional clause sharing a
-// card with an optional one — two surviving Sacrilegos would grant 1 CP
-// between them rather than 1 each.
+// card with an optional one — the shape that motivated the rule: the ORIGINAL
+// Sacrilego ("gain 1cp. Additionally you may sacrifice it…", rewritten away by
+// the 2026-09-02 pass) had to grant 1 CP to EACH surviving copy, not 1 between
+// them, even though only one copy could ever win the suspension slot.
 //
 // A trigger that reports failure gets a log note and nothing more: at lock the
 // battle is already declared, and at resolve the report is already approved,
@@ -418,16 +420,17 @@ export function fireDeathEffect(
 }
 
 // Undo one death: put the hull back on the board and take its snapshot back
-// out of the discard. Iron Cordon and Sacrilego's clause 2 are the two
-// customers. The snapshot is matched on cardId alone — two copies of one card
-// are byte-identical in the discard, so removing either is exact — and looked
-// for under the card's OWNER (a captured hull's discard is filed there, not
-// under whoever was flying it).
+// out of the discard. OW Iron Cordon is the customer (Sacrilego's own
+// sacrifice-and-revive clause was rewritten away by the 2026-09-02 pass). The
+// snapshot is matched on cardId alone — two copies of one card are
+// byte-identical in the discard, so removing either is exact — and looked for
+// under the card's OWNER (a captured hull's discard is filed there, not under
+// whoever was flying it).
 //
 // Returns false without touching anything when the zone is gone or nothing
 // matches, so a caller can refuse rather than half-apply. It does NOT unwind
-// an onDeathEffect that already fired (spec §4.3, DP2 departure 7): both
-// customers resolve a choice in a later action, by which time those have run.
+// an onDeathEffect that already fired (spec §4.3, DP2 departure 7): the
+// customer resolves a choice in a later action, by which time that has run.
 // Two snapshots of one card are NOT interchangeable, however tempting that
 // looks: keywords and meta are per-instance and diverge on the board.
 // repairmenReadyEffect grants SCRAPPY to a hull already deployed, so a plain

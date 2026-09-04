@@ -2044,12 +2044,16 @@ describe('wave 4 — battle triggers at resolve', () => {
   }
 
   describe('sacrilegoBattle', () => {
-    const lockCtx = (over: Partial<BattleContext> = {}): BattleContext => ({
+    // Named sacLock/sacResolve, not lockCtx/resolveCtx — this block nests
+    // inside 'wave 4 — battle triggers at resolve', which already defines its
+    // own resolveCtx above. A same-named const here would silently SHADOW it
+    // rather than error, so the two pairs get distinct names instead.
+    const sacLock = (over: Partial<BattleContext> = {}): BattleContext => ({
       phase: 'lock', zoneId: 1, isDefender: true, isParticipant: true,
       forced: false, survived: false, won: false, casualties: [], ...over,
     })
-    const resolveCtx = (over: Partial<BattleContext> = {}): BattleContext => ({
-      ...lockCtx(), phase: 'resolve', survived: true, ...over,
+    const sacResolve = (over: Partial<BattleContext> = {}): BattleContext => ({
+      ...sacLock(), phase: 'resolve', survived: true, ...over,
     })
 
     const staged = () => {
@@ -2073,7 +2077,7 @@ describe('wave 4 — battle triggers at resolve', () => {
 
     it('grants SCRAPPY at lock to friendly SHIPS in the battle, and marks the loan', () => {
       const { game, sac, mate, printed, sub, foe } = staged()
-      const ok = effectFor('sacrilegoBattle')!({ game, actor: 'a', card: sac, ctx: makeCtx(), battle: lockCtx() })
+      const ok = effectFor('sacrilegoBattle')!({ game, actor: 'a', card: sac, ctx: makeCtx(), battle: sacLock() })
       expect(ok).toBe(true)
       expect(mate.keywords).toContain('scrappy')
       expect(mate.meta.scrappyOnLoan).toBe(true)
@@ -2087,9 +2091,9 @@ describe('wave 4 — battle triggers at resolve', () => {
 
     it('takes the loan back at resolve, and leaves a printed or previously granted SCRAPPY alone', () => {
       const { game, sac, mate, printed } = staged()
-      effectFor('sacrilegoBattle')!({ game, actor: 'a', card: sac, ctx: makeCtx(), battle: lockCtx() })
+      effectFor('sacrilegoBattle')!({ game, actor: 'a', card: sac, ctx: makeCtx(), battle: sacLock() })
       game.state.activeBattle = null
-      effectFor('sacrilegoBattle')!({ game, actor: 'a', card: sac, ctx: makeCtx(), battle: resolveCtx() })
+      effectFor('sacrilegoBattle')!({ game, actor: 'a', card: sac, ctx: makeCtx(), battle: sacResolve() })
       expect(mate.keywords).not.toContain('scrappy')
       expect(mate.meta.scrappyOnLoan).toBeUndefined()
       expect(printed.keywords).toContain('scrappy')
@@ -2099,11 +2103,11 @@ describe('wave 4 — battle triggers at resolve', () => {
     // a destroyed hull's entry at resolve, so the trigger still fires for it.
     it('takes the loan back even when Sacrilego did not survive', () => {
       const { game, sac, mate } = staged()
-      effectFor('sacrilegoBattle')!({ game, actor: 'a', card: sac, ctx: makeCtx(), battle: lockCtx() })
+      effectFor('sacrilegoBattle')!({ game, actor: 'a', card: sac, ctx: makeCtx(), battle: sacLock() })
       game.state.activeBattle = null
       game.state.zones[0].cards.a = game.state.zones[0].cards.a.filter((c) => c.instanceId !== 'sac')
       effectFor('sacrilegoBattle')!({
-        game, actor: 'a', card: sac, ctx: makeCtx(), battle: resolveCtx({ survived: false }),
+        game, actor: 'a', card: sac, ctx: makeCtx(), battle: sacResolve({ survived: false }),
       })
       expect(mate.keywords).not.toContain('scrappy')
     })
@@ -2115,7 +2119,7 @@ describe('wave 4 — battle triggers at resolve', () => {
         inst({ name: 'SS Sub', faction: 'SS', type: 'vehicle', vehicleType: 'sub' }),
       )
       game.state.activeBattle = null
-      effectFor('sacrilegoBattle')!({ game, actor: 'a', card: sac, ctx: makeCtx(), battle: resolveCtx() })
+      effectFor('sacrilegoBattle')!({ game, actor: 'a', card: sac, ctx: makeCtx(), battle: sacResolve() })
       expect(game.privates.a.hand[0].meta.costDelta).toBe(SACRILEGO_COST_DELTA)
       expect(game.privates.a.hand[1].meta.costDelta).toBeUndefined()
     })
@@ -2125,7 +2129,7 @@ describe('wave 4 — battle triggers at resolve', () => {
       game.privates.a.hand.push(inst({ faction: 'SS', type: 'vehicle', vehicleType: 'ship' }))
       game.state.activeBattle = null
       effectFor('sacrilegoBattle')!({
-        game, actor: 'a', card: sac, ctx: makeCtx(), battle: resolveCtx({ survived: false }),
+        game, actor: 'a', card: sac, ctx: makeCtx(), battle: sacResolve({ survived: false }),
       })
       expect(game.privates.a.hand[0].meta.costDelta).toBeUndefined()
     })
@@ -2135,25 +2139,113 @@ describe('wave 4 — battle triggers at resolve', () => {
       const { game, sac } = staged()
       game.privates.a.hand.push(inst({ faction: 'SS', type: 'vehicle', vehicleType: 'ship' }))
       game.state.activeBattle = null
-      effectFor('sacrilegoBattle')!({ game, actor: 'a', card: sac, ctx: makeCtx(), battle: resolveCtx() })
-      effectFor('sacrilegoBattle')!({ game, actor: 'a', card: sac, ctx: makeCtx(), battle: resolveCtx() })
+      effectFor('sacrilegoBattle')!({ game, actor: 'a', card: sac, ctx: makeCtx(), battle: sacResolve() })
+      effectFor('sacrilegoBattle')!({ game, actor: 'a', card: sac, ctx: makeCtx(), battle: sacResolve() })
       expect(game.privates.a.hand[0].meta.costDelta).toBe(2 * SACRILEGO_COST_DELTA)
     })
 
     it('does nothing at all for a battle it is not in', () => {
       const { game, sac, mate } = staged()
       effectFor('sacrilegoBattle')!({
-        game, actor: 'a', card: sac, ctx: makeCtx(), battle: lockCtx({ isParticipant: false }),
+        game, actor: 'a', card: sac, ctx: makeCtx(), battle: sacLock({ isParticipant: false }),
       })
       expect(mate.keywords).not.toContain('scrappy')
     })
 
-    // The strip list (docs/claude/architecture.md). A hull that dies holding the
-    // loan would file it into state.destroyed and come back through
-    // reshuffleDiscard permanently Scrappy — factoryEscort's exact bug.
-    it('discardSnapshotOf strips scrappyOnLoan', () => {
-      const snapshot = discardSnapshotOf(zoneEntry({ meta: { scrappyOnLoan: true } }))
+    // ⚠ Fix round 1. The strip list (docs/claude/architecture.md) has to shed
+    // the loan's TWO mutations, not one: `meta.scrappyOnLoan` AND the
+    // `scrappy` keyword itself pushed onto `entry.keywords` at lock. A hull
+    // that dies mid-battle still carrying the loan is snapshotted here on its
+    // way into state.destroyed — if only the marker came off, the keyword
+    // would ride the rest-spread out permanently, come back through
+    // reshuffleDiscard Scrappy forever, and no LATER Sacrilego resolve could
+    // ever find it again (that strip walks the marker, and the marker is
+    // already gone).
+    it('discardSnapshotOf strips both the scrappyOnLoan marker and the loaned keyword', () => {
+      const snapshot = discardSnapshotOf(
+        zoneEntry({ keywords: ['scrappy', 'blocker'], meta: { scrappyOnLoan: true } }),
+      )
+      expect(snapshot.keywords).not.toContain('scrappy')
+      expect(snapshot.keywords).toContain('blocker') // an unrelated keyword is untouched
       expect((snapshot.meta as Record<string, unknown>).scrappyOnLoan).toBeUndefined()
+    })
+
+    // The strip is keyed on the MARKER, never on the keyword alone — a hull
+    // that PRINTS scrappy (Catshark) or was granted it permanently
+    // (Repairmen Ready) carries no marker and must keep the keyword forever.
+    it('discardSnapshotOf leaves a printed or permanently granted scrappy alone', () => {
+      const snapshot = discardSnapshotOf(zoneEntry({ keywords: ['scrappy'] }))
+      expect(snapshot.keywords).toContain('scrappy')
+    })
+
+    // End to end through the real engine (ATTACK_ENEMY_FLEET -> the Stealthy
+    // response window Sacrilego's own printed keyword opens ->
+    // SUBMIT_BATTLE_REPORT -> DECIDE_BATTLE_REPORT), so the lock/resolve
+    // dispatch, the repair math, and the discard snapshot all run for real
+    // rather than being driven one at a time through effectFor.
+    it('loans SCRAPPY for a real battle, frees a repair, and sheds the loan on both survivors and the dead', () => {
+      const game = makeGame({ turnNumber: 3 })
+      const sac = zoneEntry({
+        instanceId: 'sac', name: 'Sacrilego', vehicleType: 'ship',
+        keywords: ['scrappy', 'stealthy', 'mobile'], meta: { onBattleEffect: 'sacrilegoBattle' },
+      })
+      const shipA = zoneEntry({ instanceId: 'shipA', name: 'Escort A', vehicleType: 'ship' })
+      const shipB = zoneEntry({ instanceId: 'shipB', name: 'Escort B', vehicleType: 'ship' })
+      const foe = zoneEntry({ instanceId: 'foe', name: 'Foe', vehicleType: 'ship' })
+      game.state.zones[0].cards.a.push(sac, shipA, shipB)
+      game.state.zones[0].cards.b.push(foe)
+
+      // Alice (side a, the default activePlayer — ATTACK_ENEMY_FLEET is an
+      // on-turn action) attacks with her whole fleet. The single target (foe)
+      // carries no Stealthy, so no response window opens and the battle locks
+      // immediately — which is where the loan is granted for real.
+      const locked = applyAction(game, 'alice', {
+        type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
+        attackerIds: [sac.instanceId, shipA.instanceId, shipB.instanceId], targetIds: [foe.instanceId],
+      }, makeCtx())
+      if (!locked.ok) throw new Error(locked.error)
+
+      const lockedA = locked.game.state.zones[0].cards.a.find((c) => c.instanceId === 'shipA')!
+      expect(lockedA.keywords).toContain('scrappy')
+      expect(lockedA.meta.scrappyOnLoan).toBe(true)
+
+      // Sacrilego and the foe both comfortably survive. Escort A lands in the
+      // repair band (REPAIR_WINDOW_MIN_PERCENT=80 <= 80 < SURVIVE_HP_PERCENT=
+      // 90) with the LOANED keyword, so autoRepairIds should pick it for a
+      // free repair. Escort B falls below the band and is destroyed, still
+      // carrying the loan at the moment it is snapshotted into the discard.
+      const submitted = applyAction(locked.game, 'alice', {
+        type: 'SUBMIT_BATTLE_REPORT',
+        results: {
+          [sac.instanceId]: 95, [shipA.instanceId]: 80, [shipB.instanceId]: 40, [foe.instanceId]: 95,
+        },
+        repairs: [],
+      }, makeCtx())
+      if (!submitted.ok) throw new Error(submitted.error)
+
+      const materialsBefore = submitted.game.state.resources.a.materials
+      const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, makeCtx())
+      if (!decided.ok) throw new Error(decided.error)
+
+      // (a) Escort A's repair was FREE: repairCostOf returns 0 for a Scrappy
+      // hull, so player A's materials are unchanged, and the log shows it was
+      // repaired rather than destroyed.
+      expect(decided.game.state.resources.a.materials).toBe(materialsBefore)
+      expect(decided.game.state.log.join('\n')).toContain('Escort A was repaired')
+
+      // (b) Escort A survived on the board — Sacrilego's own resolve trigger
+      // (it also survived) strips the loan from every hull still carrying it.
+      const survivorA = decided.game.state.zones[0].cards.a.find((c) => c.instanceId === 'shipA')!
+      expect(survivorA.keywords).not.toContain('scrappy')
+      expect(survivorA.meta.scrappyOnLoan).toBeUndefined()
+
+      // (c) Escort B never reaches Sacrilego's board-walking strip — it left
+      // the board in the SAME handler, before that strip runs. Only
+      // discardSnapshotOf's own fix keeps its discard entry from carrying the
+      // keyword forever.
+      const buried = decided.game.state.destroyed.a.find((c) => c.name === 'Escort B')!
+      expect(buried.keywords).not.toContain('scrappy')
+      expect((buried.meta as Record<string, unknown>).scrappyOnLoan).toBeUndefined()
     })
   })
 
