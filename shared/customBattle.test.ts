@@ -60,6 +60,15 @@ describe('resolveBlueprintPath', () => {
     )
   })
 
+  // The three SS sharks the 2026-09-02 pass added ship under one-word filenames
+  // (Tigershark, ThresherShark, Bullshark) while the cards print two words.
+  // scripts/verify-blueprint-mapping.mjs is what noticed; this pins the fix.
+  it('resolves the 2026-09-02 SS sharks to their one-word blueprint files', () => {
+    expect(resolveBlueprintPath({ name: 'Tiger Shark', faction: 'SS' })).toBe('Built In/Neter/SS/Tigershark')
+    expect(resolveBlueprintPath({ name: 'Thresher Shark', faction: 'SS' })).toBe('Built In/Neter/SS/ThresherShark')
+    expect(resolveBlueprintPath({ name: 'Bull Shark', faction: 'SS' })).toBe('Built In/Neter/SS/Bullshark')
+  })
+
   it('follows an override into another faction folder', () => {
     // Both of these are seeded under one faction but shipped in GT/.
     expect(resolveBlueprintPath({ name: 'Obelisk', faction: 'TG' })).toBe('Built In/Neter/GT/Obelisk')

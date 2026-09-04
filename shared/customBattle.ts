@@ -58,6 +58,10 @@ export const BLUEPRINT_OVERRIDES: Record<string, string> = {
   'DWG/Buccaneer': 'DWG/Bucanneer',
   'DWG/Flying Squirrel': 'DWG/FlyingSquirrel',
   'SS/Falcon Squadron': 'SS/Falcon_Squadron',
+  // The 2026-09-02 pass's three sharks: two-word card names, one-word files.
+  'SS/Tiger Shark': 'SS/Tigershark',
+  'SS/Thresher Shark': 'SS/ThresherShark',
+  'SS/Bull Shark': 'SS/Bullshark',
   'WF/Earth Raker': 'WF/EarthRaker',
   'WF/Harbringer': 'WF/Harbinger',
   'OW/The Onyx Throne': 'OW/OnyxThrone',
