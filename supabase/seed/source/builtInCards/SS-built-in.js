@@ -402,8 +402,8 @@ export const ssVehicles = [
      {
         name: 'Spectre',
         isBuiltIn: true,
-        cardText: '',
-        materialCost: 210000,
+        cardText: 'When this vehicle is played, reduce your opponent CP by 1',
+        materialCost: 200000,
         blueprintCost: 214000,
         cpCost: 0,
         imageUrl: 'spectre.png',
@@ -414,6 +414,7 @@ export const ssVehicles = [
         blueprintId: null,
         keywords: [KEYWORDS.STEALTHY],
         meta: {
+            [TRIGGERS.ON_PLAY]: 'spectreOnPlay',
         }
     },
     {

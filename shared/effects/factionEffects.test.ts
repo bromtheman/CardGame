@@ -6764,3 +6764,27 @@ describe('SS Cyclone — FRAGILE across the enemy half', () => {
     })).toBe(false)
   })
 })
+
+describe('SS Spectre — a CP off the opponent', () => {
+  it('takes one CP from the enemy and leaves the actor alone', () => {
+    const game = makeGame()
+    game.state.resources.b.cp = 3
+    expect(effectFor('spectreOnPlay')!({ game, actor: 'a', card: inst({ name: 'Spectre' }), ctx: makeCtx() })).toBe(true)
+    expect(game.state.resources.b.cp).toBe(2)
+    expect(game.state.resources.a.cp).toBe(3)
+  })
+
+  it('floors at zero rather than going negative', () => {
+    const game = makeGame()
+    game.state.resources.b.cp = 0
+    effectFor('spectreOnPlay')!({ game, actor: 'a', card: inst({ name: 'Spectre' }), ctx: makeCtx() })
+    expect(game.state.resources.b.cp).toBe(0)
+  })
+
+  it('works for either side', () => {
+    const game = makeGame()
+    game.state.resources.a.cp = 2
+    effectFor('spectreOnPlay')!({ game, actor: 'b', card: inst({ name: 'Spectre' }), ctx: makeCtx() })
+    expect(game.state.resources.a.cp).toBe(1)
+  })
+})

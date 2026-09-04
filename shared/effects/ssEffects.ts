@@ -797,3 +797,17 @@ registerEffect('bullSharkVictory', ({ game, actor, card, battle }) => {
 // own registry id rather than a reuse of ransackOnPlay's draw-plus-CP shape —
 // this grants materials, not CP, and R-6 forbids sharing a name regardless.
 registerEffect('cashAdvanceEffect', grant({ materials: CASH_ADVANCE_MATERIALS, draw: 1 }))
+
+// "When this vehicle is played, reduce your opponent CP by 1."
+//
+// grant() cannot serve this: it only ADDS, and only to the actor. The 1 is
+// inline for the reason Kraken's `cp += 1` is — a card that says "by 1" has no
+// tunable in it. The floor is the whole of the ruling: CP is spent by
+// comparison elsewhere, and a negative pool would silently freeze the opponent
+// out of hero powers for turns.
+registerEffect('spectreOnPlay', ({ game, actor, card }) => {
+  const enemy = otherSide(actor)
+  game.state.resources[enemy].cp = Math.max(0, game.state.resources[enemy].cp - 1)
+  game.state.log.push(`${card.name} drains a command point from player ${enemy.toUpperCase()}`)
+  return true
+})

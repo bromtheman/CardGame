@@ -107,6 +107,10 @@ const CARDS: Record<string, Expected> = {
     materialCost: 280_000, blueprintCost: 281_000, keywords: [], vehicleType: 'sub',
     cardText: 'When this vehicle is played into a zone, grant every enemy vehicle in that zone FRAGILE',
   },
+  'SS:Spectre': {
+    materialCost: 200_000, blueprintCost: 214_000, keywords: ['stealthy'], vehicleType: 'ship',
+    cardText: 'When this vehicle is played, reduce your opponent CP by 1',
+  },
 }
 
 describe('2026-09-02 balance pass — SS', () => {
