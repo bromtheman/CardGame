@@ -6,11 +6,11 @@ import {
   SURVIVE_HP_PERCENT, TRONDHEIM_COST_DELTA, TYR_HAND_DISCOUNT, VEHICLE_TYPES, VICTORIA_COST_DELTA,
 } from '../gameSettings.ts'
 import {
-  catalogCard, costDelta, choice, drawFromPool, enemyVehicleOptions, grant, grantKeywords,
-  poolEligible, sacrificeToSave, sequence, spawnInto, spawnVehicles, summonHulls,
+  catalogCard, costDelta, choice, drawFromPool, enemyVehicleOptions, friendlyVehicleOptions, grant,
+  grantKeywords, poolEligible, sacrificeToSave, sequence, spawnInto, spawnVehicles, summonHulls,
 } from './primitives.ts'
 import { registerCostModifier, registerEffect } from './registry.ts'
-import type { EffectPayload } from './registry.ts'
+import type { EffectFn, EffectPayload } from './registry.ts'
 import type { EngineGame, Side, ZoneCardEntry } from '../engine/engineTypes.ts'
 import { checkVictory, findVehicle, otherSide, putInHand, zoneById } from '../engine/gameEngine.ts'
 import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
@@ -306,57 +306,95 @@ registerEffect('victoriaActivate', ({ game, actor, ctx, card }) => {
 
 const BRAVEHEART = 'braveheartActivate'
 
-// "Once per turn, you may pay 1cp to have this ship 1v1 an enemy vehicle in
-// the same zone." Ships with meta: {} — the effect name and
-// activateCpCost: 1 are both content this wave authors, not merely
-// implements (spec §6, "Cards shipped with no authored effect name").
-// DP1 (ACTIVATE_VEHICLE pays the CP and stamps activatedOnTurn BEFORE this
-// ever runs — shared/engine/activate.ts — so once-per-turn is free here) +
-// DP4 (this choice, over enemyVehicleOptions scoped to the hull's OWN zone —
-// unlike Orbit Flank's zoneId: null) + DP3 (declareForcedBattle,
-// attackerIds: [self], no summons).
+// "Once per turn, you may pay 1cp to have one of your ships in this zone 1v1
+// an enemy vehicle in the same zone."
 //
-// Unlike Air Strafe/Orbit Flank, no `data` stash is needed: payload.card on
-// BOTH entries IS the activating hull — ACTIVATE_VEHICLE hands the effect
-// the zone entry itself, and pendingEffect carries the card verbatim across
-// the suspension (spec §4.2) — so its zone is re-derived identically in
-// options() and resolve() via findVehicle(card.instanceId), never trusted
-// from the client-supplied, unvalidated RESOLVE_PENDING_EFFECT fields
-// (docs/claude/card-effects.md, "Suspending for a choice"). choiceId is the
-// chosen enemy's instanceId; `choice()` already checks it against
-// pending.options, and resolve() re-runs the identical enemyVehicleOptions()
-// call to re-confirm the target before declaring the battle.
+// TWO HOPS since the 2026-09-02 pass (the card used to send Braveheart itself),
+// and BOTH routed through choice() — TG Duel's shape, not Orbit Flank's. Orbit
+// Flank writes its second pendingEffect by hand, which bypasses choice()'s
+// one-slot check and can clobber an offer already owed;
+// docs/claude/card-effects.md says to route a new suspension through choice().
+// RESOLVE_PENDING_EFFECT has already nulled state.pendingEffect by the time hop
+// 2 runs, so the slot is free for it to take.
+//
+// DP1 (ACTIVATE_VEHICLE pays the 1cp and stamps activatedOnTurn BEFORE this ever
+// runs, so once-per-turn is free here) + DP4 (two choices) + DP3
+// (declareForcedBattle, no summons, and NO activatesZone — a forced battle is
+// not a zone activation; Eclipse alone is, from its own text).
+//
+// The zone is re-derived from payload.card on EVERY entry via findVehicle:
+// payload.card is the activating hull itself, carried verbatim across each
+// suspension, so nothing needs the client-supplied, unvalidated
+// resolution.zoneId / targetInstanceId.
 function braveheartZone(game: EngineGame, actor: Side, card: { instanceId: string }) {
   const found = findVehicle(game.state, card.instanceId)
   return found && found.side === actor ? found : null
 }
 
-registerEffect(BRAVEHEART, choice({
+// ⚠ Ruling E-10, borrowed from TG Duel: the pick ATTACKS, and INOFFENSIVE is
+// precisely "cannot attack" (§7.3's Gang Up ruling). The ENEMY target is
+// deliberately unfiltered — Inoffensive can still defend.
+const canAttack = (e: ZoneCardEntry) => !e.keywords.includes(KEYWORDS.INOFFENSIVE)
+
+const braveheartHop2 = (fighterId: string): EffectFn => choice({
   effect: BRAVEHEART,
-  prompt: 'Choose an enemy vehicle for Braveheart to fight',
+  prompt: 'Choose an enemy vehicle for it to fight',
   options: ({ game, actor, card }) => {
     const self = braveheartZone(game, actor, card)
     return self ? enemyVehicleOptions(game, actor, self.zone.id) : []
   },
-  resolve: (payload, choiceId) => {
+  data: () => ({ fighterId }),
+  resolve: (payload, enemyId) => {
     const { game, actor, card, ctx } = payload
-    if (choiceId === null) return false // no enemy vehicle in the zone — nothing to fight
+    // No enemy in the zone: the activation fizzles rather than failing, so the
+    // player is not left holding a choice whose only answer is Decline.
+    if (enemyId === null) {
+      game.state.log.push(`${card.name} finds no enemy vehicle in the zone`)
+      return true
+    }
     const self = braveheartZone(game, actor, card)
     if (!self) return false
-    const stillLegal = enemyVehicleOptions(game, actor, self.zone.id).some((o) => o.id === choiceId)
-    if (!stillLegal) return false
-    // No activatesZone: a forced battle is not a zone activation (spec §4.3
-    // ruling) — Eclipse alone is the exception, and says so in its own text.
-    // A fleet attack in this zone later this turn is unaffected.
+    // Both halves re-checked against the CURRENT board — either hull may have
+    // left, or gained INOFFENSIVE, while the dialog sat open.
+    const fighter = findVehicle(game.state, fighterId)
+    if (!fighter || fighter.side !== actor || fighter.zone.id !== self.zone.id) return false
+    if (!canAttack(fighter.entry)) return false
+    if (!enemyVehicleOptions(game, actor, self.zone.id).some((o) => o.id === enemyId)) return false
     return declareForcedBattle(game, ctx, {
       zoneId: self.zone.id,
       aggressor: actor,
-      attackerIds: [card.instanceId],
-      defenderIds: [choiceId],
+      attackerIds: [fighterId],
+      defenderIds: [enemyId],
       cause: card.name,
     })
   },
-}))
+})
+
+const braveheartHop1: EffectFn = choice({
+  effect: BRAVEHEART,
+  prompt: 'Choose one of your ships to send into the duel',
+  options: ({ game, actor, card }) => {
+    const self = braveheartZone(game, actor, card)
+    return self ? friendlyVehicleOptions(game, actor, self.zone.id, canAttack) : []
+  },
+  resolve: (payload, fighterId) => {
+    if (fighterId === null) {
+      payload.game.state.log.push(`${payload.card.name} finds no ship to send`)
+      return true
+    }
+    // Hop 2's first entry: `resolution` cleared so choice() takes the slot
+    // again, `pending` cleared so it cannot be mistaken for hop 2's own.
+    return braveheartHop2(fighterId)({ ...payload, resolution: undefined, pending: undefined })
+  },
+})
+
+// The router. Hop 2 is told apart by the fighterId hop 1 stashed — never by
+// anything the client sent.
+registerEffect(BRAVEHEART, (payload) => {
+  const stashed = payload.pending?.data?.fighterId
+  if (typeof stashed === 'string') return braveheartHop2(stashed)(payload)
+  return braveheartHop1(payload)
+})
 
 // ---------------------------------------------------------------------------
 // Wave 4 — DP2 (spec §4.3). Both of these fire at battle LOCK, and both guard

@@ -122,7 +122,7 @@ export const ssVehicles = [
     } ,{
         name: 'Braveheart',
         isBuiltIn: true,
-        cardText: 'Once per turn, you may pay 1cp to have this ship 1v1 an enemy vehicle in the same zone',
+        cardText: 'Once per turn, you may pay 1cp to have one of your ships in this zone 1v1 an enemy vehicle in the same zone',
         materialCost: 350000,
         blueprintCost: 371000,
         cpCost: 0,

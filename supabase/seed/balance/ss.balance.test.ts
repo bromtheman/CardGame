@@ -83,6 +83,10 @@ const CARDS: Record<string, Expected> = {
     materialCost: 550_000, blueprintCost: 553_900, keywords: ['blocker'], vehicleType: 'ship',
     cardText: 'Pick one SS ship in hand and reduce its cost by 200k',
   },
+  'SS:Braveheart': {
+    materialCost: 350_000, blueprintCost: 371_000, keywords: [], vehicleType: 'ship',
+    cardText: 'Once per turn, you may pay 1cp to have one of your ships in this zone 1v1 an enemy vehicle in the same zone',
+  },
 }
 
 describe('2026-09-02 balance pass — SS', () => {
