@@ -246,7 +246,7 @@ describe('excaliburEffect', () => {
     meta: { playOnCardEffect: 'excaliburEffect' },
   })
 
-  it('deploys to a legal zone and stamps -200k costDelta on an AI ship targeted in hand', () => {
+  it('deploys to a legal zone and stamps -200k costDelta on an SS ship targeted in hand', () => {
     const card = excalibur()
     const target = inst({ name: 'Victoria', faction: 'SS', isBuiltIn: true, type: 'vehicle', vehicleType: 'ship', materialCost: 270_000 })
     const game = makeGame({ privates: { a: { hand: [card, target], deck: [] }, b: { hand: [], deck: [] } } })
@@ -278,9 +278,9 @@ describe('excaliburEffect', () => {
     expect(game.state.resources.a.materials).toBe(600_000)
   })
 
-  it('rejects a non-ship AI vehicle as the target', () => {
+  it('rejects an SS vehicle that is not a ship', () => {
     const card = excalibur()
-    const target = inst({ name: 'AI Tank', isBuiltIn: true, type: 'vehicle', vehicleType: 'tank', materialCost: 100_000 })
+    const target = inst({ name: 'SS Tank', faction: 'SS', isBuiltIn: true, type: 'vehicle', vehicleType: 'tank', materialCost: 100_000 })
     const game = makeGame({ privates: { a: { hand: [card, target], deck: [] }, b: { hand: [], deck: [] } } })
     game.state.resources.a.materials = 600_000
     const r = applyAction(game, 'alice', {
@@ -335,7 +335,7 @@ describe('excaliburEffect', () => {
     expect(effectiveMaterialCostOf(stamped)).toBe(270_000)
   })
 
-  it('deploys through plain PLAY_CARD_TO_ZONE with no effect and no error when the actor holds no AI ship', () => {
+  it('deploys through plain PLAY_CARD_TO_ZONE with no effect and no error when the actor holds no SS ship', () => {
     const card = excalibur()
     const game = makeGame({ privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } } })
     game.state.resources.a.materials = 600_000
@@ -344,7 +344,7 @@ describe('excaliburEffect', () => {
     // mistakenly dispatched here, costDelta's `typeof targetInstanceId !==
     // 'string'` guard would reject it and the whole play would 400. Success
     // itself is therefore proof excaliburEffect was never reached, not just
-    // that it did nothing (spec §4.3 departure 4 — no AI ship in hand must
+    // that it did nothing (spec §4.3 departure 4 — no SS ship in hand must
     // not block a 550k blocker from deploying).
     const r = applyAction(game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx())
     if (!r.ok) throw new Error(r.error)
@@ -418,32 +418,36 @@ describe('repairmenReadyEffect', () => {
     return { ok, game, target: game.state.zones[0].cards.b[0] }
   }
 
-  it('grants Scrappy and draws for a cheap built-in target', () => {
+  it('grants Scrappy and draws for a cheap SS target', () => {
     const { ok, game, target } = run({ faction: 'SS', isBuiltIn: true, materialCost: 150_000 })
     expect(ok).toBe(true)
     expect(target.keywords).toContain('scrappy')
     expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Top'])
   })
 
-  it('draws for a 250k built-in target, which the 2026-08-30 threshold move now admits', () => {
+  it('draws for a 250k SS target, which the 2026-08-30 threshold move now admits', () => {
     const { game, target } = run({ faction: 'SS', isBuiltIn: true, materialCost: 250_000 })
     expect(target.keywords).toContain('scrappy')
     expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Top'])
   })
 
-  it('grants Scrappy but draws nothing for an expensive built-in target', () => {
+  it('grants Scrappy but draws nothing for an expensive SS target', () => {
     const { game, target } = run({ faction: 'SS', isBuiltIn: true, materialCost: 450_000 })
     expect(target.keywords).toContain('scrappy')
     expect(game.privates.a.hand).toHaveLength(0)
   })
 
-  it('grants Scrappy but draws nothing for a player-made target', () => {
+  // Behaviour unchanged by R-5 — this target defaults to faction 'DWG'
+  // (snap's default), so it is refused for being non-SS, not for being
+  // player-made. See the mirror pair below for the case R-5 actually flipped:
+  // a player-made SS vehicle now DOES draw.
+  it('grants Scrappy but draws nothing for a non-SS target', () => {
     const { game, target } = run({ isBuiltIn: false, materialCost: 100_000 })
     expect(target.keywords).toContain('scrappy')
     expect(game.privates.a.hand).toHaveLength(0)
   })
 
-  it('grants Scrappy but draws nothing for a built-in target at exactly the 400k boundary — the card says "less than 400k"', () => {
+  it('grants Scrappy but draws nothing for an SS target at exactly the 400k boundary — the card says "less than 400k"', () => {
     const { game, target } = run({ faction: 'SS', isBuiltIn: true, materialCost: 400_000 })
     expect(target.keywords).toContain('scrappy')
     expect(game.privates.a.hand).toHaveLength(0)
@@ -6248,10 +6252,10 @@ describe('2026-09-02 — WF Excruciator', () => {
     }
   })
 
-  // Spec R-5: "AI vehicle" is isBuiltIn, NOT a faction. repairmenReadyEffect
-  // reads the identical printed phrase the same way and is the proof — and the
-  // pass explicitly keeps the built-in meaning for THIS card while narrowing
-  // Repairmen Ready and Excalibur to SS.
+  // Spec R-5: "AI vehicle" is isBuiltIn, NOT a faction — Excruciator's own
+  // meaning, which the 2026-09-02 pass explicitly keeps for THIS card while
+  // narrowing Repairmen Ready and Excalibur to faction SS instead (so their
+  // printed phrase is no longer "AI vehicle" either).
   it('draws by isBuiltIn, not by faction, and skips abilities', () => {
     const game = makeGame()
     game.privates.a.deck = [

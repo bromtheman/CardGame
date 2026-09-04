@@ -186,7 +186,7 @@ export const PURIFIER_LOSS_WINDOW_TURNS = 1
 // damage and still costs its printed repair.
 export const TYR_HAND_DISCOUNT = 60_000
 
-export const EXCALIBUR_COST_DELTA = -200_000 // Excalibur: AI ship in hand costs 200k less
+export const EXCALIBUR_COST_DELTA = -200_000 // Excalibur: SS ship in hand costs 200k less (R-5)
 // Plunderer clause 2: "…draw one card from the enemy deck, but increase its
 // cost by 20k". A POSITIVE costDelta, unlike every other one in this file —
 // effectiveCostInGame sums it in and clamps only at zero, so it raises the
