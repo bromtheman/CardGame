@@ -1213,7 +1213,7 @@ describe('wave 3 — forced battles', () => {
       return { game, bh }
     }
 
-    it('hop 1 offers every friendly vehicle in the zone, Braveheart included', () => {
+    it('hop 1 offers every friendly SHIP in the zone, Braveheart included', () => {
       const { game, bh } = setup()
       const r = applyAction(game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: bh.instanceId })
       expect(r.ok).toBe(true)
@@ -1222,7 +1222,20 @@ describe('wave 3 — forced battles', () => {
       expect(r.game.state.pendingEffect?.options.map((o) => o.id).sort()).toEqual(['bh1', 'mate'])
     })
 
-    it('a friendly vehicle in ANOTHER zone is not offered', () => {
+    // Fix round 1, Important 1: the printed text says "one of your SHIPS", not
+    // "vehicle" — a friendly submarine (or plane, or tank) must not be offered
+    // even though it could fight, matching this file's own SS_SHIP_FILTER
+    // convention (vehicleType === VEHICLE_TYPES.SHIP).
+    it('hop 1 offers only ships — a friendly submarine in the zone is not offered', () => {
+      const { game, bh } = setup()
+      game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'fsub', name: 'Friendly Sub', vehicleType: 'sub' }))
+      const r = applyAction(game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: bh.instanceId })
+      expect(r.ok).toBe(true)
+      if (!r.ok) return
+      expect(r.game.state.pendingEffect?.options.map((o) => o.id).sort()).toEqual(['bh1', 'mate'])
+    })
+
+    it('a friendly ship in ANOTHER zone is not offered', () => {
       const { game, bh } = setup()
       game.state.zones[1].cards.a.push(zoneEntry({ instanceId: 'far', vehicleType: 'ship' }))
       const r = applyAction(game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: bh.instanceId })
@@ -1245,6 +1258,8 @@ describe('wave 3 — forced battles', () => {
       if (!three.ok) return
       const battle = three.game.state.activeBattle
       // The chosen ESCORT fights, not Braveheart.
+      expect(battle?.zoneId).toBe(1)
+      expect(battle?.aggressor).toBe('a')
       expect(battle?.attackerIds).toEqual(['mate'])
       expect(battle?.defenderIds).toEqual(['foe'])
       expect(battle?.summons).toEqual([])
@@ -1256,8 +1271,10 @@ describe('wave 3 — forced battles', () => {
     it('Braveheart may still send itself', () => {
       const { game, bh } = setup()
       const one = applyAction(game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: bh.instanceId })
+      expect(one.ok).toBe(true)
       if (!one.ok) return
       const two = applyAction(one.game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'bh1' })
+      expect(two.ok).toBe(true)
       if (!two.ok) return
       const three = applyAction(two.game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'foe' })
       expect(three.ok).toBe(true)
@@ -1266,33 +1283,72 @@ describe('wave 3 — forced battles', () => {
     })
 
     // E-10. The pick ATTACKS, and Inoffensive is precisely "cannot attack"
-    // (§7.3's Gang Up ruling). Excluded from the offer AND re-checked on
-    // resolve, because an enemy TG Hysteria can grant the keyword between hops.
-    it('never offers an Inoffensive friendly, and refuses one that gained it mid-choice', () => {
+    // (§7.3's Gang Up ruling). Excluded from the offer — combined, since the
+    // fix round 1 pass, with the ship-only filter above.
+    it('never offers an Inoffensive friendly ship', () => {
       const { game, bh } = setup()
       const mate = game.state.zones[0].cards.a[1]
       mate.keywords = ['inoffensive']
       const one = applyAction(game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: bh.instanceId })
+      expect(one.ok).toBe(true)
       if (!one.ok) return
       expect(one.game.state.pendingEffect?.options.map((o) => o.id)).toEqual(['bh1'])
     })
 
-    it('resolves without a battle when the zone holds no enemy', () => {
+    // Fix round 1, Important 2: hop 1's offer is not the only guard. An enemy
+    // TG Hysteria can grant Inoffensive to the CHOSEN fighter after hop 1
+    // picked it and before hop 2 resolves, so the fighter is re-validated
+    // against the live board at resolve time too, not just offered once.
+    it('refuses a fighter that gained Inoffensive between the two hops', () => {
+      const { game, bh } = setup()
+      const one = applyAction(game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: bh.instanceId })
+      expect(one.ok).toBe(true)
+      if (!one.ok) return
+      const two = applyAction(one.game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'mate' })
+      expect(two.ok).toBe(true)
+      if (!two.ok) return
+      // Simulates the mid-choice grant: the chosen Escort gains Inoffensive
+      // after hop 1 committed to it, before hop 2 is resolved.
+      two.game.state.zones[0].cards.a[1].keywords = ['inoffensive']
+      const three = applyAction(two.game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'foe' })
+      expect(three.ok).toBe(false)
+      expect(two.game.state.activeBattle).toBeNull()
+    })
+
+    // Fix round 1, Important 3 (restored from base 4403856, adapted to the
+    // two-hop setup): the activation must be REFUSED at first entry when it
+    // cannot produce a duel — the opponent cannot act while a choice is owed,
+    // so a fizzle AFTER paying would be a pure loss for the player instead.
+    it('rejects activation when its zone holds no enemy vehicle — CP is not spent, nothing sticks', () => {
       const game = makeGame()
       const bh = zoneEntry({
         instanceId: 'bh1', name: 'Braveheart', vehicleType: 'ship',
         meta: { onActivate: 'braveheartActivate', activateCpCost: 1 },
       })
       game.state.zones[0].cards.a.push(bh)
-      const one = applyAction(game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: bh.instanceId })
-      expect(one.ok).toBe(true)
-      if (!one.ok) return
-      const two = applyAction(one.game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'bh1' })
-      expect(two.ok).toBe(true)
-      if (!two.ok) return
-      // Empty options do NOT suspend — hop 2 resolves in the same action.
-      expect(two.game.state.pendingEffect).toBeNull()
-      expect(two.game.state.activeBattle).toBeNull()
+      const res = applyAction(game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: bh.instanceId })
+      expect(res).toMatchObject({ ok: false, status: 400 })
+      expect(game.state.resources.a.cp).toBe(3)
+      expect(game.state.zones[0].cards.a[0].activatedOnTurn).toBeNull()
+      expect(game.state.pendingEffect).toBeNull()
+    })
+
+    // Sibling of the above: the enemy pool is non-empty, but the fighter pool
+    // is — Braveheart is the only friendly ship in the zone, and it is itself
+    // Inoffensive. Same refusal, different empty pool.
+    it('rejects activation when Braveheart is the only friendly ship and it is Inoffensive', () => {
+      const game = makeGame()
+      const bh = zoneEntry({
+        instanceId: 'bh1', name: 'Braveheart', vehicleType: 'ship', keywords: ['inoffensive'],
+        meta: { onActivate: 'braveheartActivate', activateCpCost: 1 },
+      })
+      game.state.zones[0].cards.a.push(bh)
+      game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe', name: 'Target', vehicleType: 'sub' }))
+      const res = applyAction(game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: bh.instanceId })
+      expect(res).toMatchObject({ ok: false, status: 400 })
+      expect(game.state.resources.a.cp).toBe(3)
+      expect(game.state.zones[0].cards.a[0].activatedOnTurn).toBeNull()
+      expect(game.state.pendingEffect).toBeNull()
     })
 
     it('still costs 1cp and still stamps once per turn', () => {
@@ -1302,6 +1358,60 @@ describe('wave 3 — forced battles', () => {
       if (!r.ok) return
       expect(r.game.state.resources.a.cp).toBe(2)
       expect(r.game.state.zones[0].cards.a[0].activatedOnTurn).toBe(r.game.turnNumber)
+    })
+
+    // Fix round 1, Important 3 (restored from base 4403856, extended to BOTH
+    // hops): RESOLVE_PENDING_EFFECT's zoneId/targetInstanceId are
+    // client-supplied and unvalidated on EITHER resolve. A naive re-entry that
+    // trusted either instead of re-deriving Braveheart's own zone from
+    // payload.card must be caught on both — the decoy sits in a different,
+    // legal, non-empty zone so a wrong read produces a plausible wrong battle
+    // rather than an empty-zone 400 either way.
+    it('a stale/malicious zoneId and targetInstanceId on resolve are ignored, on both hops', () => {
+      const { game, bh } = setup()
+      game.state.zones[2].cards.b.push(zoneEntry({ instanceId: 'decoy-1', name: 'Decoy' })) // zone 3 — a different, legal zone
+      const one = applyAction(game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: bh.instanceId })
+      expect(one.ok).toBe(true)
+      if (!one.ok) return
+      const two = applyAction(one.game, 'alice', {
+        type: 'RESOLVE_PENDING_EFFECT', choiceId: 'mate', zoneId: 3, targetInstanceId: 'decoy-1',
+      })
+      expect(two.ok).toBe(true)
+      if (!two.ok) return
+      const three = applyAction(two.game, 'alice', {
+        type: 'RESOLVE_PENDING_EFFECT', choiceId: 'foe', zoneId: 3, targetInstanceId: 'decoy-1',
+      })
+      expect(three.ok).toBe(true)
+      if (!three.ok) return
+      const battle = three.game.state.activeBattle
+      expect(battle?.zoneId).toBe(1)
+      expect(battle?.aggressor).toBe('a')
+      expect(battle?.defenderIds).toEqual(['foe'])
+      expect(three.game.state.zones[2].cards.b.map((c) => c.instanceId)).toEqual(['decoy-1'])
+    })
+
+    // Fix round 1, Important 3 (restored from base 4403856): confirms the
+    // forced battle carries no `activatesZone` in practice, not just in the
+    // battle record — a normal fleet attack in the same zone still succeeds
+    // afterward.
+    it('does not spend the zone activation — a fleet attack there still succeeds afterward', () => {
+      const { game, bh } = setup()
+      const one = applyAction(game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: bh.instanceId })
+      expect(one.ok).toBe(true)
+      if (!one.ok) return
+      const two = applyAction(one.game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'mate' })
+      expect(two.ok).toBe(true)
+      if (!two.ok) return
+      const three = applyAction(two.game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'foe' })
+      expect(three.ok).toBe(true)
+      if (!three.ok) return
+      // Simulate the forced battle having already been reported and resolved
+      // (DECIDE_BATTLE_REPORT nulls activeBattle) so a second battle may lock.
+      three.game.state.activeBattle = null
+      const attack = applyAction(three.game, 'alice', {
+        type: 'ATTACK_ENEMY_FLEET', zoneId: 1, attackerIds: ['mate'], targetIds: ['foe'],
+      })
+      expect(attack.ok).toBe(true)
     })
   })
 

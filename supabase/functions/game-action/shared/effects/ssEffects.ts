@@ -331,10 +331,29 @@ function braveheartZone(game: EngineGame, actor: Side, card: { instanceId: strin
   return found && found.side === actor ? found : null
 }
 
-// ⚠ Ruling E-10, borrowed from TG Duel: the pick ATTACKS, and INOFFENSIVE is
-// precisely "cannot attack" (§7.3's Gang Up ruling). The ENEMY target is
-// deliberately unfiltered — Inoffensive can still defend.
-const canAttack = (e: ZoneCardEntry) => !e.keywords.includes(KEYWORDS.INOFFENSIVE)
+// ⚠ Ruling E-10, borrowed from TG Duel and refined for Braveheart's own
+// printed text: the pick must be a SHIP ("one of your ships") that can
+// attack — INOFFENSIVE is precisely "cannot attack" (§7.3's Gang Up ruling).
+// The ENEMY target is deliberately unfiltered — Inoffensive can still defend.
+const canDuel = (e: ZoneCardEntry) =>
+  e.vehicleType === VEHICLE_TYPES.SHIP && !e.keywords.includes(KEYWORDS.INOFFENSIVE)
+
+// Whether Braveheart's own zone currently holds both a legal fighter (a ship
+// that canDuel) and a legal enemy target — checked ONCE, before hop 1 ever
+// suspends. Only the acting player can act while a choice is owed (only
+// PENDING_ACTIONS reach a suspended effect), so neither pool can shrink
+// between hop 1's offer and hop 2's resolve: checking here is exhaustive, not
+// just a first guess. This is what lets the activation be REFUSED outright —
+// ACTIVATE_VEHICLE 400s and the mutated clone is discarded, so the 1cp is
+// never spent and activatedOnTurn is never stamped — rather than charging the
+// player and then fizzling, which would be a pure loss for them.
+function braveheartCanDuel(game: EngineGame, actor: Side, card: { instanceId: string }): boolean {
+  const self = braveheartZone(game, actor, card)
+  if (!self) return false
+  if (enemyVehicleOptions(game, actor, self.zone.id).length === 0) return false
+  if (friendlyVehicleOptions(game, actor, self.zone.id, canDuel).length === 0) return false
+  return true
+}
 
 const braveheartHop2 = (fighterId: string): EffectFn => choice({
   effect: BRAVEHEART,
@@ -346,19 +365,25 @@ const braveheartHop2 = (fighterId: string): EffectFn => choice({
   data: () => ({ fighterId }),
   resolve: (payload, enemyId) => {
     const { game, actor, card, ctx } = payload
-    // No enemy in the zone: the activation fizzles rather than failing, so the
-    // player is not left holding a choice whose only answer is Decline.
+    // Unreachable through normal dispatch — braveheartCanDuel already refused
+    // the activation outright when the zone holds no enemy. Kept as a
+    // defensive backstop, not a live path.
     if (enemyId === null) {
       game.state.log.push(`${card.name} finds no enemy vehicle in the zone`)
       return true
     }
     const self = braveheartZone(game, actor, card)
+    // Every `return false` below leaves the choice standing rather than
+    // failing the action outright — a refused resolve does not clear
+    // state.pendingEffect, so the offer is still there; RESOLVE_PENDING_EFFECT
+    // { cancel: true } is the player's way out of it.
     if (!self) return false
     // Both halves re-checked against the CURRENT board — either hull may have
-    // left, or gained INOFFENSIVE, while the dialog sat open.
+    // left, or the fighter may have gained INOFFENSIVE, while the dialog sat
+    // open (an enemy TG Hysteria grants it).
     const fighter = findVehicle(game.state, fighterId)
     if (!fighter || fighter.side !== actor || fighter.zone.id !== self.zone.id) return false
-    if (!canAttack(fighter.entry)) return false
+    if (!canDuel(fighter.entry)) return false
     if (!enemyVehicleOptions(game, actor, self.zone.id).some((o) => o.id === enemyId)) return false
     return declareForcedBattle(game, ctx, {
       zoneId: self.zone.id,
@@ -375,9 +400,12 @@ const braveheartHop1: EffectFn = choice({
   prompt: 'Choose one of your ships to send into the duel',
   options: ({ game, actor, card }) => {
     const self = braveheartZone(game, actor, card)
-    return self ? friendlyVehicleOptions(game, actor, self.zone.id, canAttack) : []
+    return self ? friendlyVehicleOptions(game, actor, self.zone.id, canDuel) : []
   },
   resolve: (payload, fighterId) => {
+    // Unreachable through normal dispatch — braveheartCanDuel already refused
+    // the activation outright when the zone holds no eligible ship. Kept as a
+    // defensive backstop, not a live path.
     if (fighterId === null) {
       payload.game.state.log.push(`${payload.card.name} finds no ship to send`)
       return true
@@ -389,10 +417,13 @@ const braveheartHop1: EffectFn = choice({
 })
 
 // The router. Hop 2 is told apart by the fighterId hop 1 stashed — never by
-// anything the client sent.
+// anything the client sent. Before EVER calling hop 1 — its first entry, or
+// its own re-entry on resolve — the zone must hold a legal duel; see
+// braveheartCanDuel.
 registerEffect(BRAVEHEART, (payload) => {
   const stashed = payload.pending?.data?.fighterId
   if (typeof stashed === 'string') return braveheartHop2(stashed)(payload)
+  if (!braveheartCanDuel(payload.game, payload.actor, payload.card)) return false
   return braveheartHop1(payload)
 })
 
