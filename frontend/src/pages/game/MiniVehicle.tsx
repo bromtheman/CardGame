@@ -100,8 +100,9 @@ export function MiniVehicle({
           keyword row appears only when it has keywords is a chip with two
           heights, which is half of why the lanes used to jump. Overflow is
           hidden here (and only here) so a hull that picks up extra keywords
-          in play — Flyby grants one, SS Thresher Shark's resourceSurge grants
-          two — cannot grow the row.
+          in play — Flyby grants two (Half-Cost + Temporary), and so does SS
+          Thresher Shark's resourceSurge (Half-Cost + Inoffensive) — cannot
+          grow the row.
           The "?" affordance opens the full card for anything clipped. */}
       <div className="mt-0.5 h-4 w-full overflow-hidden">
         <div className="flex flex-wrap justify-center gap-0.5">
