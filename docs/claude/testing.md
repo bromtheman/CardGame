@@ -83,7 +83,10 @@ npx vitest run shared/effects       # path filter — the ONLY sanctioned way to
 `fn`, `signIn`, `builtIns`, `buildDeck`, `startGame`, `cleanUp` and `report`,
 plus the per-game helpers `sideOf`, `activeIs`, `passTo`, `drawUntil`,
 `lockIfPending`, `attempt`, `waitForMaterials`, `spendInto` and `deployShip`.
-`smoke-wave5/6/7.mjs` are scenarios only. Three of those helpers exist because
+`smoke-wave5/6/7.mjs` and `smoke-pass-2026-09-02.mjs` (the SS wave of the
+2026-09-02 balance pass — run it only after PR #54's seed is applied and
+`game-action` redeployed; its seed block fails first otherwise) are scenarios
+only. Three of those helpers exist because
 a wave learned something the hard way: `lockIfPending` because
 `ATTACK_ENEMY_FLEET` does **not** always lock the battle (a Stealthy or
 omissible defender raises the response window instead, and DP2's whole dispatch
