@@ -6,6 +6,7 @@ import { registerCostModifier, registerEffect } from '../effects/registry.ts'
 import { takeFromEnemyDeck } from '../effects/primitives.ts'
 import { ADDITIONAL_SPAWNS_CAP, KEYWORDS, MAX_VEHICLES_PER_ZONE_SIDE } from '../gameSettings.ts'
 import { inst, makeCtx, makeGame, snap, zoneEntry } from './testFixtures'
+import { baseDamageFrom } from './baseAttack.ts'
 
 function withHand(cardOver: Record<string, unknown>) {
   const g = makeGame()
@@ -148,6 +149,55 @@ describe('additionalSpawns', () => {
     const r = applyAction(g, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx())
     if (!r.ok) throw new Error(r.error)
     expect(r.game.state.zones[0].cards.a).toHaveLength(1)
+  })
+})
+
+// handEnteredTurn (spec §4.2) is a private HAND stamp normalizeState cannot
+// see — it lives on CardInstance, and ZoneCardEntry inherits the (optional)
+// field structurally even though nothing on the board is meant to carry it.
+// deployVehicle used to spread the whole hand card, stamp included, into the
+// placed zone entry, so a stamped hand card would land on the board carrying
+// a number PublicGameState must never expose.
+describe('deployVehicle sheds handEnteredTurn on the way to the board', () => {
+  it('the placed entry carries no handEnteredTurn', () => {
+    const { g, card } = withHand({ vehicleType: 'ship', materialCost: 40000, handEnteredTurn: 1 })
+    const r = applyAction(g, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect('handEnteredTurn' in r.game.state.zones[0].cards.a[0]).toBe(false)
+  })
+
+  it('an additionalSpawns copy carries no handEnteredTurn either', () => {
+    const { g, card } = withHand({
+      vehicleType: 'ship', materialCost: 40000, handEnteredTurn: 1, meta: { additionalSpawns: 1 },
+    })
+    const r = applyAction(g, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    const entries = r.game.state.zones[0].cards.a
+    expect(entries).toHaveLength(2)
+    expect('handEnteredTurn' in entries[1]).toBe(false)
+  })
+})
+
+// Spec §7.1 near miss: Typhoon's second hull is additionalSpawns, resolved by
+// deployVehicle from the card already in hand — not an effect, and ctx.catalog
+// is never touched. No registry id is involved at all.
+describe('SS Typhoon — one payment, two hulls', () => {
+  it('lands two hulls off one payment', () => {
+    const g = makeGame()
+    const card = inst({
+      name: 'Typhoon', faction: 'SS', vehicleType: 'sub', type: 'vehicle',
+      materialCost: 130_000, keywords: [], meta: { additionalSpawns: 1 },
+    })
+    g.privates.a.hand.push(card)
+    g.state.resources.a.materials = 130_000
+    const r = applyAction(g, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 })
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.game.state.zones[0].cards.a.map((c) => c.name)).toEqual(['Typhoon', 'Typhoon'])
+    expect(r.game.state.resources.a.materials).toBe(0)
+    // Distinct instances, both freshly stamped.
+    const [one, two] = r.game.state.zones[0].cards.a
+    expect(one.instanceId).not.toBe(two.instanceId)
   })
 })
 
@@ -922,7 +972,34 @@ describe('resourceSurge — Chrysaor raises its own price', () => {
   })
 })
 
-describe('resourceSurge — Paladin grants keywords onto the hull', () => {
+// The surged price is now EXACTLY the threshold (75k + 75k = 150k), so paying
+// for Chrysaor turns Chrysaor's own condition off. PLAY_CARD_TO_ZONE captures
+// `surged` BEFORE pay() for this reason and names the card in its comment;
+// this is what would notice if that ordering were ever inverted.
+it('Chrysaor still spawns its second hull when the payment lands it on its own threshold', () => {
+  const g = makeGame()
+  const card = inst({
+    name: 'Chrysaor', faction: 'SS', vehicleType: 'ship', type: 'vehicle',
+    materialCost: 75_000, keywords: ['stealthy'],
+    meta: { resourceSurge: { materialsOver: 150_000, extraSpawns: 1, costDelta: 75_000 } },
+  })
+  g.privates.a.hand.push(card)
+  g.state.resources.a.materials = 150_001
+  const r = applyAction(g, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 })
+  expect(r.ok).toBe(true)
+  if (!r.ok) return
+  expect(r.game.state.zones[0].cards.a.map((c) => c.name)).toEqual(['Chrysaor', 'Chrysaor'])
+  expect(r.game.state.resources.a.materials).toBe(150_001 - 150_000)
+})
+
+// ⚠ The live SS Paladin card no longer carries resourceSurge at all — the
+// 2026-09-02 pass (spec §7.2) replaced it with paladinOnPlay/paladinActivate
+// (shared/effects/ssEffects.ts, supabase/seed/balancePass.test.ts). This block
+// keeps its old fixture NAME and PALADIN_META constant only because they were
+// convenient labels; it is exercising the generic grantKeywords branch of the
+// resourceSurge mechanic through a synthetic `inst()` fixture, not the seeded
+// card, and stays green regardless of what Paladin's row says.
+describe('resourceSurge — grantKeywords lands on the hull (mechanic once used by SS Paladin)', () => {
   const paladin = () => inst({
     name: 'Paladin', vehicleType: 'ship', materialCost: 240_000, keywords: [], meta: PALADIN_META,
   })
@@ -1509,5 +1586,96 @@ describe('MAX_VEHICLES_PER_ZONE_SIDE — the zone-side cap', () => {
     const r = applyAction(g, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx())
     if (!r.ok) throw new Error(r.error)
     expect(r.game.state.zones[0].cards.a).toHaveLength(MAX_VEHICLES_PER_ZONE_SIDE)
+  })
+
+  // Spec §4.1. A denier on the ENEMY side of the zone takes slots off the
+  // acting side's cap, so a zone that was legal a moment ago stops being one
+  // with no hull of the actor's own having moved.
+  it('an enemy slotDenial removes the zone from legalZonesFor early', () => {
+    const g = makeGame()
+    fill(g, 0, 'a', MAX_VEHICLES_PER_ZONE_SIDE - 3)
+    g.state.zones[0].cards.b.push(zoneEntry({ name: 'Tiger Shark', meta: { slotDenial: 3 } }))
+    const card = inst({ vehicleType: 'ship', materialCost: 0 })
+    expect(legalZonesFor(g.state, 'a', card, g.turnNumber)).not.toContain(1)
+    expect(legalZonesFor(g.state, 'b', card, g.turnNumber)).toContain(1)
+  })
+
+  // ⚠ THE CASE A READER ASSUMES WAS HANDLED BY CULLING, AND IS NOT. Nothing is
+  // removed from the board when the cap drops: both engine sites compare with
+  // `>=`, so a side already over the reduced cap simply cannot ADD. Spec §4.1
+  // says this "falls out with no extra code — but it needs a test".
+  it('a side already OVER the reduced cap keeps every hull and only stops adding', () => {
+    const g = makeGame()
+    fill(g, 0, 'a', MAX_VEHICLES_PER_ZONE_SIDE) // 8 hulls, legal when placed
+    g.state.zones[0].cards.b.push(zoneEntry({ name: 'Tiger Shark', meta: { slotDenial: 3 } }))
+    expect(g.state.zones[0].cards.a).toHaveLength(MAX_VEHICLES_PER_ZONE_SIDE)
+    const card = inst({ vehicleType: 'ship', materialCost: 0 })
+    expect(legalZonesFor(g.state, 'a', card, g.turnNumber)).not.toContain(1)
+  })
+
+  // deployVehicle's `room`, the second engine site. additionalSpawns lands what
+  // FITS rather than being refused (zoneFull's own comment), and what fits is
+  // now the REDUCED cap.
+  it('additionalSpawns clamps to the reduced cap, not the flat one', () => {
+    const g = makeGame()
+    g.state.zones[0].cards.b.push(zoneEntry({ name: 'Tiger Shark', meta: { slotDenial: 3 } }))
+    const card = inst({ vehicleType: 'ship', materialCost: 0, meta: { additionalSpawns: 9 } })
+    g.privates.a.hand.push(card)
+    const r = applyAction(g, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 })
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.game.state.zones[0].cards.a).toHaveLength(MAX_VEHICLES_PER_ZONE_SIDE - 3)
+  })
+})
+
+describe('SS Thresher Shark — a granting surge', () => {
+  const thresher = () => inst({
+    name: 'Thresher Shark', faction: 'SS', vehicleType: 'ship', type: 'vehicle',
+    materialCost: 580_000, keywords: ['blocker', 'subScreen'],
+    meta: { resourceSurge: { materialsUnder: 580_000, grantKeywords: ['halfCost', 'inoffensive'] } },
+  })
+
+  it('costs half when you cannot afford it, and full when you can', () => {
+    const g = makeGame()
+    g.state.resources.a.materials = 579_999
+    expect(effectiveCostInGame(g.state, 'a', thresher(), g.turnNumber)).toBe(290_000)
+    g.state.resources.a.materials = 580_000
+    expect(effectiveCostInGame(g.state, 'a', thresher(), g.turnNumber)).toBe(580_000)
+  })
+
+  // Ruling B-9's granting arm stamps the keywords onto the HULL, not only onto
+  // the price. INOFFENSIVE is read off the BOARD (baseStrikersIn), so a
+  // price-only grant would leave a half-price hull that still bombards.
+  it('stamps halfCost AND inoffensive onto the hull that lands', () => {
+    const g = makeGame()
+    g.state.resources.a.materials = 400_000
+    const card = thresher()
+    g.privates.a.hand.push(card)
+    const r = applyAction(g, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 })
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    const hull = r.game.state.zones[0].cards.a[0]
+    expect([...hull.keywords].sort()).toEqual(['blocker', 'halfCost', 'inoffensive', 'subScreen'])
+    expect(r.game.state.resources.a.materials).toBe(400_000 - 290_000)
+  })
+
+  // BLOCKER + INOFFENSIVE on one hull looks like a contradiction and is not:
+  // Blocker protects the base from bombardment, Inoffensive is "cannot attack".
+  // Asserted rather than left to a reader, the same way DWG's FRAGILE+SCRAPPY
+  // pairing is (spec §6.1).
+  it('a surged Thresher still blocks the base it cannot strike', () => {
+    const g = makeGame()
+    const hull = zoneEntry({
+      name: 'Thresher Shark', vehicleType: 'ship', playedOnTurn: 0,
+      keywords: ['blocker', 'halfCost', 'inoffensive', 'subScreen'], materialCost: 580_000,
+    })
+    g.state.zones[0].cards.b.push(hull)
+    g.state.zones[0].cards.a.push(zoneEntry({ vehicleType: 'ship', playedOnTurn: 0, materialCost: 100_000 }))
+    const r = applyAction(g, 'alice', { type: 'ATTACK_ENEMY_BASE', zoneId: 1 })
+    expect(r.ok).toBe(false)
+    if (r.ok) return
+    expect(r.error).toContain('Blocker')
+    // …and it deals no damage of its own.
+    expect(baseDamageFrom([hull], g.turnNumber)).toBe(0)
   })
 })

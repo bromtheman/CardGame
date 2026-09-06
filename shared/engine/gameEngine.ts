@@ -170,16 +170,43 @@ function reshuffleDiscard(game: EngineGame, side: Side, ctx: EngineContext): voi
   )
 }
 
+// THE single way a card enters a hand (2026-09-02 spec §4.2). Stamps
+// handEnteredTurn and resyncs the public counts, which is checklist item 5 in
+// docs/claude/card-effects.md — a rule every call site has to remember, and
+// which reservesEffect only half-remembered (it wrote counts.hand and left
+// counts.deck).
+//
+// It exists because of the failure mode, not the tidiness: a hand-entry path
+// that forgets the stamp yields a Tyr that is silently never discounted, with
+// every unit test green. One helper cannot be half-applied, and
+// handStamp.test.ts's source guard — it fails the moment any file pushes onto
+// `.hand` directly instead of coming through here — is what stops a new push
+// site from bypassing it. (`grep -rn "putInHand(" shared/ --include=*.ts` is
+// the real count of call sites this protects, if you need the number; it is
+// deliberately not frozen here, because it drifts the next time a card effect
+// adds one.)
+//
+// Mutates and returns the card rather than pushing a copy: drawCard hands over
+// the very instance it shifted off the deck, and a copy there would break
+// identity for anything holding a reference across the move.
+export function putInHand(game: EngineGame, side: Side, card: CardInstance): CardInstance {
+  const priv = game.privates[side]
+  card.handEnteredTurn = game.turnNumber
+  priv.hand.push(card)
+  game.state.counts[side] = { hand: priv.hand.length, deck: priv.deck.length }
+  return card
+}
+
 export function drawCard(game: EngineGame, side: Side, ctx: EngineContext): void {
   const priv = game.privates[side]
   if (priv.deck.length === 0) reshuffleDiscard(game, side, ctx)
   const card = priv.deck.shift()
   if (!card) {
     game.state.log.push(`Player ${side.toUpperCase()} has no cards left to draw`)
+    game.state.counts[side] = { hand: priv.hand.length, deck: priv.deck.length }
   } else {
-    priv.hand.push(card)
+    putInHand(game, side, card)
   }
-  game.state.counts[side] = { hand: priv.hand.length, deck: priv.deck.length }
 }
 
 // A hull minted off a captured copy is a card of the minter's own — it is not
@@ -213,7 +240,14 @@ export function discardSnapshotOf(card: CardInstance): SnapshotCard {
   // forget — extra properties in a rest spread are legal — so it would ride
   // into state.destroyed and, via reshuffleDiscard, into a deck.
   const {
-    instanceId: _instanceId, playedOnTurn: _p, movedOnTurn: _m, activatedOnTurn: _a, ...snapshot
+    instanceId: _instanceId, playedOnTurn: _p, movedOnTurn: _m, activatedOnTurn: _a,
+    // A HAND stamp on a card leaving PLAY (2026-09-02 spec §4.2). Named here for
+    // the reason the four above are: a rest spread swallows it silently, so it
+    // would ride into state.destroyed and — through reshuffleDiscard — back into
+    // a deck, where SnapshotCard has no such field and nothing would notice.
+    // Harmless in effect today (putInHand re-stamps on the way back in) and
+    // named anyway, because "harmless" is not what this destructure promises.
+    handEnteredTurn: _h, ...snapshot
   } = card as ZoneCardEntry
   // `factoryEscort` (wave 7) comes off for exactly costDelta's reason: it is a
   // per-INSTANCE grant, stamped onto one hull on the board by a Havoc/Mirth
@@ -222,8 +256,29 @@ export function discardSnapshotOf(card: CardInstance): SnapshotCard {
   // Factory'd hull would return PERMANENTLY upgraded, and again after every
   // later death. This is the strip list the comment above warns about; nothing
   // in TypeScript would have caught the omission.
-  const { costDelta: _costDelta, factoryEscort: _factoryEscort, ...withoutCostDelta } = snapshot.meta
+  //
+  // `scrappyOnLoan` (2026-09-02) comes off for factoryEscort's exact reason: it
+  // is a per-INSTANCE marker for a keyword Sacrilego lends only for the
+  // duration of one battle. Left on, a hull that dies mid-battle would file it
+  // into state.destroyed and return through reshuffleDiscard permanently
+  // Scrappy — and would then be stripped by a LATER Sacrilego resolve that
+  // never lent it anything.
+  //
+  // ⚠ Fix round 1 (2026-09-02): the loan is TWO mutations, not one — the
+  // marker above, AND the `scrappy` keyword itself, pushed onto entry.keywords
+  // at lock. Dropping only the marker left the keyword riding the rest-spread
+  // below out into the snapshot unchanged: a hull that died mid-battle came
+  // back through reshuffleDiscard permanently Scrappy anyway, and with no
+  // marker left, no LATER Sacrilego resolve could ever find it to strip —
+  // that strip walks the board keyed on the marker, and the marker was
+  // already gone. So the keyword has to come off HERE, before the marker
+  // itself is dropped, using the marker's value one last time to know whether
+  // this hull's `scrappy` is a loan or its own.
+  const { costDelta: _costDelta, factoryEscort: _factoryEscort, scrappyOnLoan, ...withoutCostDelta } = snapshot.meta
   snapshot.meta = withoutCostDelta
+  if (scrappyOnLoan === true) {
+    snapshot.keywords = snapshot.keywords.filter((k) => k !== KEYWORDS.SCRAPPY)
+  }
   return snapshot as SnapshotCard
 }
 
@@ -392,8 +447,7 @@ function endTurn(game: EngineGame, ctx: EngineContext): ApplyResult {
       } else {
         const pick = pool[Math.floor(ctx.rng() * pool.length)]
         priv.deck = priv.deck.filter((c) => c.instanceId !== pick.instanceId)
-        priv.hand.push(pick)
-        game.state.counts[side] = { hand: priv.hand.length, deck: priv.deck.length }
+        putInHand(game, side, pick)
         game.state.log.push('Change Order delivers a replacement')
       }
     }

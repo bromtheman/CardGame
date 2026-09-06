@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { loadSeedData } from '../transform'
 import type { SeedCard } from '../../../shared/types'
+import { CATALOG_EFFECTS, DATA_EFFECT_KEYS, isImplemented } from '../../../shared/effects/registry'
+import { MAX_VEHICLES_PER_ZONE_SIDE } from '../../../shared/gameSettings'
+import { makeGame, zoneEntry } from '../../../shared/engine/testFixtures'
+import { zoneCapFor } from '../../../shared/engine/zoneCapacity'
+import '../../../shared/engine/index'
 
 // The 2026-09-02 balance pass — SS's share, pinned against the seed source.
 //
@@ -18,11 +23,289 @@ async function bySeedKey(): Promise<Map<string, SeedCard>> {
   return new Map(cards.map((c) => [`${c.faction}:${c.name}`, c]))
 }
 
+interface Expected {
+  materialCost: number
+  blueprintCost: number
+  keywords: string[]
+  vehicleType?: string | null
+  cpCost?: number
+  cardText?: string
+}
+
+// ⚠ Ruling R-3 — Sacrilego is **10,000**, not a dropped zero. Pinned here so
+// it cannot drift back to 80k or 100k silently.
+//
+// Every SS card the 2026-09-02 pass touched, spelled out. Keywords compare as
+// SETS — order in the seed literal is not meaningful.
+const CARDS: Record<string, Expected> = {
+  'SS:Tyr': {
+    materialCost: 950_000, blueprintCost: 983_000, keywords: ['blocker'],
+    vehicleType: 'ship',
+    cardText: 'This card costs 60k less for every turn it spends in your hand',
+  },
+  'SS:Tiger Shark': {
+    materialCost: 690_000, blueprintCost: 914_000, keywords: [], vehicleType: 'ship',
+    cardText: 'While this vehicle is alive, your opponent has 3 fewer vehicle slots in this zone. This does not stack.',
+  },
+  'SS:Thresher Shark': {
+    materialCost: 580_000, blueprintCost: 914_000,
+    keywords: ['blocker', 'subScreen'], vehicleType: 'ship',
+    cardText: 'While you have less resources than this costs, you may play it with HALFCOST and INOFFENSIVE',
+  },
+  'SS:Bull Shark': {
+    materialCost: 640_000, blueprintCost: 898_000,
+    keywords: ['blocker', 'subScreen'], vehicleType: 'ship',
+    cardText: 'Whenever this survives an offensive fleet battle, deal 200k damage to enemy base in this zone',
+  },
+  // An ability, so vehicleType null. cpCost 2 — the card buys itself with CP,
+  // not with resources it is itself printing.
+  'SS:Cash advance': {
+    materialCost: 0, blueprintCost: 0, keywords: [], vehicleType: null, cpCost: 2,
+    cardText: 'Gain 150k resources this turn, then draw a card.',
+  },
+  'SS:Victoria': {
+    materialCost: 250_000, blueprintCost: 270_185, keywords: [], vehicleType: 'ship',
+    cardText: 'When this vehicle is played, pick one SS ship in hand and reduce its cost by 75k',
+  },
+  'SS:Trondheim': {
+    materialCost: 375_000, blueprintCost: 393_000, keywords: ['blocker'], vehicleType: 'ship',
+    cardText: 'When this vehicle is destroyed, draw an SS ship from your deck and reduce its cost by 75k',
+  },
+  'SS:Resolute': {
+    materialCost: 60_000, blueprintCost: 63_300, keywords: [], vehicleType: 'ship',
+    cardText: 'When this vehicle is played, draw an SS ship from your deck and reduce its cost by 40k',
+  },
+  'SS:Air Strafe': {
+    materialCost: 150_000, blueprintCost: 0, keywords: [], vehicleType: null,
+    cardText: 'Choose an enemy vehicle, it fights alone against two predatorX. If the target is a player design, also spawn your choice of hydra or cyclone',
+  },
+  'SS:Repairmen Ready': {
+    materialCost: 0, blueprintCost: 0, keywords: [], vehicleType: null,
+    cardText: 'Grant target vehicle scrappy. If the target is an SS vehicle that costs less than 400k, draw a card.',
+  },
+  'SS:Excalibur': {
+    materialCost: 550_000, blueprintCost: 553_900, keywords: ['blocker'], vehicleType: 'ship',
+    cardText: 'Pick one SS ship in hand and reduce its cost by 200k',
+  },
+  'SS:Braveheart': {
+    materialCost: 350_000, blueprintCost: 371_000, keywords: [], vehicleType: 'ship',
+    cardText: 'Once per turn, you may pay 1cp to have one of your ships in this zone 1v1 an enemy vehicle in the same zone',
+  },
+  'SS:Nothung': {
+    materialCost: 400_000, blueprintCost: 478_000, keywords: ['blocker'], vehicleType: 'ship',
+    cardText: 'When this vehicle is played, reduce the cost of every SS ship in your hand by 40k',
+  },
+  'SS:Sacrilego': {
+    materialCost: 10_000, blueprintCost: 86_000,
+    keywords: ['scrappy', 'stealthy', 'mobile'], vehicleType: 'ship',
+    cardText: 'Whenever this vehicle participates in a fleet battle, friendly ships receive SCRAPPY keyword for that battle. Whenever this vehicle survives a fleet battle, reduce the cost of SS ships in hand by 30k.',
+  },
+  'SS:Typhoon': {
+    materialCost: 130_000, blueprintCost: 135_323, keywords: [], vehicleType: 'sub',
+    cardText: 'When played into a zone, summon a second copy of it in that zone',
+  },
+  'SS:Cyclone': {
+    materialCost: 280_000, blueprintCost: 281_000, keywords: [], vehicleType: 'sub',
+    cardText: 'When this vehicle is played into a zone, grant every enemy vehicle in that zone FRAGILE',
+  },
+  'SS:Spectre': {
+    materialCost: 200_000, blueprintCost: 214_000, keywords: ['stealthy'], vehicleType: 'ship',
+    cardText: 'When this vehicle is played, reduce your opponent CP by 1',
+  },
+  'SS:Hydra': {
+    materialCost: 220_000, blueprintCost: 238_000, keywords: ['mobile'], vehicleType: 'airship',
+    cardText: 'When this vehicle is played, refresh one of your used hero powers then gain 1cp',
+  },
+  'SS:Argonaut': {
+    materialCost: 90_000, blueprintCost: 94_000, keywords: ['scrappy'], vehicleType: 'ship',
+    cardText: 'When this vehicle is destroyed, reduce the cost of a random SS ship in your hand by 50k',
+  },
+  'SS:Paladin': {
+    materialCost: 240_000, blueprintCost: 240_000, keywords: [], vehicleType: 'ship',
+    cardText: 'When this vehicle is played, gain 1cp. Each turn you may pay 1cp to spawn another paladin into this zone',
+  },
+  'SS:Iron Maiden': {
+    materialCost: 150_000, blueprintCost: 174_000, keywords: ['blocker'], vehicleType: 'ship',
+    cardText: 'When this vehicle is destroyed, draw a card',
+  },
+  'SS:Asphodel': {
+    materialCost: 400_000, blueprintCost: 544_000,
+    keywords: ['airScreen', 'stealthy'], vehicleType: 'ship', cardText: '',
+  },
+  'SS:Wolin': {
+    materialCost: 250_000, blueprintCost: 271_000, keywords: [], vehicleType: 'sub', cardText: '',
+  },
+  'SS:Mobula': {
+    materialCost: 500_000, blueprintCost: 603_000,
+    keywords: ['halfCost', 'temporary'], vehicleType: 'plane', cardText: '',
+  },
+  'SS:Balmung': {
+    materialCost: 620_000, blueprintCost: 636_000, keywords: ['blocker'], vehicleType: 'ship',
+    cardText: 'When this is played into a zone, create a hydra card in hand and reduce its cost to zero',
+  },
+  'SS:Chrysaor': {
+    materialCost: 75_000, blueprintCost: 116_000, keywords: ['stealthy'], vehicleType: 'ship',
+    cardText: 'While you have more than 150k resources, this card costs 75k more and spawns in a second Chrysaor',
+  },
+}
+
 describe('2026-09-02 balance pass — SS', () => {
-  // Populated by the SS wave. Vitest fails a file with no tests at all, so
-  // this placeholder keeps the suite green until then. The wave that fills the
-  // file deletes it.
-  it('has a seed to read', async () => {
-    expect((await bySeedKey()).size).toBeGreaterThan(0)
+  it.each(Object.entries(CARDS))('%s carries its balanced numbers', async (k, want) => {
+    const card = (await bySeedKey()).get(k)
+    expect(card, `${k} is missing from the seed source`).toBeDefined()
+    expect({
+      materialCost: card!.materialCost,
+      blueprintCost: card!.blueprintCost,
+      keywords: [...(card!.keywords ?? [])].sort(),
+    }).toEqual({
+      materialCost: want.materialCost,
+      blueprintCost: want.blueprintCost,
+      keywords: [...want.keywords].sort(),
+    })
+    if (want.vehicleType !== undefined) expect(card!.vehicleType ?? null).toBe(want.vehicleType)
+    if (want.cpCost !== undefined) expect(card!.cpCost).toBe(want.cpCost)
+    if (want.cardText !== undefined) expect(card!.cardText ?? '').toBe(want.cardText)
+  })
+
+  // costModifier is not a DATA_EFFECT_KEY, and G1 only checks that a NAME
+  // present in meta resolves. It cannot check the card carries one — a cleared
+  // meta would leave a 950k vanilla Tyr with card text promising a discount.
+  it('Tyr names the cost modifier its text promises', async () => {
+    expect((await bySeedKey()).get('SS:Tyr')!.meta).toMatchObject({
+      costModifier: 'tyrCostModifier',
+    })
+  })
+
+  // A data key's VALUE is never checked by any guard, only its presence
+  // (docs/claude/card-effects.md, blind spot 4) — and this value IS the rule:
+  // zoneCapFor subtracts exactly this number. `2` or `"3"` would leave a card
+  // that is inert AND invisible, with no guard failure and no "plays as
+  // vanilla" note either.
+  it('Tiger Shark denies exactly three slots', async () => {
+    expect((await bySeedKey()).get('SS:Tiger Shark')!.meta?.slotDenial).toBe(3)
+  })
+
+  // The whole card is that one data key, so if it ever left DATA_EFFECT_KEYS
+  // the card would become a G2 offender with no other symptom.
+  it('slotDenial is a recognised data key', () => {
+    expect([...DATA_EFFECT_KEYS]).toContain('slotDenial')
+  })
+
+  // Reads the SEED rather than a fixture: the engine rule and the printed
+  // number have to agree, and only a seed-backed test can say they do. Lives
+  // here rather than shared/engine/zoneCapacity.test.ts per the task-6 brief's
+  // own escape hatch — dwgEffects.test.ts documents "nothing under shared/
+  // may read the seed", and this file already loads it for every other
+  // seed-backed cross-check of this shape.
+  it('a seeded Tiger Shark takes three slots off the enemy cap', async () => {
+    const { cards } = await loadSeedData()
+    const row = cards.find((c) => c.faction === 'SS' && c.name === 'Tiger Shark')!
+    const g = makeGame()
+    g.state.zones[0].cards.b.push(zoneEntry({ name: row.name, meta: row.meta ?? {} }))
+    expect(zoneCapFor(g.state, 'a', 1)).toBe(MAX_VEHICLES_PER_ZONE_SIDE - 3)
+  })
+
+  // resourceSurge is a DATA_EFFECT_KEY, so G2 closes the card on the key
+  // EXISTING and never looks inside. Compared field by field: a materialsOver
+  // where the card says "less than" would invert the whole card silently.
+  //
+  // The threshold IS the printed cost. Asserted against the row's own
+  // materialCost as well as against the literal, because those two numbers
+  // moving apart is exactly how this card would quietly stop working.
+  it('Thresher Shark surges UNDER its own printed cost, granting halfCost and inoffensive', async () => {
+    const card = (await bySeedKey()).get('SS:Thresher Shark')!
+    expect(card.meta?.resourceSurge).toEqual({
+      materialsUnder: 580_000, grantKeywords: ['halfCost', 'inoffensive'],
+    })
+    expect((card.meta?.resourceSurge as { materialsUnder: number }).materialsUnder)
+      .toBe(card.materialCost)
+  })
+
+  // A DATA_EFFECT_KEY, so G2 closes the card on the key existing and never
+  // looks at the number. `2` here would land three hulls for one payment.
+  it('Typhoon deploys exactly one extra hull', async () => {
+    expect((await bySeedKey()).get('SS:Typhoon')!.meta?.additionalSpawns).toBe(1)
+  })
+
+  // Spec §7.1's near miss: additionalSpawns is resolved by deployVehicle from
+  // the card in hand, so no catalog is involved and Typhoon names no effect at
+  // all. Asserted so nobody "fixes" it by writing one.
+  it('Typhoon names no effect — the extra hull is placement, not an effect', async () => {
+    const meta = (await bySeedKey()).get('SS:Typhoon')!.meta ?? {}
+    expect(Object.keys(meta)).toEqual(['additionalSpawns'])
+  })
+
+  // ⚠ Ruling R-4, and it needs a SEED-backed assertion because it is a rule the
+  // docs used to forbid. Wave 0 corrected card-effects.md rule 10: SCRAPPY
+  // narrows an onDeathEffect's window (to below 80% HP) rather than closing it.
+  it('Argonaut carries SCRAPPY and a death trigger together, deliberately', async () => {
+    const card = (await bySeedKey()).get('SS:Argonaut')!
+    expect(card.keywords).toContain('scrappy')
+    expect(card.meta?.onDeathEffect).toBe('argonautOnDeath')
+  })
+
+  // resourceSurge is a DATA_EFFECT_KEY, so G2 closes the card on the key
+  // existing and never looks inside. Compared FIELD BY FIELD: a materialsUnder
+  // where the card says "more than" would invert it silently, and a costDelta
+  // that no longer matches the printed number would go unnoticed by everything.
+  it('Chrysaor surges over 150k for +75k and a second hull', async () => {
+    expect((await bySeedKey()).get('SS:Chrysaor')!.meta?.resourceSurge).toEqual({
+      materialsOver: 150_000, extraSpawns: 1, costDelta: 75_000,
+    })
+  })
+})
+
+describe('2026-09-02 balance pass — SS, the checks a unit test cannot make', () => {
+  // ⚠ A MISSING { needsCatalog: true } IS INVISIBLE TO THE SUITE. makeCtx
+  // hand-builds a catalog, so every unit test passes while game-action runs the
+  // effect against an empty one and 400s on every real play. Read off the
+  // registry at runtime, which is the only check that works.
+  it('paladinActivate needs the catalog', () => {
+    expect(CATALOG_EFFECTS.has('paladinActivate')).toBe(true)
+  })
+
+  // Spec §7.1's near misses, asserted in the NEGATIVE so nobody adds the flag
+  // "to be safe": Trondheim and Resolute draw from the owner's DECK, Typhoon's
+  // second hull is additionalSpawns which placement.ts resolves, and Nothung no
+  // longer spawns anything. None of the four touches ctx.catalog.
+  it.each(['trondheimOnDeath', 'resoluteOnPlay', 'nothungOnPlay', 'cycloneOnPlay',
+    'spectreOnPlay', 'argonautOnDeath', 'bullSharkVictory', 'sacrilegoBattle',
+    'victoriaOnPlay', 'paladinOnPlay', 'cashAdvanceEffect'])(
+    '%s does NOT need the catalog', (name) => {
+      expect(CATALOG_EFFECTS.has(name)).toBe(false)
+    },
+  )
+
+  // ⚠ AN ACTIVATED ABILITY NEEDS BOTH KEYS. ACTIVATE_VEHICLE refuses a card
+  // with onActivate and no price, and BoardZone gates its button on the
+  // identical pair — so half a pair is a card with a registered ability, card
+  // text promising it, and no way to press it. Silently, in both places.
+  it.each([
+    ['SS:Paladin', 'paladinActivate'],
+    ['SS:Braveheart', 'braveheartActivate'],
+  ])('%s carries onActivate AND a price', async (key, effect) => {
+    const meta = (await bySeedKey()).get(key)!.meta as Record<string, unknown>
+    expect(meta.onActivate).toBe(effect)
+    expect(typeof meta.activateCpCost).toBe('number')
+    expect(isImplemented(effect)).toBe(true)
+  })
+
+  // The four new rows, by name. transform.ts derives each id from
+  // `card:SS:<name>`, so a retitle mints a different card — "Cash advance"'s
+  // lowercase "a" included.
+  it('seeds exactly the four new SS cards, under their delivered names', async () => {
+    const keys = new Set((await bySeedKey()).keys())
+    for (const k of ['SS:Thresher Shark', 'SS:Bull Shark', 'SS:Tiger Shark', 'SS:Cash advance']) {
+      expect(keys.has(k), `${k} is missing`).toBe(true)
+    }
+    expect(keys.has('SS:Cash Advance')).toBe(false)
+  })
+
+  // Every SS card this wave gave text to resolves an implemented effect or a
+  // data key. G2 says this too — but G2 covers the WHOLE catalog and would keep
+  // passing if an SS row were quietly dropped, and this is scoped to the 26.
+  it('every card in CARDS is seeded', async () => {
+    const seeded = await bySeedKey()
+    for (const k of Object.keys(CARDS)) expect(seeded.has(k), `${k} is missing`).toBe(true)
   })
 })

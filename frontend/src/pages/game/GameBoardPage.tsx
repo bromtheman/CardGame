@@ -3,9 +3,8 @@ import { Link, useParams } from 'react-router-dom'
 import type { CardInstance, PublicGameState } from '@shared/engine/gameInit'
 import type { Side } from '@shared/engine/engineTypes'
 import type { LobbySettings } from '@shared/lobbySettings'
-import { battleFrozen, biomeAllows, effectiveCostInGame, effectName, findVehicle, legalZonesFor } from '@shared/engine/index'
+import { battleFrozen, biomeAllows, effectiveCostInGame, effectName, findVehicle, legalZonesFor, zoneCapFor } from '@shared/engine/index'
 import { shortHandNumber } from '@shared/format'
-import { MAX_VEHICLES_PER_ZONE_SIDE } from '@shared/gameSettings'
 import { useGameQuery, useMyGamePlayerQuery, useUsernames } from '../../lib/games'
 import { useRealtimeInvalidate } from '../../lib/realtime'
 import { useAuth } from '../../lib/auth'
@@ -74,9 +73,9 @@ export function GameBoardPage() {
   // Move-mode: shared zone-picking step for Rapid Redeployment (any own
   // vehicle) and the mobile-vehicle "move" affordance (Mobile keyword only).
   // Legal zones mirror heroPowers.ts's moveEntry — any zone but the current
-  // one whose biome fits the vehicle and whose own side is under the
-  // MAX_VEHICLES_PER_ZONE_SIDE cap, with no screen-blocking check (that only
-  // applies to playing a new card from hand, not relocating one already out).
+  // one whose biome fits the vehicle and whose own side is under that zone's
+  // live zoneCapFor cap, with no screen-blocking check (that only applies to
+  // playing a new card from hand, not relocating one already out).
   // 'handTarget' is excluded here — its instanceId names a HAND card
   // (Excalibur), not an on-field one, so findVehicle would just miss.
   const moveSource = moveMode?.phase === 'pickZone' && moveMode.kind !== 'handTarget'
@@ -88,9 +87,10 @@ export function GameBoardPage() {
           z.id !== moveSource.zone.id &&
           biomeAllows(moveSource.entry.vehicleType, z.biome) &&
           // The move half of the zone-side cap, mirroring moveEntry's own
-          // check. Display-only, like the rest of this filter — the server
+          // check — including its enemy-denier term since spec §4.1.
+          // Display-only, like the rest of this filter — the server
           // re-validates and 400s a move into a full zone either way.
-          z.cards[mySide].length < MAX_VEHICLES_PER_ZONE_SIDE
+          z.cards[mySide].length < zoneCapFor(state, mySide, z.id)
         ))
         .map((z) => z.id)
     : []
@@ -118,7 +118,7 @@ export function GameBoardPage() {
   // out of reach — it answers "can I play this?" at the moment it is asked.
   const liftedUnaffordable =
     liftedCard !== null &&
-    state.resources[mySide].materials < effectiveCostInGame(state, mySide, liftedCard)
+    state.resources[mySide].materials < effectiveCostInGame(state, mySide, liftedCard, game.turn_number)
 
   // Placing/fieldTargeting/moveMode/swapMode are mutually exclusive: starting
   // one clears the others. HandBar's handTargeting is internal to that
@@ -150,10 +150,10 @@ export function GameBoardPage() {
     cancelAllModes()
     setMoveMode({ phase: 'pickZone', instanceId, kind: 'mobile' })
   }
-  // Excalibur's hand direction (DP6, spec §4.3 departure 4): HandBar has
-  // already picked the hand target (an AI ship) by the time this fires —
-  // chain into the same pickZone phase for the destination zone rather than
-  // inventing a separate mode.
+  // Excalibur / Victoria's hand direction (DP6, spec §4.3 departure 4):
+  // HandBar has already picked the hand target (an SS ship, ruling R-5) by
+  // the time this fires — chain into the same pickZone phase for the
+  // destination zone rather than inventing a separate mode.
   function onVehicleHandTargetPicked(instanceId: string, targetInstanceId: string) {
     cancelAllModes()
     setMoveMode({ phase: 'pickZone', instanceId, kind: 'handTarget', targetInstanceId })
@@ -367,6 +367,8 @@ export function GameBoardPage() {
             onPickOwnForSwap={onPickOwnForSwap}
             onPickEnemyForSwap={onPickEnemyForSwap}
             zoneEffectBadgeList={zoneEffectBadges(state.zoneEffects, zone.id, mySide)}
+            myCap={zoneCapFor(state, mySide, zone.id)}
+            theirCap={zoneCapFor(state, theirSide, zone.id)}
           >
             {canActivateZones && (
               <ZoneActions

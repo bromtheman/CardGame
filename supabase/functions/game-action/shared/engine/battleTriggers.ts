@@ -1,10 +1,10 @@
-import { TRIGGERS } from '../gameSettings.ts'
+import { KEYWORDS, TRIGGERS } from '../gameSettings.ts'
 import type { CardInstance, SnapshotCard, ZoneEffect } from './gameInit.ts'
 import type {
   BattleCasualty, BattleContext, EngineContext, EngineGame, Side, ZoneCardEntry,
 } from './engineTypes.ts'
 import {
-  discardCard, discardSnapshotOf, findVehicle, otherSide, zoneById,
+  discardCard, discardSnapshotOf, findVehicle, otherSide, putInHand, zoneById,
 } from './gameEngine.ts'
 import {
   BYSTANDER_EFFECTS, DEPLOY_WATCHER_EFFECTS, RESOLVE_BYSTANDER_EFFECTS, effectFor, effectName,
@@ -59,8 +59,10 @@ export function battleOutcome(
 // one-slot rule is enforced inside choice() (primitives.ts), which drops a
 // second OFFER rather than skipping a whole effect (spec §4.3, DP2 departure
 // 4). Enforcing it here instead would starve an unconditional clause sharing a
-// card with an optional one — two surviving Sacrilegos would grant 1 CP
-// between them rather than 1 each.
+// card with an optional one — the shape that motivated the rule: the ORIGINAL
+// Sacrilego ("gain 1cp. Additionally you may sacrifice it…", rewritten away by
+// the 2026-09-02 pass) had to grant 1 CP to EACH surviving copy, not 1 between
+// them, even though only one copy could ever win the suspension slot.
 //
 // A trigger that reports failure gets a log note and nothing more: at lock the
 // battle is already declared, and at resolve the report is already approved,
@@ -418,16 +420,17 @@ export function fireDeathEffect(
 }
 
 // Undo one death: put the hull back on the board and take its snapshot back
-// out of the discard. Iron Cordon and Sacrilego's clause 2 are the two
-// customers. The snapshot is matched on cardId alone — two copies of one card
-// are byte-identical in the discard, so removing either is exact — and looked
-// for under the card's OWNER (a captured hull's discard is filed there, not
-// under whoever was flying it).
+// out of the discard. OW Iron Cordon is the customer (Sacrilego's own
+// sacrifice-and-revive clause was rewritten away by the 2026-09-02 pass). The
+// snapshot is matched on cardId alone — two copies of one card are
+// byte-identical in the discard, so removing either is exact — and looked for
+// under the card's OWNER (a captured hull's discard is filed there, not under
+// whoever was flying it).
 //
 // Returns false without touching anything when the zone is gone or nothing
 // matches, so a caller can refuse rather than half-apply. It does NOT unwind
-// an onDeathEffect that already fired (spec §4.3, DP2 departure 7): both
-// customers resolve a choice in a later action, by which time those have run.
+// an onDeathEffect that already fired (spec §4.3, DP2 departure 7): the
+// customer resolves a choice in a later action, by which time that has run.
 // Two snapshots of one card are NOT interchangeable, however tempting that
 // looks: keywords and meta are per-instance and diverge on the board.
 // repairmenReadyEffect grants SCRAPPY to a hull already deployed, so a plain
@@ -474,8 +477,27 @@ export function reviveEntry(
   const index = discardIndexOf(game, side, entry)
   if (index < 0) return false
   game.state.destroyed[side].splice(index, 1)
-  zone.cards[side].push(entry)
+  // `entry` is the CALLER's snapshot — a battle casualty captured before it
+  // left the board — not the (already-stripped) copy just spliced out of the
+  // discard pile above, so it can still carry a Sacrilego SCRAPPY loan
+  // (meta.scrappyOnLoan plus the loaned `scrappy` keyword itself) from a
+  // battle that has since ended. Shed exactly what discardSnapshotOf sheds
+  // (gameEngine.ts), so a revived hull never comes back with a keyword its
+  // lender only meant to last one battle. Unreachable through a real deck
+  // today — Iron Cordon (OW, this function's only caller) and Sacrilego (SS)
+  // are different factions, and decks are single-faction — but reviveEntry
+  // itself takes a bare ZoneCardEntry, so the "third SCRAPPY reader" hazard
+  // needs no cross-faction game to become live the day that stops being true.
+  const revived = entry.meta.scrappyOnLoan === true
+    ? { ...entry, meta: withoutScrappyLoan(entry.meta), keywords: entry.keywords.filter((k) => k !== KEYWORDS.SCRAPPY) }
+    : entry
+  zone.cards[side].push(revived)
   return true
+}
+
+function withoutScrappyLoan(meta: Record<string, unknown>): Record<string, unknown> {
+  const { scrappyOnLoan: _loan, ...rest } = meta
+  return rest
 }
 
 // reviveEntry's sibling, and wave 7's answer to TG Nostalgia: "whenever this
@@ -511,9 +533,7 @@ export function returnToHand(
   const index = discardIndexOf(game, side, entry)
   if (index < 0) return false
   const [snapshot] = game.state.destroyed[side].splice(index, 1)
-  game.privates[side].hand.push({ ...snapshot, instanceId: ctx.newId() })
-  // Checklist item 5: a direct push must resync the public count by hand.
-  game.state.counts[side].hand = game.privates[side].hand.length
+  putInHand(game, side, { ...snapshot, instanceId: ctx.newId() })
   return true
 }
 

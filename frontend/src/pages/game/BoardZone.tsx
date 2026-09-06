@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import type { ZoneState } from '@shared/engine/gameInit'
 import type { Side, ZoneCardEntry } from '@shared/engine/engineTypes'
-import { KEYWORDS, MAX_VEHICLES_PER_ZONE_SIDE, VEHICLE_TYPES } from '@shared/gameSettings'
+import { KEYWORDS, VEHICLE_TYPES } from '@shared/gameSettings'
 import { shortHandNumber } from '@shared/format'
 import { MiniVehicle } from './MiniVehicle'
 import type { ZoneEffectBadge, ZoneEffectIcon } from './zoneEffectBadges'
@@ -77,32 +77,37 @@ function ZoneEffectBadges({ badges }: { badges: ZoneEffectBadge[] }) {
   )
 }
 
-// A side's vehicle lane: a fixed MAX_VEHICLES_PER_ZONE_SIDE-slot grid, with
-// the unfilled slots drawn as dashed outlines.
+// A side's vehicle lane: a fixed-slot grid sized to this side's live cap
+// (zoneCapFor), with the unfilled slots drawn as dashed outlines.
 //
 // It is a GRID rather than the flex-wrap this used to be because the row
 // count then followed the OCCUPANCY, so every few vehicles grew the lane and
-// pushed the base HP bars (and the whole panel) down. Rendering all
-// MAX_VEHICLES_PER_ZONE_SIDE slots whether or not they are filled cannot do
-// that — the lane is the same height empty or full, which is only expressible
-// now that the engine caps the side at eight.
+// pushed the base HP bars (and the whole panel) down. Rendering every slot up
+// to the cap, whether or not it is filled, cannot do that — the lane is the
+// same height empty or full, which is only expressible now that the engine
+// caps the side (eight, less any denier standing in this zone).
 //
 // The empty slots also carry the cap: a player can see how many deployments
 // they have left in this zone without counting chips.
 function VehicleLane({
   entries,
+  cap,
   renderEntry,
   className = '',
 }: {
   entries: ZoneCardEntry[]
+  /** This side's live cap from zoneCapFor — NOT the flat constant. An enemy
+   *  Tiger Shark shrinks it, and the dashed slots must shrink with it or the
+   *  board offers deployments the server will refuse. */
+  cap: number
   renderEntry: (entry: ZoneCardEntry) => ReactNode
   className?: string
 }) {
-  // A side can sit ABOVE the cap — spawns, revives and Boarding Party
-  // deliberately bypass it (see gameSettings.MAX_VEHICLES_PER_ZONE_SIDE), so
-  // this clamps at zero rather than rendering a negative slot count, and the
-  // grid simply grows a row in that case instead of dropping a real hull.
-  const emptySlots = Math.max(0, MAX_VEHICLES_PER_ZONE_SIDE - entries.length)
+  // A side can sit ABOVE the cap — spawns, revives and Boarding Party bypass it
+  // deliberately, and a denier can now shrink it under a lane that was already
+  // full — so this clamps at zero rather than rendering a negative slot count,
+  // and the grid grows a row instead of dropping a real hull.
+  const emptySlots = Math.max(0, cap - entries.length)
   return (
     <div
       // gap-x-0.5 (2px), not gap-1: four 5rem tracks plus three 4px gaps come
@@ -128,7 +133,7 @@ function VehicleLane({
 
 // The front line: enemy territory above it, yours below. Its own element
 // rather than the `border-t` hairline the own-lane used to carry, because the
-// eight-slot grid fills both lanes with dashed outlines and a 1px line at 50%
+// dashed-slot grid fills both lanes with dashed outlines and a 1px line at 50%
 // opacity now reads as one more grid line instead of as the boundary between
 // the two fleets. Brass to match the board's own accent, with a centre
 // diamond so the midpoint is unmistakable even on an empty zone.
@@ -152,20 +157,22 @@ function FrontLine({ badges }: { badges: ZoneEffectBadge[] }) {
   )
 }
 
-// The "3/8" figure beside the zone title. Turns red once the side is full, so
-// "why can I not play this here?" is answerable from the board itself.
-function LaneCount({ count, mine }: { count: number; mine: boolean }) {
-  const full = count >= MAX_VEHICLES_PER_ZONE_SIDE
+// The "3/8" figure beside the zone title — "3/5" while an enemy Tiger Shark
+// stands here. Turns red once the side is full, so "why can I not play this
+// here?" is answerable from the board itself, which is the whole reason the
+// reduced number has to reach this component.
+function LaneCount({ count, cap, mine }: { count: number; cap: number; mine: boolean }) {
+  const full = count >= cap
   return (
     <span
-      title={`${mine ? 'Your' : "Opponent's"} vehicles in this zone (limit ${MAX_VEHICLES_PER_ZONE_SIDE})`}
+      title={`${mine ? 'Your' : "Opponent's"} vehicles in this zone (limit ${cap})`}
       // leading-4 with no vertical padding: it rides a 16px HP row now, and a
       // taller badge would grow that row for every zone on the board.
       className={`inline-flex shrink-0 items-center rounded px-1.5 text-[10px] font-semibold leading-4 tabular-nums ${
         full ? 'bg-red-500/20 text-red-400' : 'bg-ocean-950/60 text-ocean-300'
       }`}
     >
-      {count}/{MAX_VEHICLES_PER_ZONE_SIDE}
+      {count}/{cap}
     </span>
   )
 }
@@ -215,6 +222,8 @@ export function BoardZone({
   onPickOwnForSwap,
   onPickEnemyForSwap,
   zoneEffectBadgeList,
+  myCap,
+  theirCap,
 }: {
   zone: ZoneState
   maxBaseHp: number
@@ -240,6 +249,11 @@ export function BoardZone({
   onPickEnemyForSwap?: (instanceId: string) => void
   /** Persistent markers on THIS zone, from ./zoneEffectBadges. */
   zoneEffectBadgeList?: ZoneEffectBadge[]
+  /** zoneCapFor(state, mySide, zone.id) — computed by GameBoardPage. */
+  myCap: number
+  /** zoneCapFor(state, theirSide, zone.id). The two differ whenever exactly
+   *  one side has a denier here, which is the ordinary case. */
+  theirCap: number
 }) {
   return (
     <section
@@ -271,7 +285,7 @@ export function BoardZone({
         hp={zone.baseHp[theirSide]}
         max={maxBaseHp}
         own={false}
-        badge={<LaneCount count={zone.cards[theirSide].length} mine={false} />}
+        badge={<LaneCount count={zone.cards[theirSide].length} cap={theirCap} mine={false} />}
       />
       <VehicleLane
         // `grow shrink-0`: the two lanes split whatever height the panel has
@@ -280,6 +294,7 @@ export function BoardZone({
         // short viewport scrolls the board rather than squashing a chip.
         // `content-center` keeps the slot rows centred in the taller box.
         className="grow shrink-0 content-center"
+        cap={theirCap}
         entries={zone.cards[theirSide] as ZoneCardEntry[]}
         renderEntry={(c) => {
           const swapEnemyEligible = !!swapPickEnemyMode && c.vehicleType === VEHICLE_TYPES.SHIP
@@ -302,6 +317,7 @@ export function BoardZone({
       <FrontLine badges={zoneEffectBadgeList ?? []} />
       <VehicleLane
         className="grow shrink-0 content-center"
+        cap={myCap}
         entries={zone.cards[mySide] as ZoneCardEntry[]}
         renderEntry={(c) => {
           const mobileEligible = !!canMoveVehicles && c.keywords.includes(KEYWORDS.MOBILE) && c.movedOnTurn !== turnNumber
@@ -345,7 +361,7 @@ export function BoardZone({
         label="Your base"
         hp={zone.baseHp[mySide]}
         max={maxBaseHp}
-        badge={<LaneCount count={zone.cards[mySide].length} mine />}
+        badge={<LaneCount count={zone.cards[mySide].length} cap={myCap} mine />}
       />
       {children && (
         <div onClick={(e) => e.stopPropagation()}>

@@ -6,7 +6,7 @@ import {
 } from './primitives.ts'
 import type { EffectFn } from './registry.ts'
 import { registerEffect } from './registry.ts'
-import { findVehicle, otherSide } from '../engine/gameEngine.ts'
+import { findVehicle, otherSide, putInHand } from '../engine/gameEngine.ts'
 import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
 import type { EngineGame, Side, ZoneCardEntry } from '../engine/engineTypes.ts'
 
@@ -58,7 +58,7 @@ registerEffect('sapphireEffect', whenPlayed(
   sequence(
     grant({ draw: 1 }),
     ({ game, actor, card }) => {
-      game.state.resources[actor].materials += effectiveCostInGame(game.state, actor, card)
+      game.state.resources[actor].materials += effectiveCostInGame(game.state, actor, card, game.turnNumber)
       game.state.log.push(`${card.name} slips in unopposed — its cost is refunded`)
       return true
     },
@@ -88,9 +88,7 @@ registerEffect(ROBOTIC_ASSEMBLERS, choice({
     const pick = ctx.catalog.find((c) => c.cardId === choiceId)
     // An empty catalog here is an infrastructure bug, not an empty pool.
     if (!pick) return false
-    const hand = game.privates[actor].hand
-    hand.push({ ...pick, instanceId: ctx.newId() })
-    game.state.counts[actor].hand = hand.length
+    putInHand(game, actor, { ...pick, instanceId: ctx.newId() })
     game.state.log.push(`Player ${actor.toUpperCase()} adds a card to their hand`)
     return true
   },

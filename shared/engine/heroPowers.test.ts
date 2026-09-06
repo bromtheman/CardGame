@@ -448,4 +448,36 @@ describe('MAX_VEHICLES_PER_ZONE_SIDE — the move half of the cap', () => {
     if (!r.ok) throw new Error(r.error)
     expect(r.game.state.zones[0].cards.a).toHaveLength(MAX_VEHICLES_PER_ZONE_SIDE)
   })
+
+  // The move half. Without it a player would deploy into a spare zone and walk
+  // hulls into a denied one, which is the denial in name only.
+  it('refuses a move into a zone an enemy denier has shrunk', () => {
+    const g = makeGame()
+    fill(g, 2, 'a', MAX_VEHICLES_PER_ZONE_SIDE - 3)
+    g.state.zones[2].cards.b.push(zoneEntry({ name: 'Tiger Shark', meta: { slotDenial: 3 } }))
+    // tank, not ship: zoneId 3 is the LAND zone (see testFixtures), and a ship
+    // cannot operate there — biomeAllows would refuse the move before the cap
+    // check ever runs, which is not what this case is pinning.
+    const mover = zoneEntry({ vehicleType: 'tank', keywords: ['mobile'] })
+    g.state.zones[0].cards.a.push(mover)
+    const r = applyAction(g, 'alice', { type: 'MOVE_VEHICLE', instanceId: mover.instanceId, zoneId: 3 })
+    expect(r.ok).toBe(false)
+    if (r.ok) return
+    // The message quotes the EFFECTIVE cap, not the printed 8 — a player told
+    // "your 8-vehicle limit" while standing on 5 has been told nothing.
+    expect(r.error).toContain(`${MAX_VEHICLES_PER_ZONE_SIDE - 3}-vehicle limit`)
+  })
+
+  it('a side already over the reduced cap can still move hulls OUT', () => {
+    const g = makeGame()
+    fill(g, 2, 'a', MAX_VEHICLES_PER_ZONE_SIDE)
+    g.state.zones[2].cards.b.push(zoneEntry({ name: 'Tiger Shark', meta: { slotDenial: 3 } }))
+    g.state.zones[2].cards.a[0].keywords = ['mobile']
+    const mover = g.state.zones[2].cards.a[0]
+    // zoneId 2 (beach), not 1 (water): the mover is a tank (fill's own type),
+    // which cannot operate in water — moving there would be refused by
+    // biomeAllows regardless of the cap fix, defeating the point of this case.
+    const r = applyAction(g, 'alice', { type: 'MOVE_VEHICLE', instanceId: mover.instanceId, zoneId: 2 })
+    expect(r.ok).toBe(true)
+  })
 })

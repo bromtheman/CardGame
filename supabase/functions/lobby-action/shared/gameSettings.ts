@@ -1,6 +1,12 @@
 // Single source of truth for every tunable game rule (spec §3).
 
 export const STARTING_HAND_SIZE = 5
+// The turn number a new game opens on, and the stamp the opening hand carries.
+// ⚠ ITS TWIN IS IN SQL: `turn_number numeric not null default 1.0` in
+// supabase/migrations/20260825021221_create_lobbies_and_games.sql. buildInitialGame
+// does not set turnNumber — the games row does — so these two literals must
+// agree and nothing but this comment says so.
+export const STARTING_TURN_NUMBER = 1
 export const STARTING_CP_AMOUNT = 3
 export const DECK_SIZE = 20
 export const UNIQUE_COPY_LIMIT = 2
@@ -35,6 +41,12 @@ export const ONGOING_ATTRITION_DAMAGE_PER_VEHICLE = 40_000
 // below against the hero power. Materials, so it converts through
 // BASE_DAMAGE_DIVISOR: 40k is 40 HP of a default 1000.
 export const VENGEFUL_BASE_DAMAGE = 40_000
+
+// SS Bull Shark: "deal 200k damage to enemy base in this zone". Its OWN
+// constant, for the reason VENGEFUL_BASE_DAMAGE's comment records above — two
+// figures that are equal by coincidence must not share one. Materials, so it
+// converts through BASE_DAMAGE_DIVISOR: 200k is 200 HP of a default 1000.
+export const BULL_SHARK_BASE_DAMAGE = 200_000
 
 // Ambush: "position your ships 600m closer to the enemy". Its own constant
 // rather than a reuse of the hero power's: the two are equal by coincidence,
@@ -166,7 +178,15 @@ export const JUDGEMENT_DISCOUNT = 100_000
 // a defensive loss, which the card does not say (spec §7.3, wave 6).
 export const PURIFIER_LOSS_WINDOW_TURNS = 1
 
-export const EXCALIBUR_COST_DELTA = -200_000 // Excalibur: AI ship in hand costs 200k less
+// Tyr: "This card costs 60k less for every turn it spends in your hand". One
+// step per FULL round (ruling R-2) — turn numbers advance in HALF steps, and
+// PURIFIER_LOSS_WINDOW_TURNS above already reads 1.0 as one round for the same
+// reason. A play-time price only: it reaches effectiveCostInGame and never
+// effectiveMaterialCostOf, so a long-held Tyr still deals its printed base
+// damage and still costs its printed repair.
+export const TYR_HAND_DISCOUNT = 60_000
+
+export const EXCALIBUR_COST_DELTA = -200_000 // Excalibur: SS ship in hand costs 200k less (R-5)
 // Plunderer clause 2: "…draw one card from the enemy deck, but increase its
 // cost by 20k". A POSITIVE costDelta, unlike every other one in this file —
 // effectiveCostInGame sums it in and clamps only at zero, so it raises the
@@ -185,10 +205,11 @@ export const AIR_STRAFE_PREDATOR_COUNT = 2    // Air Strafe: PredatorX summons (
 // outright, so the grant lasts exactly until that side's next turn begins.
 export const CATSHARK_MATERIALS = 30_000
 
-// Sacrilego clause 2: "increase the remaining hp percent of a friendly ship by
-// 15". The rescue band is SURVIVE_HP_PERCENT minus this — derive it, never
-// write the number.
-export const SACRILEGO_HP_BOOST = 15
+// SS Cash advance: "Gain 150k resources this turn, then draw a card." Its own
+// constant, and "this turn" needs no rider — endTurn SETS the incoming side's
+// materials to floor(turnNumber) * materialsPerTurnOf outright, so the grant
+// lasts exactly until that side's next turn begins (CATSHARK_MATERIALS above).
+export const CASH_ADVANCE_MATERIALS = 150_000
 
 // DWG Waters clause 2: "one DWG vehicle with a cost <60k from the game".
 // Exclusive, on printed materialCost — the same authority every other pool
@@ -212,6 +233,33 @@ export const SLASHER_EARTH_RAKER_COUNT = 2
 // call site — the same convention EXCALIBUR_COST_DELTA follows.
 export const EXCRUCIATOR_DRAW_COUNT = 2
 export const EXCRUCIATOR_COST_DELTA = -100_000
+
+// SS Victoria: "pick one SS ship in hand and reduce its cost by 75k". Its own
+// constant, not shared with Trondheim's identical -75k (Task 11) — the two are
+// equal by coincidence, which VENGEFUL_BASE_DAMAGE's comment above already
+// records as a reason to keep them apart.
+export const VICTORIA_COST_DELTA = -75_000
+
+// SS Trondheim: "draw an SS ship from your deck and reduce its cost by 75k".
+// Its own constant despite equalling VICTORIA_COST_DELTA — two figures equal by
+// coincidence do not share one.
+export const TRONDHEIM_COST_DELTA = -75_000
+// SS Resolute: the same clause at 40k.
+export const RESOLUTE_COST_DELTA = -40_000
+
+// SS Nothung: "reduce the cost of every SS ship in your hand by 40k". Its own
+// constant, not shared with RESOLUTE_COST_DELTA's identical -40k.
+export const NOTHUNG_COST_DELTA = -40_000
+
+// SS Sacrilego: "reduce the cost of SS ships in hand by 30k" on each survival.
+// R-3 keeps the card at 10,000 materials, so this discount COMPOUNDS behind a
+// near-free Stealthy Mobile hull — that is the intended build-around, not an
+// oversight.
+export const SACRILEGO_COST_DELTA = -30_000
+
+// SS Argonaut: "reduce the cost of a random SS ship in your hand by 50k" on
+// death. Its own constant, like every other SS hand discount in this pass.
+export const ARGONAUT_COST_DELTA = -50_000
 
 // Human-readable names for the seven hero powers, used wherever a power id
 // is shown to a player (Kraken's refresh choice).

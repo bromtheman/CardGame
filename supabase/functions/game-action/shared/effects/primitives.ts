@@ -2,7 +2,7 @@ import type { CardInstance, SnapshotCard } from '../engine/gameInit.ts'
 import type {
   BattleCasualty, BattleContext, EngineContext, EngineGame, Side, ZoneCardEntry,
 } from '../engine/engineTypes.ts'
-import { drawCard, findVehicle, otherSide } from '../engine/gameEngine.ts'
+import { drawCard, findVehicle, otherSide, putInHand } from '../engine/gameEngine.ts'
 import { canRevive, reviveEntry, sacrificeEntry } from '../engine/battleTriggers.ts'
 import type { EffectFn, EffectPayload } from './registry.ts'
 
@@ -26,7 +26,7 @@ export function takeFromEnemyDeck(
   // The copy is a phantom with no home: `capturedCopy` tells discardCard
   // (shared/engine/gameEngine.ts) to destroy it outright when it leaves play,
   // rather than file it into a discard — which is a deck's back door.
-  game.privates[actor].hand.push({
+  putInHand(game, actor, {
     ...card, instanceId: ctx.newId(), meta: { ...card.meta, capturedCopy: true },
   })
   // The original goes to the BOTTOM of its deck. A copy leaves the pick in
@@ -38,7 +38,8 @@ export function takeFromEnemyDeck(
   // Only the captor's hand count moves. The enemy's deck count is deliberately
   // left alone because nothing left their deck — so the capture is invisible
   // in the public counts, and the log line below is its only public signal.
-  game.state.counts[actor].hand = game.privates[actor].hand.length
+  // (putInHand writes counts[actor] only, and the actor's own deck did not
+  // move, so this still holds.)
   game.state.log.push(`Player ${actor.toUpperCase()} takes a card from the enemy deck`)
   return true
 }
@@ -101,6 +102,13 @@ export interface PoolSpec {
   // card), so a deck source defaults to allowEmpty — pass false to require a
   // match instead.
   allowEmpty?: boolean
+  // A per-instance discount stamped onto every card this pool delivers
+  // (SS Trondheim, SS Resolute — 2026-09-02 §6.5). ACCUMULATES onto whatever
+  // the card already carried, matching costDelta() above, so a ship already cut
+  // by Excalibur is cut twice rather than reset. Read only by
+  // effectiveCostInGame; it never reaches effectiveMaterialCostOf, so a
+  // discounted hull still deals its printed base damage.
+  costDelta?: number
 }
 
 // Cost filters read the printed materialCost — "base cost" in card text —
@@ -149,8 +157,14 @@ export function poolEligible(c: { meta: Record<string, unknown> }): boolean {
 // never names them — they are entering a hidden hand.
 export function drawFromPool(spec: PoolSpec): EffectFn {
   return ({ game, actor, ctx }) => {
-    const hand = game.privates[actor].hand
     const allowEmpty = spec.allowEmpty ?? spec.source === 'deck'
+    // No-delta path returns the ORIGINAL object — byte-identical behaviour for
+    // every existing caller that never passes costDelta.
+    const stamped = (card: CardInstance): CardInstance => {
+      if (spec.costDelta === undefined) return card
+      const current = typeof card.meta.costDelta === 'number' ? card.meta.costDelta : 0
+      return { ...card, meta: { ...card.meta, costDelta: current + spec.costDelta } }
+    }
     if (spec.source === 'catalog') {
       const pool = ctx.catalog.filter((c) => c.isBuiltIn && poolEligible(c) && matches(c, spec.filter))
       if (pool.length === 0) {
@@ -159,11 +173,11 @@ export function drawFromPool(spec: PoolSpec): EffectFn {
         return true
       }
       for (const pick of shuffled(pool, ctx).slice(0, spec.count)) {
-        hand.push({
+        putInHand(game, actor, stamped({
           ...pick,
           instanceId: ctx.newId(),
           keywords: spec.strip ? pick.keywords.filter((k) => !spec.strip!.includes(k)) : pick.keywords,
-        })
+        }))
       }
     } else {
       const deck = game.privates[actor].deck
@@ -177,11 +191,11 @@ export function drawFromPool(spec: PoolSpec): EffectFn {
         const index = deck.findIndex((c) => c.instanceId === pick.instanceId)
         if (index < 0) continue
         const [card] = deck.splice(index, 1)
-        hand.push(spec.strip ? { ...card, keywords: card.keywords.filter((k) => !spec.strip!.includes(k)) } : card)
+        putInHand(game, actor, stamped(spec.strip ? { ...card, keywords: card.keywords.filter((k) => !spec.strip!.includes(k)) } : card))
       }
       game.privates[actor].deck = deck
     }
-    game.state.counts[actor] = { hand: hand.length, deck: game.privates[actor].deck.length }
+    game.state.counts[actor] = { hand: game.privates[actor].hand.length, deck: game.privates[actor].deck.length }
     game.state.log.push(`Player ${actor.toUpperCase()} adds a card to their hand`)
     return true
   }
@@ -404,9 +418,9 @@ export function choice(spec: {
       //
       // Dropped here, at the suspension itself, rather than by the dispatcher
       // skipping the whole effect: that is what lets a card whose text has an
-      // unconditional clause AND an optional one — Sacrilego's "gain 1cp.
-      // Additionally you may sacrifice it…" — still grant the CP when its
-      // offer cannot be made.
+      // unconditional clause AND an optional one — SS Hydra's "refresh one of
+      // your used hero powers then gain 1cp" (ssEffects.ts's HYDRA) — still
+      // grant the CP when its own offer cannot be made.
       if (payload.game.state.pendingEffect !== null) {
         payload.game.state.log.push(
           `${payload.card.name}'s offer was not made — another choice is already pending`,
@@ -433,8 +447,9 @@ export function choice(spec: {
 }
 
 // "You may sacrifice this vehicle to save one of the hulls that just died."
-// Iron Cordon and Sacrilego's clause 2 are the same shape with different
-// eligibility rules, so the whole two-phase dance lives here once.
+// OW Iron Cordon is the customer (Sacrilego's own clause 2 had the same shape
+// before the 2026-09-02 pass rewrote the card away from it), so the whole
+// two-phase dance lives here rather than inline on that one effect.
 //
 // First entry (a DP2 resolve trigger, so `battle` is set) offers the choice
 // and STASHES the eligible casualties. That stash is not an optimisation: by

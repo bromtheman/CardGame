@@ -9,8 +9,6 @@
 // and arithmetic needs numbers; laneLayout.test.ts is what holds the two in
 // step, so change a class and its twin together.
 
-import { MAX_VEHICLES_PER_ZONE_SIDE } from '@shared/gameSettings'
-
 // Tall enough for the tallest chip content: p-1 (8) + icon h-6 (24) + name
 // (4 + 16) + cost pill (16) + the fixed keyword row (2 + 16) = 86 of 96. It
 // was h-28, which put a full-cap lane 28px over LANE_HEIGHT_BUDGET_PX and the
@@ -43,8 +41,8 @@ export const LANE_ROW_GAP_PX = 4
 // its panel at every size. The row count then varies by viewport (4 columns
 // at 1152, 2 at 768) — which is fine and is NOT the height instability this
 // grid exists to prevent: what must not change is the height for a given
-// width as vehicles come and go, and reserving all MAX_VEHICLES_PER_ZONE_SIDE
-// slots regardless of occupancy is what secures that.
+// width as vehicles come and go, and reserving the side's whole current cap
+// regardless of occupancy is what secures that.
 export const LANE_GRID_COLUMNS = 'repeat(auto-fill, 5rem)'
 
 // What one lane may cost the board if the whole battle screen is to fit a
@@ -64,19 +62,26 @@ export function laneColumnsAt(innerWidth: number): number {
 }
 
 /**
- * Rows the lane occupies. `count` is the side's actual occupancy, but the cap
- * is always reserved — that is what keeps the lane the same height empty as
- * full. A side CAN sit above the cap (spawns, revives and Boarding Party
- * bypass it deliberately), and then the grid grows a row rather than dropping
- * a hull.
+ * Rows the lane occupies. `count` is the side's actual occupancy; `cap` is what
+ * `zoneCapFor` says this side may hold in this zone right now, and the cap is
+ * always reserved — that is what keeps the lane the same height empty as full.
+ *
+ * `cap` is REQUIRED rather than defaulted, for the reason `legalZonesFor`'s
+ * `turnNumber` is: tsc then finds every call site instead of silently leaving
+ * one on the old flat value. A denied lane that still drew eight slots would be
+ * the board lying about capacity (2026-09-02 spec §4.1).
+ *
+ * A side CAN sit above the cap — spawns, revives and Boarding Party bypass it
+ * deliberately, and since §4.1 an enemy denier can shrink it under a lane that
+ * was already legal — and then the grid grows a row rather than dropping a hull.
  */
-export function laneRowsAt(innerWidth: number, count: number): number {
-  const slots = Math.max(count, MAX_VEHICLES_PER_ZONE_SIDE)
+export function laneRowsAt(innerWidth: number, count: number, cap: number): number {
+  const slots = Math.max(count, cap)
   return Math.ceil(slots / laneColumnsAt(innerWidth))
 }
 
 /** Rendered height of one lane, in px. */
-export function laneHeightAt(innerWidth: number, count: number): number {
-  const rows = laneRowsAt(innerWidth, count)
+export function laneHeightAt(innerWidth: number, count: number, cap: number): number {
+  const rows = laneRowsAt(innerWidth, count, cap)
   return rows * SLOT_HEIGHT_PX + (rows - 1) * LANE_ROW_GAP_PX
 }

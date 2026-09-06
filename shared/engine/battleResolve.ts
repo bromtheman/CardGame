@@ -220,11 +220,12 @@ registerHandler('DECIDE_BATTLE_REPORT', (game, actor, action, ctx) => {
   let destroyedCount = 0
   let summonCount = 0
   // Doubles as DP2's casualty list (spec §4.3, DP2 departure 1): the death
-  // triggers below iterate it, and dispatchBattleResolve carries it to Iron
-  // Cordon and Sacrilego, which have no other route to "who died here, at what
-  // HP". Summons never reach it — the branch that pushes is guarded on
-  // !summon — which is right twice over: a summon evaporates rather than dies,
-  // and there is nothing to revive.
+  // triggers below iterate it, and dispatchBattleResolve carries it to OW Iron
+  // Cordon, which has no other route to "who died here, at what HP" (Sacrilego
+  // read it too before the 2026-09-02 pass rewrote its clause 2 away). Summons
+  // never reach it — the branch that pushes is guarded on !summon — which is
+  // right twice over: a summon evaporates rather than dies, and there is
+  // nothing to revive.
   const destroyedEntries: BattleCasualty[] = []
   // DP2's win test reads the same `survives` predicate this loop already
   // computes — repairs included, so a Scrappy hull patched back over the line

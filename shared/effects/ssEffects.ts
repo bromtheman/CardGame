@@ -1,33 +1,110 @@
 import {
-  AIR_STRAFE_PREDATOR_COUNT, CATSHARK_MATERIALS, EXCALIBUR_COST_DELTA, KEYWORDS,
-  REPAIRMEN_READY_DRAW_MAX_COST, RHEA_MAX_PLANE_COST, SACRILEGO_HP_BOOST,
-  SURVIVE_HP_PERCENT, VEHICLE_TYPES,
+  AIR_STRAFE_PREDATOR_COUNT, ARGONAUT_COST_DELTA, BASE_DAMAGE_DIVISOR, BULL_SHARK_BASE_DAMAGE,
+  CASH_ADVANCE_MATERIALS, CATSHARK_MATERIALS,
+  EXCALIBUR_COST_DELTA, FACTIONS, HERO_POWER_LABELS, KEYWORDS, NOTHUNG_COST_DELTA,
+  REPAIRMEN_READY_DRAW_MAX_COST, RESOLUTE_COST_DELTA, RHEA_MAX_PLANE_COST, SACRILEGO_COST_DELTA,
+  TRONDHEIM_COST_DELTA, TYR_HAND_DISCOUNT, VEHICLE_TYPES, VICTORIA_COST_DELTA,
 } from '../gameSettings.ts'
 import {
-  catalogCard, costDelta, choice, drawFromPool, enemyVehicleOptions, grant, grantKeywords,
-  poolEligible, sacrificeToSave, sequence, spawnInto, spawnVehicles, summonHulls,
+  catalogCard, costDelta, choice, drawFromPool, enemyVehicleOptions, friendlyVehicleOptions, grant,
+  grantKeywords, poolEligible, sequence, spawnInto, summonHulls,
 } from './primitives.ts'
-import { registerEffect } from './registry.ts'
-import type { EffectPayload } from './registry.ts'
+import { registerCostModifier, registerEffect } from './registry.ts'
+import type { EffectFn, EffectPayload } from './registry.ts'
 import type { EngineGame, Side, ZoneCardEntry } from '../engine/engineTypes.ts'
-import { findVehicle, otherSide, zoneById } from '../engine/gameEngine.ts'
+import { checkVictory, findVehicle, otherSide, putInHand, zoneById } from '../engine/gameEngine.ts'
 import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
+import type { CardInstance } from '../engine/gameInit.ts'
+
+// "an SS ship" — the pool five cards in this wave share (Victoria, Trondheim,
+// Nothung, Sacrilego, Argonaut, Resolute). Written once so a later card cannot
+// disagree with an earlier one about what the phrase means.
+//
+// It is a FACTION filter, not a card list, so it grows with the faction —
+// which is the trap ruling L-1 records for the LH robotics pool. That is fine
+// here and was not there: these cards print "SS ship", the faction IS the
+// intended pool, and SS is fully seeded.
+const SS_SHIP_FILTER = {
+  faction: FACTIONS.SS, type: 'vehicle', vehicleType: VEHICLE_TYPES.SHIP,
+} as const
+
+// Used in this file by Nothung (below), Sacrilego and Argonaut —
+// Trondheim/Resolute and Excalibur go through SS_SHIP_FILTER via
+// drawFromPool/costDelta instead. Exported because frontend/src/pages/game/
+// HandBar.tsx imports it too, as the one definition of "an SS ship" a hand
+// card is checked against — without the export that consumer would have to
+// re-derive the same three checks, the drift this predicate exists to
+// prevent.
+export const isSsShip = (c: CardInstance): boolean =>
+  c.faction === FACTIONS.SS && c.type === 'vehicle' && c.vehicleType === VEHICLE_TYPES.SHIP
+
+// The accumulate-don't-replace stamp, matching primitives.ts's costDelta() so a
+// card discounted twice is discounted twice. Used by the four effects that hit
+// a card already in hand without a player picking it.
+export function discountInHand(card: CardInstance, delta: number): void {
+  const current = typeof card.meta.costDelta === 'number' ? card.meta.costDelta : 0
+  card.meta = { ...card.meta, costDelta: current + delta }
+}
 
 // SS built-in card effects.
-registerEffect('resoluteOnPlay', grant({ draw: 1 }))
 registerEffect('ironMaidenOnDeath', grant({ draw: 1 }))
 registerEffect('victoriaOnDeath', grant({ draw: 1 }))
-registerEffect('trondheimOnDeath', grant({ draw: 1 }))
 registerEffect('maelstromOnPlay', grant({ cp: 1 }))
 
-// "Whenever this vehicle is played into a zone, also create a friendly
-// Sacrilego in that zone." Spawning is not playing (spec §7.4), which skips
-// the spawned hull's onPlayEffect and NOTHING else — so the Sacrilego keeps
-// its printed onBattleEffect and will fire it when it fights (spec §7.3,
-// wave 6). That is the point of naming Sacrilego rather than a vanilla hull.
-registerEffect('nothungOnPlay', spawnVehicles({
-  cardName: 'Sacrilego', count: 1, zones: 'target',
-}), { needsCatalog: true })
+// "When this vehicle is destroyed, draw an SS ship from your deck and reduce
+// its cost by 75k." / Resolute's on-play twin at 40k.
+//
+// From the owner's DECK, not the catalog — which is why neither carries
+// { needsCatalog: true } (spec §7.1 names both as the near miss that "it draws
+// a card" would get wrong). A deck pool is legitimately empty, so
+// drawFromPool's allowEmpty default resolves rather than failing: a death
+// effect that returned false would log a failed trigger on every Trondheim that
+// dies with no SS ship left.
+registerEffect('trondheimOnDeath', drawFromPool({
+  source: 'deck', filter: SS_SHIP_FILTER, count: 1, costDelta: TRONDHEIM_COST_DELTA,
+}))
+registerEffect('resoluteOnPlay', drawFromPool({
+  source: 'deck', filter: SS_SHIP_FILTER, count: 1, costDelta: RESOLUTE_COST_DELTA,
+}))
+
+// "When this vehicle is played, reduce the cost of every SS ship in your hand
+// by 40k." This REPLACES the Sacrilego spawn the card used to print — same
+// registry id, new behaviour, which is what a balance pass is and is not the
+// R-6 collision (that is two DIFFERENT cards sharing a name).
+//
+// No { needsCatalog: true } any more: the spawn read ctx.catalog, this reads
+// only the hand.
+//
+// ⚠ The log carries neither names NOR a count. state.log is public, and "refits
+// 3 ships" tells the opponent how many SS ships are in a hidden hand.
+registerEffect('nothungOnPlay', ({ game, actor, card }) => {
+  for (const held of game.privates[actor].hand) {
+    if (isSsShip(held)) discountInHand(held, NOTHUNG_COST_DELTA)
+  }
+  game.state.log.push(`${card.name} refits the SS ships in player ${actor.toUpperCase()}'s hand`)
+  return true
+})
+
+// "When this vehicle is played into a zone, grant every enemy vehicle in that
+// zone FRAGILE."
+//
+// A loop rather than grantKeywords(): that primitive takes exactly one
+// targetInstanceId, and this card names a whole side of a zone. TG Hysteria and
+// TG Spite are its single-target cousins.
+//
+// No placedInstanceIds exclusion is needed — this walks the ENEMY's half, and
+// PLAY_CARD_TO_ZONE places Cyclone on the actor's.
+registerEffect('cycloneOnPlay', ({ game, actor, card, targetZoneId }) => {
+  if (typeof targetZoneId !== 'number') return false
+  const zone = zoneById(game.state, targetZoneId)
+  if (!zone) return false
+  for (const entry of zone.cards[otherSide(actor)]) {
+    if (entry.keywords.includes(KEYWORDS.FRAGILE)) continue
+    entry.keywords = [...entry.keywords, KEYWORDS.FRAGILE]
+  }
+  game.state.log.push(`${card.name} batters the enemy hulls in zone ${targetZoneId}`)
+  return true
+})
 
 // "When this is played into a zone, create a hydra card in hand and reduce its
 // cost to zero."
@@ -50,14 +127,11 @@ registerEffect('balmungOnPlay', ({ game, actor, ctx }) => {
   // so this fails the play rather than fizzling — the same contract
   // spawnVehicles uses for the same reason.
   if (!hydra || !poolEligible(hydra)) return false
-  const hand = game.privates[actor].hand
-  hand.push({
+  putInHand(game, actor, {
     ...hydra,
     instanceId: ctx.newId(),
     meta: { ...hydra.meta, costDelta: -hydra.materialCost },
   })
-  // A direct push does not resync the public counts for you (drawCard does).
-  game.state.counts[actor].hand = hand.length
   // Never named: state.log is public and this card is entering a hidden hand.
   game.state.log.push(`Balmung forges a hull into player ${actor.toUpperCase()}'s hand, free of charge`)
   return true
@@ -76,27 +150,34 @@ registerEffect('rheaOnPlay', drawFromPool({
   strip: ['temporary'],
 }), { needsCatalog: true })
 
-// "Pick one AI ship in hand and reduce its cost by 200k." AI means built-in
-// (design spec §7.3, "AI" === isBuiltIn true). Dispatched by DP6's hand
-// direction (PLAY_CARD_TARGETING_CARD_IN_HAND, spec §4.3): Excalibur deploys
-// to its zone first, then this fires against the hand target, and Excalibur
-// itself is not spendCard'd — it is a hull, not a spent ability.
+// "Pick one SS ship in hand and reduce its cost by 200k." The filter moved
+// AI -> SS in the 2026-09-02 pass (ruling R-5), so it is now a FACTION test
+// rather than isBuiltIn — which both narrows it (a built-in DWG ship no longer
+// qualifies) and widens it (a player-made SS ship now does). WF Excruciator's
+// text still says "AI" and keeps the built-in meaning; the phrase is not
+// global. Dispatched by DP6's hand direction (PLAY_CARD_TARGETING_CARD_IN_HAND,
+// spec §4.3): Excalibur deploys to its zone first, then this fires against the
+// hand target, and Excalibur itself is not spendCard'd — it is a hull, not a
+// spent ability.
 registerEffect('excaliburEffect', costDelta({
   delta: EXCALIBUR_COST_DELTA,
-  filter: { type: 'vehicle', vehicleType: 'ship', isBuiltIn: true },
+  filter: SS_SHIP_FILTER,
 }))
 
-// "Grant target vehicle scrappy. If the target is an AI vehicle that costs
+// "Grant target vehicle scrappy. If the target is an SS vehicle that costs
 // less than 400k, draw a card." The threshold moved 200k -> 400k in the
 // 2026-08-30 balance pass; it lives in REPAIRMEN_READY_DRAW_MAX_COST, so the
-// card text is the only other place the number appears.
+// card text is the only other place the number appears. The gate read
+// "an SS vehicle" since the 2026-09-02 pass (R-5) — it read `isBuiltIn` when
+// the text said "AI". Note this clause tests the FACTION and not the ship
+// type: the card says "vehicle", where Excalibur says "ship".
 registerEffect('repairmenReadyEffect', sequence(
   grantKeywords({ keywords: [KEYWORDS.SCRAPPY], target: 'field' }),
   (payload) => {
     const found = findVehicle(payload.game.state, payload.targetInstanceId ?? '')
     if (!found) return false
     const { entry } = found
-    if (entry.isBuiltIn && entry.materialCost < REPAIRMEN_READY_DRAW_MAX_COST) {
+    if (entry.faction === FACTIONS.SS && entry.materialCost < REPAIRMEN_READY_DRAW_MAX_COST) {
       return grant({ draw: 1 })(payload)
     }
     return true
@@ -105,18 +186,18 @@ registerEffect('repairmenReadyEffect', sequence(
 
 const AIR_STRAFE = 'airStrafeEffect'
 
-// Enemy ships only — card text says "Choose an enemy ship", not the looser
-// "vehicle" other forced-battle cards use. Shared by the choice's options(),
-// its immediate (no-choice) resolve branch, and re-entry's re-validation.
+// Any enemy VEHICLE since the 2026-09-02 pass — the card text used to say "an
+// enemy ship" and now says "an enemy vehicle". Shared by the choice's
+// options(), its immediate (no-choice) resolve branch, and re-entry's
+// re-validation, so all three widened together.
 function legalTarget(game: EngineGame, actor: Side, targetInstanceId: unknown) {
   if (typeof targetInstanceId !== 'string') return null
   const found = findVehicle(game.state, targetInstanceId)
   if (!found || found.side !== otherSide(actor)) return null
-  if (found.entry.vehicleType !== VEHICLE_TYPES.SHIP) return null
   return found
 }
 
-// "Choose an enemy ship, it fights alone against two PredatorX. If the
+// "Choose an enemy vehicle, it fights alone against two PredatorX. If the
 // target is a player design, also spawn your choice of Hydra or Cyclone."
 // Seed corrected PLAY_ON_ZONE -> PLAY_ON_VEHICLE — the card targets a
 // vehicle, not a zone. The printed "spawn" is loose: spec §4.4 puts all
@@ -209,6 +290,21 @@ registerEffect(AIR_STRAFE, choice({
   },
 }), { needsCatalog: true })
 
+// "When this vehicle is played, pick one SS ship in hand and reduce its cost
+// by 75k." Excalibur's mechanism exactly — DP6's hand direction
+// (PLAY_CARD_TARGETING_CARD_IN_HAND): Victoria deploys to her zone first, then
+// this fires against the hand target, and she is not spendCard'd because she is
+// a hull, not a spent ability.
+//
+// The 2026-08-30 pass replaced Victoria's draw-on-death with an activated
+// ability; this pass replaces THAT with an on-play effect, which orphans
+// `victoriaActivate` below (spec §5). It stays registered and its name may
+// never be reused.
+registerEffect('victoriaOnPlay', costDelta({
+  delta: VICTORIA_COST_DELTA,
+  filter: SS_SHIP_FILTER,
+}))
+
 // "Each turn you may spend 200k resources to spawn another victoria into this
 // zone." DP1 with a MATERIAL price rather than a CP one (spec §7.3, wave 6):
 // ACTIVATE_VEHICLE charges meta.activateMaterialCost and stamps
@@ -224,6 +320,10 @@ registerEffect(AIR_STRAFE, choice({
 // and can be activated in its own right. That chain is per-hull and
 // per-turn, and every link costs a further 200k against income that is SET
 // each turn — a hard bound, unlike Trebuchet's free repeat.
+//
+// Orphaned by the 2026-09-02 pass, which replaced this activated ability with
+// `victoriaOnPlay`. Kept registered for `rheaOnPlay`'s reason, one entry down;
+// see `DELIBERATE_ORPHANS`.
 registerEffect('victoriaActivate', ({ game, actor, ctx, card }) => {
   const self = findVehicle(game.state, card.instanceId)
   if (!self || self.side !== actor) return false
@@ -235,59 +335,166 @@ registerEffect('victoriaActivate', ({ game, actor, ctx, card }) => {
   return true
 }, { needsCatalog: true })
 
+// "When this vehicle is played, gain 1cp." Its OWN registry id rather than a
+// reuse of maelstromOnPlay, which is the identical grant({ cp: 1 }) — R-6
+// forbids sharing a name however small the implementation.
+registerEffect('paladinOnPlay', grant({ cp: 1 }))
+
+// "Each turn you may pay 1cp to spawn another paladin into this zone."
+//
+// DP1 with a CP price: ACTIVATE_VEHICLE charges meta.activateCpCost and stamps
+// activatedOnTurn BEFORE this runs, so "each turn" needs no code here.
+//
+// ⚠ This is the shape SS Victoria's activated ability had before the
+// 2026-09-02 pass retired it — and it carries its OWN id for that exact reason
+// (R-6). `victoriaActivate` stays registered for the snapshots that name it and
+// may never be reused.
+//
+// The zone is re-derived from the hull rather than read off payload.targetZoneId,
+// which ACTIVATE_VEHICLE fills from the CLIENT-supplied action.zoneId — a stale
+// or malicious client could otherwise land the spawn in a zone Paladin is not
+// in. Braveheart's precedent.
+//
+// Spawning is not playing (spec §7.4), so the new hull runs no onPlayEffect —
+// the chain does NOT print free CP — but it keeps its printed meta and can be
+// activated in its own right. Every link costs a further 1cp against a pool of
+// three — with the +1 paladinOnPlay grants, that is up to four hulls the turn
+// Paladin lands, a LOOSER bound than Victoria's 200k ever was (at
+// MATERIALS_PER_TURN=75k, 200k bought roughly one spawn every 2-3 turns).
+registerEffect('paladinActivate', ({ game, actor, ctx, card }) => {
+  const self = findVehicle(game.state, card.instanceId)
+  if (!self || self.side !== actor) return false
+  const snapshot = catalogCard(ctx, 'Paladin')
+  // A named card the catalog cannot supply is a data bug, not an empty pool —
+  // the same contract spawnVehicles and summonHulls both use.
+  if (!snapshot || !poolEligible(snapshot)) return false
+  if (!spawnInto(game, ctx, actor, self.zone.id, snapshot)) return false
+  game.state.log.push(`Paladin musters another hull in zone ${self.zone.id}`)
+  return true
+}, { needsCatalog: true })
+
 const BRAVEHEART = 'braveheartActivate'
 
-// "Once per turn, you may pay 1cp to have this ship 1v1 an enemy vehicle in
-// the same zone." Ships with meta: {} — the effect name and
-// activateCpCost: 1 are both content this wave authors, not merely
-// implements (spec §6, "Cards shipped with no authored effect name").
-// DP1 (ACTIVATE_VEHICLE pays the CP and stamps activatedOnTurn BEFORE this
-// ever runs — shared/engine/activate.ts — so once-per-turn is free here) +
-// DP4 (this choice, over enemyVehicleOptions scoped to the hull's OWN zone —
-// unlike Orbit Flank's zoneId: null) + DP3 (declareForcedBattle,
-// attackerIds: [self], no summons).
+// "Once per turn, you may pay 1cp to have one of your ships in this zone 1v1
+// an enemy vehicle in the same zone."
 //
-// Unlike Air Strafe/Orbit Flank, no `data` stash is needed: payload.card on
-// BOTH entries IS the activating hull — ACTIVATE_VEHICLE hands the effect
-// the zone entry itself, and pendingEffect carries the card verbatim across
-// the suspension (spec §4.2) — so its zone is re-derived identically in
-// options() and resolve() via findVehicle(card.instanceId), never trusted
-// from the client-supplied, unvalidated RESOLVE_PENDING_EFFECT fields
-// (docs/claude/card-effects.md, "Suspending for a choice"). choiceId is the
-// chosen enemy's instanceId; `choice()` already checks it against
-// pending.options, and resolve() re-runs the identical enemyVehicleOptions()
-// call to re-confirm the target before declaring the battle.
+// TWO HOPS since the 2026-09-02 pass (the card used to send Braveheart itself),
+// and BOTH routed through choice() — TG Duel's shape, not Orbit Flank's. Orbit
+// Flank writes its second pendingEffect by hand, which bypasses choice()'s
+// one-slot check and can clobber an offer already owed;
+// docs/claude/card-effects.md says to route a new suspension through choice().
+// RESOLVE_PENDING_EFFECT has already nulled state.pendingEffect by the time hop
+// 2 runs, so the slot is free for it to take.
+//
+// DP1 (ACTIVATE_VEHICLE pays the 1cp and stamps activatedOnTurn BEFORE this ever
+// runs, so once-per-turn is free here) + DP4 (two choices) + DP3
+// (declareForcedBattle, no summons, and NO activatesZone — a forced battle is
+// not a zone activation; Eclipse alone is, from its own text).
+//
+// The zone is re-derived from payload.card on EVERY entry via findVehicle:
+// payload.card is the activating hull itself, carried verbatim across each
+// suspension, so nothing needs the client-supplied, unvalidated
+// resolution.zoneId / targetInstanceId.
 function braveheartZone(game: EngineGame, actor: Side, card: { instanceId: string }) {
   const found = findVehicle(game.state, card.instanceId)
   return found && found.side === actor ? found : null
 }
 
-registerEffect(BRAVEHEART, choice({
+// ⚠ Ruling E-10, borrowed from TG Duel and refined for Braveheart's own
+// printed text: the pick must be a SHIP ("one of your ships") that can
+// attack — INOFFENSIVE is precisely "cannot attack" (§7.3's Gang Up ruling).
+// The ENEMY target is deliberately unfiltered — Inoffensive can still defend.
+const canDuel = (e: ZoneCardEntry) =>
+  e.vehicleType === VEHICLE_TYPES.SHIP && !e.keywords.includes(KEYWORDS.INOFFENSIVE)
+
+// Whether Braveheart's own zone currently holds both a legal fighter (a ship
+// that canDuel) and a legal enemy target — checked ONCE, before hop 1 ever
+// suspends. Only the acting player can act while a choice is owed (only
+// PENDING_ACTIONS reach a suspended effect), so neither pool can shrink
+// between hop 1's offer and hop 2's resolve: checking here is exhaustive, not
+// just a first guess. This is what lets the activation be REFUSED outright —
+// ACTIVATE_VEHICLE 400s and the mutated clone is discarded, so the 1cp is
+// never spent and activatedOnTurn is never stamped — rather than charging the
+// player and then fizzling, which would be a pure loss for them.
+function braveheartCanDuel(game: EngineGame, actor: Side, card: { instanceId: string }): boolean {
+  const self = braveheartZone(game, actor, card)
+  if (!self) return false
+  if (enemyVehicleOptions(game, actor, self.zone.id).length === 0) return false
+  if (friendlyVehicleOptions(game, actor, self.zone.id, canDuel).length === 0) return false
+  return true
+}
+
+const braveheartHop2 = (fighterId: string): EffectFn => choice({
   effect: BRAVEHEART,
-  prompt: 'Choose an enemy vehicle for Braveheart to fight',
+  prompt: 'Choose an enemy vehicle for it to fight',
   options: ({ game, actor, card }) => {
     const self = braveheartZone(game, actor, card)
     return self ? enemyVehicleOptions(game, actor, self.zone.id) : []
   },
-  resolve: (payload, choiceId) => {
+  data: () => ({ fighterId }),
+  resolve: (payload, enemyId) => {
     const { game, actor, card, ctx } = payload
-    if (choiceId === null) return false // no enemy vehicle in the zone — nothing to fight
+    // Unreachable through normal dispatch — braveheartCanDuel already refused
+    // the activation outright when the zone holds no enemy. Kept as a
+    // defensive backstop, not a live path.
+    if (enemyId === null) {
+      game.state.log.push(`${card.name} finds no enemy vehicle in the zone`)
+      return true
+    }
     const self = braveheartZone(game, actor, card)
+    // Every `return false` below leaves the choice standing rather than
+    // failing the action outright — a refused resolve does not clear
+    // state.pendingEffect, so the offer is still there; RESOLVE_PENDING_EFFECT
+    // { cancel: true } is the player's way out of it.
     if (!self) return false
-    const stillLegal = enemyVehicleOptions(game, actor, self.zone.id).some((o) => o.id === choiceId)
-    if (!stillLegal) return false
-    // No activatesZone: a forced battle is not a zone activation (spec §4.3
-    // ruling) — Eclipse alone is the exception, and says so in its own text.
-    // A fleet attack in this zone later this turn is unaffected.
+    // Both halves re-checked against the CURRENT board — either hull may have
+    // left, or the fighter may have gained INOFFENSIVE, while the dialog sat
+    // open (an enemy TG Hysteria grants it).
+    const fighter = findVehicle(game.state, fighterId)
+    if (!fighter || fighter.side !== actor || fighter.zone.id !== self.zone.id) return false
+    if (!canDuel(fighter.entry)) return false
+    if (!enemyVehicleOptions(game, actor, self.zone.id).some((o) => o.id === enemyId)) return false
     return declareForcedBattle(game, ctx, {
       zoneId: self.zone.id,
       aggressor: actor,
-      attackerIds: [card.instanceId],
-      defenderIds: [choiceId],
+      attackerIds: [fighterId],
+      defenderIds: [enemyId],
       cause: card.name,
     })
   },
-}))
+})
+
+const braveheartHop1: EffectFn = choice({
+  effect: BRAVEHEART,
+  prompt: 'Choose one of your ships to send into the duel',
+  options: ({ game, actor, card }) => {
+    const self = braveheartZone(game, actor, card)
+    return self ? friendlyVehicleOptions(game, actor, self.zone.id, canDuel) : []
+  },
+  resolve: (payload, fighterId) => {
+    // Unreachable through normal dispatch — braveheartCanDuel already refused
+    // the activation outright when the zone holds no eligible ship. Kept as a
+    // defensive backstop, not a live path.
+    if (fighterId === null) {
+      payload.game.state.log.push(`${payload.card.name} finds no ship to send`)
+      return true
+    }
+    // Hop 2's first entry: `resolution` cleared so choice() takes the slot
+    // again, `pending` cleared so it cannot be mistaken for hop 2's own.
+    return braveheartHop2(fighterId)({ ...payload, resolution: undefined, pending: undefined })
+  },
+})
+
+// The router. Hop 2 is told apart by the fighterId hop 1 stashed — never by
+// anything the client sent. Before EVER calling hop 1 — its first entry, or
+// its own re-entry on resolve — the zone must hold a legal duel; see
+// braveheartCanDuel.
+registerEffect(BRAVEHEART, (payload) => {
+  const stashed = payload.pending?.data?.fighterId
+  if (typeof stashed === 'string') return braveheartHop2(stashed)(payload)
+  if (!braveheartCanDuel(payload.game, payload.actor, payload.card)) return false
+  return braveheartHop1(payload)
+})
 
 // ---------------------------------------------------------------------------
 // Wave 4 — DP2 (spec §4.3). Both of these fire at battle LOCK, and both guard
@@ -353,38 +560,78 @@ registerEffect('dryadBattle', ({ game, actor, ctx, battle }) => {
 }, { needsCatalog: true })
 
 const SACRILEGO = 'sacrilegoBattle'
+const SCRAPPY_ON_LOAN = 'scrappyOnLoan'
 
-// Clause 2. "Increase the remaining hp percent of a friendly ship by 15" is
-// implemented where the boost is observable and nowhere else (spec §7.3, the
-// same reasoning applied to Trebuchet's "fully heal it"): the board tracks no
-// HP, so the only difference +15 can make is turning a destroyed ship into a
-// surviving one. Eligible = a friendly SHIP destroyed at SURVIVE_HP_PERCENT −
-// SACRILEGO_HP_BOOST or better, where the boost would have carried it over the
-// line. The band is derived, never written as a literal.
-const sacrilegoSave = sacrificeToSave({
-  effect: SACRILEGO,
-  prompt: 'Sacrifice Sacrilego to save a friendly ship?',
-  eligible: (battle, actor) => battle.casualties.filter((c) =>
-    c.side === actor &&
-    c.entry.vehicleType === VEHICLE_TYPES.SHIP &&
-    c.hp >= SURVIVE_HP_PERCENT - SACRILEGO_HP_BOOST),
-})
-
-// "Whenever this vehicle survives a fleet battle, gain 1cp. Additionally you
-// may sacrifice it to increase the remaining hp percent of a friendly ship by
-// 15." Two clauses, one registry name, told apart by the payload: a DP2
-// resolve trigger carries `battle`, and RESOLVE_PENDING_EFFECT's re-entry
-// carries `resolution` and no battle at all.
+// "Whenever this vehicle participates in a fleet battle, friendly ships receive
+// SCRAPPY keyword for that battle. Whenever this vehicle survives a fleet
+// battle, reduce the cost of SS ships in hand by 30k."
 //
-// Clause 1 does not depend on clause 2 and runs first, so the CP lands even
-// when nothing is eligible — `choice`'s empty-options rule then resolves in
-// the same action without suspending.
-registerEffect(SACRILEGO, (payload) => {
-  if (payload.resolution !== undefined) return sacrilegoSave(payload)
-  const { battle } = payload
-  if (!battle || battle.phase !== 'resolve' || !battle.isParticipant || !battle.survived) return true
-  grant({ cp: 1 })(payload)
-  return sacrilegoSave(payload)
+// ⚠ "FOR THAT BATTLE" IS A REAL WINDOW, not a rounding of "permanently".
+// SCRAPPY is read in exactly two places, both inside DECIDE_BATTLE_REPORT:
+// repairCostOf and autoRepairIds (battleResolve.ts). So the interval between
+// LOCK and RESOLVE is precisely the span in which the keyword can be observed —
+// grant at lock, take it back at resolve, and no reader sees it outside the
+// battle. A permanent grant would make every FUTURE repair free too, which the
+// card does not say.
+//
+// The loan is remembered per HULL under `scrappyOnLoan`, the shape TG's
+// Havoc/Mirth Factory established with `factoryEscort`. A hull that already
+// carries SCRAPPY — printed (Catshark), or granted permanently by Repairmen
+// Ready — is never marked and so is never stripped.
+//
+// ⚠ `scrappyOnLoan` is in discardSnapshotOf's strip list. Nothing in TypeScript
+// would have caught its absence.
+//
+// Both clauses read the ROSTER off game.state.activeBattle, which is set before
+// dispatchBattleLock runs (battleDeclare.ts's setBattle). By RESOLVE it is
+// already null — which is why the strip walks the actor's board rather than the
+// roster, and is also why a second Sacrilego in the same battle is harmless:
+// both want the same hulls stripped.
+registerEffect(SACRILEGO, ({ game, actor, card, battle }) => {
+  if (!battle || !battle.isParticipant) return true
+
+  if (battle.phase === 'lock') {
+    const live = game.state.activeBattle
+    if (!live) return true
+    const mine = battle.isDefender ? live.defenderIds : live.attackerIds
+    for (const id of mine) {
+      const found = findVehicle(game.state, id)
+      // Board hulls only. A battle SUMMON evaporates on report approval whatever
+      // its HP (spec §4.4), so a free repair means nothing to one.
+      if (!found || found.side !== actor) continue
+      const entry = found.entry
+      if (entry.vehicleType !== VEHICLE_TYPES.SHIP) continue
+      if (entry.keywords.includes(KEYWORDS.SCRAPPY)) continue
+      entry.keywords = [...entry.keywords, KEYWORDS.SCRAPPY]
+      entry.meta = { ...entry.meta, [SCRAPPY_ON_LOAN]: true }
+    }
+    game.state.log.push(`${card.name} rigs the fleet for field repairs`)
+    return true
+  }
+
+  if (battle.phase !== 'resolve') return true
+
+  // Clause 1's other half: take the loan back. Runs whether or not Sacrilego
+  // survived — `participants` still holds a destroyed hull's entry at resolve,
+  // so this trigger fires for a dead Sacrilego too, which is what stops the
+  // keyword outliving the battle that lent it.
+  for (const zone of game.state.zones) {
+    for (const entry of zone.cards[actor]) {
+      if (entry.meta[SCRAPPY_ON_LOAN] !== true) continue
+      entry.keywords = entry.keywords.filter((k) => k !== KEYWORDS.SCRAPPY)
+      const { [SCRAPPY_ON_LOAN]: _loan, ...rest } = entry.meta
+      entry.meta = rest
+    }
+  }
+
+  // Clause 2. The log carries neither names nor a count — state.log is public
+  // and the hand is hidden (Nothung's rule).
+  if (!battle.survived) return true
+  for (const held of game.privates[actor].hand) {
+    if (isSsShip(held)) discountInHand(held, SACRILEGO_COST_DELTA)
+  }
+  game.state.log.push(`${card.name} survives and cuts the yard's price for player ${actor.toUpperCase()}`)
+  return true
 })
 
 const BLOCKADE = 'blockadeEffect'
@@ -522,3 +769,148 @@ registerEffect(BLOCKADE, (payload) => {
   if (payload.battle) return blockadeSpring(payload)
   return blockadeClaim(payload)
 }, { needsCatalog: true, deployWatcher: true })
+
+// "This card costs 60k less for every turn it spends in your hand."
+//
+// The residence stamp is written by putInHand (spec §4.2) and re-written every
+// time the card re-enters a hand, so a Tyr that was played, died, reshuffled
+// and was drawn again starts its count over — which is what "spends in your
+// hand" says.
+//
+// ⚠ An UNSTAMPED card is not a bug to assert on, it is the ordinary state of
+// every hand dealt before this deploys: hands live in game_players rows and
+// normalizeState cannot reach them (it takes a PublicGameState). So a missing
+// or non-finite stamp returns 0 — `turnNumber - undefined` is NaN, a NaN
+// modifier makes effectiveCostInGame NaN, and that reads as unaffordable at
+// every check AND writes NaN into the payer's materials at pay().
+//
+// Math.max(0, …) is on the STEP COUNT, not on the price. The price floor is
+// effectiveCostInGame's own Math.max(0, …) and must not be duplicated here
+// (spec §4.2); this clamp is a different guarantee — a card whose stamp is
+// somehow in the future must not cost MORE.
+registerCostModifier('tyrCostModifier', (_state, _side, card, turnNumber) => {
+  const entered = card.handEnteredTurn
+  if (typeof entered !== 'number' || !Number.isFinite(entered)) return 0
+  // Symmetric with the guard above: `turnNumber - entered` is exactly as NaN
+  // when turnNumber is the non-finite half of the subtraction, and nothing
+  // upstream guarantees the engine's own turn counter is finite.
+  if (!Number.isFinite(turnNumber)) return 0
+  return -TYR_HAND_DISCOUNT * Math.max(0, Math.floor(turnNumber - entered))
+})
+
+// "Whenever this survives an offensive fleet battle, deal 200k damage to enemy
+// base in this zone." vengefulBattle (tgEffects.ts) is the worked example,
+// including the checkVictory call — this is a route to a base reaching 0 that
+// ATTACK_ENEMY_BASE's own call cannot cover.
+//
+// ⚠ THE 'baseAttack' GATE IS LOAD-BEARING. ON_BATTLE_VICTORY is dispatched
+// from TWO places: dispatchBattleResolve (a real battle) and
+// dispatchBaseAttackVictory (a bombardment, phase 'baseAttack' — Plunderer's
+// other half, spec §4.3 DP2 departure 5). A bombardment is not a fleet battle,
+// so without `phase === 'resolve'` this would add 200 HP to every base attack
+// Bull Shark took part in.
+//
+// `!isDefender` is the word "offensive". `won` needs no gate: this key is
+// dispatched only for the side that won.
+registerEffect('bullSharkVictory', ({ game, actor, card, battle }) => {
+  if (!battle || battle.phase !== 'resolve') return true
+  if (battle.isDefender || !battle.survived) return true
+  const found = findVehicle(game.state, card.instanceId)
+  // A hull that is off the board has no zone to strike from. `participants`
+  // still holds a destroyed entry at resolve (ruling E-2b), and while
+  // `survived` already excludes that case, the board is the authority on where
+  // the damage lands.
+  if (!found || found.side !== actor) return true
+  const enemy = otherSide(actor)
+  const damage = Math.floor(BULL_SHARK_BASE_DAMAGE / BASE_DAMAGE_DIVISOR)
+  found.zone.baseHp[enemy] = Math.max(0, found.zone.baseHp[enemy] - damage)
+  game.state.log.push(
+    `${card.name} shells the enemy base in zone ${found.zone.id} for ${damage} (${found.zone.baseHp[enemy]} HP remains)`,
+  )
+  if (found.zone.baseHp[enemy] === 0) game.state.log.push(`Zone ${found.zone.id} has fallen`)
+  checkVictory(game)
+  return true
+})
+
+// "Gain 150k resources this turn, then draw a card."
+//
+// One grant rather than a sequence: grant() draws BEFORE it adds materials, and
+// nothing in a draw reads materials, so the printed order is unobservable. Its
+// own registry id rather than a reuse of ransackOnPlay's draw-plus-CP shape —
+// this grants materials, not CP, and R-6 forbids sharing a name regardless.
+registerEffect('cashAdvanceEffect', grant({ materials: CASH_ADVANCE_MATERIALS, draw: 1 }))
+
+// "When this vehicle is played, reduce your opponent CP by 1."
+//
+// grant() cannot serve this: it only ADDS, and only to the actor. The 1 is
+// inline for the reason Kraken's `cp += 1` is — a card that says "by 1" has no
+// tunable in it. The floor is the whole of the ruling: CP is spent by
+// comparison elsewhere, and a negative pool would silently freeze the opponent
+// out of hero powers for turns.
+registerEffect('spectreOnPlay', ({ game, actor, card }) => {
+  const enemy = otherSide(actor)
+  game.state.resources[enemy].cp = Math.max(0, game.state.resources[enemy].cp - 1)
+  game.state.log.push(`${card.name} drains a command point from player ${enemy.toUpperCase()}`)
+  return true
+})
+
+const HYDRA = 'hydraOnPlay'
+
+// "When this vehicle is played, refresh one of your used hero powers then gain
+// 1cp."
+//
+// ⚠ Kraken's SHAPE, deliberately NOT Kraken's NAME (ruling R-6). Every DWG
+// Kraken snapshot in every in-flight game names `krakenOnPlay`, and pointing a
+// second card at that string is the Kraken/Paddlegun collision itself — it
+// would rebind those snapshots to whatever this card does next.
+//
+// `effect: HYDRA` is bound to a const and used twice: choice() returns a plain
+// closure and never learns the name registerEffect files it under, so it has to
+// be told which name RESOLVE_PENDING_EFFECT should re-enter.
+//
+// Empty options do NOT suspend — a player with no used powers still gets the
+// CP, because choice() calls resolve(payload, null) in the same action.
+// pendingEffect.options is public, and used hero powers already are, so this
+// leaks nothing.
+registerEffect(HYDRA, choice({
+  effect: HYDRA,
+  prompt: 'Refresh one of your used hero powers',
+  options: ({ game, actor }) =>
+    game.state.usedHeroPowers[actor].map((p) => ({ id: p, label: HERO_POWER_LABELS[p] ?? p })),
+  resolve: ({ game, actor, card }, choiceId) => {
+    if (choiceId === null) {
+      game.state.log.push(`${card.name} finds no used hero power to refresh`)
+    } else {
+      game.state.usedHeroPowers[actor] = game.state.usedHeroPowers[actor].filter((p) => p !== choiceId)
+      game.state.log.push(`${card.name} refreshes ${HERO_POWER_LABELS[choiceId] ?? choiceId}`)
+    }
+    game.state.resources[actor].cp += 1 // the tail runs either way
+    return true
+  },
+}))
+
+// "When this vehicle is destroyed, reduce the cost of a random SS ship in your
+// hand by 50k."
+//
+// ⚠ Argonaut KEEPS SCRAPPY (ruling R-4). card-effects.md rule 10 used to forbid
+// SCRAPPY beside an onDeathEffect on the false ground that the trigger would be
+// unreachable; wave 0 corrected it. autoRepairIds repairs a Scrappy hull only in
+// the 80–89.999% band — below 80% it is removed, discarded and pushed to
+// destroyedEntries, which is exactly what dispatches this. The free repair
+// narrows the window; it does not close it.
+//
+// ctx.rng(), never Math.random() (checklist item 4) — a direct Math.random in an
+// effect makes every outcome test flaky.
+//
+// The log names nothing, and its wording does not vary with the pool either:
+// state.log is public and the hand is hidden, and zero-vs-nonzero is itself a
+// count — so ONE line runs on every path, whether or not a card actually got
+// discounted.
+registerEffect('argonautOnDeath', ({ game, actor, card, ctx }) => {
+  const pool = game.privates[actor].hand.filter(isSsShip)
+  if (pool.length > 0) {
+    discountInHand(pool[Math.floor(ctx.rng() * pool.length)], ARGONAUT_COST_DELTA)
+  }
+  game.state.log.push(`${card.name} goes down, leaving its yard credit to player ${actor.toUpperCase()}`)
+  return true
+})

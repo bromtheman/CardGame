@@ -58,23 +58,25 @@ const CARDS: Record<string, Expected> = {
   },
   // ----------------------------------------------------------------- SS
   'SS:Chrysaor': {
-    materialCost: 100_000, blueprintCost: 116_000, keywords: ['stealthy'], vehicleType: 'ship',
+    materialCost: 75_000, blueprintCost: 116_000, keywords: ['stealthy'], vehicleType: 'ship', // 2026-09-02 pass
   },
   'SS:Paladin': {
     materialCost: 240_000, blueprintCost: 240_000, keywords: [], vehicleType: 'ship',
   },
   'SS:Argonaut': {
     materialCost: 90_000, blueprintCost: 94_000, keywords: ['scrappy'],
-    vehicleType: 'ship', cardText: '',
+    vehicleType: 'ship',
+    // Death trigger added by the 2026-09-02 pass (ruling R-4); costs unchanged.
+    cardText: 'When this vehicle is destroyed, reduce the cost of a random SS ship in your hand by 50k',
   },
   'SS:Nothung': {
-    materialCost: 470_000, blueprintCost: 478_000, keywords: ['blocker'], vehicleType: 'ship',
+    materialCost: 400_000, blueprintCost: 478_000, keywords: ['blocker'], vehicleType: 'ship', // 2026-09-02 pass
   },
   'SS:Balmung': {
-    materialCost: 630_000, blueprintCost: 636_000, keywords: ['blocker'], vehicleType: 'ship',
+    materialCost: 620_000, blueprintCost: 636_000, keywords: ['blocker'], vehicleType: 'ship', // 2026-09-02 pass
   },
   'SS:Asphodel': {
-    materialCost: 470_000, blueprintCost: 544_000, keywords: ['airScreen'],
+    materialCost: 400_000, blueprintCost: 544_000, keywords: ['airScreen', 'stealthy'], // 2026-09-02 pass
     vehicleType: 'ship', cardText: '',
   },
   'SS:Victoria': {
@@ -133,13 +135,15 @@ describe('2026-08-30 balance pass', () => {
     expect((await bySeedKey()).get('WF:Pontus')!.meta?.additionalSpawns).toBe(2)
   })
 
+  // Repairmen Ready's 'AI' became 'SS' in the 2026-09-02 pass (ruling R-5);
+  // the 400k threshold it exists to pin is unchanged.
   it('Double Up and Repairmen Ready print the thresholds their code enforces', async () => {
     const cards = await bySeedKey()
     expect(cards.get('DWG:Double Up')!.cardText).toBe(
       'Target DWG ship card in hand That costs less than 400k. spawns an additional copy of that ship when played',
     )
     expect(cards.get('SS:Repairmen Ready')!.cardText).toBe(
-      'Grant target vehicle scrappy. If the target is an AI vehicle that costs less than 400k, draw a card.',
+      'Grant target vehicle scrappy. If the target is an SS vehicle that costs less than 400k, draw a card.',
     )
   })
 
@@ -188,25 +192,37 @@ describe('2026-08-30 balance pass', () => {
   // (materialsOver where the card says "less than") would leave a card that
   // is inert AND invisible — no guard failure, and no "plays as vanilla" note
   // either.
-  it('Chrysaor surges over 200k for +100k and a second hull', async () => {
+  //
+  // ⚠ MOVED by the 2026-09-02 pass (spec §2.3, §7.2): threshold and costDelta
+  // both dropped from 200k/100k to 150k/75k. The current triple is also pinned
+  // in supabase/seed/balance/ss.balance.test.ts.
+  it('Chrysaor surges over 150k for +75k and a second hull', async () => {
     expect((await bySeedKey()).get('SS:Chrysaor')!.meta?.resourceSurge).toEqual({
-      materialsOver: 200_000, extraSpawns: 1, costDelta: 100_000,
+      materialsOver: 150_000, extraSpawns: 1, costDelta: 75_000,
     })
   })
 
-  it('Paladin surges UNDER 240k, granting halfCost and temporary', async () => {
-    expect((await bySeedKey()).get('SS:Paladin')!.meta?.resourceSurge).toEqual({
-      materialsUnder: 240_000, grantKeywords: ['halfCost', 'temporary'],
+  // ⚠ REWRITTEN by the 2026-09-02 pass (spec §7.2). Paladin dropped
+  // resourceSurge entirely for an on-play CP and a 1cp self-spawn. Ruling B-9's
+  // granting arm, which this assertion used to be the guard for, is now carried
+  // by SS Thresher Shark (supabase/seed/balance/ss.balance.test.ts).
+  it('Paladin carries the on-play and activated pair its text prints, and no stale surge', async () => {
+    const meta = (await bySeedKey()).get('SS:Paladin')!.meta ?? {}
+    expect(meta).toMatchObject({
+      onPlayEffect: 'paladinOnPlay', onActivate: 'paladinActivate', activateCpCost: 1,
     })
+    expect(meta).not.toHaveProperty('resourceSurge')
   })
 
-  // Victoria's text says "spend 200k resources" — a MATERIAL price, the first
-  // in the game. Same silent-pair trap as Judgement below: without the key the
-  // card has a registered ability and no way to press it.
-  it('Victoria carries the 200k material price its text prints', async () => {
-    expect((await bySeedKey()).get('SS:Victoria')!.meta).toMatchObject({
-      onActivate: 'victoriaActivate', activateMaterialCost: 200_000,
-    })
+  // ⚠ REWRITTEN by the 2026-09-02 pass (spec §7.2). Victoria's activated
+  // ability was replaced by an on-play discount, so there is no material price
+  // left to pin. The pair rule the old assertion existed for still holds — it
+  // just has no subject here any more, and Braveheart above still carries it.
+  it('Victoria carries the on-play effect its text prints, and no stale activation price', async () => {
+    const meta = (await bySeedKey()).get('SS:Victoria')!.meta ?? {}
+    expect(meta).toMatchObject({ playOnCardEffect: 'victoriaOnPlay' })
+    expect(meta).not.toHaveProperty('onActivate')
+    expect(meta).not.toHaveProperty('activateMaterialCost')
   })
 
   // Judgement's text used to say "pay 1cp"; the 2026-09-02 pass made the

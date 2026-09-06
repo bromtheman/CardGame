@@ -164,6 +164,18 @@ frontend (supabase-js) ──invoke──> edge function ──applyAction──
   (`materialsPerTurnOf`), never straight from the `gameSettings.ts` constant —
   lobbies and games saved before the setting existed carry no key, and the
   resolver is what keeps them on the default.
+- **Every card entering a hand goes through `putInHand`** (`gameEngine.ts`),
+  which stamps `handEnteredTurn` and resyncs `state.counts` — the shape
+  `drawCard` already had (2026-09-02), now shared by 12 other call sites across
+  `shared/effects/*.ts` and `shared/engine/*.ts` (a plain count of
+  `putInHand(` outside its own definition; recount rather than trust this
+  number once another hand-entry path is added). The lone exception is the
+  opening deal in `gameInit.ts`, which stamps `handEnteredTurn` directly
+  because no `EngineGame` exists yet to call `putInHand` on.
+  `shared/engine/handStamp.test.ts`'s source guard enforces the invariant going
+  forward: it scans every non-test module under `shared/` for a literal
+  `hand.push(` and fails if one is found anywhere outside `gameEngine.ts` —
+  today that file holds exactly the one, inside `putInHand` itself.
 
 ## State highlights (`PublicGameState`)
 
@@ -171,7 +183,12 @@ frontend (supabase-js) ──invoke──> edge function ──applyAction──
   `cards` arrays of `ZoneCardEntry` (a card snapshot + `instanceId`,
   `playedOnTurn`, `movedOnTurn`, `activatedOnTurn`). The three stamps are
   **required** fields, so `tsc` finds every entry literal when you add another —
-  but see the destructure trap below, which it does not find.
+  but see the destructure trap below, which it does not find. The per-side
+  occupancy cap is **derived**, not stored: `zoneCapFor` (2026-09-02,
+  `shared/engine/zoneCapacity.ts`) defaults to `MAX_VEHICLES_PER_ZONE_SIDE` and
+  subtracts the **largest** `slotDenial` printed by a live enemy hull in that
+  zone — not the sum of every enemy hull printing one, so two SS Tiger Sharks
+  in the same zone still deny only three slots, not six.
 - `pendingEffect` — one suspension slot, `PendingEffect | null`
   (`{ effect, side, card, kind, prompt, options[], data? }`). An effect that
   needs a player decision writes it and returns; `RESOLVE_PENDING_EFFECT`
@@ -299,7 +316,8 @@ destructuring the per-entry stamps **out by name**:
 
 ```ts
 const {
-  instanceId: _i, playedOnTurn: _p, movedOnTurn: _m, activatedOnTurn: _a, ...snapshot
+  instanceId: _instanceId, playedOnTurn: _p, movedOnTurn: _m, activatedOnTurn: _a,
+  handEnteredTurn: _h, ...snapshot
 } = card as ZoneCardEntry
 ```
 
@@ -311,9 +329,21 @@ fails; it is visible only by inspecting the discard. **A new `ZoneCardEntry`
 field must be added to this destructure in the same change**, and a regression
 test driving a card through a real exit is the only net.
 
-Wave 4 extracted that derivation into `discardSnapshotOf(card, controller)`,
-which `discardCard` writes with and `reviveEntry` rebuilds to find *which* pile
-entry belongs to a hull it is bringing back. **Two snapshots of one card are
+`handEnteredTurn` (2026-09-02) is different from the other four: it is a
+**HAND** stamp riding along on a board entry, not a board stamp, and
+`putInHand` (`gameEngine.ts`) is its single writer — see "Engine shape" above.
+The destructure strips two more things beyond the named fields, both from
+`snapshot.meta` rather than the entry itself: `costDelta` and `factoryEscort`
+(per-instance grants that must not survive a reshuffle back into a deck, for
+the same reason as the four stamps), and `scrappyOnLoan`, whose removal also
+filters the loaned `SCRAPPY` keyword itself out of `snapshot.keywords` — a
+Sacrilego-lent keyword that must not outlive the battle it was lent for.
+
+Wave 4 extracted that derivation into `discardSnapshotOf(card)` (it takes only
+the card — `discardCard` supplies `controller` for its own `state.destroyed`
+push, not to this function), which `discardCard` writes with and `reviveEntry`
+rebuilds to find *which* pile entry belongs to a hull it is bringing back.
+**Two snapshots of one card are
 not interchangeable**: `repairmenReadyEffect` grants SCRAPPY to a hull already
 on the board, so a plain and a Scrappy Cyclone share a `cardId` and differ in
 exactly the field that decides whether the owner gets a free upgrade back

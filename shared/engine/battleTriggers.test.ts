@@ -423,6 +423,37 @@ describe('reviveEntry', () => {
     expect(canRevive(g, 'a', dead)).toBe(false)
     expect(reviveEntry(g, 'a', dead, 1)).toBe(false)
   })
+
+  // The "third SCRAPPY reader" hazard the plan's Risk 2 warns about:
+  // reviveEntry pushes the CALLER's snapshot (a battle casualty captured
+  // before it left the board) back onto the board, not the copy it just
+  // spliced out of the discard pile — so unlike that pile copy (which
+  // discardSnapshotOf already strips), the reviving entry can still carry a
+  // Sacrilego SCRAPPY loan (meta.scrappyOnLoan plus the loaned keyword
+  // itself) from a battle that has since ended. No cross-faction deck is
+  // needed to prove it: reviveEntry takes a bare ZoneCardEntry.
+  it('sheds a Sacrilego SCRAPPY loan on the way back, mirroring discardSnapshotOf', () => {
+    const g = makeGame()
+    const dead = zoneEntry({
+      name: 'Loaned', keywords: ['scrappy', 'blocker'], meta: { scrappyOnLoan: true },
+    })
+    g.state.destroyed.a.push(discardSnapshotOf(dead))
+    expect(reviveEntry(g, 'a', dead, 1)).toBe(true)
+    const revived = g.state.zones[0].cards.a[0]
+    expect(revived.keywords).toEqual(['blocker'])
+    expect(revived.meta.scrappyOnLoan).toBeUndefined()
+  })
+
+  // The sibling guarantee: a PRINTED or permanently-granted scrappy (no loan
+  // marker) must survive the trip untouched — this is what stops the fix
+  // above from over-stripping and regressing the exact-snapshot test below.
+  it('leaves a printed or permanently granted scrappy alone', () => {
+    const g = makeGame()
+    const dead = zoneEntry({ name: 'Catshark', keywords: ['scrappy'] })
+    g.state.destroyed.a.push(discardSnapshotOf(dead))
+    expect(reviveEntry(g, 'a', dead, 1)).toBe(true)
+    expect(g.state.zones[0].cards.a[0].keywords).toEqual(['scrappy'])
+  })
 })
 
 describe('sacrificeEntry', () => {

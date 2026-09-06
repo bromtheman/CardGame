@@ -1,12 +1,13 @@
 import {
   CHANGE_ORDER_DELAY_TURNS, HERO_POWER_DISTANCE_MOD_M, KEYWORDS,
-  MAX_VEHICLES_PER_ZONE_SIDE, SPAWN_DISTANCE_MAX_M, SPAWN_DISTANCE_MIN_M,
+  SPAWN_DISTANCE_MAX_M, SPAWN_DISTANCE_MIN_M,
 } from '../gameSettings.ts'
 import type { ApplyResult, EngineGame, Side, ZoneCardEntry } from './engineTypes.ts'
 import {
-  battleFrozen, discardCard, drawCard, err, findVehicle, otherSide, registerHandler, zoneById,
+  battleFrozen, discardCard, drawCard, err, findVehicle, otherSide, putInHand, registerHandler, zoneById,
 } from './gameEngine.ts'
 import { biomeAllows, effectiveMaterialCostOf } from './placement.ts'
+import { zoneCapFor } from './zoneCapacity.ts'
 
 // power → faction that alone may use it. Powers absent from this map (the
 // four universal ones) are open to any faction.
@@ -96,17 +97,20 @@ export function moveEntry(game: EngineGame, actor: Side, instanceId: string, zon
   if (!biomeAllows(found.entry.vehicleType, target.biome)) {
     return err(400, `${found.entry.name} cannot operate in ${target.biome}`)
   }
-  // The move half of the zone-side cap (gameSettings.MAX_VEHICLES_PER_ZONE_SIDE).
-  // Without it a player could deploy into a spare zone and walk hulls into a
-  // full one, which is the cap in name only.
+  // The move half of the zone-side cap — zoneCapFor's DERIVED cap (spec
+  // §4.1: the tighter of the flat gameSettings.MAX_VEHICLES_PER_ZONE_SIDE and
+  // whatever the enemy denies in this zone), not the flat constant read
+  // directly. Without it a player could deploy into a spare zone and walk
+  // hulls into a full one, which is the cap in name only.
   //
   // Reads the DESTINATION, and does so BEFORE the source removal below — so a
   // side sitting at the cap can still move hulls OUT, which a check written
   // against the source (or run after the splice) would have frozen in place.
   // moveEntry is the single chokepoint for MOVE_VEHICLE and [GT] Monsoon
   // alike, so both are covered by this one gate.
-  if (target.cards[actor].length >= MAX_VEHICLES_PER_ZONE_SIDE) {
-    return err(400, `Zone ${zoneId} already holds your ${MAX_VEHICLES_PER_ZONE_SIDE}-vehicle limit`)
+  const cap = zoneCapFor(game.state, actor, zoneId)
+  if (target.cards[actor].length >= cap) {
+    return err(400, `Zone ${zoneId} already holds your ${cap}-vehicle limit`)
   }
   found.zone.cards[actor] = found.zone.cards[actor].filter((c) => c.instanceId !== instanceId)
   const entry: ZoneCardEntry = { ...found.entry, movedOnTurn: stampMove ? game.turnNumber : found.entry.movedOnTurn }
@@ -168,10 +172,7 @@ registerHandler('USE_HERO_POWER', (game, actor, action, ctx) => {
       )
       if (index < 0) return err(400, 'No such destroyed vehicle to salvage')
       const [card] = game.state.destroyed[actor].splice(index, 1)
-      game.privates[actor].hand.push({
-        ...card, instanceId: `hp-${card.cardId}-${game.turnNumber}-${actor}`,
-      })
-      game.state.counts[actor].hand = game.privates[actor].hand.length
+      putInHand(game, actor, { ...card, instanceId: `hp-${card.cardId}-${game.turnNumber}-${actor}` })
       game.state.log.push(`${card.name} salvaged back to hand`)
     } else if (action.power === 'rapidRedeployment') {
       const moved = moveEntry(game, actor, action.instanceId ?? '', action.zoneId ?? -1, true)

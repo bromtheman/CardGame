@@ -6,7 +6,7 @@ import {
 import type { EngineContext, EngineGame, Side, ZoneCardEntry } from '../engine/engineTypes.ts'
 import type { SnapshotCard } from '../engine/gameInit.ts'
 import {
-  checkVictory, copyMeta, discardCard, discardSnapshotOf, drawCard, findVehicle, otherSide, zoneById,
+  checkVictory, copyMeta, discardCard, discardSnapshotOf, drawCard, findVehicle, otherSide, putInHand, zoneById,
 } from '../engine/gameEngine.ts'
 import { effectiveMaterialCostOf } from '../engine/placement.ts'
 import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
@@ -117,9 +117,8 @@ registerEffect('reservesEffect', ({ game, actor, ctx }) => {
     ;[pool[i], pool[j]] = [pool[j], pool[i]]
   }
   for (const pick of pool.slice(0, RESERVES_CARD_COUNT)) {
-    game.privates[actor].hand.push({ ...pick, instanceId: ctx.newId() })
+    putInHand(game, actor, { ...pick, instanceId: ctx.newId() })
   }
-  game.state.counts[actor].hand = game.privates[actor].hand.length
   return true
 }, { needsCatalog: true })
 
