@@ -184,6 +184,14 @@ const lobbyId = lobbyRes.body[0].id
 const joined = await fn('lobby-action', p2.token, { action: 'JOIN', lobbyId, deckId: p2DeckId })
 step('guest joined the lobby', joined.status === 200, `HTTP ${joined.status}`)
 
+// START is ready-gated as of the lobby redesign. This script has its own
+// inline lobby setup rather than smoke-lib's startGame, so it needs its own
+// copy of the ready calls.
+for (const who of [p1, p2]) {
+  const r = await fn('lobby-action', who.token, { action: 'SET_READY', lobbyId, ready: true })
+  if (r.status !== 200) die(`SET_READY failed (HTTP ${r.status})`)
+}
+
 const started = await fn('lobby-action', p1.token, { action: 'START', lobbyId })
 step('host started the game', started.status === 200, `HTTP ${started.status}`)
 if (started.status !== 200) die(JSON.stringify(started.body).slice(0, 400))

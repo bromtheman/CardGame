@@ -195,6 +195,15 @@ async function startGame(p1, p2, spec, cards) {
 
   const joined = await fn('lobby-action', p2.token, { action: 'JOIN', lobbyId, deckId: p2DeckId })
   if (joined.status !== 200) die(`guest join failed (HTTP ${joined.status})`)
+
+  // START is ready-gated as of the lobby redesign: both seats must carry a
+  // deck AND a ready check. Every harness that calls startGame goes through
+  // here, so the gate is satisfied once, in one place.
+  for (const [who, label] of [[p1, 'host'], [p2, 'guest']]) {
+    const r = await fn('lobby-action', who.token, { action: 'SET_READY', lobbyId, ready: true })
+    if (r.status !== 200) die(`${label} SET_READY failed (HTTP ${r.status}): ${JSON.stringify(r.body).slice(0, 200)}`)
+  }
+
   const started = await fn('lobby-action', p1.token, { action: 'START', lobbyId })
   if (started.status !== 200) die(`START failed (HTTP ${started.status}): ${JSON.stringify(started.body).slice(0, 300)}`)
 
@@ -365,7 +374,7 @@ async function startGame(p1, p2, spec, cards) {
   return g
 }
 
-async function cleanUp(games, p1) {
+async function cleanUp(games = [], p1) {
   if (keep) return
   for (const g of games) await rest(`/lobbies?id=eq.${g.lobbyId}`, { method: 'DELETE', token: p1.token })
 }
@@ -376,7 +385,7 @@ async function cleanUp(games, p1) {
 // be opened in the browser. Sets a non-zero exit code if any step failed —
 // step() already does, but a run that dies before reaching here should fail
 // too, and this is the last thing to touch process.exitCode.
-async function report(games, p1) {
+async function report(games = [], p1) {
   await cleanUp(games, p1)
   const passed = results.filter((r) => r.ok).length
   console.log(`\n  ${passed}/${results.length} steps passed`)
