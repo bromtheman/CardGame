@@ -1,4 +1,4 @@
-import { TRIGGERS } from '../gameSettings.ts'
+import { KEYWORDS, TRIGGERS } from '../gameSettings.ts'
 import type { CardInstance, SnapshotCard, ZoneEffect } from './gameInit.ts'
 import type {
   BattleCasualty, BattleContext, EngineContext, EngineGame, Side, ZoneCardEntry,
@@ -477,8 +477,27 @@ export function reviveEntry(
   const index = discardIndexOf(game, side, entry)
   if (index < 0) return false
   game.state.destroyed[side].splice(index, 1)
-  zone.cards[side].push(entry)
+  // `entry` is the CALLER's snapshot — a battle casualty captured before it
+  // left the board — not the (already-stripped) copy just spliced out of the
+  // discard pile above, so it can still carry a Sacrilego SCRAPPY loan
+  // (meta.scrappyOnLoan plus the loaned `scrappy` keyword itself) from a
+  // battle that has since ended. Shed exactly what discardSnapshotOf sheds
+  // (gameEngine.ts), so a revived hull never comes back with a keyword its
+  // lender only meant to last one battle. Unreachable through a real deck
+  // today — Iron Cordon (OW, this function's only caller) and Sacrilego (SS)
+  // are different factions, and decks are single-faction — but reviveEntry
+  // itself takes a bare ZoneCardEntry, so the "third SCRAPPY reader" hazard
+  // needs no cross-faction game to become live the day that stops being true.
+  const revived = entry.meta.scrappyOnLoan === true
+    ? { ...entry, meta: withoutScrappyLoan(entry.meta), keywords: entry.keywords.filter((k) => k !== KEYWORDS.SCRAPPY) }
+    : entry
+  zone.cards[side].push(revived)
   return true
+}
+
+function withoutScrappyLoan(meta: Record<string, unknown>): Record<string, unknown> {
+  const { scrappyOnLoan: _loan, ...rest } = meta
+  return rest
 }
 
 // reviveEntry's sibling, and wave 7's answer to TG Nostalgia: "whenever this

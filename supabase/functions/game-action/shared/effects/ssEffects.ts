@@ -28,13 +28,13 @@ const SS_SHIP_FILTER = {
   faction: FACTIONS.SS, type: 'vehicle', vehicleType: VEHICLE_TYPES.SHIP,
 } as const
 
-// Exported: only Nothung (this file, below), Sacrilego and Argonaut (Tasks
-// 16, 21) call these two — Trondheim/Resolute (Task 11) and Excalibur
-// (Task 13) go through SS_SHIP_FILTER via drawFromPool/costDelta instead.
-// Kept exported for the not-yet-landed callers: an unexported symbol with no
-// call site inside this file trips frontend/tsconfig.app.json's
-// noUnusedLocals (TS6133) the moment npm --prefix frontend run build pulls in
-// ../shared — export makes both exempt while the remaining call sites land.
+// Used in this file by Nothung (below), Sacrilego and Argonaut —
+// Trondheim/Resolute and Excalibur go through SS_SHIP_FILTER via
+// drawFromPool/costDelta instead. Exported because frontend/src/pages/game/
+// HandBar.tsx imports it too, as the one definition of "an SS ship" a hand
+// card is checked against — without the export that consumer would have to
+// re-derive the same three checks, the drift this predicate exists to
+// prevent.
 export const isSsShip = (c: CardInstance): boolean =>
   c.faction === FACTIONS.SS && c.type === 'vehicle' && c.vehicleType === VEHICLE_TYPES.SHIP
 
@@ -791,6 +791,10 @@ registerEffect(BLOCKADE, (payload) => {
 registerCostModifier('tyrCostModifier', (_state, _side, card, turnNumber) => {
   const entered = card.handEnteredTurn
   if (typeof entered !== 'number' || !Number.isFinite(entered)) return 0
+  // Symmetric with the guard above: `turnNumber - entered` is exactly as NaN
+  // when turnNumber is the non-finite half of the subtraction, and nothing
+  // upstream guarantees the engine's own turn counter is finite.
+  if (!Number.isFinite(turnNumber)) return 0
   return -TYR_HAND_DISCOUNT * Math.max(0, Math.floor(turnNumber - entered))
 })
 
@@ -898,14 +902,15 @@ registerEffect(HYDRA, choice({
 // ctx.rng(), never Math.random() (checklist item 4) — a direct Math.random in an
 // effect makes every outcome test flaky.
 //
-// The log names nothing: state.log is public and the hand is hidden.
+// The log names nothing, and its wording does not vary with the pool either:
+// state.log is public and the hand is hidden, and zero-vs-nonzero is itself a
+// count — so ONE line runs on every path, whether or not a card actually got
+// discounted.
 registerEffect('argonautOnDeath', ({ game, actor, card, ctx }) => {
   const pool = game.privates[actor].hand.filter(isSsShip)
-  if (pool.length === 0) {
-    game.state.log.push(`${card.name} goes down with nothing to bequeath`)
-    return true
+  if (pool.length > 0) {
+    discountInHand(pool[Math.floor(ctx.rng() * pool.length)], ARGONAUT_COST_DELTA)
   }
-  discountInHand(pool[Math.floor(ctx.rng() * pool.length)], ARGONAUT_COST_DELTA)
-  game.state.log.push(`${card.name} leaves its yard credit to player ${actor.toUpperCase()}`)
+  game.state.log.push(`${card.name} goes down, leaving its yard credit to player ${actor.toUpperCase()}`)
   return true
 })

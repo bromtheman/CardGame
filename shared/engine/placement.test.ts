@@ -152,6 +152,32 @@ describe('additionalSpawns', () => {
   })
 })
 
+// handEnteredTurn (spec §4.2) is a private HAND stamp normalizeState cannot
+// see — it lives on CardInstance, and ZoneCardEntry inherits the (optional)
+// field structurally even though nothing on the board is meant to carry it.
+// deployVehicle used to spread the whole hand card, stamp included, into the
+// placed zone entry, so a stamped hand card would land on the board carrying
+// a number PublicGameState must never expose.
+describe('deployVehicle sheds handEnteredTurn on the way to the board', () => {
+  it('the placed entry carries no handEnteredTurn', () => {
+    const { g, card } = withHand({ vehicleType: 'ship', materialCost: 40000, handEnteredTurn: 1 })
+    const r = applyAction(g, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect('handEnteredTurn' in r.game.state.zones[0].cards.a[0]).toBe(false)
+  })
+
+  it('an additionalSpawns copy carries no handEnteredTurn either', () => {
+    const { g, card } = withHand({
+      vehicleType: 'ship', materialCost: 40000, handEnteredTurn: 1, meta: { additionalSpawns: 1 },
+    })
+    const r = applyAction(g, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    const entries = r.game.state.zones[0].cards.a
+    expect(entries).toHaveLength(2)
+    expect('handEnteredTurn' in entries[1]).toBe(false)
+  })
+})
+
 // Spec §7.1 near miss: Typhoon's second hull is additionalSpawns, resolved by
 // deployVehicle from the card already in hand — not an effect, and ctx.catalog
 // is never touched. No registry id is involved at all.

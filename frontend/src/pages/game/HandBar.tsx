@@ -2,7 +2,8 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 're
 import type { CardInstance, PublicGameState } from '@shared/engine/gameInit'
 import type { GameAction, Side } from '@shared/engine/engineTypes'
 import { effectiveCostInGame, effectName, legalZonesFor } from '@shared/engine/index'
-import { FACTIONS, TRIGGERS } from '@shared/gameSettings'
+import { isSsShip } from '@shared/effects/ssEffects'
+import { TRIGGERS } from '@shared/gameSettings'
 import { shortHandNumber } from '@shared/format'
 import { cardInstanceToRow } from '../../lib/cards'
 import { PhysicalCard } from '../../components/PhysicalCard'
@@ -39,9 +40,11 @@ function hasAnyMetaEffect(card: CardInstance): boolean {
 const HAND_TARGET_EFFECTS = new Set(['excaliburEffect', 'victoriaOnPlay'])
 // The two vehicles' shared target shape, factored out so isHandTarget's
 // render-time filter (below) can never drift from what actually gets offered.
+// isSsShip is shared/effects/ssEffects.ts's own "an SS ship" predicate — this
+// adds only the self-exclusion a hand-target check needs and a real card
+// would never need against itself.
 function isSsShipTarget(c: CardInstance, card: CardInstance): boolean {
-  return c.instanceId !== card.instanceId && c.type === 'vehicle' && c.vehicleType === 'ship'
-    && c.faction === FACTIONS.SS
+  return c.instanceId !== card.instanceId && isSsShip(c)
 }
 // Checked against the registry name, not the card name, so a rename doesn't
 // silently break it. Used only to decide whether to offer the two-step hand

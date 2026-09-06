@@ -418,9 +418,9 @@ export function choice(spec: {
       //
       // Dropped here, at the suspension itself, rather than by the dispatcher
       // skipping the whole effect: that is what lets a card whose text has an
-      // unconditional clause AND an optional one — Sacrilego's "gain 1cp.
-      // Additionally you may sacrifice it…" — still grant the CP when its
-      // offer cannot be made.
+      // unconditional clause AND an optional one — SS Hydra's "refresh one of
+      // your used hero powers then gain 1cp" (ssEffects.ts's HYDRA) — still
+      // grant the CP when its own offer cannot be made.
       if (payload.game.state.pendingEffect !== null) {
         payload.game.state.log.push(
           `${payload.card.name}'s offer was not made — another choice is already pending`,

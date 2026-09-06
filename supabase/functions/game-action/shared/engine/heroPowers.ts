@@ -97,9 +97,11 @@ export function moveEntry(game: EngineGame, actor: Side, instanceId: string, zon
   if (!biomeAllows(found.entry.vehicleType, target.biome)) {
     return err(400, `${found.entry.name} cannot operate in ${target.biome}`)
   }
-  // The move half of the zone-side cap (gameSettings.MAX_VEHICLES_PER_ZONE_SIDE).
-  // Without it a player could deploy into a spare zone and walk hulls into a
-  // full one, which is the cap in name only.
+  // The move half of the zone-side cap — zoneCapFor's DERIVED cap (spec
+  // §4.1: the tighter of the flat gameSettings.MAX_VEHICLES_PER_ZONE_SIDE and
+  // whatever the enemy denies in this zone), not the flat constant read
+  // directly. Without it a player could deploy into a spare zone and walk
+  // hulls into a full one, which is the cap in name only.
   //
   // Reads the DESTINATION, and does so BEFORE the source removal below — so a
   // side sitting at the cap can still move hulls OUT, which a check written

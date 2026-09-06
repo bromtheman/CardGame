@@ -316,7 +316,7 @@ destructuring the per-entry stamps **out by name**:
 
 ```ts
 const {
-  instanceId: _i, playedOnTurn: _p, movedOnTurn: _m, activatedOnTurn: _a,
+  instanceId: _instanceId, playedOnTurn: _p, movedOnTurn: _m, activatedOnTurn: _a,
   handEnteredTurn: _h, ...snapshot
 } = card as ZoneCardEntry
 ```
@@ -339,9 +339,11 @@ the same reason as the four stamps), and `scrappyOnLoan`, whose removal also
 filters the loaned `SCRAPPY` keyword itself out of `snapshot.keywords` — a
 Sacrilego-lent keyword that must not outlive the battle it was lent for.
 
-Wave 4 extracted that derivation into `discardSnapshotOf(card, controller)`,
-which `discardCard` writes with and `reviveEntry` rebuilds to find *which* pile
-entry belongs to a hull it is bringing back. **Two snapshots of one card are
+Wave 4 extracted that derivation into `discardSnapshotOf(card)` (it takes only
+the card — `discardCard` supplies `controller` for its own `state.destroyed`
+push, not to this function), which `discardCard` writes with and `reviveEntry`
+rebuilds to find *which* pile entry belongs to a hull it is bringing back.
+**Two snapshots of one card are
 not interchangeable**: `repairmenReadyEffect` grants SCRAPPY to a hull already
 on the board, so a plain and a Scrappy Cyclone share a `cardId` and differ in
 exactly the field that decides whether the owner gets a free upgrade back

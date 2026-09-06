@@ -6548,6 +6548,14 @@ describe('SS Tyr — a discount that grows in your hand', () => {
     expect(priceAt(2, 9)).toBe(950_000)
     expect(priceAt(5, Number.NaN)).toBe(950_000)
   })
+
+  // The `entered` guard above is not symmetric with the OTHER half of the
+  // subtraction: a non-finite turnNumber hits the same `x - y` NaN hazard the
+  // file-level comment warns about for `entered`, and nothing upstream
+  // guarantees the engine's own turnNumber is finite. 0 discount, never NaN.
+  it('never raises the price when turnNumber itself is not finite', () => {
+    expect(priceAt(Number.NaN, 3)).toBe(950_000)
+  })
 })
 
 describe('SS Bull Shark — 200k to the base on an offensive win', () => {
@@ -6661,11 +6669,15 @@ describe('SS Cash advance — 150k and a card', () => {
 })
 
 describe('SS Trondheim and Resolute — a discounted SS ship out of the deck', () => {
+  // The SS ship is pushed LAST, with two non-matches ahead of it, so the
+  // draw can only be explained by the FILTER (faction + type + vehicleType)
+  // picking it out — not by fixture order. A "grab deck[0]" regression would
+  // return 'SS Sub' here and fail every assertion below.
   const deckOf = (game: EngineGame) => {
     game.privates.a.deck.push(
-      inst({ name: 'SS Ship A', faction: 'SS', type: 'vehicle', vehicleType: 'ship', materialCost: 300_000 }),
       inst({ name: 'SS Sub', faction: 'SS', type: 'vehicle', vehicleType: 'sub' }),
       inst({ name: 'DWG Ship', faction: 'DWG', type: 'vehicle', vehicleType: 'ship' }),
+      inst({ name: 'SS Ship A', faction: 'SS', type: 'vehicle', vehicleType: 'ship', materialCost: 300_000 }),
     )
   }
 
@@ -6875,6 +6887,22 @@ describe('SS Argonaut — a parting discount', () => {
     game.privates.a.hand.push(inst({ name: 'Secret', faction: 'SS', type: 'vehicle', vehicleType: 'ship' }))
     effectFor('argonautOnDeath')!({ game, actor: 'a', card: argonaut(), ctx: makeCtx() })
     expect(game.state.log.join('\n')).not.toContain('Secret')
+  })
+
+  // Zero-vs-nonzero is itself a count, and state.log is public while the hand
+  // is hidden — so the line must read identically whether or not the pool had
+  // anything to discount, not just refrain from naming the card it picked.
+  it('logs the identical line whether the SS-ship pool is empty or not', () => {
+    const emptyPool = makeGame()
+    effectFor('argonautOnDeath')!({ game: emptyPool, actor: 'a', card: argonaut(), ctx: makeCtx() })
+
+    const nonEmptyPool = makeGame()
+    nonEmptyPool.privates.a.hand.push(
+      inst({ name: 'Secret', faction: 'SS', type: 'vehicle', vehicleType: 'ship' }),
+    )
+    effectFor('argonautOnDeath')!({ game: nonEmptyPool, actor: 'a', card: argonaut(), ctx: makeCtx() })
+
+    expect(emptyPool.state.log).toEqual(nonEmptyPool.state.log)
   })
 })
 

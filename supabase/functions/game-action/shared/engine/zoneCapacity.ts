@@ -4,10 +4,15 @@ import type { Side } from './engineTypes.ts'
 
 // How many hulls ONE side may hold on its own half of ONE zone, right now.
 //
-// The cap used to be the flat MAX_VEHICLES_PER_ZONE_SIDE, read at eight sites.
-// SS Tiger Shark makes it a function of the board (2026-09-02 spec §4.1, ruling
-// R-1): "While this vehicle is alive, your opponent has 3 fewer vehicle slots
-// in this zone. This does not stack."
+// The cap used to be the flat MAX_VEHICLES_PER_ZONE_SIDE, read directly at
+// every call site. SS Tiger Shark makes it a function of the board instead
+// (2026-09-02 spec §4.1, ruling R-1): "While this vehicle is alive, your
+// opponent has 3 fewer vehicle slots in this zone. This does not stack."
+// Six production call sites read it through zoneCapFor as of this pass —
+// placement.ts (x2) and heroPowers.ts on the engine side, GameBoardPage.tsx
+// (x3) on the frontend — but `grep -rn "zoneCapFor(" shared/ frontend/src` is
+// what to re-run for the real count rather than trust a number here, which
+// will drift the next time a caller is added.
 //
 // DERIVED, never stored. Nothing is written when a Tiger Shark lands and
 // nothing is unwound when it dies — the cap is simply recomputed, so a denier

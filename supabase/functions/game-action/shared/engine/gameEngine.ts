@@ -172,14 +172,19 @@ function reshuffleDiscard(game: EngineGame, side: Side, ctx: EngineContext): voi
 
 // THE single way a card enters a hand (2026-09-02 spec §4.2). Stamps
 // handEnteredTurn and resyncs the public counts, which is checklist item 5 in
-// docs/claude/card-effects.md — a rule eleven separate push sites each had to
-// remember, and which reservesEffect only half-remembered (it wrote counts.hand
-// and left counts.deck).
+// docs/claude/card-effects.md — a rule every call site has to remember, and
+// which reservesEffect only half-remembered (it wrote counts.hand and left
+// counts.deck).
 //
 // It exists because of the failure mode, not the tidiness: a hand-entry path
 // that forgets the stamp yields a Tyr that is silently never discounted, with
 // every unit test green. One helper cannot be half-applied, and
-// handStamp.test.ts's source guard is what stops a twelfth push being written.
+// handStamp.test.ts's source guard — it fails the moment any file pushes onto
+// `.hand` directly instead of coming through here — is what stops a new push
+// site from bypassing it. (`grep -rn "putInHand(" shared/ --include=*.ts` is
+// the real count of call sites this protects, if you need the number; it is
+// deliberately not frozen here, because it drifts the next time a card effect
+// adds one.)
 //
 // Mutates and returns the card rather than pushing a copy: drawCard hands over
 // the very instance it shifted off the deck, and a copy there would break

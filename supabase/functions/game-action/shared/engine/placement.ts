@@ -191,7 +191,7 @@ export function canAfford(state: PublicGameState, side: Side, card: CardInstance
 // Spec §4.6 and its two wave-6 departures ("4.6 as wave 6 extended it").
 // Exactly ONE comparator is present per card, preserving each card's own
 // wording: "more than" (PredatorX, Chrysaor), "or more" (Orbit), "less than"
-// (Paladin).
+// (Thresher Shark).
 interface ResourceSurge {
   materialsOver?: number
   materialsAtLeast?: number
@@ -200,9 +200,12 @@ interface ResourceSurge {
   // Departure 1 — Chrysaor: "this card costs 100k more". A purchase-price
   // mechanic like every other, so it never reaches effectiveMaterialCostOf.
   costDelta?: number
-  // Departure 2 — Paladin: "can be played with halfcost and temporary". These
-  // land on the HULL, not only on the price: endTurn's cull reads `temporary`
-  // off the board, so a hull that got it at price time would never despawn.
+  // Departure 2 — Thresher Shark: "may play it with HALFCOST and
+  // INOFFENSIVE". These land on the HULL, not only on the price:
+  // battleDeclare's attack-eligibility check reads INOFFENSIVE off the
+  // board, and costs.ts's repair math reads HALF_COST off the board too — a
+  // hull that only got them at price time would attack anyway and repair at
+  // full price forever.
   grantKeywords?: string[]
 }
 
@@ -270,7 +273,7 @@ export function effectiveCostInGame(
   const delta = stored + surgeCostDeltaFor(state, side, card)
   const modified = card.materialCost + (fn ? fn(state, side, card, turnNumber) : 0) + delta
   // The two arms of ruling B-9: a suppressing surge strips Half-Cost, a
-  // granting one adds whatever it grants (which for Paladin includes
+  // granting one adds whatever it grants (which for Thresher Shark includes
   // Half-Cost). The granted list is the SAME one deployVehicle stamps onto
   // the hull, so the price and the board never disagree.
   const keywords = halfCostSuppressed(state, side, card)
@@ -345,13 +348,20 @@ function deployVehicle(
 ): string[] {
   const placedInstanceIds: string[] = []
   const zone = game.state.zones.find((z) => z.id === zoneId)!
+  // handEnteredTurn (spec §4.2) is a private HAND stamp — ZoneCardEntry
+  // inherits the field structurally (it extends CardInstance) but nothing on
+  // the board is meant to carry it, so it comes off the hull ONCE, here,
+  // before either spread below can carry it onto the board and into
+  // PublicGameState. Both the placed entry and its additionalSpawns copies
+  // are built from `hull`, never from `card`, for exactly that reason.
+  const { handEnteredTurn: _handEnteredTurn, ...hull } = card
   // A granting surge stamps its keywords onto the hull that lands, not only
-  // onto the price (spec §4.6, departure 2 — Paladin). Derived from `surged`,
-  // which the caller captured BEFORE pay(), rather than re-read here.
+  // onto the price (spec §4.6, departure 2 — Thresher Shark). Derived from
+  // `surged`, which the caller captured BEFORE pay(), rather than re-read here.
   const granted = surged ? grantedKeywordsOf(card) : []
   const keywords = withGranted(card.keywords, granted)
   const entry: ZoneCardEntry = {
-    ...card, keywords, playedOnTurn: game.turnNumber, movedOnTurn: null, activatedOnTurn: null,
+    ...hull, keywords, playedOnTurn: game.turnNumber, movedOnTurn: null, activatedOnTurn: null,
   }
   zone.cards[actor].push(entry)
   placedInstanceIds.push(entry.instanceId)
@@ -371,7 +381,7 @@ function deployVehicle(
   const extra = Math.min(wanted, room)
   for (let i = 0; i < extra; i++) {
     const copy: ZoneCardEntry = {
-      ...card, instanceId: ctx.newId(), meta: copyMeta(card.meta), keywords: [...keywords],
+      ...hull, instanceId: ctx.newId(), meta: copyMeta(card.meta), keywords: [...keywords],
       playedOnTurn: game.turnNumber, movedOnTurn: null, activatedOnTurn: null,
     }
     zone.cards[actor].push(copy)
@@ -417,9 +427,9 @@ registerHandler('PLAY_CARD_TO_ZONE', (game, actor, action, ctx) => {
   // that would expose a regression: its surged price is exactly its own
   // threshold, so paying for itself turns its own condition off.
   //
-  // resourceSurgeActive, not halfCostSuppressed: a GRANTING surge (Paladin)
-  // suppresses nothing, so the narrower flag would silently skip both its
-  // keyword stamp and its extra hulls.
+  // resourceSurgeActive, not halfCostSuppressed: a GRANTING surge (Thresher
+  // Shark) suppresses nothing, so the narrower flag would silently skip both
+  // its keyword stamp and its extra hulls.
   const surged = resourceSurgeActive(game.state, actor, card)
 
   takeFromHand(game, actor, action.instanceId)
