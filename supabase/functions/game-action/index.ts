@@ -1,5 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
-import { applyAction, CATALOG_EFFECTS, normalizeState } from './shared/engine/index.ts'
+import { applyAction, CATALOG_EFFECTS, CATALOG_HERO_POWERS, normalizeState } from './shared/engine/index.ts'
 import { secureRng, snapshotCard } from './shared/engine/gameInit.ts'
 import type { SnapshotCard } from './shared/engine/gameInit.ts'
 import type { EngineGame, GameAction, PrivateState, Side } from './shared/engine/engineTypes.ts'
@@ -120,7 +120,13 @@ Deno.serve(async (req) => {
     (e) => typeof e.effect === 'string' && CATALOG_EFFECTS.has(e.effect.trim()),
   )
 
-  if (zoneEffectWantsCatalog || candidates.some(wantsCatalog)) {
+  // Fifth source: a hero power that mints from the catalog (TG Drones' Mirth
+  // Swarms). A hero power has no card and no meta, so none of the probes
+  // above can see it — it declares itself in CATALOG_HERO_POWERS instead.
+  const heroPowerWantsCatalog =
+    action.type === 'USE_HERO_POWER' && CATALOG_HERO_POWERS.has(String(action.power))
+
+  if (heroPowerWantsCatalog || zoneEffectWantsCatalog || candidates.some(wantsCatalog)) {
     const { data: cardRows, error: catalogError } = await admin.from('cards').select('*').eq('is_built_in', true)
     if (catalogError) return json(500, { errors: ['Failed to load the card catalog'] })
     catalog = (cardRows ?? []).map(snapshotCard)

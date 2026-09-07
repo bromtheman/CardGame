@@ -530,3 +530,12 @@ on conflict (id) do update set name = excluded.name, faction = excluded.faction,
 insert into public.hero_powers (id, name, faction, power_text, cp_cost, meta)
 values ('6f174556-c99f-5ceb-9be5-6b7d03bb11b1', 'Flyby', 'LH', 'Choose a LH vehicle card in hand. Give it the HALFCOST and TEMPORARY keywords.', 1, '{}'::jsonb)
 on conflict (id) do update set name = excluded.name, faction = excluded.faction, power_text = excluded.power_text, cp_cost = excluded.cp_cost, meta = excluded.meta;
+insert into public.hero_powers (id, name, faction, power_text, cp_cost, meta)
+values ('6e3573d1-01a0-5693-9ae6-7d457841c0b7', 'Flanking maneuver', 'WF', 'Choose a zone. The next time you start a fleet battle in that zone this turn, you may deploy after the defender. During that battle, all enemy ships are considered to have FRAGILE keyword', 1, '{}'::jsonb)
+on conflict (id) do update set name = excluded.name, faction = excluded.faction, power_text = excluded.power_text, cp_cost = excluded.cp_cost, meta = excluded.meta;
+insert into public.hero_powers (id, name, faction, power_text, cp_cost, meta)
+values ('95c21f69-f7b6-534e-9d5e-2bccc3b66b34', 'Drones', 'TG', 'Spawn a TEMPORARY Mirth swarm into Each zone', 1, '{}'::jsonb)
+on conflict (id) do update set name = excluded.name, faction = excluded.faction, power_text = excluded.power_text, cp_cost = excluded.cp_cost, meta = excluded.meta;
+insert into public.hero_powers (id, name, faction, power_text, cp_cost, meta)
+values ('c3c37362-e9cc-54eb-89a0-a964ee1a2a2f', 'Counter intelligence', 'SS', 'Grant a friendly vehicle subscreen and airscreen keywords', 1, '{}'::jsonb)
+on conflict (id) do update set name = excluded.name, faction = excluded.faction, power_text = excluded.power_text, cp_cost = excluded.cp_cost, meta = excluded.meta;

@@ -13,8 +13,12 @@ import { PromptDialog } from '../../components/ConfirmDialog'
 // carrying that target alongside the vehicle's own instanceId since
 // PLAY_CARD_TARGETING_CARD_IN_HAND needs both. GameBoardPage owns the actual
 // state; this type just describes its shape for both consumers.
+//
+// `pickVehicle` carries a `kind` because SS Counter Intelligence shares its
+// pick-an-own-vehicle step and then SENDS on that first click, where Rapid
+// Redeployment chains into pickZone.
 export type MoveMode =
-  | { phase: 'pickVehicle' }
+  | { phase: 'pickVehicle'; kind: 'rapidRedeployment' | 'counterIntelligence' }
   | { phase: 'pickZone'; instanceId: string; kind: 'mobile' | 'heroPower' | 'activate' }
   | { phase: 'pickZone'; instanceId: string; kind: 'handTarget'; targetInstanceId: string }
 
@@ -24,15 +28,21 @@ export type MoveMode =
 export type SwapMode = { phase: 'pickOwn' } | { phase: 'pickEnemy'; ownInstanceId: string }
 
 type UniversalPower = 'salvage' | 'tacticalPositioning' | 'draw' | 'rapidRedeployment'
-type FactionPower = 'boardingParty' | 'changeOrder' | 'flyby'
+type FactionPower =
+  | 'boardingParty' | 'changeOrder' | 'flyby'
+  | 'counterIntelligence' | 'drones' | 'flankingManeuver'
 
 // power → faction that alone may use it, plus display info. Matches the
 // seeded hero_powers rows — display-only, no fetch (mirrors
-// shared/engine/heroPowers.ts's FACTION_POWERS map).
+// shared/engine/heroPowers.ts's FACTION_POWERS map). GT has no faction power
+// authored, so a GT deck renders only the four universal buttons.
 const FACTION_POWER_INFO: Record<string, { power: FactionPower; label: string; blurb: string }> = {
   DWG: { power: 'boardingParty', label: 'Boarding Party', blurb: 'Exchange a friendly DWG ship with an enemy ship of equal or lesser cost in the same zone' },
   OW: { power: 'changeOrder', label: 'Change Order', blurb: 'Discard an OW vehicle; draw a player-made ship or tank from your deck in two turns' },
   LH: { power: 'flyby', label: 'Flyby', blurb: 'Give an LH vehicle card in hand Half-Cost and Temporary' },
+  SS: { power: 'counterIntelligence', label: 'Counter Intelligence', blurb: 'Give one of your vehicles on the board Air Screen and Sub Screen' },
+  TG: { power: 'drones', label: 'Drones', blurb: 'Spawn a Temporary Mirth Swarm into every zone' },
+  WF: { power: 'flankingManeuver', label: 'Flanking Maneuver', blurb: 'Choose a zone: your next fleet attack there this turn deploys after the defender, and every enemy vehicle counts as Fragile for that battle' },
 }
 
 // Header strip for the 4 universal hero powers (once-per-game, 1 CP each).
@@ -43,8 +53,9 @@ const FACTION_POWER_INFO: Record<string, { power: FactionPower; label: string; b
 // the board once a vehicle is picked.
 export function HeroPowerBar({
   state, mySide, isMyTurn, isActive, send, busy, hand,
-  moveMode, onStartRapidRedeployment, onCancelMove,
+  moveMode, onStartRapidRedeployment, onStartCounterIntelligence, onCancelMove,
   swapMode, onStartBoardingParty, onCancelSwap,
+  flankMode, onStartFlankingManeuver, onCancelFlank,
 }: {
   state: PublicGameState
   mySide: Side
@@ -59,6 +70,13 @@ export function HeroPowerBar({
   swapMode: SwapMode | null
   onStartBoardingParty: () => void
   onCancelSwap: () => void
+  // SS Counter Intelligence: pick one of my vehicles on the board (moveMode's
+  // pickVehicle phase, kind 'counterIntelligence').
+  onStartCounterIntelligence: () => void
+  // WF Flanking Maneuver: pick a zone — every zone highlights while armed.
+  flankMode: boolean
+  onStartFlankingManeuver: () => void
+  onCancelFlank: () => void
 }) {
   const [salvageOpen, setSalvageOpen] = useState(false)
   const [factionPickerOpen, setFactionPickerOpen] = useState(false)
@@ -88,11 +106,13 @@ export function HeroPowerBar({
     rapidRedeployment: reasonFor('rapidRedeployment'),
   }
 
-  // Faction power: absent for NEUTRAL/SS/WF/GT (nothing renders). boardingParty
-  // picks are made on the board (swapMode); changeOrder/flyby pick from an
-  // inline hand-card dropdown, same pattern as Salvage's destroyed-vehicle one.
+  // Faction power: absent for NEUTRAL/GT (nothing renders). boardingParty and
+  // counterIntelligence pick on the board (swapMode / moveMode); flanking picks
+  // a zone (flankMode); drones sends at once like Draw; changeOrder/flyby pick
+  // from an inline hand-card dropdown, same pattern as Salvage's.
   const factionPowerInfo = FACTION_POWER_INFO[state.factions[mySide]]
   const hasOwnDwgShip = state.zones.some((z) => z.cards[mySide].some((c) => c.faction === 'DWG' && c.vehicleType === VEHICLE_TYPES.SHIP))
+  const hasOwnVehicle = state.zones.some((z) => z.cards[mySide].length > 0)
   const eligibleFactionCards: CardInstance[] =
     factionPowerInfo?.power === 'changeOrder'
       ? hand.filter((c) => c.faction === 'OW' && c.type === 'vehicle')
@@ -107,10 +127,19 @@ export function HeroPowerBar({
             ? 'No OW vehicle in hand'
             : factionPowerInfo.power === 'flyby' && eligibleFactionCards.length === 0
               ? 'No LH vehicle in hand'
-              : null))
+              : factionPowerInfo.power === 'counterIntelligence' && !hasOwnVehicle
+                ? 'No vehicle of yours on the board'
+                : null))
     : null
-  const factionDisabled =
-    factionPowerInfo?.power === 'boardingParty' ? busy || (!!factionReason && !swapMode) : busy || !!factionReason
+  // A board-pick power stays clickable while its own mode is armed, so the
+  // same button cancels it.
+  const counterIntelActive = moveMode?.phase === 'pickVehicle' && moveMode.kind === 'counterIntelligence'
+  const factionModeActive =
+    factionPowerInfo?.power === 'boardingParty' ? !!swapMode
+      : factionPowerInfo?.power === 'counterIntelligence' ? counterIntelActive
+        : factionPowerInfo?.power === 'flankingManeuver' ? flankMode
+          : false
+  const factionDisabled = busy || (!!factionReason && !factionModeActive)
 
   async function onDraw() {
     await send({ type: 'USE_HERO_POWER', power: 'draw' })
@@ -140,12 +169,25 @@ export function HeroPowerBar({
 
   function onFactionButtonClick() {
     if (!factionPowerInfo) return
-    if (factionPowerInfo.power === 'boardingParty') {
-      if (swapMode) onCancelSwap()
-      else onStartBoardingParty()
-      return
+    switch (factionPowerInfo.power) {
+      case 'boardingParty':
+        if (swapMode) onCancelSwap()
+        else onStartBoardingParty()
+        return
+      case 'counterIntelligence':
+        if (counterIntelActive) onCancelMove()
+        else onStartCounterIntelligence()
+        return
+      case 'flankingManeuver':
+        if (flankMode) onCancelFlank()
+        else onStartFlankingManeuver()
+        return
+      case 'drones':
+        void send({ type: 'USE_HERO_POWER', power: 'drones' })
+        return
+      default:
+        setFactionPickerOpen((v) => !v)
     }
-    setFactionPickerOpen((v) => !v)
   }
 
   async function onPickFactionCard(instanceId: string) {
@@ -225,12 +267,12 @@ export function HeroPowerBar({
             title={factionReason ?? factionPowerInfo.blurb}
             onClick={onFactionButtonClick}
             className={`rounded border px-3 py-1 text-sm font-bold disabled:cursor-not-allowed disabled:opacity-50 ${
-              swapMode ? 'border-brass-400 bg-brass-400/20 text-brass-400' : 'border-ocean-600 text-parchment-100'
+              factionModeActive ? 'border-brass-400 bg-brass-400/20 text-brass-400' : 'border-ocean-600 text-parchment-100'
             }`}
           >
             {factionPowerInfo.label} (1 CP)
           </button>
-          {factionPickerOpen && factionPowerInfo.power !== 'boardingParty' && (
+          {factionPickerOpen && (factionPowerInfo.power === 'changeOrder' || factionPowerInfo.power === 'flyby') && (
             <div className="absolute bottom-full left-0 z-30 mb-1 max-h-64 w-64 overflow-y-auto rounded border border-brass-400 bg-ocean-900 p-2 shadow-plank">
               {eligibleFactionCards.length === 0 && <p className="text-xs text-ocean-300">No eligible cards in hand.</p>}
               {eligibleFactionCards.map((c) => (
@@ -251,9 +293,20 @@ export function HeroPowerBar({
       {moveMode && (
         <span className="ml-auto flex items-center gap-2 text-sm text-brass-400">
           {moveMode.phase === 'pickVehicle'
-            ? 'Pick one of your vehicles on the board to redeploy…'
+            ? (moveMode.kind === 'counterIntelligence'
+                ? 'Pick one of your vehicles on the board to screen…'
+                : 'Pick one of your vehicles on the board to redeploy…')
             : 'Choose a highlighted zone, or cancel.'}
           <button onClick={onCancelMove} className="rounded border border-ocean-600 px-2 py-0.5 text-xs text-parchment-100">
+            Cancel
+          </button>
+        </span>
+      )}
+
+      {flankMode && (
+        <span className="ml-auto flex items-center gap-2 text-sm text-brass-400">
+          Pick the zone to flank, or cancel.
+          <button onClick={onCancelFlank} className="rounded border border-ocean-600 px-2 py-0.5 text-xs text-parchment-100">
             Cancel
           </button>
         </span>

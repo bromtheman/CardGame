@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react'
 import type { PublicGameState } from '@shared/engine/gameInit'
 import type { GameAction, Side, ZoneCardEntry } from '@shared/engine/engineTypes'
 import {
-  autoRepairIds, battleParticipants, deployOrderFor, effectiveMaterialCostOf, otherSide,
+  autoRepairIds, battleParticipants, deployOrderFor, effectiveMaterialCostOf, fragileInBattle, otherSide,
   repairCostOf,
 } from '@shared/engine/index'
 import {
@@ -138,7 +138,7 @@ function ReportForm({
   // from what SUBMIT_BATTLE_REPORT actually resolves to. Summons are
   // excluded from the roster handed in, matching DECIDE_BATTLE_REPORT
   // (spec §4.4) — autoRepairIds must never see one.
-  const autoIds = autoRepairIds(participants.filter((p) => !p.isSummon), results)
+  const autoIds = autoRepairIds(participants.filter((p) => !p.isSummon), results, state.activeBattle)
   const { mine: myShips, theirs: theirShips } = splitRosterBySide(participants, mySide)
 
   // One row builder for both columns: which side a hull is on already decides
@@ -146,7 +146,7 @@ function ReportForm({
   // purely presentational and the two tables cannot fall out of step.
   const rowFor = ({ entry, side, isSummon }: Participant) => {
     const hp = results[entry.instanceId] ?? 100
-    const fragile = entry.keywords.includes(KEYWORDS.FRAGILE)
+    const fragile = fragileInBattle(state.activeBattle, entry, side)
     const inBand = hp >= REPAIR_WINDOW_MIN_PERCENT && hp < SURVIVE_HP_PERCENT
     const mine = side === mySide
     const isAuto = autoIds.includes(entry.instanceId)
@@ -259,7 +259,7 @@ function DecisionPanel({
   const [myRepairs, setMyRepairs] = useState<string[]>([])
   // Summons are excluded from the roster handed in, matching
   // DECIDE_BATTLE_REPORT (spec §4.4) — autoRepairIds must never see one.
-  const auto = autoRepairIds(participants.filter((p) => !p.isSummon), report.results)
+  const auto = autoRepairIds(participants.filter((p) => !p.isSummon), report.results, state.activeBattle)
   const owed: Record<Side, number> = { a: 0, b: 0 }
   for (const id of new Set([...report.repairs, ...myRepairs, ...auto])) {
     const p = participants.find((x) => x.entry.instanceId === id)
@@ -283,7 +283,7 @@ function DecisionPanel({
     // engine rejects a summon repair with a 400, so an enabled control
     // would be a trap producing an error the player can't act on.
     const canChoose =
-      side === mySide && inBand && !isAuto && !entry.keywords.includes(KEYWORDS.FRAGILE) && !isSummon
+      side === mySide && inBand && !isAuto && !fragileInBattle(state.activeBattle, entry, side) && !isSummon
     return (
       <li key={entry.instanceId} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded border border-ocean-600 bg-ocean-950/60 px-2 py-1">
         <span className="text-parchment-100">
@@ -477,7 +477,7 @@ export function BattleOverlay({
     setResults((r) => ({ ...r, [id]: hp }))
     const p = participants.find((x) => x.entry.instanceId === id)
     const inBand = hp >= REPAIR_WINDOW_MIN_PERCENT && hp < SURVIVE_HP_PERCENT
-    const fragile = p?.entry.keywords.includes(KEYWORDS.FRAGILE) ?? false
+    const fragile = p ? fragileInBattle(battle, p.entry, p.side) : false
     if (!inBand || fragile) setRepairs((rs) => rs.filter((x) => x !== id))
   }
 
@@ -506,7 +506,7 @@ export function BattleOverlay({
       const hp = app.results[id]
       if (hp === undefined) return false
       const p = participants.find((x) => x.entry.instanceId === id)
-      if (!p || p.entry.keywords.includes(KEYWORDS.FRAGILE)) return false
+      if (!p || fragileInBattle(battle, p.entry, p.side)) return false
       return hp >= REPAIR_WINDOW_MIN_PERCENT && hp < SURVIVE_HP_PERCENT
     }))
     setPrefillNote(prefillSummary(app, (id) =>
@@ -518,7 +518,7 @@ export function BattleOverlay({
       const p = participants.find((x) => x.entry.instanceId === id)
       if (!p || p.side !== mySide || p.isSummon) return false
       const hp = results[id] ?? 0
-      return hp >= REPAIR_WINDOW_MIN_PERCENT && hp < SURVIVE_HP_PERCENT && !p.entry.keywords.includes(KEYWORDS.FRAGILE)
+      return hp >= REPAIR_WINDOW_MIN_PERCENT && hp < SURVIVE_HP_PERCENT && !fragileInBattle(battle, p.entry, p.side)
     })
     await send({ type: 'SUBMIT_BATTLE_REPORT', results, repairs: validRepairs })
   }
@@ -565,6 +565,17 @@ export function BattleOverlay({
               : deploy.firstSide === mySide
                 ? 'Deployment order: you spawn in first — put your fleet down before your opponent puts theirs.'
                 : 'Deployment order: your opponent spawns in first — hold until their fleet is down.'}
+          </p>
+        )}
+        {/* WF Flanking Maneuver (hero power). Conduct plus a rule: the
+            deploy-after half is applied by the players in From The Depths,
+            so the defender must read it here; the Fragile half is what
+            greys out the flanked side's repair boxes below. */}
+        {battle.fragileSide && (
+          <p className="mt-1 text-sm font-bold text-brass-400">
+            {battle.fragileSide === mySide
+              ? 'Flanking Maneuver: your opponent may deploy after you, and every vehicle of yours counts as Fragile for this battle — no repairs.'
+              : 'Flanking Maneuver: you may deploy after the defender, and every enemy vehicle counts as Fragile for this battle.'}
           </p>
         )}
         {/*

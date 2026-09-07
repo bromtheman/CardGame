@@ -1,6 +1,6 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import {
-  applyAction, battleParticipants, declareForcedBattle, effectFor, joinBattle, repairCostOf,
+  applyAction, battleParticipants, declareForcedBattle, effectFor, fragileInBattle, joinBattle, repairCostOf,
 } from './index'
 import { registerEffect } from '../effects/registry.ts'
 import type { ZoneCardEntry } from './engineTypes.ts'
@@ -962,5 +962,76 @@ describe('battleParticipants — one roster, shared with the frontend', () => {
     const roster = battleParticipants(game.state)
     expect(roster.get('swarm1')?.side).toBe('a')
     expect([...roster.keys()].sort()).toEqual(['obelisk', 'raker', 'swarm1'])
+  })
+})
+
+// Flanking Maneuver (WF hero power): "during that battle, all enemy vehicles
+// are considered to have FRAGILE". Battle-scoped, so it lives on the battle
+// rather than on the hulls, and every repair rule reads it through
+// fragileInBattle.
+describe('battle-scoped Fragile (ActiveBattle.fragileSide)', () => {
+  function flankedBattle(defKeywords: string[] = []) {
+    const g = makeGame({ turnNumber: 3 })
+    const atk = zoneEntry({ playedOnTurn: 2, materialCost: 40000, name: 'Raider' })
+    const def = zoneEntry({ materialCost: 60000, name: 'Bastion', keywords: defKeywords })
+    g.state.zones[0].cards.a.push(atk)
+    g.state.zones[0].cards.b.push(def)
+    g.state.activeBattle = {
+      zoneId: 1, aggressor: 'a', attackerIds: [atk.instanceId],
+      defenderIds: [def.instanceId], distanceM: 1200, distanceModifiedBy: [],
+      summons: [], continuation: null, fragileSide: 'b',
+    }
+    g.state.zones[0].lastActivatedTurn = 3
+    return { g, atk, def }
+  }
+  it('fragileInBattle reads the printed keyword or the flanked side', () => {
+    const battle = { fragileSide: 'b' as const }
+    expect(fragileInBattle(battle, { keywords: [] }, 'b')).toBe(true)
+    expect(fragileInBattle(battle, { keywords: [] }, 'a')).toBe(false)
+    expect(fragileInBattle(battle, { keywords: ['fragile'] }, 'a')).toBe(true)
+    expect(fragileInBattle(null, { keywords: [] }, 'b')).toBe(false)
+    expect(fragileInBattle({}, { keywords: [] }, 'b')).toBe(false)
+  })
+  it('refuses a flanked defender repair pick from the submitter', () => {
+    const { g, atk, def } = flankedBattle()
+    const r = applyAction(g, 'bob', {
+      type: 'SUBMIT_BATTLE_REPORT',
+      results: { [atk.instanceId]: 95, [def.instanceId]: 85 }, repairs: [def.instanceId],
+    })
+    expect(r).toMatchObject({ ok: false, status: 400, error: expect.stringContaining('Fragile') })
+  })
+  it('refuses a flanked defender repair pick from the approver', () => {
+    const { g, atk, def } = flankedBattle()
+    const submitted = applyAction(g, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT',
+      results: { [atk.instanceId]: 95, [def.instanceId]: 85 }, repairs: [],
+    })
+    if (!submitted.ok) throw new Error(submitted.error)
+    const r = applyAction(submitted.game, 'bob', {
+      type: 'DECIDE_BATTLE_REPORT', approve: true, repairs: [def.instanceId],
+    })
+    expect(r).toMatchObject({ ok: false, status: 400, error: expect.stringContaining('Fragile') })
+  })
+  it('never auto-repairs a flanked Scrappy defender', () => {
+    const { g, atk, def } = flankedBattle(['scrappy'])
+    const submitted = applyAction(g, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT',
+      results: { [atk.instanceId]: 95, [def.instanceId]: 85 }, repairs: [],
+    })
+    if (!submitted.ok) throw new Error(submitted.error)
+    const r = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true })
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.zones[0].cards.b).toEqual([])
+  })
+  it('still lets the flanking attacker repair its own hull', () => {
+    const { g, atk, def } = flankedBattle()
+    const submitted = applyAction(g, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT',
+      results: { [atk.instanceId]: 85, [def.instanceId]: 95 }, repairs: [atk.instanceId],
+    })
+    if (!submitted.ok) throw new Error(submitted.error)
+    const r = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true })
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.zones[0].cards.a.map((c) => c.name)).toEqual(['Raider'])
   })
 })

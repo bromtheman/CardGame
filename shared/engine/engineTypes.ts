@@ -100,6 +100,12 @@ export interface ActiveBattle {
   // Set when the effect that forced this battle wants to run again once it
   // resolves (e.g. Trebuchet's repeat). Null for an ordinary declared battle.
   continuation: BattleContinuation | null
+  // WF Flanking Maneuver: every hull on this side counts as Fragile for THIS
+  // battle only (battleResolve's fragileInBattle). Battle-scoped, so it lives
+  // here rather than on the hulls' keywords. Optional because absent already
+  // means what every battle declared before the power existed means — no
+  // flank — so no normalizeState default is needed.
+  fragileSide?: Side
 }
 
 export interface BattleReport {
@@ -149,10 +155,11 @@ export type GameAction =
       power:
         | 'salvage' | 'tacticalPositioning' | 'draw' | 'rapidRedeployment'
         | 'boardingParty' | 'changeOrder' | 'flyby'
+        | 'counterIntelligence' | 'drones' | 'flankingManeuver'
       cardId?: string       // salvage: which destroyed card
-      instanceId?: string   // rapidRedeployment/boardingParty(mine)/changeOrder/flyby: which card
+      instanceId?: string   // rapidRedeployment/boardingParty(mine)/changeOrder/flyby/counterIntelligence: which card
       targetInstanceId?: string // boardingParty: the enemy ship being traded for
-      zoneId?: number       // rapidRedeployment: destination
+      zoneId?: number       // rapidRedeployment: destination; flankingManeuver: the zone to flank
       distanceDeltaM?: number // tacticalPositioning: ±meters
     }
   | {

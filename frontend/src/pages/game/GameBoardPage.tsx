@@ -34,6 +34,8 @@ export function GameBoardPage() {
   const [moveMode, setMoveMode] = useState<MoveMode | null>(null)
   const [fieldTargeting, setFieldTargeting] = useState<CardInstance | null>(null)
   const [swapMode, setSwapMode] = useState<SwapMode | null>(null)
+  // WF Flanking Maneuver: armed while the player is choosing the zone to flank.
+  const [flankMode, setFlankMode] = useState(false)
   const [liftedCard, setLiftedCard] = useState<CardInstance | null>(null)
   const [confirmingConcede, setConfirmingConcede] = useState(false)
   const [logOpen, setLogOpen] = useState(false)
@@ -107,7 +109,9 @@ export function GameBoardPage() {
     ? legalForPlacing
     : moveMode?.phase === 'pickZone'
       ? (moveMode.kind === 'handTarget' ? legalForHandTarget : legalForMove)
-      : []
+      : flankMode
+        ? state.zones.map((z) => z.id)
+        : []
 
   // Swap-mode (DWG's Boarding Party): mirrors move-mode's two-step shape.
   // Once an own ship is picked, only enemy ships in that same zone become
@@ -130,6 +134,7 @@ export function GameBoardPage() {
     setMoveMode(null)
     setFieldTargeting(null)
     setSwapMode(null)
+    setFlankMode(false)
   }
   function onPlacingChange(card: CardInstance | null) {
     if (card) cancelAllModes()
@@ -141,10 +146,30 @@ export function GameBoardPage() {
   }
   function onStartRapidRedeployment() {
     cancelAllModes()
-    setMoveMode({ phase: 'pickVehicle' })
+    setMoveMode({ phase: 'pickVehicle', kind: 'rapidRedeployment' })
   }
   function onPickVehicleForMove(instanceId: string) {
+    // SS Counter Intelligence shares the pick-an-own-vehicle step and is done
+    // on that first click; Rapid Redeployment goes on to pick a zone.
+    if (moveMode?.phase === 'pickVehicle' && moveMode.kind === 'counterIntelligence') {
+      void send({ type: 'USE_HERO_POWER', power: 'counterIntelligence', instanceId })
+      setMoveMode(null)
+      return
+    }
     setMoveMode({ phase: 'pickZone', instanceId, kind: 'heroPower' })
+  }
+  function onStartCounterIntelligence() {
+    cancelAllModes()
+    setMoveMode({ phase: 'pickVehicle', kind: 'counterIntelligence' })
+  }
+  // WF Flanking Maneuver: every zone is a legal pick, so the highlight is
+  // "all zones" rather than a legality computation.
+  function onStartFlankingManeuver() {
+    cancelAllModes()
+    setFlankMode(true)
+  }
+  function onCancelFlank() {
+    setFlankMode(false)
   }
   function onMobileMoveClick(instanceId: string) {
     cancelAllModes()
@@ -207,6 +232,11 @@ export function GameBoardPage() {
     if (placingCard) {
       void send({ type: 'PLAY_CARD_TO_ZONE', instanceId: placingCard.instanceId, zoneId })
       setPlacingCard(null)
+      return
+    }
+    if (flankMode) {
+      void send({ type: 'USE_HERO_POWER', power: 'flankingManeuver', zoneId })
+      setFlankMode(false)
       return
     }
     if (moveMode?.phase === 'pickZone') {
@@ -352,8 +382,8 @@ export function GameBoardPage() {
             turnNumber={game.turn_number}
             highlighted={interactiveZoneIds.includes(zone.id)}
             onZoneClick={interactiveZoneIds.includes(zone.id) ? () => onZoneClick(zone.id) : undefined}
-            canMoveVehicles={canActivateZones && !fieldTargeting && !placingCard && !swapMode}
-            canActivateVehicles={canActivateZones && !fieldTargeting && !placingCard && !swapMode}
+            canMoveVehicles={canActivateZones && !fieldTargeting && !placingCard && !swapMode && !flankMode}
+            canActivateVehicles={canActivateZones && !fieldTargeting && !placingCard && !swapMode && !flankMode}
             moveVehiclePickMode={moveMode?.phase === 'pickVehicle'}
             selectedForMoveId={moveMode?.phase === 'pickZone' ? moveMode.instanceId : null}
             onPickVehicleForMove={onPickVehicleForMove}
@@ -398,10 +428,14 @@ export function GameBoardPage() {
         hand={hand}
         moveMode={moveMode}
         onStartRapidRedeployment={onStartRapidRedeployment}
+        onStartCounterIntelligence={onStartCounterIntelligence}
         onCancelMove={onCancelMove}
         swapMode={swapMode}
         onStartBoardingParty={onStartBoardingParty}
         onCancelSwap={onCancelSwap}
+        flankMode={flankMode}
+        onStartFlankingManeuver={onStartFlankingManeuver}
+        onCancelFlank={onCancelFlank}
       />
 
       <HandBar
@@ -418,6 +452,7 @@ export function GameBoardPage() {
         moveMode={moveMode}
         onVehicleHandTargetPicked={onVehicleHandTargetPicked}
         swapMode={swapMode}
+        flankMode={flankMode}
         cancelBoardModes={cancelAllModes}
         onLiftedChange={setLiftedCard}
         leading={

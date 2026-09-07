@@ -261,7 +261,7 @@ export const SACRILEGO_COST_DELTA = -30_000
 // death. Its own constant, like every other SS hand discount in this pass.
 export const ARGONAUT_COST_DELTA = -50_000
 
-// Human-readable names for the seven hero powers, used wherever a power id
+// Human-readable names for the ten hero powers, used wherever a power id
 // is shown to a player (Kraken's refresh choice).
 export const HERO_POWER_LABELS: Record<string, string> = {
   salvage: 'Salvage',
@@ -271,4 +271,7 @@ export const HERO_POWER_LABELS: Record<string, string> = {
   boardingParty: 'Boarding Party',
   changeOrder: 'Change Order',
   flyby: 'Flyby',
+  counterIntelligence: 'Counter Intelligence',
+  drones: 'Drones',
+  flankingManeuver: 'Flanking Maneuver',
 }

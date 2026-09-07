@@ -49,6 +49,7 @@ describe('zoneEffectBadges', () => {
     ['ongoingAttritionEffect', 'Ongoing Attrition'],
     ['subKillerEffect', 'Sub Killer'],
     ['recurringThreatEffect', 'Recurring Threat'],
+    ['flankingManeuverEffect', 'Flanking Maneuver'],
   ])('renders a badge for %s', (effect, label) => {
     const [badge] = zoneEffectBadges([waters({ effect, cardName: label })], 1, 'a')
     expect(badge.label).toBe(label)

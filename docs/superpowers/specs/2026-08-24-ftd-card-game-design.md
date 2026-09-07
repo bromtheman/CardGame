@@ -209,11 +209,26 @@ Faction:
   your turn two turns later (none in deck → the order fizzles with a log note)
 - **LH — Flyby**: choose an LH vehicle card in hand; give it the Half-Cost and
   Temporary keywords
+- **SS — Counter Intelligence**: choose one of your vehicles on the board; give
+  it the Air Screen and Sub Screen keywords (permanent, idempotent)
+- **TG — Drones**: spawn one Mirth Swarm into every zone on your side.
+  Spawning is not playing (§7.4): no payment, no biome check, no zone cap. Mirth
+  Swarm already prints Temporary, so the swarms are culled at your END_TURN
+- **WF — Flanking Maneuver**: choose a zone. The next fleet battle **you
+  start** there this turn: you may deploy after the defender (conduct, applied
+  in From The Depths and announced in the public log), and **every enemy
+  vehicle** in that battle counts as Fragile — no repairs — for that battle
+  only. Rulings: "enemy ships" reads as the whole enemy fleet, not
+  `vehicleType === 'ship'` (a literal reading would make the power do nothing
+  in a beach or land zone); a battle you defend in that zone does not spend it;
+  a bombardment is not a battle; unused at your END_TURN it expires with no
+  compensation draw. Mechanically an Ambush-shaped `zoneEffects` rider carrying
+  `data.flanking`, consumed at lock into `activeBattle.fragileSide`.
 
 Faction powers use the same once-per-game, 1 CP economy as the universal ones
-and are usable only on your own turn outside battles. SS, WF, and GT have no
-faction power authored yet — those decks get only the 4
-universal powers until new rows (and matching effect implementations) are added.
+and are usable only on your own turn outside battles. GT has no faction power
+authored — a GT deck gets only the 4 universal powers until a row (and a
+matching implementation) is added.
 
 ### 3.9 Card effects
 
@@ -390,5 +405,5 @@ detailed implementation plan.
 ## 10. Out of scope (future work)
 
 Blueprint file upload/parsing, custom card effects/text, spectators, in-game
-chat, rankings/matchmaking, admin UI, faction powers for SS/WF/GT, turn timers,
+chat, rankings/matchmaking, admin UI, a faction power for GT, turn timers,
 mobile-optimized layout, deck import/export.

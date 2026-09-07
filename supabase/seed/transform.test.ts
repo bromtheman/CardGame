@@ -34,7 +34,7 @@ describe('loadSeedData', () => {
       expect(Object.values(FACTIONS)).toContain(c.faction)
       expect(c.name.length).toBeGreaterThan(0)
     }
-    expect(heroPowers.length).toBe(7)
+    expect(heroPowers.length).toBe(10)
     expect(heroPowers.filter((h) => h.faction === 'NEUTRAL').length).toBe(4)
   })
   it('has no conflicting duplicate (faction, name) pairs', async () => {

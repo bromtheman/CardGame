@@ -21,6 +21,23 @@ export function repairCostOf(card: { materialCost: number; keywords: string[] })
   return Math.ceil(effectiveMaterialCostOf(card) * REPAIR_COST_RATE)
 }
 
+// THE Fragile test for a hull in a battle — the printed keyword, or WF
+// Flanking Maneuver's battle-scoped grant (`battle.fragileSide`, set at lock
+// by battleDeclare's applyFlankingManeuver: "all enemy vehicles are
+// considered to have FRAGILE during that battle"). Every repair rule reads
+// this, in the engine and in BattleOverlay alike, so the UI can never offer a
+// repair the engine refuses. `battle` is null once DECIDE_BATTLE_REPORT has
+// cleared it, and `fragileSide` is absent on any battle declared without a
+// flank — both mean "keyword only".
+export function fragileInBattle(
+  battle: { fragileSide?: Side } | null | undefined,
+  entry: { keywords: string[] },
+  side: Side,
+): boolean {
+  if (entry.keywords.includes(KEYWORDS.FRAGILE)) return true
+  return battle?.fragileSide === side
+}
+
 // Scrappy vehicles repair for free, so the engine applies it unconditionally
 // rather than asking — there is no decision to make when the cost is zero.
 // Fragile can never repair, and the band still gates everything. Exported so
@@ -28,13 +45,14 @@ export function repairCostOf(card: { materialCost: number; keywords: string[] })
 export function autoRepairIds(
   participants: { entry: { instanceId: string; keywords: string[] }; side: Side }[],
   results: Record<string, number>,
+  battle?: { fragileSide?: Side } | null,
 ): string[] {
   const ids: string[] = []
-  for (const { entry } of participants) {
+  for (const { entry, side } of participants) {
     const hp = results[entry.instanceId]
     if (hp === undefined) continue
     if (hp < REPAIR_WINDOW_MIN_PERCENT || hp >= SURVIVE_HP_PERCENT) continue
-    if (entry.keywords.includes(KEYWORDS.FRAGILE)) continue
+    if (fragileInBattle(battle, entry, side)) continue
     if (!entry.keywords.includes(KEYWORDS.SCRAPPY)) continue
     ids.push(entry.instanceId)
   }
@@ -73,7 +91,7 @@ function validateRepairChoices(
     if (hp === undefined || hp < REPAIR_WINDOW_MIN_PERCENT || hp >= SURVIVE_HP_PERCENT) {
       return err(400, `${p.entry.name} is not in the repairable band`)
     }
-    if (p.entry.keywords.includes(KEYWORDS.FRAGILE)) {
+    if (fragileInBattle(battle, p.entry, p.side)) {
       return err(400, `${p.entry.name} is Fragile and cannot be repaired`)
     }
   }
@@ -188,7 +206,7 @@ registerHandler('DECIDE_BATTLE_REPORT', (game, actor, action, ctx) => {
   const repairIds = new Set([
     ...report.repairs,
     ...approverRepairs,
-    ...autoRepairIds(roster, report.results),
+    ...autoRepairIds(roster, report.results, battle),
   ])
 
   // Repair affordability first (all-or-nothing), per owner. repairIds should

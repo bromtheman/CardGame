@@ -127,6 +127,7 @@ export interface PublicGameState {
     continuation: {
       effect: string; side: 'a' | 'b'; card: CardInstance; data?: Record<string, unknown>
     } | null
+    fragileSide?: 'a' | 'b'
   } | null
   pendingReport: {
     submittedBy: 'a' | 'b'; results: Record<string, number>; repairs: string[]
