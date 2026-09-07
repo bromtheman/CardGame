@@ -136,10 +136,20 @@ frontend (supabase-js) ──invoke──> edge function ──applyAction──
     snapshot has gone that way cannot come back.
   - **`fireDeathEffect(game, ctx, side, entry)`** (`battleTriggers.ts`) is the
     single dispatch for one hull's `onDeathEffect`, used by
-    `DECIDE_BATTLE_REPORT` and by Recurring Threat's "choose a friendly
-    vehicle, destroy it". **"Destroy" fires it; "remove from play" does not**
-    (spec §7.3, decision 28) — Sub Killer removes and fires nothing, the same
-    latitude `sacrificeEntry` already takes.
+    `DECIDE_BATTLE_REPORT`, by `sacrificeEntry`, and by Recurring Threat's
+    "choose a friendly vehicle, destroy it". **"Destroy" fires it; "remove
+    from play" does not** (spec §7.3, decision 28) — Sub Killer removes and
+    fires nothing.
+    ⚠ **A SACRIFICE IS A DESTRUCTION as of 2026-09-07**, reversing rulings
+    D-2 and E-1 in the 2026-08-27 effect-coverage spec, which are a record of
+    the wave that shipped them and not current behaviour. `sacrificeEntry`
+    now fires the trigger itself, so Alarmed, Repurpose and Iron Cordon all
+    reach it; only a genuine "remove from play" is still silent. Two cards
+    were dead under the old rule — TG Nostalgia went to the discard when
+    Alarmed sacrificed it, and TG Jealousy's entire printed text is a death
+    draw. `ctx` is a REQUIRED parameter of `sacrificeEntry` so `tsc` finds
+    every call site, and `repurposeEffect`'s hand-rolled `fireDeathEffect`
+    is gone — with the general rule in place it would fire twice.
 - `EngineContext = { rng: () => number; newId: () => string; catalog: SnapshotCard[] }`.
   Tests inject deterministic rng/ids via `testFixtures.ts` (`makeGame`, `makeCtx`).
   `game-action` injects `secureRng`, `crypto.randomUUID`, and a catalog probe
@@ -247,6 +257,15 @@ frontend (supabase-js) ──invoke──> edge function ──applyAction──
   instead. `participantsOf` (`shared/engine/battleResolve.ts`) merges on-field
   entries with `summons`, so reporting, the spawn sheet and approval read both
   uniformly; `BattleOverlay.tsx` keeps its own mirror of the same merge.
+  Two optional fields carry battle-scoped grants and need no `normalizeState`
+  default, because *absent* already means what every older battle means:
+  `fragileSide` (WF Flanking Maneuver) and `ambushedBy` (WF Ambush, sprung —
+  2026-09-07). `ambushedBy` exists only to reach the generated FtD file:
+  `battleTeams` turns it into a `BattleTeamInput.facesAway`, which overrides
+  the ordinary "the attacker spawns turned around" rule so the AMBUSHED fleet
+  is the one that has to come about. ⚠ `isAttacker` is never flipped to
+  achieve that — it also decides team ORDER, and `sideForTeamIndex` reads that
+  order to turn a reported winning team index back into a side.
 - `awaitingResponse` — the defender's window before a fleet attack locks:
   `{zoneId, aggressor, attackerIds, targetIds, stealthyIds, omissibleIds}`.
   **Two** opt-out lists, not one. `stealthyIds` is unconditional (the Stealthy
@@ -332,12 +351,37 @@ test driving a card through a real exit is the only net.
 `handEnteredTurn` (2026-09-02) is different from the other four: it is a
 **HAND** stamp riding along on a board entry, not a board stamp, and
 `putInHand` (`gameEngine.ts`) is its single writer — see "Engine shape" above.
-The destructure strips two more things beyond the named fields, both from
+The destructure strips more things beyond the named fields, all from
 `snapshot.meta` rather than the entry itself: `costDelta` and `factoryEscort`
 (per-instance grants that must not survive a reshuffle back into a deck, for
 the same reason as the four stamps), and `scrappyOnLoan`, whose removal also
 filters the loaned `SCRAPPY` keyword itself out of `snapshot.keywords` — a
 Sacrilego-lent keyword that must not outlive the battle it was lent for.
+
+**`grantedKeywords` and `grantedSpawns` (2026-09-07) generalise that last
+one.** Every grant made to a card that ALREADY EXISTS — a hull on the board
+or a card in hand — is a per-instance change to something the deck will hand
+out again, so all of them rode the rest-spread into `state.destroyed` and,
+through `reshuffleDiscard`, back into a deck: the card returned permanently
+altered, and altered again on every later death. Hysteria and Loathing's
+INOFFENSIVE and Double Up's extra copy were the reported pair; Spite/Agony,
+Sabotage, Garrison, Repairmen Ready, Cyclone, All for the Cause and
+`resourceSurge`'s stamp were the same bug under other names.
+
+⚠ **Neither can be stripped by inspecting the value** — `inoffensive` is
+printed on several seeded cards and `additionalSpawns` on nine — so each
+grant records ITSELF and the strip is keyed on the marker:
+
+- `grantKeywordsTo(card, keywords)` (`gameEngine.ts`, deliberately beside
+  `discardSnapshotOf`) is **the single write path** for adding a keyword to
+  an existing card. It skips what the card already carries, so a PRINTED
+  keyword records nothing and survives the discard untouched. Never push onto
+  `entry.keywords` directly.
+- `grantSpawnsTo(card, n)` writes `meta.grantedSpawns`, its own counter;
+  `additionalSpawnsOf(card)` sums it with the printed `additionalSpawns` and
+  is the one place `deployVehicle` reads.
+- `discardSnapshotOf` drops both markers AND the keywords the first names —
+  the "two mutations, not one" lesson `scrappyOnLoan` already recorded.
 
 Wave 4 extracted that derivation into `discardSnapshotOf(card)` (it takes only
 the card — `discardCard` supplies `controller` for its own `state.destroyed`

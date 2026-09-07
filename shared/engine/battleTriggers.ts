@@ -542,8 +542,25 @@ export function returnToHand(
 // uses — so a captured hull still goes home and a summonOnly one still never
 // reaches a discard. Returns false without touching anything when the hull is
 // not where the caller thinks it is.
+// ⚠ A SACRIFICE IS A DESTRUCTION, and fires the hull’s onDeathEffect (wave
+// 8). This reverses rulings D-2 and E-1, which had this function call
+// discardCard and nothing else — so "sacrifice" behaved like decision 28’s
+// "remove from play" and only an explicit "destroy" fired a trigger. Two
+// cards were silently broken by that: TG Nostalgia ("whenever this WOULD be
+// destroyed, put it back into your hand") went to the discard when Alarmed
+// sacrificed it, and TG Jealousy’s entire printed text is a death draw.
+//
+// ⚠ ORDER: discardCard files the snapshot FIRST, then the trigger runs.
+// Nostalgia is route (a) — it UNDOES the discard rather than replacing the
+// destruction — so firing before the file would leave it nothing to undo.
+// This is the sequence battleResolve already uses, and the one
+// repurposeEffect hand-rolled before this function absorbed it.
+//
+// `ctx` is REQUIRED rather than optional, for the reason placement’s
+// `turnNumber` and deckValidation’s `retired` are: tsc then finds every
+// call site instead of silently defaulting one of them into firing nothing.
 export function sacrificeEntry(
-  game: EngineGame, side: Side, instanceId: string, zoneId: number,
+  game: EngineGame, side: Side, instanceId: string, zoneId: number, ctx: EngineContext,
 ): boolean {
   const zone = zoneById(game.state, zoneId)
   if (!zone) return false
@@ -551,5 +568,9 @@ export function sacrificeEntry(
   if (index < 0) return false
   const [entry] = zone.cards[side].splice(index, 1)
   discardCard(game, side, entry)
+  // `zone.cards[side]` is typed CardInstance[] in PublicGameState; every hull
+  // actually on the board is a ZoneCardEntry, the same widening every reader
+  // of that array does.
+  fireDeathEffect(game, ctx, side, entry as ZoneCardEntry)
   return true
 }

@@ -8,6 +8,7 @@ import {
   BLUEPRINT_OVERRIDES,
   BUILT_IN_BLUEPRINT_ROOT,
   BlueprintResolutionError,
+  FLEET_HULL_SPACING_M,
   buildCustomBattle,
   resolveBlueprintPath,
   serializeCustomBattle,
@@ -398,5 +399,67 @@ describe('the CardGame block', () => {
   it('survives serialisation as ordinary JSON', () => {
     const text = serializeCustomBattle(buildCustomBattle(teams, { cardGame: cardGameSpec }))
     expect(JSON.parse(text).CardGame.Teams[0].Vehicles[0].InstanceId).toBe('i-1')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Wave 8 — `facesAway` decouples "who has to come about" from "who attacked".
+//
+// WF Ambush prints a positional advantage the generated battle file never
+// carried: the ambusher was still the ATTACKER, so it spawned turned around
+// and had to bring its guns to bear while the fleet it ambushed was already
+// pointed at it — the exact opposite of an ambush, and a standing handicap for
+// the faction whose whole identity is the surprise attack.
+//
+// `isAttacker` is deliberately NOT flipped to fix it: it also decides team
+// ORDER, which sideForTeamIndex reads to turn a reported winning team index
+// back into a side. Swapping it would change which player won.
+describe('facesAway (wave 8)', () => {
+  it('defaults to isAttacker, so an ordinary battle is unchanged', () => {
+    const file = buildCustomBattle([
+      { name: 'a', cards: [marauder], isAttacker: true },
+      { name: 'b', cards: [bulwark] },
+    ])
+    expect(file.Teams[0]!.Blueprints[0]!.SpawnAngle).toBe(180)
+    expect(file.Teams[1]!.Blueprints[0]!.SpawnAngle).toBe(0)
+  })
+
+  it('turns the AMBUSHED fleet around instead, leaving the ambusher pointed at it', () => {
+    const file = buildCustomBattle([
+      { name: 'a', cards: [marauder], isAttacker: true, facesAway: false },
+      { name: 'b', cards: [bulwark], isAttacker: false, facesAway: true },
+    ])
+    expect(file.Teams[0]!.Blueprints[0]!.SpawnAngle).toBe(0)
+    expect(file.Teams[1]!.Blueprints[0]!.SpawnAngle).toBe(180)
+  })
+
+  it('leaves the team ORDER alone, so a reported winner still maps to the right side', () => {
+    const file = buildCustomBattle([
+      { name: 'attacker', cards: [marauder], isAttacker: true, facesAway: false },
+      { name: 'defender', cards: [bulwark], isAttacker: false, facesAway: true },
+    ])
+    expect(file.Teams.map((t) => t.Name)).toEqual(['attacker', 'defender'])
+  })
+})
+
+// Wave 8 — hull spacing within a team.
+//
+// Reported: "the ships keep ramming each other". MaxBlueprintsPerRow is 100,
+// so a fleet of five is a single ROW and the gap between neighbours is
+// ColumnSpacing; RowSpacing only separates rows a fleet this size never has.
+// Both are raised together so the spacing holds whichever axis FtD lays the
+// fleet out along.
+describe('fleet spacing (wave 8)', () => {
+  it('spaces hulls FLEET_HULL_SPACING_M apart on both axes', () => {
+    const file = buildCustomBattle([
+      { name: 'a', cards: [marauder] },
+      { name: 'b', cards: [bulwark] },
+    ])
+    expect(file.Teams[0]!.RowSpacing).toBe(FLEET_HULL_SPACING_M)
+    expect(file.Teams[0]!.ColumnSpacing).toBe(FLEET_HULL_SPACING_M)
+  })
+
+  it('is wider than the 300 m the fleets used to be built at', () => {
+    expect(FLEET_HULL_SPACING_M).toBeGreaterThan(300)
   })
 })

@@ -3,8 +3,8 @@ import {
   summonHulls,
 } from './primitives.ts'
 import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
-import { checkVictory, copyMeta, findVehicle, otherSide, zoneById } from '../engine/gameEngine.ts'
-import { FACTORY_ESCORT_KEY, fireDeathEffect, returnToHand, sacrificeEntry } from '../engine/battleTriggers.ts'
+import { checkVictory, copyMeta, findVehicle, grantKeywordsTo, otherSide, zoneById } from '../engine/gameEngine.ts'
+import { FACTORY_ESCORT_KEY, returnToHand, sacrificeEntry } from '../engine/battleTriggers.ts'
 import { effectiveMaterialCostOf } from '../engine/placement.ts'
 import { BASE_DAMAGE_DIVISOR, FACTIONS, KEYWORDS, VENGEFUL_BASE_DAMAGE } from '../gameSettings.ts'
 import type { ZoneCardEntry } from '../engine/engineTypes.ts'
@@ -133,11 +133,11 @@ registerEffect(HYSTERIA, choice({
     // is why the mutation survived — and hid what the check was really for.
     const found = findVehicle(game.state, choiceId)
     if (!found || found.side !== otherSide(actor)) return false
-    // Idempotent, matching grantKeywords: a keyword already carried is not
-    // duplicated.
-    if (!found.entry.keywords.includes(KEYWORDS.INOFFENSIVE)) {
-      found.entry.keywords = [...found.entry.keywords, KEYWORDS.INOFFENSIVE]
-    }
+    // grantKeywordsTo (wave 8) — see fragileGrant above. THE reported bug:
+    // an unrecorded grant rode into state.destroyed and, through
+    // reshuffleDiscard, back into the deck, so the ship was drawn
+    // permanently Inoffensive and re-granted on every later death.
+    grantKeywordsTo(found.entry, [KEYWORDS.INOFFENSIVE])
     game.state.log.push(`${found.entry.name} is made Inoffensive`)
     return true
   },
@@ -177,11 +177,11 @@ function fragileGrant(effect: string, prompt: string): EffectFn {
       // the hull can be gone by the time the dialog is answered.
       const found = findVehicle(game.state, choiceId)
       if (!found || found.side !== otherSide(actor)) return false
-      // Idempotent, matching grantKeywords: a keyword already carried is not
-      // duplicated.
-      if (!found.entry.keywords.includes(KEYWORDS.FRAGILE)) {
-        found.entry.keywords = [...found.entry.keywords, KEYWORDS.FRAGILE]
-      }
+      // grantKeywordsTo (wave 8) both adds and RECORDS the grant, so it dies
+      // with the hull instead of riding into the discard and back out of the
+      // deck. Skipping a keyword already carried is where this block’s
+      // idempotence went.
+      grantKeywordsTo(found.entry, [KEYWORDS.FRAGILE])
       game.state.log.push(`${found.entry.name} is made Fragile`)
       return true
     },
@@ -223,9 +223,8 @@ registerEffect(LOATHING, choice({
     if (typeof zoneId !== 'number') return false
     const found = findVehicle(game.state, choiceId)
     if (!found || found.side !== otherSide(actor) || found.zone.id !== zoneId) return false
-    if (!found.entry.keywords.includes(KEYWORDS.INOFFENSIVE)) {
-      found.entry.keywords = [...found.entry.keywords, KEYWORDS.INOFFENSIVE]
-    }
+    // Recorded, exactly as Hysteria’s grant above is.
+    grantKeywordsTo(found.entry, [KEYWORDS.INOFFENSIVE])
     game.state.log.push(`${found.entry.name} is made Inoffensive`)
     return true
   },
@@ -270,11 +269,12 @@ registerEffect('wonderOnPlay', ({ game, actor, card }) => {
 //
 // ⚠ Ruling TG-2 — "destroy it" FIRES onDeathEffect. Spec R-7 rules the mirror
 // for WF Sub Strike ("remove it from play" does not), and the two phrasings
-// are one line apart here. sacrificeEntry alone would be the removal case;
-// the fireDeathEffect below is what makes this the destruction case. The
-// ORDER matters as well as the call: nostalgiaOnDeath pulls its snapshot back
-// out of the discard that sacrificeEntry just filed, which is the same
-// sequence battleResolve uses.
+// are one line apart here. Since wave 8 this card needs no special handling
+// to get it: sacrificeEntry fires the trigger itself, so the pair this
+// function used to spell out by hand IS the general rule now, and only a
+// genuine "remove from play" stays silent. The ORDER that made it work is
+// preserved inside sacrificeEntry — the discard is filed first, so
+// nostalgiaOnDeath has a snapshot to pull back out.
 //
 // ⚠ Ownership and faction are validated HERE because the handler does not:
 // PLAY_CARD_TARGETING_CARD_ON_FIELD checks only that the target is on the
@@ -312,8 +312,12 @@ registerEffect('repurposeEffect', ({ game, actor, ctx, card, targetInstanceId })
   // ordering.
   const entry = found.entry
   const value = effectiveMaterialCostOf(entry)
-  if (!sacrificeEntry(game, actor, targetInstanceId, found.zone.id)) return false
-  fireDeathEffect(game, ctx, actor, entry)
+  // sacrificeEntry fires the death trigger itself since wave 8, so the
+  // explicit fireDeathEffect this line used to carry is gone — left in, it
+  // would fire twice and hand a sacrificed Nostalgia back to its owner
+  // TWICE. The ruling below is now the general rule rather than this card’s
+  // exception.
+  if (!sacrificeEntry(game, actor, targetInstanceId, found.zone.id, ctx)) return false
   game.state.resources[actor].materials += value
   game.state.log.push(`${card.name} scraps ${entry.name} for ${value} materials`)
   return true
@@ -372,10 +376,11 @@ registerEffect('spawnAudaciousEffect', ({ game, actor, ctx, targetZoneId }) => {
 // payload for exactly this, and it covers the additionalSpawns copies of the
 // same play too.
 //
-// ⚠ Ruling D-2: this fires NO onDeathEffect. sacrificeEntry calls discardCard
-// directly and never fireDeathEffect — the deliberate split behind decision 28
-// ("destroy" fires, "remove from play" does not). Jealousy is a TG card whose
-// entire text is a death draw, so a TG player meets this within one game.
+// ⚠ Ruling D-2, REVERSED by wave 8: this DOES fire the sacrificed hull’s
+// onDeathEffect, because sacrificeEntry now does. A sacrifice is a
+// destruction; only decision 28’s "remove from play" (WF Sub Strike, Sub
+// Killer) still fires nothing. Jealousy is a TG card whose entire text is a
+// death draw, and under the old ruling that clause was dead here.
 //
 // ✅ sacrificeEntry routes through discardCard, the single exit out of play, so
 // a captured hull still goes home and a summonOnly one never reaches a discard.
@@ -396,7 +401,7 @@ registerEffect(ALARMED, choice({
   // Alarmed and pendingEffect carries it verbatim, but targetZoneId is a
   // first-entry-only field and RESOLVE_PENDING_EFFECT never sets it.
   data: ({ targetZoneId }) => ({ zoneId: targetZoneId }),
-  resolve: ({ game, actor, card, pending }, choiceId) => {
+  resolve: ({ game, actor, ctx, card, pending }, choiceId) => {
     // No eligible hull is not a failure: clause 1 guarantees an AI vehicle in
     // the zone, but it may be Alarmed's own additionalSpawns copy.
     if (choiceId === null) return true
@@ -405,7 +410,7 @@ registerEffect(ALARMED, choice({
     // Re-checked against the board rather than trusted from the first entry.
     const found = findVehicle(game.state, choiceId)
     if (!found || found.side !== actor || found.zone.id !== zoneId) return false
-    if (!sacrificeEntry(game, actor, choiceId, zoneId)) return false
+    if (!sacrificeEntry(game, actor, choiceId, zoneId, ctx)) return false
     game.state.log.push(`${card.name} sacrifices ${found.entry.name}`)
     return true
   },
@@ -501,11 +506,11 @@ registerEffect('horrorBattle', ({ game, actor, ctx, card, battle }) => {
 
 // "Whenever this would be destroyed, put it back into your hand."
 //
-// ⚠ Ruling E-1 — BATTLE DEATH ONLY. "Would be destroyed" is broader on its
-// face, but this is an onDeathEffect and sacrificeEntry never fires one (that
-// is decision 28's split: "destroy" fires, "remove from play" does not), so a
-// sacrificed Nostalgia is not saved. Scoped deliberately rather than by
-// accident.
+// ⚠ Ruling E-1, REVERSED by wave 8 — destruction AND sacrifice. "Would be
+// destroyed" is broad on its face and now reads that way: sacrificeEntry
+// fires onDeathEffect, so Alarmed, Repurpose and Iron Cordon all reach this.
+// Only decision 28's "remove from play" (WF Sub Strike, Sub Killer) still
+// leaves it silent.
 //
 // ✅ Nostalgia prints no SCRAPPY, so checklist item 10 holds — and that rule
 // exists for exactly this shape. Its owner still CHOOSES whether to pay the

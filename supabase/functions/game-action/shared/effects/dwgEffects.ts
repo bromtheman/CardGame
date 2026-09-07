@@ -6,7 +6,8 @@ import {
 import type { EngineContext, EngineGame, Side, ZoneCardEntry } from '../engine/engineTypes.ts'
 import type { SnapshotCard } from '../engine/gameInit.ts'
 import {
-  checkVictory, copyMeta, discardCard, discardSnapshotOf, drawCard, findVehicle, otherSide, putInHand, zoneById,
+  checkVictory, copyMeta, discardCard, discardSnapshotOf, drawCard, findVehicle, grantSpawnsTo, otherSide,
+  putInHand, zoneById,
 } from '../engine/gameEngine.ts'
 import { effectiveMaterialCostOf } from '../engine/placement.ts'
 import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
@@ -146,8 +147,14 @@ registerEffect('doubleUpEffect', ({ game, actor, card, targetInstanceId }) => {
   if (!target || target.type !== 'vehicle' || target.faction !== 'DWG') return false
   if (target.vehicleType !== VEHICLE_TYPES.SHIP) return false
   if (effectiveMaterialCostOf(target) > DOUBLE_UP_MAX_COST) return false
-  const current = typeof target.meta.additionalSpawns === 'number' ? target.meta.additionalSpawns : 0
-  target.meta = { ...target.meta, additionalSpawns: current + 1 }
+  // ⚠ `grantSpawnsTo`, not an increment of `additionalSpawns` (wave 8). This
+  // is a per-INSTANCE grant to a card the deck will hand out again, and
+  // `additionalSpawns` is PRINTED data on nine seeded cards — written there,
+  // the grant is indistinguishable from the print, so it rode into
+  // state.destroyed and back through reshuffleDiscard and the ship returned
+  // permanently doubled, then trebled, on every later death. deployVehicle
+  // sums the two counters through `additionalSpawnsOf`.
+  grantSpawnsTo(target, 1)
   return true
 })
 

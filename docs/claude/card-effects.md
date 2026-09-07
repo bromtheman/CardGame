@@ -64,8 +64,24 @@ Some meta keys are **plain data, not effect names**: `additionalSpawns`,
 `resourceSurge`, `defensiveOmission`, `activateCpCost`, `costDelta`,
 `summonOnly`, `retired` (a balance pass took the card out of drafting and deck
 legality; its row stays seeded so in-flight games and unedited decks still
-resolve it — spec 2026-09-02 §2.1). None carries a registry name, so all seven
-sit outside `TRIGGERS` / `ALL_META_KEYS` and **G1 and G3 never look at them**.
+resolve it — spec 2026-09-02 §2.1), and `uniquePerZone` (2026-09-07: at most
+one copy of this card per zone PER SIDE — TG Obelisk. Read by `legalZonesFor`,
+by `deployVehicle` (which zeroes the card's own extra copies, since
+`legalZonesFor` only ever cleared the FIRST hull) and by `moveEntry`, the
+chokepoint `MOVE_VEHICLE` and [GT] Monsoon share. Keyed on `cardId`, so a
+DWG-captured copy counts against the captor's own side without a special
+case). None carries a registry name, so all eight sit outside `TRIGGERS` /
+`ALL_META_KEYS` and **G1 and G3 never look at them**.
+
+⚠ **Two data keys are written by the ENGINE, never seeded**: `grantedKeywords`
+and `grantedSpawns`, the per-instance record of what an effect granted a card
+that already existed. Add a keyword to an existing card ONLY through
+`grantKeywordsTo` (`gameEngine.ts`) and an extra copy ONLY through
+`grantSpawnsTo` — never by pushing onto `entry.keywords` or incrementing
+`additionalSpawns`. `discardSnapshotOf` sheds both markers, and the keywords
+the first names, when the instance leaves play; without the record the grant
+reshuffles back into the deck and the card is permanently altered. See
+[architecture.md](architecture.md).
 
 ⚠ **THE SEED HAS ITS OWN COPY OF THE VOCABULARY, and wave 7 walked into it.**
 `supabase/seed/source/*.js` import `"../gameSettings"` — which resolves to

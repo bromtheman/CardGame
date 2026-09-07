@@ -119,8 +119,25 @@ export interface BattleTeamInput {
   cards: BattleCard[]
   /** Exactly one team should be the player's, or the match runs as a spectated AI fight. */
   isPlayerTeam?: boolean
-  /** The side that declared the battle. Its hulls spawn turned around — see ATTACKER_SPAWN_ANGLE_DEG. */
+  /**
+   * The side that declared the battle. Decides team ORDER, the fleet labels,
+   * and — unless `facesAway` says otherwise — which hulls spawn turned around.
+   *
+   * ⚠ Team order is load-bearing beyond presentation: `sideForTeamIndex`
+   * (shared/battleReport.ts) turns the mod’s reported winning team INDEX back
+   * into a side on the strength of it. Never flip this to change a facing.
+   */
   isAttacker?: boolean
+  /**
+   * Whether this fleet spawns turned away from the enemy, having to come
+   * about before it can fight. Defaults to `isAttacker`, which is the
+   * standing advantage defending carries (see ATTACKER_SPAWN_ANGLE_DEG).
+   *
+   * WF Ambush inverts it: the ambusher starts pointed at a fleet that has its
+   * back turned. Separate from `isAttacker` precisely so the inversion cannot
+   * reach team order — see the warning above.
+   */
+  facesAway?: boolean
   /**
    * Which side of the card game this team is, `'a'` or `'b'`.
    *
@@ -274,6 +291,19 @@ export const AIRCRAFT_SPAWN_ALTITUDE_M = 160
  * has to come about — the standing advantage defending is meant to carry.
  */
 export const ATTACKER_SPAWN_ANGLE_DEG = 180
+
+/**
+ * Metres between neighbouring hulls of one fleet, on both layout axes.
+ *
+ * Raised from 300 (rows) / 200 (columns) on 2026-09-07: fleets were spawning
+ * close enough to ram each other before either captain had control.
+ *
+ * ⚠ `MaxBlueprintsPerRow` is 100, so a fleet of the sizes this game deals is a
+ * SINGLE row and the gap between neighbours is ColumnSpacing — RowSpacing only
+ * separates rows a fleet that size never has. One constant feeds both, so the
+ * spacing holds whichever axis the game lays a given fleet out along.
+ */
+export const FLEET_HULL_SPACING_M = 450
 
 const AIRBORNE_VEHICLE_TYPES: readonly string[] = [VEHICLE_TYPES.AIRSHIP, VEHICLE_TYPES.PLANE]
 
@@ -448,7 +478,7 @@ export function buildCustomBattle(
         return {
           _fileName: path,
           IsInFtd: true,
-          SpawnAngle: team.isAttacker ? ATTACKER_SPAWN_ANGLE_DEG : 0.0,
+          SpawnAngle: (team.facesAway ?? team.isAttacker) ? ATTACKER_SPAWN_ANGLE_DEG : 0.0,
           SpawnAltitude: spawnAltitudeOf(card),
           FileName: path,
         }
@@ -457,8 +487,8 @@ export function buildCustomBattle(
       IsPlayerTeam: team.isPlayerTeam ?? false,
       DefaultName: false,
       MaxBlueprintsPerRow: 100,
-      RowSpacing: 300.0,
-      ColumnSpacing: 200.0,
+      RowSpacing: FLEET_HULL_SPACING_M,
+      ColumnSpacing: FLEET_HULL_SPACING_M,
       FleetColors: NEUTRAL_FLEET_COLORS,
       StartingMaterial: startingMaterialOf(team.cards),
     })),

@@ -2,7 +2,9 @@ import type { CardInstance, SnapshotCard } from '../engine/gameInit.ts'
 import type {
   BattleCasualty, BattleContext, EngineContext, EngineGame, Side, ZoneCardEntry,
 } from '../engine/engineTypes.ts'
-import { drawCard, findVehicle, otherSide, putInHand } from '../engine/gameEngine.ts'
+import {
+  drawCard, findVehicle, grantKeywordsTo, otherSide, putInHand, reshuffleDiscard,
+} from '../engine/gameEngine.ts'
 import { canRevive, reviveEntry, sacrificeEntry } from '../engine/battleTriggers.ts'
 import type { EffectFn, EffectPayload } from './registry.ts'
 
@@ -180,6 +182,16 @@ export function drawFromPool(spec: PoolSpec): EffectFn {
         }))
       }
     } else {
+      // An EMPTY deck reshuffles first (wave 8), the courtesy drawCard has
+      // always extended. SS Resolute reported the bug: a search of a deck on
+      // 0 filtered an empty array and logged "finds no matching card" while
+      // the player’s whole collection sat in the discard.
+      //
+      // ⚠ Guarded on the DECK being empty, never on the POOL being empty.
+      // "No matching ship in a deck that still holds cards" is a fizzle the
+      // card text allows for, and reshuffling there would pull the discard
+      // back mid-game on every fruitless search.
+      if (game.privates[actor].deck.length === 0) reshuffleDiscard(game, actor, ctx)
       const deck = game.privates[actor].deck
       const pool = deck.filter((c) => matches(c, spec.filter))
       if (pool.length === 0) {
@@ -338,7 +350,13 @@ export function grantKeywords(spec: {
       : findVehicle(game.state, targetInstanceId)?.entry
     if (!card) return false
     if (spec.filter && !matches(card, spec.filter)) return false
-    card.keywords = [...card.keywords, ...spec.keywords.filter((k) => !card.keywords.includes(k))]
+    // grantKeywordsTo, not a bare push (wave 8): it records what it added on
+    // meta.grantedKeywords so discardSnapshotOf can shed the grant when this
+    // instance dies. A HAND grant needs that as much as a field one — the card
+    // is played later and carries the keyword to its grave and into the deck
+    // beyond it. A keyword the card already prints records nothing, which is
+    // also where the old line's idempotence went.
+    grantKeywordsTo(card, spec.keywords)
     return true
   }
 }
@@ -489,7 +507,7 @@ export function sacrificeToSave(spec: {
       id: c.entry.instanceId, label: `${c.entry.name} (${c.hp}%)`,
     })),
     data: (p) => ({ zoneId: p.battle?.zoneId, entries: eligibleFor(p).map((c) => c.entry) }),
-    resolve: ({ game, actor, card, pending }, choiceId) => {
+    resolve: ({ game, actor, ctx, card, pending }, choiceId) => {
       // Empty options resolve straight through with null — nothing was
       // eligible, so there is nothing to do and nothing to fail.
       if (choiceId === null) return true
@@ -502,7 +520,7 @@ export function sacrificeToSave(spec: {
       // discards applyAction's whole clone anyway, but keeping the order
       // revive-then-sacrifice means a hull is never spent for nothing.
       if (!reviveEntry(game, actor, target, zoneId)) return false
-      if (!sacrificeEntry(game, actor, card.instanceId, zoneId)) return false
+      if (!sacrificeEntry(game, actor, card.instanceId, zoneId, ctx)) return false
       game.state.log.push(`${card.name} is sacrificed to save ${target.name}`)
       return true
     },

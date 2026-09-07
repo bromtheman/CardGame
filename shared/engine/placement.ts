@@ -5,7 +5,8 @@ import {
 import type { CardInstance, PublicGameState } from './gameInit.ts'
 import type { ApplyResult, EngineContext, EngineGame, Side, ZoneCardEntry } from './engineTypes.ts'
 import {
-  copyMeta, discardCard, err, findVehicle, otherSide, registerHandler, zoneById,
+  additionalSpawnsOf, copyMeta, discardCard, err, findVehicle, grantKeywordsTo, otherSide,
+  registerHandler, zoneById,
 } from './gameEngine.ts'
 import { zoneCapFor } from './zoneCapacity.ts'
 import { costModifierFor, effectFor, effectName, noteUnimplemented } from '../effects/registry.ts'
@@ -131,6 +132,34 @@ function aiVehicleMissing(
   return !zone?.cards[side].some((c) => c.isBuiltIn)
 }
 
+// TG Obelisk: at most one copy of this card per zone, PER SIDE (wave 8).
+//
+// Obelisk is a 40k Stealthy ship that summons a free Mirth Swarm into every
+// battle it joins, so a stack of them in one zone multiplied a whole fleet
+// for nothing. The ruling is per SIDE rather than per zone: zone 1 may hold
+// one on each half of it, and neither player may hold two there.
+//
+// Keyed on `cardId`, not on the card’s NAME and not on its instanceId. The
+// name is display data; the cardId is what a DWG capture carries across
+// (takeFromEnemyDeck copies the row and re-ids the instance), which is what
+// makes "even if stolen by the DWG" fall out rather than need a special case.
+//
+// A data key like `blocksFaction`, `aircraftLock` and `deployRequiresAiVehicle`
+// — strict `=== true`, so a mistyped value leaves the card unrestricted
+// rather than silently unplayable — so the next unique card needs no engine
+// edit. Read at three sites: here (playing), deployVehicle (the card’s own
+// extra copies) and moveEntry (walking a second one in).
+export function uniquePerZoneBlocked(
+  state: PublicGameState, side: Side, zoneId: number, card: CardInstance,
+): boolean {
+  if (card.meta.uniquePerZone !== true) return false
+  const zone = state.zones.find((z) => z.id === zoneId)
+  if (!zone) return false
+  return zone.cards[side].some(
+    (c) => c.cardId === card.cardId && c.instanceId !== card.instanceId,
+  )
+}
+
 // The zone-side cap: at most `zoneCapFor(state, side, zoneId)` of your own
 // hulls on your own half of one zone, which is `MAX_VEHICLES_PER_ZONE_SIDE`
 // less whatever the enemy denies here. Reads the ACTOR'S OWN side — the same
@@ -170,6 +199,7 @@ export function legalZonesFor(
       !riderBlocks(state, side, z.id, card.faction) &&
       !battleLossMissing(state, side, z.id, card, turnNumber) &&
       !aiVehicleMissing(state, side, z.id, card) &&
+      !uniquePerZoneBlocked(state, side, z.id, card) &&
       !zoneFull(state, side, z.id)
     ))
     .map((z) => z.id)
@@ -358,17 +388,37 @@ function deployVehicle(
   // A granting surge stamps its keywords onto the hull that lands, not only
   // onto the price (spec §4.6, departure 2 — Thresher Shark). Derived from
   // `surged`, which the caller captured BEFORE pay(), rather than re-read here.
+  //
+  // Applied through grantKeywordsTo (wave 8) rather than merged into the
+  // literal: the surge’s keywords are a per-INSTANCE grant like every other,
+  // so they have to be RECORDED, or a surged hull dies, reshuffles, and is
+  // drawn again permanently Half-Cost. The helper carries withGranted’s
+  // idempotence, so a card that PRINTS one of them records nothing.
   const granted = surged ? grantedKeywordsOf(card) : []
-  const keywords = withGranted(card.keywords, granted)
   const entry: ZoneCardEntry = {
-    ...hull, keywords, playedOnTurn: game.turnNumber, movedOnTurn: null, activatedOnTurn: null,
+    ...hull, keywords: [...card.keywords],
+    playedOnTurn: game.turnNumber, movedOnTurn: null, activatedOnTurn: null,
   }
+  grantKeywordsTo(entry, granted)
   zone.cards[actor].push(entry)
   placedInstanceIds.push(entry.instanceId)
   // additionalSpawns: one payment lands N+1 hulls (spec §3.9). resourceSurge
   // (spec §4.6) adds more on top, but only when the surge condition held.
-  const printed = Math.max(0, Math.floor(Number(card.meta.additionalSpawns) || 0))
-  const wanted = Math.min(printed + (surged ? surgeSpawnsFor(card) : 0), ADDITIONAL_SPAWNS_CAP)
+  //
+  // `additionalSpawnsOf` sums the PRINTED count with Double Up's granted one
+  // (wave 8). The grant needs its own key because discardSnapshotOf has to
+  // strip it without touching the nine cards that print the other, so this is
+  // the one place the two are added back together.
+  //
+  // A `uniquePerZone` card lands exactly ONE hull however many copies it is
+  // owed (wave 8): legalZonesFor only ever cleared the FIRST, and the copies
+  // are the same cardId in the same zone on the same side. Zeroed rather than
+  // refused, matching the zone-cap clamp below — the play is never rejected
+  // for its own payload.
+  const printed = additionalSpawnsOf(card)
+  const wanted = card.meta.uniquePerZone === true
+    ? 0
+    : Math.min(printed + (surged ? surgeSpawnsFor(card) : 0), ADDITIONAL_SPAWNS_CAP)
   // The zone-side cap binds AFTER ADDITIONAL_SPAWNS_CAP and is the tighter of
   // the two on a side with hulls already on it. legalZonesFor only guaranteed
   // one free slot, so a multi-hull payload lands what fits and drops the rest
@@ -381,9 +431,13 @@ function deployVehicle(
   const extra = Math.min(wanted, room)
   for (let i = 0; i < extra; i++) {
     const copy: ZoneCardEntry = {
-      ...hull, instanceId: ctx.newId(), meta: copyMeta(card.meta), keywords: [...keywords],
+      ...hull, instanceId: ctx.newId(), meta: copyMeta(card.meta), keywords: [...card.keywords],
       playedOnTurn: game.turnNumber, movedOnTurn: null, activatedOnTurn: null,
     }
+    // Each copy records its OWN grant. Sharing the entry’s would not do —
+    // they are separate instances that die separately, and copyMeta hands
+    // each one the CARD’s meta, which carries no marker.
+    grantKeywordsTo(copy, granted)
     zone.cards[actor].push(copy)
     placedInstanceIds.push(copy.instanceId)
   }

@@ -7,7 +7,7 @@ import {
 } from '../gameSettings.ts'
 import type { EngineContext, EngineGame, Side, ZoneCardEntry } from '../engine/engineTypes.ts'
 import type { SnapshotCard } from '../engine/gameInit.ts'
-import { discardCard, findVehicle, otherSide, putInHand, zoneById } from '../engine/gameEngine.ts'
+import { discardCard, findVehicle, grantKeywordsTo, otherSide, putInHand, zoneById } from '../engine/gameEngine.ts'
 import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
 import {
   catalogCard, choice, enemyVehicleOptions, grant, poolEligible, shuffled, spawnInto, summonHulls,
@@ -245,8 +245,17 @@ const ambushOffer = choice({
     // is deliberately untouched: that list is the hero power's once-per-side
     // ledger, and a card must not spend it (spec §7.3).
     battle.distanceM = Math.max(SPAWN_DISTANCE_MIN_M, battle.distanceM - AMBUSH_DISTANCE_M)
+    // The third permission, added wave 8: the ambushed fleet spawns facing
+    // AWAY. Recorded on the battle rather than applied here, because the
+    // facing only exists in the generated FtD file — battleTeams reads this
+    // and hands buildCustomBattle a `facesAway` that overrides the ordinary
+    // attacker-turns-around rule. Without it the ambusher, being the
+    // attacker, was the fleet that had to come about: the opposite of an
+    // ambush, and a standing handicap on the faction built around them.
+    battle.ambushedBy = actor
     game.state.log.push(
-      `${card.name}: player ${actor.toUpperCase()} deploys after the defender, at ${battle.distanceM}m`,
+      `${card.name}: player ${actor.toUpperCase()} deploys after the defender, at ${battle.distanceM}m, ` +
+      'with the enemy fleet caught facing away',
     )
     return true
   },
@@ -297,9 +306,10 @@ registerEffect('allForTheCauseEffect', ({ game, actor, ctx, targetZoneId }) => {
 
   let spawned = 0
   for (const entry of affected) {
-    if (!entry.keywords.includes(KEYWORDS.TEMPORARY)) {
-      entry.keywords = [...entry.keywords, KEYWORDS.TEMPORARY]
-    }
+    // grantKeywordsTo (wave 8), for the reason every other grant uses it: a
+    // hull culled for TEMPORARY still reaches the discard, and an unrecorded
+    // grant would come back out of the deck permanently Temporary.
+    grantKeywordsTo(entry, [KEYWORDS.TEMPORARY])
     const copies = entry.materialCost > ALL_FOR_THE_CAUSE_DOUBLE_COST ? 2 : 1
     for (let i = 0; i < copies; i++) {
       if (spawnInto(game, ctx, actor, zone.id, martyr)) spawned++

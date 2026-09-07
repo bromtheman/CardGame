@@ -2783,6 +2783,31 @@ describe('wave 5 — Ambush', () => {
     expect(r.game.state.log.some((l) => l.includes('Ambush') && l.includes('after'))).toBe(true)
   })
 
+  // Wave 8. The card’s positional advantage reaches the generated FtD battle
+  // file: the ambushed fleet spawns turned away and has to come about, where
+  // before the ambusher — as the ATTACKER — was the one turned around, which
+  // is the opposite of an ambush.
+  it('records the ambusher on the battle so the spawn file can turn the enemy around', () => {
+    const { game, attacker, defender } = armed()
+    const locked = attack(game, { attacker: attacker.instanceId, defender: defender.instanceId })
+    if (!locked.ok) throw new Error(locked.error)
+    expect(locked.game.state.activeBattle!.ambushedBy).toBeUndefined()
+    const r = applyAction(locked.game, 'alice', {
+      type: 'RESOLVE_PENDING_EFFECT', choiceId: locked.game.state.pendingEffect!.options[0].id,
+    }, ambushCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.activeBattle!.ambushedBy).toBe('a')
+  })
+
+  it('declining leaves no ambusher recorded, so the facing is the ordinary one', () => {
+    const { game, attacker, defender } = armed()
+    const locked = attack(game, { attacker: attacker.instanceId, defender: defender.instanceId })
+    if (!locked.ok) throw new Error(locked.error)
+    const r = applyAction(locked.game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', cancel: true }, ambushCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.activeBattle!.ambushedBy).toBeUndefined()
+  })
+
   it('clamps at the minimum spawn distance rather than going through it', () => {
     const { game, attacker, defender } = armed()
     const locked = attack(game, { attacker: attacker.instanceId, defender: defender.instanceId })
@@ -5066,16 +5091,16 @@ describe('TG Alarmed — sacrifice a friendly AI vehicle (wave 7)', () => {
     expect(done.game.state.zones[0].cards.a.map((c) => c.instanceId)).toContain('al1')
   })
 
-  // ⚠ Ruling D-2. sacrificeEntry calls discardCard directly and never
-  // fireDeathEffect — the deliberate split behind decision 28 ("destroy"
-  // fires, "remove from play" does not). Jealousy is a TG card whose entire
-  // text is a death draw, so a TG player meets this within one game.
-  it('D-2: does NOT fire the sacrificed hull’s onDeathEffect', () => {
+  // ⚠ Ruling D-2, REVERSED by wave 8. sacrificeEntry now fires the trigger:
+  // a sacrifice is a destruction, not decision 28’s "remove from play".
+  // Jealousy is a TG card whose entire printed text is a death draw, and
+  // under the old ruling a TG player met that dead clause within one game.
+  it('D-2 (reversed): fires the sacrificed hull’s onDeathEffect', () => {
     const { game, card } = armed()
     findVehicle(game.state, 'ai2')!.entry.meta = { onDeathEffect: 't_deathWatch' }
     const done = applyAction(play(game, card), 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'ai2' }, makeCtx())
     if (!done.ok) throw new Error(done.error)
-    expect(done.game.state.log.join(' ')).not.toContain('t_deathWatch fired')
+    expect(done.game.state.log.join(' ')).toContain('t_deathWatch fired')
   })
 
   // ✅ sacrificeEntry routes through discardCard, the single exit out of play,
@@ -5423,16 +5448,16 @@ describe('TG Nostalgia — back to hand instead of the discard (wave 7)', () => 
     expect(game.state.zones[0].lostBattleOnTurn.b).toBeNull()
   })
 
-  // ⚠ Ruling E-1: battle death only. "Whenever this WOULD be destroyed" is
-  // broader on its face, but sacrificeEntry calls discardCard directly and
-  // never fireDeathEffect, so route (a) could not save a sacrificed Nostalgia
-  // in any case. Scoped and stated rather than left ambiguous.
-  it('E-1: a SACRIFICED Nostalgia is not saved', () => {
+  // ⚠ Ruling E-1, REVERSED by wave 8. "Whenever this WOULD be destroyed" is
+  // broad on its face and now reads that way: sacrificeEntry fires the
+  // trigger, so route (a) reaches a sacrificed Nostalgia too. The wider set
+  // of cases is pinned in "sacrificeEntry fires onDeathEffect (wave 8)".
+  it('E-1 (reversed): a SACRIFICED Nostalgia IS saved', () => {
     const game = makeGame({ turnNumber: 3 })
     game.state.zones[0].cards.a.push(nostalgia())
-    expect(sacrificeEntry(game, 'a', 'nos1', 1)).toBe(true)
-    expect(game.state.destroyed.a.map((c) => c.name)).toContain('Nostalgia')
-    expect(game.privates.a.hand).toHaveLength(0)
+    expect(sacrificeEntry(game, 'a', 'nos1', 1, makeCtx())).toBe(true)
+    expect(game.state.destroyed.a.map((c) => c.name)).not.toContain('Nostalgia')
+    expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Nostalgia'])
   })
 
   // ✅ Nostalgia prints no SCRAPPY, so checklist item 10 is satisfied — and
@@ -7754,5 +7779,301 @@ describe('TG Spawn Audacious — a non-temporary Audacious (2026-09-02)', () => 
     expect(res.game.state.resources.a.materials).toBe(materialsBefore - 40_000)
     expect(res.game.privates.a.hand).toHaveLength(0)
     expect(res.game.state.destroyed.a.map((c) => c.name)).toEqual(['Spawn Audacious'])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Wave 8 — every keyword granted to a card that ALREADY EXISTS must be
+// recorded, so discardSnapshotOf can shed it when the instance dies.
+//
+// The reported bug was Hysteria/Loathing's INOFFENSIVE: the grant rode into
+// state.destroyed and, through reshuffleDiscard, back into the deck, so the
+// ship was drawn permanently Inoffensive — and re-granted on every later
+// death. Six other effects grant a keyword the same way and had the same bug
+// under a different keyword's name, so all seven go through `grantKeywordsTo`
+// and are pinned here together rather than one card at a time.
+//
+// ⚠ The second assertion of each pair is the load-bearing one. A card that
+// PRINTS the keyword must record NOTHING — recording it would make
+// discardSnapshotOf strip a printed keyword and rewrite the card in the deck.
+describe('board grants are recorded so they die with the instance (wave 8)', () => {
+  const withTarget = (keywords: string[] = []) => {
+    const game = makeGame({ turnNumber: 3, activePlayer: 'alice' })
+    const foe = zoneEntry({ instanceId: 'foe1', name: 'Foe', keywords: [...keywords], playedOnTurn: 1 })
+    const mate = zoneEntry({ instanceId: 'mate1', name: 'Mate', keywords: [...keywords], playedOnTurn: 1 })
+    game.state.zones[0].cards.b.push(foe)
+    game.state.zones[0].cards.a.push(mate)
+    return { game, foe, mate }
+  }
+
+  // The choice-driven grants: played, suspended, then resolved on a target.
+  const viaChoice = (effect: string, keywords: string[]) => {
+    const { game } = withTarget(keywords)
+    const card = inst({
+      instanceId: 'src1', name: 'Source', faction: 'TG', vehicleType: 'ship',
+      materialCost: 40_000, meta: { onPlayEffect: effect },
+    })
+    game.privates.a.hand.push(card)
+    game.state.counts.a.hand = 1
+    const played = applyAction(game, 'alice', {
+      type: 'PLAY_CARD_TO_ZONE', instanceId: 'src1', zoneId: 1,
+    }, makeCtx())
+    if (!played.ok) throw new Error(played.error)
+    const done = applyAction(played.game, 'alice', {
+      type: 'RESOLVE_PENDING_EFFECT', choiceId: 'foe1',
+    }, makeCtx())
+    if (!done.ok) throw new Error(done.error)
+    return findVehicle(done.game.state, 'foe1')!.entry
+  }
+
+  it('hysteriaOnPlay records its INOFFENSIVE grant', () => {
+    expect(viaChoice('hysteriaOnPlay', []).meta.grantedKeywords).toEqual([KEYWORDS.INOFFENSIVE])
+  })
+
+  it('hysteriaOnPlay records nothing on a hull that PRINTS Inoffensive', () => {
+    expect(viaChoice('hysteriaOnPlay', [KEYWORDS.INOFFENSIVE]).meta)
+      .not.toHaveProperty('grantedKeywords')
+  })
+
+  it('loathingOnPlay records its INOFFENSIVE grant', () => {
+    expect(viaChoice('loathingOnPlay', []).meta.grantedKeywords).toEqual([KEYWORDS.INOFFENSIVE])
+  })
+
+  it('spiteOnPlay records its FRAGILE grant', () => {
+    expect(viaChoice('spiteOnPlay', []).meta.grantedKeywords).toEqual([KEYWORDS.FRAGILE])
+  })
+
+  it('agonyOnPlay records its FRAGILE grant', () => {
+    expect(viaChoice('agonyOnPlay', []).meta.grantedKeywords).toEqual([KEYWORDS.FRAGILE])
+  })
+
+  // The grantKeywords primitive, reached through two of its three customers —
+  // one field target, one hand target. A hand grant needs recording just as
+  // much: the card is played later and the hull carries the keyword to its
+  // grave, and to the deck beyond it.
+  it('grantKeywords records a FIELD grant (sabotageEffect)', () => {
+    const { game, foe } = withTarget()
+    const ok = effectFor('sabotageEffect')!({
+      game, actor: 'a', card: inst({ name: 'Sabotage' }), ctx: makeCtx(), targetInstanceId: 'foe1',
+    })
+    expect(ok).toBe(true)
+    expect(foe.meta.grantedKeywords).toEqual([KEYWORDS.FRAGILE])
+  })
+
+  it('grantKeywords records a HAND grant (garrisonEffect)', () => {
+    const game = makeGame({ turnNumber: 3 })
+    const target = inst({ instanceId: 'h1', name: 'Held', type: 'vehicle', isBuiltIn: true, keywords: [] })
+    game.privates.a.hand.push(target)
+    const ok = effectFor('garrisonEffect')!({
+      game, actor: 'a', card: inst({ name: 'Garrison' }), ctx: makeCtx(), targetInstanceId: 'h1',
+    })
+    expect(ok).toBe(true)
+    expect(target.meta.grantedKeywords).toEqual([KEYWORDS.HALF_COST, KEYWORDS.INOFFENSIVE])
+  })
+
+  it('grantKeywords records nothing for a keyword the target already prints', () => {
+    const { game, foe } = withTarget([KEYWORDS.FRAGILE])
+    effectFor('sabotageEffect')!({
+      game, actor: 'a', card: inst({ name: 'Sabotage' }), ctx: makeCtx(), targetInstanceId: 'foe1',
+    })
+    expect(foe.meta).not.toHaveProperty('grantedKeywords')
+  })
+
+  it('cycloneOnPlay records its FRAGILE grant on every enemy hull in the zone', () => {
+    const { game, foe } = withTarget()
+    const ok = effectFor('cycloneOnPlay')!({
+      game, actor: 'a', card: inst({ name: 'Cyclone' }), ctx: makeCtx(), targetZoneId: 1,
+    })
+    expect(ok).toBe(true)
+    expect(foe.meta.grantedKeywords).toEqual([KEYWORDS.FRAGILE])
+  })
+
+  it('allForTheCauseEffect records its TEMPORARY grant on every friendly hull', () => {
+    const { game, mate } = withTarget()
+    const ctx = makeCtx({ catalog: [snap({ name: 'Martyr', faction: 'WF' })] })
+    const ok = effectFor('allForTheCauseEffect')!({
+      game, actor: 'a', card: inst({ name: 'All for the Cause' }), ctx, targetZoneId: 1,
+    })
+    expect(ok).toBe(true)
+    expect(mate.meta.grantedKeywords).toEqual([KEYWORDS.TEMPORARY])
+  })
+
+  // The end-to-end the whole mechanism exists for, driven through the real
+  // engine: Hysteria grants INOFFENSIVE, the hull dies in a battle, and the
+  // snapshot filed into state.destroyed is the PRINTED card again — so the
+  // reshuffle that follows cannot hand its owner a permanently pacified ship.
+  it('a granted keyword is gone from the snapshot that reaches the discard', () => {
+    const game = makeGame({ turnNumber: 3, activePlayer: 'alice' })
+    const foe = zoneEntry({ instanceId: 'foe1', name: 'Foe', keywords: [KEYWORDS.MOBILE], playedOnTurn: 1 })
+    game.state.zones[0].cards.b.push(foe)
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'atk1', name: 'Attacker', playedOnTurn: 1 }))
+    const card = inst({
+      instanceId: 'hys1', name: 'Hysteria', faction: 'TG', vehicleType: 'ship',
+      materialCost: 40_000, meta: { onPlayEffect: 'hysteriaOnPlay' },
+    })
+    game.privates.a.hand.push(card)
+    game.state.counts.a.hand = 1
+    const played = applyAction(game, 'alice', {
+      type: 'PLAY_CARD_TO_ZONE', instanceId: 'hys1', zoneId: 1,
+    }, makeCtx())
+    if (!played.ok) throw new Error(played.error)
+    const granted = applyAction(played.game, 'alice', {
+      type: 'RESOLVE_PENDING_EFFECT', choiceId: 'foe1',
+    }, makeCtx())
+    if (!granted.ok) throw new Error(granted.error)
+
+    const g2 = granted.game
+    const ctx = makeCtx()
+    if (!declareForcedBattle(g2, ctx, {
+      zoneId: 1, aggressor: 'a', attackerIds: ['atk1'], defenderIds: ['foe1'], cause: 'Test',
+    })) throw new Error('battle not declared')
+    const submitted = applyAction(g2, 'alice', {
+      type: 'SUBMIT_BATTLE_REPORT', results: { atk1: 100, foe1: 0 }, repairs: [],
+    }, ctx)
+    if (!submitted.ok) throw new Error(submitted.error)
+    const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, ctx)
+    if (!decided.ok) throw new Error(decided.error)
+
+    const [snapshot] = decided.game.state.destroyed.b
+    expect(snapshot.name).toBe('Foe')
+    expect(snapshot.keywords).toEqual([KEYWORDS.MOBILE])
+    expect(snapshot.meta).not.toHaveProperty('grantedKeywords')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Wave 8 — a SACRIFICE fires the hull's onDeathEffect.
+//
+// This REVERSES rulings D-2 and E-1. Until now sacrificeEntry called
+// discardCard and nothing else, so "sacrifice" and "remove from play" behaved
+// alike and only "destroy" fired a death trigger (decision 28). The reported
+// consequence: TG Alarmed sacrificing a Nostalgia sent it to the discard
+// instead of back to its owner's hand, and TG Jealousy's whole printed text —
+// a death draw — was silently dead on any sacrifice.
+//
+// Sacrifice is now a DESTRUCTION. One rule, no per-card exception to remember,
+// and it makes repurposeEffect's hand-rolled sacrificeEntry + fireDeathEffect
+// pair redundant rather than exemplary.
+describe('sacrificeEntry fires onDeathEffect (wave 8)', () => {
+  const dier = (over = {}) => zoneEntry({
+    instanceId: 'nos1', name: 'Nostalgia', faction: 'TG', vehicleType: 'ship',
+    materialCost: 90_000, meta: { onDeathEffect: 'nostalgiaOnDeath' }, playedOnTurn: 1, ...over,
+  })
+
+  // E-1, inverted. The old test asserted the discard; this asserts the hand.
+  it('E-1 (reversed): a sacrificed Nostalgia goes back to its owner’s hand', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zones[0].cards.a.push(dier())
+    expect(sacrificeEntry(game, 'a', 'nos1', 1, makeCtx())).toBe(true)
+    expect(game.privates.a.hand.map((c) => c.name)).toContain('Nostalgia')
+    expect(game.state.destroyed.a.map((c) => c.name)).not.toContain('Nostalgia')
+  })
+
+  // The reported route: Alarmed's clause 2 picks a friendly AI vehicle in the
+  // zone and sacrifices it. Driven through the real handler, not the helper.
+  it('D-2 (reversed): TG Alarmed sacrificing a Nostalgia returns it to hand', () => {
+    const game = makeGame({ turnNumber: 3, activePlayer: 'alice' })
+    game.state.resources.a.materials = 900_000
+    game.state.zones[0].cards.a.push(dier())
+    const alarmed = inst({
+      instanceId: 'al1', name: 'Alarmed', faction: 'TG', vehicleType: 'airship',
+      materialCost: 40_000, isBuiltIn: true,
+      meta: { deployRequiresAiVehicle: true, onPlayEffect: 'alarmedOnPlay' },
+    })
+    game.privates.a.hand.push(alarmed)
+    game.state.counts.a.hand = 1
+    const played = applyAction(game, 'alice', {
+      type: 'PLAY_CARD_TO_ZONE', instanceId: 'al1', zoneId: 1,
+    }, makeCtx())
+    if (!played.ok) throw new Error(played.error)
+    const done = applyAction(played.game, 'alice', {
+      type: 'RESOLVE_PENDING_EFFECT', choiceId: 'nos1',
+    }, makeCtx())
+    if (!done.ok) throw new Error(done.error)
+    expect(done.game.privates.a.hand.map((c) => c.name)).toContain('Nostalgia')
+    expect(done.game.state.zones[0].cards.a.map((c) => c.name)).toEqual(['Alarmed'])
+  })
+
+  // A hull with no death trigger is unaffected — the ordinary case, and the
+  // one every existing sacrifice test exercises.
+  it('a hull with no onDeathEffect still simply reaches the discard', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'plain', name: 'Plain', playedOnTurn: 1 }))
+    expect(sacrificeEntry(game, 'a', 'plain', 1, makeCtx())).toBe(true)
+    expect(game.state.destroyed.a.map((c) => c.name)).toEqual(['Plain'])
+  })
+
+  // Ordering: discardCard files the snapshot FIRST, then the trigger runs — so
+  // a route-(a) effect like Nostalgia's has a discard entry to undo. This is
+  // the same sequence repurposeEffect and battleResolve already use, and the
+  // reason the fire could not go before the discard.
+  it('files the discard BEFORE firing, so a route-(a) trigger has something to undo', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zones[0].cards.a.push(dier())
+    sacrificeEntry(game, 'a', 'nos1', 1, makeCtx())
+    expect(game.state.destroyed.a).toHaveLength(0) // undone by the trigger
+    expect(game.privates.a.hand).toHaveLength(1)
+  })
+
+  // repurposeEffect's own explicit fireDeathEffect is gone; the sacrifice
+  // does it. Firing twice would have handed the owner two Nostalgias.
+  it('repurposeEffect fires the trigger exactly once, not twice', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zones[0].cards.a.push(dier())
+    const ok = effectFor('repurposeEffect')!({
+      game, actor: 'a', card: inst({ name: 'Repurpose' }), ctx: makeCtx(), targetInstanceId: 'nos1',
+    })
+    expect(ok).toBe(true)
+    expect(game.privates.a.hand.filter((c) => c.name === 'Nostalgia')).toHaveLength(1)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Wave 8 — SS Resolute (and Trondheim, its 75k twin) on an EMPTY deck.
+//
+// Reported: "Resolute didn't draw a card when my deck was on 0." A deck pool
+// filtered the empty deck array and logged "finds no matching card in their
+// deck", where drawCard would have reshuffled the discard back in first. The
+// fix lives in drawFromPool, so both cards and any later deck pool get it;
+// the generic behaviour is pinned in primitives.test.ts and the two card-level
+// cases here.
+describe('SS deck-search cards reshuffle an empty deck (wave 8)', () => {
+  const ssShip = (name: string) => snap({
+    name, faction: 'SS', vehicleType: 'ship', isBuiltIn: true, materialCost: 200_000,
+  })
+
+  it('Resolute draws an SS ship out of a reshuffled discard, discounted', () => {
+    const game = makeGame()
+    game.state.destroyed.a.push(ssShip('Nothung'))
+    const ok = effectFor('resoluteOnPlay')!({
+      game, actor: 'a', card: inst({ name: 'Resolute' }), ctx: makeCtx(),
+    })
+    expect(ok).toBe(true)
+    expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Nothung'])
+    expect(game.privates.a.hand[0].meta.costDelta).toBe(RESOLUTE_COST_DELTA)
+    expect(game.state.destroyed.a).toEqual([])
+  })
+
+  it('trondheimOnDeath does the same at its own discount', () => {
+    const game = makeGame()
+    game.state.destroyed.a.push(ssShip('Nothung'))
+    const ok = effectFor('trondheimOnDeath')!({
+      game, actor: 'a', card: inst({ name: 'Trondheim' }), ctx: makeCtx(),
+    })
+    expect(ok).toBe(true)
+    expect(game.privates.a.hand[0].meta.costDelta).toBe(TRONDHEIM_COST_DELTA)
+  })
+
+  // The discard is the deck's reservoir, not a second pool: a card that is not
+  // an SS ship comes back into the DECK and stays there.
+  it('leaves a non-matching card in the deck the reshuffle built', () => {
+    const game = makeGame()
+    game.state.destroyed.a.push(snap({ name: 'Foreign', faction: 'DWG', vehicleType: 'ship' }))
+    const ok = effectFor('resoluteOnPlay')!({
+      game, actor: 'a', card: inst({ name: 'Resolute' }), ctx: makeCtx(),
+    })
+    expect(ok).toBe(true)
+    expect(game.privates.a.hand).toHaveLength(0)
+    expect(game.privates.a.deck.map((c) => c.name)).toEqual(['Foreign'])
   })
 })

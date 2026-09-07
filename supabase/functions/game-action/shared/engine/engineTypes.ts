@@ -106,6 +106,15 @@ export interface ActiveBattle {
   // means what every battle declared before the power existed means — no
   // flank — so no normalizeState default is needed.
   fragileSide?: Side
+  // WF Ambush, sprung: the side that laid it. The generated FtD battle file
+  // turns the OTHER fleet around, so the ambusher starts pointed at an enemy
+  // that has its back turned — the card prints a positional advantage, and
+  // without this the ambusher was the attacker and so the one facing away.
+  //
+  // Optional for fragileSide’s reason: absent already means what every
+  // battle declared before the field existed means — no ambush — so no
+  // normalizeState default is needed.
+  ambushedBy?: Side
 }
 
 export interface BattleReport {

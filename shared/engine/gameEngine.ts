@@ -155,7 +155,11 @@ export function normalizeState(state: PublicGameState): void {
 // would otherwise fail — lazily, never eagerly when the deck hits zero.
 // SnapshotCard carries no instanceId, so each returning card is minted a
 // fresh one, exactly as loggerheadOnDeath does.
-function reshuffleDiscard(game: EngineGame, side: Side, ctx: EngineContext): void {
+// Exported since wave 8: drawFromPool’s deck branch calls it for the reason
+// drawCard does — a search of an EMPTY deck must look at the reservoir
+// first, or SS Resolute finds nothing while its owner’s whole collection
+// sits in the discard.
+export function reshuffleDiscard(game: EngineGame, side: Side, ctx: EngineContext): void {
   const pile = game.state.destroyed[side]
   if (pile.length === 0) return
   const returning = pile.map((card) => ({ ...card, instanceId: ctx.newId() }))
@@ -220,6 +224,52 @@ export function copyMeta(meta: Record<string, unknown>): Record<string, unknown>
   return rest
 }
 
+// THE single way an effect adds a keyword to a card that already exists —
+// a hull on the board or a card sitting in a hand (wave 8).
+//
+// It lives here, immediately above discardSnapshotOf, because the two are one
+// mechanism: the stamp and the strip. Sacrilego's loan is the worked example
+// of what happens when they live apart — the marker was dropped on discard and
+// the keyword it described was not, so a hull came back permanently Scrappy
+// and no later resolve could find it to fix.
+//
+// ⚠ A keyword the card ALREADY carries is not recorded. That is the whole
+// safety property: `inoffensive`, `scrappy`, `fragile` and `halfCost` are all
+// PRINTED on seeded cards, and a grant that recorded one of those would make
+// discardSnapshotOf strip a printed keyword — rewriting the card for the rest
+// of the game, in the deck, invisibly.
+export function grantKeywordsTo(card: CardInstance, keywords: string[]): void {
+  const added = keywords.filter((k) => !card.keywords.includes(k))
+  if (added.length === 0) return
+  card.keywords = [...card.keywords, ...added]
+  const already = Array.isArray(card.meta.grantedKeywords) ? card.meta.grantedKeywords as string[] : []
+  card.meta = { ...card.meta, grantedKeywords: [...already, ...added] }
+}
+
+// Double Up's half of the same pair. Its OWN counter rather than an increment
+// of `additionalSpawns`, which is PRINTED card data on nine seeded cards
+// (Abactor, Curiosity, …) — incrementing it would leave the grant
+// indistinguishable from the print, and discardSnapshotOf would have to
+// choose between stripping a real card's text and letting the grant ride into
+// the deck. deployVehicle sums the two.
+export function grantSpawnsTo(card: CardInstance, count: number): void {
+  const current = typeof card.meta.grantedSpawns === 'number' ? card.meta.grantedSpawns : 0
+  card.meta = { ...card.meta, grantedSpawns: current + count }
+}
+
+// The total number of EXTRA copies a play of this card puts down: what the
+// card prints, plus what Double Up granted this instance. One derivation, read
+// by deployVehicle — so a card that is both printed-multi and Double Up'd
+// stacks rather than one silently masking the other.
+// Each half is coerced and clamped exactly as deployVehicle's inline read of
+// `additionalSpawns` was, so a non-numeric or negative value on EITHER key
+// still lands nothing rather than one poisoning the sum of the other.
+export function additionalSpawnsOf(card: CardInstance): number {
+  const printed = Math.max(0, Math.floor(Number(card.meta.additionalSpawns) || 0))
+  const granted = Math.max(0, Math.floor(Number(card.meta.grantedSpawns) || 0))
+  return printed + granted
+}
+
 // The snapshot form a card takes on its way out of play: per-entry stamps
 // removed. Extracted so exactly one derivation exists — discardCard writes it,
 // and reviveEntry (shared/engine/battleTriggers.ts) rebuilds it to find which
@@ -274,10 +324,37 @@ export function discardSnapshotOf(card: CardInstance): SnapshotCard {
   // already gone. So the keyword has to come off HERE, before the marker
   // itself is dropped, using the marker's value one last time to know whether
   // this hull's `scrappy` is a loan or its own.
-  const { costDelta: _costDelta, factoryEscort: _factoryEscort, scrappyOnLoan, ...withoutCostDelta } = snapshot.meta
+  //
+  // `grantedKeywords` and `grantedSpawns` (wave 8) generalise what
+  // `scrappyOnLoan` solved one keyword at a time. Every grant made to a hull
+  // ALREADY ON THE BOARD — Hysteria and Loathing's INOFFENSIVE, Spite and
+  // Agony's FRAGILE, Repairmen Ready's SCRAPPY, All For The Cause's TEMPORARY,
+  // a resourceSurge's keywords, Double Up's extra spawn — is a per-INSTANCE
+  // change to a card the deck will hand out again, so all of them ride the
+  // rest-spread out unless named here. Two whole classes of stamp, and
+  // nothing in TypeScript to catch either.
+  //
+  // ⚠ NEITHER can be stripped by inspecting the value alone, which is why
+  // each needs a marker rather than a blanket rule: `inoffensive` is PRINTED
+  // on several seeded cards and `additionalSpawns` is printed on nine
+  // (Abactor, Curiosity, …). A rule keyed on the keyword or on the count
+  // would quietly rewrite those cards instead. Keyed on the marker, a printed
+  // one carries none and survives untouched — the same pair of tests
+  // scrappyOnLoan already had.
+  const {
+    costDelta: _costDelta, factoryEscort: _factoryEscort, scrappyOnLoan,
+    grantedKeywords, grantedSpawns: _grantedSpawns, ...withoutCostDelta
+  } = snapshot.meta
   snapshot.meta = withoutCostDelta
   if (scrappyOnLoan === true) {
     snapshot.keywords = snapshot.keywords.filter((k) => k !== KEYWORDS.SCRAPPY)
+  }
+  if (Array.isArray(grantedKeywords)) {
+    // The loan's SECOND mutation, exactly as scrappyOnLoan's comment above
+    // warns: dropping only the marker leaves the keyword riding out, and with
+    // the marker gone nothing could ever find it again.
+    const granted = new Set(grantedKeywords as unknown[])
+    snapshot.keywords = snapshot.keywords.filter((k) => !granted.has(k))
   }
   return snapshot as SnapshotCard
 }
