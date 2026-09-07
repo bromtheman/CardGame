@@ -43,4 +43,22 @@ export const allHeroPowers = [
         text: 'Choose a LH vehicle card in hand. Give it the HALFCOST and TEMPORARY keywords.',
         cpCost: 1
     },
+    {
+        faction: FACTIONS.WF,
+        name: 'Flanking maneuver',
+        text: 'Choose a zone. The next time you start a fleet battle in that zone this turn, you may deploy after the defender. During that battle, all enemy ships are considered to have FRAGILE keyword',
+        cpCost: 1
+    },
+    {
+        faction: FACTIONS.TG,
+        name: 'Drones',
+        text: 'Spawn a TEMPORARY Mirth swarm into Each zone',
+        cpCost: 1
+    },
+    {
+        faction: FACTIONS.SS,
+        name: 'Counter intelligence',
+        text: 'Grant a friendly vehicle subscreen and airscreen keywords',
+        cpCost: 1
+    },
 ];

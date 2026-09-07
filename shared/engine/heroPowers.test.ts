@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { CHANGE_ORDER_DELAY_TURNS, MAX_VEHICLES_PER_ZONE_SIDE } from '../gameSettings'
 import { applyAction, effectiveMaterialCostOf } from './index'
+import { CATALOG_HERO_POWERS } from './heroPowers'
 import { inst, makeCtx, makeGame, snap, zoneEntry } from './testFixtures'
 
 describe('USE_HERO_POWER', () => {
@@ -479,5 +480,187 @@ describe('MAX_VEHICLES_PER_ZONE_SIDE — the move half of the cap', () => {
     // biomeAllows regardless of the cap fix, defeating the point of this case.
     const r = applyAction(g, 'alice', { type: 'MOVE_VEHICLE', instanceId: mover.instanceId, zoneId: 2 })
     expect(r.ok).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The three faction powers heroPowers.js authored for SS, TG and WF.
+// ---------------------------------------------------------------------------
+
+describe('USE_HERO_POWER counterIntelligence (SS)', () => {
+  function ssGame() {
+    const g = makeGame()
+    g.state.factions.a = 'SS'
+    const mine = zoneEntry({ name: 'Picket', playedOnTurn: 1 })
+    const theirs = zoneEntry({ name: 'Raider', playedOnTurn: 1 })
+    g.state.zones[0].cards.a.push(mine)
+    g.state.zones[0].cards.b.push(theirs)
+    return { g, mine, theirs }
+  }
+  it('grants airScreen and subScreen to one of my on-field vehicles, 1cp, once per game', () => {
+    const { g, mine } = ssGame()
+    const r = applyAction(g, 'alice', { type: 'USE_HERO_POWER', power: 'counterIntelligence', instanceId: mine.instanceId })
+    if (!r.ok) throw new Error(r.error)
+    const after = r.game.state.zones[0].cards.a[0]
+    expect(after.keywords).toEqual(expect.arrayContaining(['airScreen', 'subScreen']))
+    expect(r.game.state.resources.a.cp).toBe(2)
+    expect(r.game.state.usedHeroPowers.a).toEqual(['counterIntelligence'])
+    expect(r.game.state.log.at(-1)).toContain('Picket')
+    expect(applyAction(r.game, 'alice', { type: 'USE_HERO_POWER', power: 'counterIntelligence', instanceId: mine.instanceId }))
+      .toMatchObject({ ok: false, status: 400 })
+  })
+  it('does not duplicate a screen keyword the vehicle already prints', () => {
+    const { g, mine } = ssGame()
+    mine.keywords.push('airScreen')
+    const r = applyAction(g, 'alice', { type: 'USE_HERO_POWER', power: 'counterIntelligence', instanceId: mine.instanceId })
+    if (!r.ok) throw new Error(r.error)
+    const after = r.game.state.zones[0].cards.a[0]
+    expect(after.keywords.filter((k) => k === 'airScreen')).toHaveLength(1)
+    expect(after.keywords).toContain('subScreen')
+  })
+  it('rejects an enemy vehicle, an unknown id and a missing id with 400, spending nothing', () => {
+    const { g, theirs } = ssGame()
+    for (const instanceId of [theirs.instanceId, 'nope', undefined]) {
+      const r = applyAction(g, 'alice', { type: 'USE_HERO_POWER', power: 'counterIntelligence', instanceId })
+      expect(r).toMatchObject({ ok: false, status: 400 })
+    }
+    expect(g.state.resources.a.cp).toBe(3)
+    expect(g.state.zones[0].cards.b[0].keywords).toEqual([])
+  })
+  it('is SS-locked', () => {
+    const { g, mine } = ssGame()
+    g.state.factions.a = 'DWG'
+    expect(applyAction(g, 'alice', { type: 'USE_HERO_POWER', power: 'counterIntelligence', instanceId: mine.instanceId }))
+      .toMatchObject({ ok: false, status: 403 })
+  })
+})
+
+describe('USE_HERO_POWER drones (TG)', () => {
+  const swarm = snap({
+    name: 'Mirth Swarm', faction: 'TG', vehicleType: 'plane', materialCost: 200000,
+    keywords: ['robotic', 'temporary', 'halfCost'],
+  })
+  function tgGame() {
+    const g = makeGame()
+    g.state.factions.a = 'TG'
+    return g
+  }
+  it('spawns one Mirth Swarm for me into every zone, 1cp, once per game', () => {
+    const g = tgGame()
+    const r = applyAction(g, 'alice', { type: 'USE_HERO_POWER', power: 'drones' }, makeCtx({ catalog: [swarm] }))
+    if (!r.ok) throw new Error(r.error)
+    for (const zone of r.game.state.zones) {
+      expect(zone.cards.a.map((c) => c.name)).toEqual(['Mirth Swarm'])
+      expect(zone.cards.b).toEqual([])
+      expect(zone.cards.a[0].keywords).toContain('temporary')
+      expect(zone.cards.a[0].playedOnTurn).toBe(g.turnNumber)
+    }
+    // Minted through ctx.newId, so three distinct ids.
+    const ids = r.game.state.zones.map((z) => z.cards.a[0].instanceId)
+    expect(new Set(ids).size).toBe(3)
+    expect(r.game.state.resources.a.cp).toBe(2)
+    expect(r.game.state.usedHeroPowers.a).toEqual(['drones'])
+    expect(applyAction(r.game, 'alice', { type: 'USE_HERO_POWER', power: 'drones' }, makeCtx({ catalog: [swarm] })))
+      .toMatchObject({ ok: false, status: 400 })
+  })
+  it('spawns nothing and spends nothing when the catalog cannot supply a Mirth Swarm', () => {
+    const g = tgGame()
+    const r = applyAction(g, 'alice', { type: 'USE_HERO_POWER', power: 'drones' }, makeCtx({ catalog: [] }))
+    expect(r).toMatchObject({ ok: false, status: 400 })
+    expect(g.state.zones.every((z) => z.cards.a.length === 0)).toBe(true)
+    expect(g.state.resources.a.cp).toBe(3)
+  })
+  it('is TG-locked', () => {
+    const g = makeGame()
+    expect(applyAction(g, 'alice', { type: 'USE_HERO_POWER', power: 'drones' }, makeCtx({ catalog: [swarm] })))
+      .toMatchObject({ ok: false, status: 403 })
+  })
+  it('is declared as needing the catalog, so game-action loads one for it', () => {
+    expect(CATALOG_HERO_POWERS.has('drones')).toBe(true)
+    expect(CATALOG_HERO_POWERS.has('draw')).toBe(false)
+  })
+})
+
+describe('USE_HERO_POWER flankingManeuver (WF)', () => {
+  // alice (WF) flanks a zone, then has a hull in zone 1 ready to attack with,
+  // and bob has one there to defend with.
+  function flanked(zoneId = 1) {
+    const g = makeGame({ turnNumber: 3 })
+    g.state.factions.a = 'WF'
+    const attacker = zoneEntry({ name: 'Raider', playedOnTurn: 2 })
+    const defender = zoneEntry({ name: 'Home Fleet', playedOnTurn: 1 })
+    g.state.zones[0].cards.a.push(attacker)
+    g.state.zones[0].cards.b.push(defender)
+    const r = applyAction(g, 'alice', { type: 'USE_HERO_POWER', power: 'flankingManeuver', zoneId })
+    if (!r.ok) throw new Error(r.error)
+    return { game: r.game, attacker, defender }
+  }
+  const rider = {
+    effect: 'flankingManeuverEffect', zoneId: 1, side: 'a', cardName: 'Flanking Maneuver',
+    setOnTurn: 3, expiresOnTurn: 3, data: { flanking: true },
+  }
+
+  it('claims the zone with a rest-of-turn rider, 1cp, once per game', () => {
+    const { game } = flanked()
+    expect(game.state.zoneEffects).toEqual([rider])
+    expect(game.state.resources.a.cp).toBe(2)
+    expect(game.state.usedHeroPowers.a).toEqual(['flankingManeuver'])
+    expect(applyAction(game, 'alice', { type: 'USE_HERO_POWER', power: 'flankingManeuver', zoneId: 2 }))
+      .toMatchObject({ ok: false, status: 400 })
+  })
+  it('rejects a missing or unknown zone with 400', () => {
+    const g = makeGame()
+    g.state.factions.a = 'WF'
+    expect(applyAction(g, 'alice', { type: 'USE_HERO_POWER', power: 'flankingManeuver' }))
+      .toMatchObject({ ok: false, status: 400 })
+    expect(applyAction(g, 'alice', { type: 'USE_HERO_POWER', power: 'flankingManeuver', zoneId: 9 }))
+      .toMatchObject({ ok: false, status: 400 })
+    expect(g.state.zoneEffects).toEqual([])
+  })
+  it('is WF-locked', () => {
+    const g = makeGame()
+    expect(applyAction(g, 'alice', { type: 'USE_HERO_POWER', power: 'flankingManeuver', zoneId: 1 }))
+      .toMatchObject({ ok: false, status: 403 })
+  })
+  it('at my own fleet-attack lock there: consumes the rider, marks the defenders Fragile, grants deploy-after', () => {
+    const { game, attacker, defender } = flanked()
+    const r = applyAction(game, 'alice', {
+      type: 'ATTACK_ENEMY_FLEET', zoneId: 1, attackerIds: [attacker.instanceId], targetIds: [defender.instanceId],
+    })
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.zoneEffects).toEqual([])
+    expect(r.game.state.activeBattle?.fragileSide).toBe('b')
+    expect(r.game.state.log.some((l) => /deploy after the defender/i.test(l))).toBe(true)
+    expect(r.game.state.log.some((l) => /Fragile/.test(l))).toBe(true)
+  })
+  it('leaves a battle in another zone alone', () => {
+    const { game, attacker, defender } = flanked(2)
+    const r = applyAction(game, 'alice', {
+      type: 'ATTACK_ENEMY_FLEET', zoneId: 1, attackerIds: [attacker.instanceId], targetIds: [defender.instanceId],
+    })
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.zoneEffects).toHaveLength(1)
+    expect(r.game.state.activeBattle?.fragileSide).toBeUndefined()
+  })
+  it('is not spent by a battle I defend in that zone', () => {
+    const { game, attacker, defender } = flanked()
+    game.activePlayer = 'bob'
+    const r = applyAction(game, 'bob', {
+      type: 'ATTACK_ENEMY_FLEET', zoneId: 1, attackerIds: [defender.instanceId], targetIds: [attacker.instanceId],
+    })
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.zoneEffects).toEqual([rider])
+    expect(r.game.state.activeBattle?.fragileSide).toBeUndefined()
+  })
+  it('expires unused at my END_TURN without a compensation draw', () => {
+    const { game } = flanked()
+    game.privates.a.deck = [{ ...snap(), instanceId: 'd1' }]
+    game.state.counts.a.deck = 1
+    const handBefore = game.privates.a.hand.length
+    const r = applyAction(game, 'alice', { type: 'END_TURN' })
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.zoneEffects).toEqual([])
+    expect(r.game.privates.a.hand).toHaveLength(handBefore)
+    expect(r.game.state.log.some((l) => /Flanking Maneuver expired/.test(l))).toBe(true)
   })
 })

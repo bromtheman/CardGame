@@ -2,18 +2,40 @@ import {
   CHANGE_ORDER_DELAY_TURNS, HERO_POWER_DISTANCE_MOD_M, KEYWORDS,
   SPAWN_DISTANCE_MAX_M, SPAWN_DISTANCE_MIN_M,
 } from '../gameSettings.ts'
-import type { ApplyResult, EngineGame, Side, ZoneCardEntry } from './engineTypes.ts'
+import type { ApplyResult, EngineContext, EngineGame, Side, ZoneCardEntry } from './engineTypes.ts'
 import {
   battleFrozen, discardCard, drawCard, err, findVehicle, otherSide, putInHand, registerHandler, zoneById,
 } from './gameEngine.ts'
 import { biomeAllows, effectiveMaterialCostOf } from './placement.ts'
 import { zoneCapFor } from './zoneCapacity.ts'
+import { catalogCard, spawnInto } from '../effects/primitives.ts'
 
 // power → faction that alone may use it. Powers absent from this map (the
 // four universal ones) are open to any faction.
-const FACTION_POWERS: Record<'boardingParty' | 'changeOrder' | 'flyby', string> = {
+const FACTION_POWERS: Record<
+  'boardingParty' | 'changeOrder' | 'flyby' | 'counterIntelligence' | 'drones' | 'flankingManeuver', string
+> = {
   boardingParty: 'DWG', changeOrder: 'OW', flyby: 'LH',
+  counterIntelligence: 'SS', drones: 'TG', flankingManeuver: 'WF',
 }
+
+// Powers that mint from ctx.catalog. game-action loads the catalog only when
+// something asks for it, and its usual probe scans card METAS for
+// CATALOG_EFFECTS members — a hero power has no card and no meta, so it
+// declares its need here instead, and game-action reads this set. The same
+// trap as a rider effect's { needsCatalog: true }: without it, every unit test
+// passes against makeCtx's hand-built catalog while production 400s.
+export const CATALOG_HERO_POWERS: ReadonlySet<string> = new Set(['drones'])
+
+// The registry name Flanking Maneuver's zone rider is filed under, and the
+// data flag the engine reads off it. A hero power has no card, so the rider
+// is NOT dispatched through the effect registry (fireRider mints its payload
+// card from the catalog by cardName, which would need a fake card). The
+// engine reads `data.flanking` at battle lock as a plain rule instead — the
+// same shape as `blocksFaction` and `drawOnExpiry`. The name is still unique
+// so a badge (zoneEffectBadges.ts) can key off it.
+export const FLANKING_MANEUVER_EFFECT = 'flankingManeuverEffect'
+export const FLANKING_MANEUVER_NAME = 'Flanking Maneuver'
 
 // DWG: swap one of my DWG ships for a same-zone enemy ship that costs no
 // more (at EFFECTIVE cost — Half-Cost and future modifiers included) than
@@ -84,6 +106,60 @@ function flyby(game: EngineGame, actor: Side, instanceId: string | undefined): A
   if (!card.keywords.includes(KEYWORDS.HALF_COST)) card.keywords.push(KEYWORDS.HALF_COST)
   if (!card.keywords.includes(KEYWORDS.TEMPORARY)) card.keywords.push(KEYWORDS.TEMPORARY)
   game.state.log.push('A vehicle was readied for a Flyby run')
+  return { ok: true, game }
+}
+
+// SS: "Grant a friendly vehicle subscreen and airscreen keywords." Permanent —
+// keywords live on the entry — and idempotent, as Flyby's grant is. The hull
+// is on the board, so naming it in the public log leaks nothing.
+function counterIntelligence(game: EngineGame, actor: Side, instanceId: string | undefined): ApplyResult {
+  if (typeof instanceId !== 'string') return err(400, 'Counter Intelligence needs one of your vehicles')
+  const found = findVehicle(game.state, instanceId)
+  if (!found || found.side !== actor) return err(400, 'That is not your vehicle')
+  for (const keyword of [KEYWORDS.AIR_SCREEN, KEYWORDS.SUB_SCREEN]) {
+    if (!found.entry.keywords.includes(keyword)) found.entry.keywords.push(keyword)
+  }
+  game.state.log.push(`${found.entry.name} now screens the air and the depths (Counter Intelligence)`)
+  return { ok: true, game }
+}
+
+// TG: "Spawn a TEMPORARY Mirth swarm into each zone." SPAWNING IS NOT PLAYING
+// (spec §7.4, Fear's precedent): no payment, no biome check, no zone cap.
+// Mirth Swarm already prints TEMPORARY, so no keyword is passed — the swarms
+// are culled at this player's END_TURN like any other Temporary hull.
+//
+// A catalog without the card is a data bug, not an empty pool: fail the
+// action before any zone is touched rather than half-apply it.
+function drones(game: EngineGame, actor: Side, ctx: EngineContext): ApplyResult {
+  const swarm = catalogCard(ctx, 'Mirth Swarm')
+  if (!swarm) return err(400, 'Drones cannot find a Mirth Swarm to launch')
+  for (const zone of game.state.zones) spawnInto(game, ctx, actor, zone.id, swarm)
+  game.state.log.push(
+    `Drones: a Mirth Swarm launches into every zone for player ${actor.toUpperCase()}`,
+  )
+  return { ok: true, game }
+}
+
+// WF: "Choose a zone. The next time you start a fleet battle in that zone this
+// turn, you may deploy after the defender. During that battle, all enemy
+// [vehicles] are considered to have FRAGILE." Ambush's shape minus the
+// distance and the compensation draw: a rest-of-turn zoneEffects rider,
+// expiring at this player's own END_TURN, spent by battleDeclare's
+// applyFlankingManeuver at the owner's own battle lock there. "Ships" is read
+// as the whole enemy fleet (ruling recorded in spec §3.8): a literal reading
+// would make the power do nothing in a beach or land zone.
+function flankingManeuver(game: EngineGame, actor: Side, zoneId: number | undefined): ApplyResult {
+  if (typeof zoneId !== 'number') return err(400, 'Flanking Maneuver needs a zone')
+  const zone = zoneById(game.state, zoneId)
+  if (!zone) return err(400, 'No such zone')
+  game.state.zoneEffects.push({
+    effect: FLANKING_MANEUVER_EFFECT, zoneId, side: actor, cardName: FLANKING_MANEUVER_NAME,
+    setOnTurn: game.turnNumber, expiresOnTurn: game.turnNumber,
+    data: { flanking: true },
+  })
+  game.state.log.push(
+    `Player ${actor.toUpperCase()} plans a Flanking Maneuver in zone ${zoneId} — for the rest of the turn`,
+  )
   return { ok: true, game }
 }
 
@@ -185,6 +261,15 @@ registerHandler('USE_HERO_POWER', (game, actor, action, ctx) => {
       if (!result.ok) return result
     } else if (action.power === 'flyby') {
       const result = flyby(game, actor, action.instanceId)
+      if (!result.ok) return result
+    } else if (action.power === 'counterIntelligence') {
+      const result = counterIntelligence(game, actor, action.instanceId)
+      if (!result.ok) return result
+    } else if (action.power === 'drones') {
+      const result = drones(game, actor, ctx)
+      if (!result.ok) return result
+    } else if (action.power === 'flankingManeuver') {
+      const result = flankingManeuver(game, actor, action.zoneId)
       if (!result.ok) return result
     } else {
       return err(400, 'Unknown hero power')

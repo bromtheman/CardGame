@@ -52,6 +52,15 @@ const ZONE_EFFECT_DISPLAY: Record<string, { icon: ZoneEffectIcon; label: string;
     label: 'Blockade',
     text: 'Deploying a vehicle here starts a fleet battle while they hold this zone.',
   },
+  // WF's hero power, not a card — the engine files its rest-of-turn rider
+  // under this name (shared/engine/heroPowers.ts). Same reason as Ambush's
+  // badge: the deploy-after rule binds the DEFENDER, so both players must see
+  // where it is armed before the fight.
+  flankingManeuverEffect: {
+    icon: 'crosshair',
+    label: 'Flanking Maneuver',
+    text: 'This turn, their next fleet attack here deploys last and every defender counts as Fragile.',
+  },
 }
 
 // Badges to draw on one zone panel. `zoneEffects` may be undefined on game

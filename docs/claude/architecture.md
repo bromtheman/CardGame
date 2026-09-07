@@ -409,9 +409,33 @@ document at the call site, not a reason to skip `poolEligible` elsewhere.
 your on-field DWG ships with a same-zone enemy ship of equal or lesser effective
 cost (re-stamps `playedOnTurn` on both), `changeOrder`→OW discard → scheduled
 redelivery of a random custom ship/tank, `flyby`→LH hand card gains `halfCost` +
-`temporary` idempotently). Gate with `Object.hasOwn` — an unknown power string
-400s ("Unknown hero power"), a known power used by the wrong faction 403s;
-neither may crash. SS/WF/GT powers are future work (spec §10).
+`temporary` idempotently, `counterIntelligence`→SS own on-field hull gains
+`airScreen` + `subScreen` idempotently, `drones`→TG spawns a Mirth Swarm into
+every zone via `spawnInto`, `flankingManeuver`→WF writes an Ambush-shaped
+rest-of-turn `zoneEffects` rider). Gate with `Object.hasOwn` — an unknown
+power string 400s ("Unknown hero power"), a known power used by the wrong
+faction 403s; neither may crash. GT alone has no faction power (spec §3.8).
+
+Two of the three 2026-09-06 powers need to be known outside this file:
+
+- **Drones mints from the catalog, and a hero power has no card.**
+  `game-action`'s catalog probe scans card metas for `CATALOG_EFFECTS`, which
+  can never see a hero power, so `heroPowers.ts` exports
+  `CATALOG_HERO_POWERS` and the function reads it as a fifth probe source. A
+  power added to `drones`' pattern that is not added to that set passes every
+  unit test and 400s in production.
+- **Flanking Maneuver is a rider the registry never dispatches.** `fireRider`
+  mints its payload card from the catalog by `cardName`, and there is no card
+  — so `battleDeclare.ts`'s `applyFlankingManeuver` reads the rider's
+  `data.flanking` as a plain rule at lock (the `blocksFaction` /
+  `drawOnExpiry` shape), after `dispatchBattleLock` and before
+  `noteDeployOrder`, and stamps `activeBattle.fragileSide`. That field is
+  **optional** on `ActiveBattle` (absent = no flank, so no `normalizeState`
+  default) and is read only through `fragileInBattle` (`battleResolve.ts`),
+  which both repair rules and `BattleOverlay` use — the printed keyword and the
+  battle-scoped grant are one predicate, so the UI cannot offer a repair the
+  engine refuses. `zoneEffectBadges.ts` keys the board badge off the rider's
+  `effect` name, which is why the rider still carries one.
 
 ## Known gaps (rulings on file — don't "fix" silently)
 

@@ -98,6 +98,39 @@ function noteDeployOrder(game: EngineGame): void {
   )
 }
 
+// WF Flanking Maneuver (hero power, spec §3.8). A plain data rule read off
+// state.zoneEffects — `data.flanking`, the way legalZonesFor reads
+// `blocksFaction` — rather than a registry effect, because a hero power has
+// no card for fireRider to mint a payload from.
+//
+// "The next time YOU START a fleet battle in that zone this turn": only the
+// aggressor's own rider in the battle's zone counts, and it is spent by the
+// battle. Both halves are applied without an offer (the player already chose
+// this when they spent the power): the deploy-after permission is CONDUCT the
+// players apply in From The Depths, so the log line is how the DEFENDER
+// learns of it and must be public; the Fragile half is the one the engine can
+// hold, as battle.fragileSide, which every repair rule reads through
+// fragileInBattle (battleResolve.ts). A defensive battle leaves the rider
+// standing, exactly as ambushSpring does.
+//
+// Called AFTER dispatchBattleLock for the same reason noteDeployOrder is: a
+// lock trigger's joinBattle may grow the roster, and "all enemy vehicles"
+// must cover the hulls that joined.
+function applyFlankingManeuver(game: EngineGame): void {
+  const battle = game.state.activeBattle
+  if (!battle) return
+  const index = game.state.zoneEffects.findIndex(
+    (e) => e.zoneId === battle.zoneId && e.side === battle.aggressor && e.data?.flanking === true,
+  )
+  if (index < 0) return
+  const [rider] = game.state.zoneEffects.splice(index, 1)
+  battle.fragileSide = otherSide(battle.aggressor)
+  game.state.log.push(
+    `${rider.cardName}: player ${battle.aggressor.toUpperCase()} may deploy after the defender, ` +
+    'and every enemy vehicle counts as Fragile for this battle',
+  )
+}
+
 // The only place the activeBattle object literal is constructed (spec §4.3,
 // departure 1) — so the next field added to it is one edit here rather than
 // three call sites. summons/continuation default to "none": only a forced
@@ -138,6 +171,7 @@ function lockBattle(
   dispatchBattleLock(game, ctx, false)
   // Last, so the note is derived from the roster a trigger's joinBattle may
   // just have grown. Never above the dispatch — see its definition.
+  applyFlankingManeuver(game)
   noteDeployOrder(game)
 }
 
@@ -242,6 +276,7 @@ export function declareForcedBattle(game: EngineGame, ctx: EngineContext, spec: 
   dispatchBattleLock(game, ctx, true)
   // Last, so the note is derived from the roster a trigger's joinBattle may
   // just have grown. Never above the dispatch — see its definition.
+  applyFlankingManeuver(game)
   noteDeployOrder(game)
   return true
 }

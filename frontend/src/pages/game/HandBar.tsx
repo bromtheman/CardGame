@@ -80,6 +80,7 @@ export function HandBar({
   moveMode,
   onVehicleHandTargetPicked,
   swapMode,
+  flankMode,
   cancelBoardModes,
   onLiftedChange,
   leading,
@@ -104,6 +105,8 @@ export function HandBar({
   // instanceId and targetInstanceId, unlike an ability's playOnCardEffect.
   onVehicleHandTargetPicked: (instanceId: string, targetInstanceId: string) => void
   swapMode: SwapMode | null
+  // WF Flanking Maneuver's zone pick — watched for mode exclusivity only.
+  flankMode: boolean
   cancelBoardModes: () => void
   // Fires whenever the hovered/focused card changes, so GameBoardPage can
   // tint the materials readout when the lifted card is unaffordable.
@@ -152,8 +155,8 @@ export function HandBar({
   // Mode exclusivity: whenever one of GameBoardPage's own modes starts, drop
   // our internal handTargeting selection.
   useEffect(() => {
-    if (placingCard || fieldTargeting || moveMode || swapMode) setHandTargeting(null)
-  }, [placingCard, fieldTargeting, moveMode, swapMode])
+    if (placingCard || fieldTargeting || moveMode || swapMode || flankMode) setHandTargeting(null)
+  }, [placingCard, fieldTargeting, moveMode, swapMode, flankMode])
 
   function handleVehicleClick(card: CardInstance) {
     if (placingCard?.instanceId === card.instanceId) {
