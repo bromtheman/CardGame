@@ -244,3 +244,36 @@ describe('2026-09-02 balance pass — TG writes no keyword the engine does not k
     }
   })
 })
+
+// ---------------------------------------------------------------------------
+// 2026-09-07 — TG Obelisk's `uniquePerZone`.
+//
+// A 40k Stealthy ship that summons a free Mirth Swarm into every battle it
+// joins multiplied a whole fleet when stacked; the key caps it at one per zone
+// PER SIDE. It is a data key whose VALUE the engine compares (strict `=== true`
+// in uniquePerZoneBlocked), and no guard checks a data key's value — so a
+// seeded `"true"` or a typo'd key name gives a card that is unrestricted AND
+// invisible, exactly the blind spot docs/claude/card-effects.md records.
+describe('TG Obelisk is unique per zone (2026-09-07)', () => {
+  it('carries uniquePerZone as a real boolean true, not a string', async () => {
+    expect(metaOf((await bySeedKey()).get('TG:Obelisk')!).uniquePerZone).toBe(true)
+  })
+
+  it('keeps its battle trigger alongside it', async () => {
+    expect(metaOf((await bySeedKey()).get('TG:Obelisk')!).onBattleEffect).toBe('obeliskBattle')
+  })
+
+  // The rule is invisible on the board, so the card has to say it.
+  it('says so in its card text', async () => {
+    expect((await bySeedKey()).get('TG:Obelisk')!.cardText).toContain('one Obelisk per zone')
+  })
+
+  // No OTHER seeded card carries the key. It is enforced at three sites and
+  // changes a card's legal zones; a second carrier should be a deliberate
+  // decision, not something that arrives by copy-paste.
+  it('is the only card carrying the key', async () => {
+    const { cards } = await loadSeedData()
+    expect(cards.filter((c) => (c.meta as Record<string, unknown> | null)?.uniquePerZone === true)
+      .map((c) => `${c.faction}:${c.name}`)).toEqual(['TG:Obelisk'])
+  })
+})
