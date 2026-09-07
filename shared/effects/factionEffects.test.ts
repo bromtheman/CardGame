@@ -2783,6 +2783,31 @@ describe('wave 5 — Ambush', () => {
     expect(r.game.state.log.some((l) => l.includes('Ambush') && l.includes('after'))).toBe(true)
   })
 
+  // Wave 8. The card’s positional advantage reaches the generated FtD battle
+  // file: the ambushed fleet spawns turned away and has to come about, where
+  // before the ambusher — as the ATTACKER — was the one turned around, which
+  // is the opposite of an ambush.
+  it('records the ambusher on the battle so the spawn file can turn the enemy around', () => {
+    const { game, attacker, defender } = armed()
+    const locked = attack(game, { attacker: attacker.instanceId, defender: defender.instanceId })
+    if (!locked.ok) throw new Error(locked.error)
+    expect(locked.game.state.activeBattle!.ambushedBy).toBeUndefined()
+    const r = applyAction(locked.game, 'alice', {
+      type: 'RESOLVE_PENDING_EFFECT', choiceId: locked.game.state.pendingEffect!.options[0].id,
+    }, ambushCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.activeBattle!.ambushedBy).toBe('a')
+  })
+
+  it('declining leaves no ambusher recorded, so the facing is the ordinary one', () => {
+    const { game, attacker, defender } = armed()
+    const locked = attack(game, { attacker: attacker.instanceId, defender: defender.instanceId })
+    if (!locked.ok) throw new Error(locked.error)
+    const r = applyAction(locked.game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', cancel: true }, ambushCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.activeBattle!.ambushedBy).toBeUndefined()
+  })
+
   it('clamps at the minimum spawn distance rather than going through it', () => {
     const { game, attacker, defender } = armed()
     const locked = attack(game, { attacker: attacker.instanceId, defender: defender.instanceId })

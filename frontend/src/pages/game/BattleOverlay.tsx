@@ -578,6 +578,18 @@ export function BattleOverlay({
               : 'Flanking Maneuver: you may deploy after the defender, and every enemy vehicle counts as Fragile for this battle.'}
           </p>
         )}
+        {/* WF Ambush, sprung. Conduct the players apply in From The Depths, so
+            BOTH captains have to read it here — the ambushed side most of all,
+            since it is their fleet that starts turned away. The generated
+            .customBattle file already carries it as a SpawnAngle; this line is
+            for a match staged by hand. */}
+        {battle.ambushedBy && (
+          <p className="mt-1 text-sm font-bold text-brass-400">
+            {battle.ambushedBy === mySide
+              ? 'Ambush: the enemy fleet spawns facing AWAY from you — you start pointed at them.'
+              : 'Ambush: your fleet spawns facing AWAY from the enemy — you must come about.'}
+          </p>
+        )}
         {/*
           The altitude is DERIVED from AIRCRAFT_SPAWN_ALTITUDE_M, never restated:
           this sentence hard-coded "80 m" and kept saying it after the constant

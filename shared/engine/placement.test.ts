@@ -1699,3 +1699,91 @@ describe('SS Thresher Shark — a granting surge', () => {
     expect(baseDamageFrom([hull], g.turnNumber)).toBe(0)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Wave 8 — `uniquePerZone`: at most one copy of the card per zone PER SIDE.
+//
+// TG Obelisk is the customer: a 40k Stealthy ship that summons a free Mirth
+// Swarm into every battle it joins, so a stack of them in one zone multiplied
+// a whole fleet for nothing. The ruling is per side, not per zone total —
+// zone 1 may hold one Obelisk on each half of it — and it counts a copy
+// however it arrived, including one the DWG captured out of the enemy deck
+// (a capture keeps the card's cardId, which is what this is keyed on).
+//
+// A data key, not a name check, for the reason `blocksFaction`, `aircraftLock`
+// and `deployRequiresAiVehicle` are: the next unique card needs no engine edit.
+describe('uniquePerZone (wave 8)', () => {
+  const unique = (over: Record<string, unknown> = {}) => ({
+    vehicleType: 'ship', materialCost: 40_000, cardId: 'card:TG:Obelisk',
+    name: 'Obelisk', meta: { uniquePerZone: true }, ...over,
+  })
+
+  it('legalZonesFor drops a zone where this side already holds a copy', () => {
+    const { g, card } = withHand(unique())
+    g.state.zones[0].cards.a.push(zoneEntry(unique({ instanceId: 'ob1' })))
+    expect(legalZonesFor(g.state, 'a', card, g.turnNumber)).toEqual([2])
+  })
+
+  it('an ENEMY copy in that zone does not block yours — the cap is per side', () => {
+    const { g, card } = withHand(unique())
+    g.state.zones[0].cards.b.push(zoneEntry(unique({ instanceId: 'ob1' })))
+    expect(legalZonesFor(g.state, 'a', card, g.turnNumber)).toEqual([1, 2])
+  })
+
+  it('a copy in ANOTHER zone does not block this one', () => {
+    const { g, card } = withHand(unique())
+    g.state.zones[1].cards.a.push(zoneEntry(unique({ instanceId: 'ob1' })))
+    expect(legalZonesFor(g.state, 'a', card, g.turnNumber)).toEqual([1])
+  })
+
+  it('a DIFFERENT card is unaffected by the copy already there', () => {
+    const { g, card } = withHand({ vehicleType: 'ship', materialCost: 40_000, cardId: 'card:TG:Loathing' })
+    g.state.zones[0].cards.a.push(zoneEntry(unique({ instanceId: 'ob1' })))
+    expect(legalZonesFor(g.state, 'a', card, g.turnNumber)).toEqual([1, 2])
+  })
+
+  it('PLAY_CARD_TO_ZONE refuses the second copy in that zone', () => {
+    const { g, card } = withHand(unique())
+    g.state.zones[0].cards.a.push(zoneEntry(unique({ instanceId: 'ob1' })))
+    expect(applyAction(g, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }))
+      .toMatchObject({ ok: false, status: 400 })
+  })
+
+  // The capture route the ruling calls out. takeFromEnemyDeck keeps the
+  // card's cardId, so the captor's own Obelisk already in that zone blocks it.
+  it('counts a DWG-captured copy against the captor’s own side', () => {
+    const { g } = withHand(unique())
+    const captured = inst(unique({ instanceId: 'cap1', meta: { uniquePerZone: true, capturedCopy: true } }))
+    g.privates.a.hand = [captured]
+    g.state.counts.a.hand = 1
+    g.state.zones[0].cards.a.push(zoneEntry(unique({ instanceId: 'ob1' })))
+    expect(legalZonesFor(g.state, 'a', captured, g.turnNumber)).toEqual([2])
+  })
+
+  // ⚠ The copies half. A Double Up'd (or printed-multi) unique card must land
+  // ONE hull, not two — legalZonesFor only ever guarantees the FIRST is legal.
+  it('lands exactly one hull even when the card carries extra spawns', () => {
+    const { g, card } = withHand(unique({ meta: { uniquePerZone: true, grantedSpawns: 2 } }))
+    const r = applyAction(g, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.zones[0].cards.a).toHaveLength(1)
+  })
+
+  // The move half. moveEntry is the single chokepoint for MOVE_VEHICLE and
+  // [GT] Monsoon, so walking a second copy in is closed by the same check.
+  it('moveEntry refuses a relocation into a zone this side already holds one in', () => {
+    const g = makeGame()
+    g.state.zones[0].cards.a.push(zoneEntry(unique({ instanceId: 'ob1' })))
+    g.state.zones[1].cards.a.push(zoneEntry(unique({ instanceId: 'ob2', keywords: [KEYWORDS.MOBILE] })))
+    expect(applyAction(g, 'alice', { type: 'MOVE_VEHICLE', instanceId: 'ob2', zoneId: 1 }))
+      .toMatchObject({ ok: false, status: 400 })
+  })
+
+  it('moveEntry still allows a relocation into a zone holding only the ENEMY’s copy', () => {
+    const g = makeGame()
+    g.state.zones[0].cards.b.push(zoneEntry(unique({ instanceId: 'ob1' })))
+    g.state.zones[1].cards.a.push(zoneEntry(unique({ instanceId: 'ob2', keywords: [KEYWORDS.MOBILE] })))
+    const r = applyAction(g, 'alice', { type: 'MOVE_VEHICLE', instanceId: 'ob2', zoneId: 1 })
+    expect(r.ok).toBe(true)
+  })
+})

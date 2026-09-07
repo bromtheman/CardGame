@@ -245,8 +245,17 @@ const ambushOffer = choice({
     // is deliberately untouched: that list is the hero power's once-per-side
     // ledger, and a card must not spend it (spec §7.3).
     battle.distanceM = Math.max(SPAWN_DISTANCE_MIN_M, battle.distanceM - AMBUSH_DISTANCE_M)
+    // The third permission, added wave 8: the ambushed fleet spawns facing
+    // AWAY. Recorded on the battle rather than applied here, because the
+    // facing only exists in the generated FtD file — battleTeams reads this
+    // and hands buildCustomBattle a `facesAway` that overrides the ordinary
+    // attacker-turns-around rule. Without it the ambusher, being the
+    // attacker, was the fleet that had to come about: the opposite of an
+    // ambush, and a standing handicap on the faction built around them.
+    battle.ambushedBy = actor
     game.state.log.push(
-      `${card.name}: player ${actor.toUpperCase()} deploys after the defender, at ${battle.distanceM}m`,
+      `${card.name}: player ${actor.toUpperCase()} deploys after the defender, at ${battle.distanceM}m, ` +
+      'with the enemy fleet caught facing away',
     )
     return true
   },

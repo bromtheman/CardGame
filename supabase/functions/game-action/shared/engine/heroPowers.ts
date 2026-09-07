@@ -6,7 +6,7 @@ import type { ApplyResult, EngineContext, EngineGame, Side, ZoneCardEntry } from
 import {
   battleFrozen, discardCard, drawCard, err, findVehicle, otherSide, putInHand, registerHandler, zoneById,
 } from './gameEngine.ts'
-import { biomeAllows, effectiveMaterialCostOf } from './placement.ts'
+import { biomeAllows, effectiveMaterialCostOf, uniquePerZoneBlocked } from './placement.ts'
 import { zoneCapFor } from './zoneCapacity.ts'
 import { catalogCard, spawnInto } from '../effects/primitives.ts'
 
@@ -187,6 +187,14 @@ export function moveEntry(game: EngineGame, actor: Side, instanceId: string, zon
   const cap = zoneCapFor(game.state, actor, zoneId)
   if (target.cards[actor].length >= cap) {
     return err(400, `Zone ${zoneId} already holds your ${cap}-vehicle limit`)
+  }
+  // The move half of `uniquePerZone` (wave 8). legalZonesFor closes the PLAY
+  // route; without this a player deploys an Obelisk into a spare zone and
+  // walks it into the one that already has theirs, which is the rule in name
+  // only. Checked here for the reason the cap above is: moveEntry is the one
+  // chokepoint MOVE_VEHICLE and [GT] Monsoon share.
+  if (uniquePerZoneBlocked(game.state, actor, zoneId, found.entry)) {
+    return err(400, `Zone ${zoneId} already holds your ${found.entry.name}`)
   }
   found.zone.cards[actor] = found.zone.cards[actor].filter((c) => c.instanceId !== instanceId)
   const entry: ZoneCardEntry = { ...found.entry, movedOnTurn: stampMove ? game.turnNumber : found.entry.movedOnTurn }

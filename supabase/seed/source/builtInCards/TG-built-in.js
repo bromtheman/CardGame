@@ -451,7 +451,7 @@ export const tgVehicles = [
     {
         name: 'Obelisk',
         isBuiltIn: true,
-        cardText: 'Whenever this vehicle participates in a fleet battle, spawn a temporary Mirth swarm to fight on your side in the battlefield',
+        cardText: 'Whenever this vehicle participates in a fleet battle, spawn a temporary Mirth swarm to fight on your side in the battlefield. You may only control one Obelisk per zone',
         materialCost: 40000,
         blueprintCost: 32000,
         cpCost: 0,
@@ -464,6 +464,12 @@ export const tgVehicles = [
         keywords: [KEYWORDS.STEALTHY],
         meta: {
             [TRIGGERS.ON_BATTLE_EFFECT]: 'obeliskBattle',
+            // One per zone PER SIDE (wave 8). A 40k ship that summons a free
+            // Mirth Swarm into every battle it joins multiplied a whole fleet
+            // when stacked. Read by legalZonesFor, deployVehicle and moveEntry;
+            // keyed on cardId, so a DWG-captured copy counts against the
+            // captor's own side too.
+            uniquePerZone: true,
         }
     }, {
         name: 'Loathing',

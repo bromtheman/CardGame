@@ -4,7 +4,7 @@ import {
 } from './primitives.ts'
 import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
 import { checkVictory, copyMeta, findVehicle, grantKeywordsTo, otherSide, zoneById } from '../engine/gameEngine.ts'
-import { FACTORY_ESCORT_KEY, fireDeathEffect, returnToHand, sacrificeEntry } from '../engine/battleTriggers.ts'
+import { FACTORY_ESCORT_KEY, returnToHand, sacrificeEntry } from '../engine/battleTriggers.ts'
 import { effectiveMaterialCostOf } from '../engine/placement.ts'
 import { BASE_DAMAGE_DIVISOR, FACTIONS, KEYWORDS, VENGEFUL_BASE_DAMAGE } from '../gameSettings.ts'
 import type { ZoneCardEntry } from '../engine/engineTypes.ts'
@@ -269,11 +269,12 @@ registerEffect('wonderOnPlay', ({ game, actor, card }) => {
 //
 // ⚠ Ruling TG-2 — "destroy it" FIRES onDeathEffect. Spec R-7 rules the mirror
 // for WF Sub Strike ("remove it from play" does not), and the two phrasings
-// are one line apart here. sacrificeEntry alone would be the removal case;
-// the fireDeathEffect below is what makes this the destruction case. The
-// ORDER matters as well as the call: nostalgiaOnDeath pulls its snapshot back
-// out of the discard that sacrificeEntry just filed, which is the same
-// sequence battleResolve uses.
+// are one line apart here. Since wave 8 this card needs no special handling
+// to get it: sacrificeEntry fires the trigger itself, so the pair this
+// function used to spell out by hand IS the general rule now, and only a
+// genuine "remove from play" stays silent. The ORDER that made it work is
+// preserved inside sacrificeEntry — the discard is filed first, so
+// nostalgiaOnDeath has a snapshot to pull back out.
 //
 // ⚠ Ownership and faction are validated HERE because the handler does not:
 // PLAY_CARD_TARGETING_CARD_ON_FIELD checks only that the target is on the

@@ -12,9 +12,13 @@ import { CARD_TYPES } from '@shared/gameSettings'
  * a hand-written mirror silently dropped TG Duel's cross-zone hull.
  *
  * The aggressor comes first and is the team marked `isAttacker`, so its hulls
- * spawn turned around. Costs are the EFFECTIVE ones (HALF_COST applied), which is
- * what the overlay's spawn sheet shows — so the resources FtD hands each team are
- * the ones the players were already told they get.
+ * spawn turned around. Costs are the EFFECTIVE ones (HALF_COST applied), which
+ * is what the overlay's spawn sheet shows — so the resources FtD hands each
+ * team are the ones the players were already told they get.
+ *
+ * A sprung WF Ambush inverts the facing: `facesAway` turns the AMBUSHED fleet
+ * around instead, leaving the ambusher pointed at it. `isAttacker` is never
+ * flipped to achieve that — see the load-bearing note below.
  *
  * **The aggressor-first order is load-bearing**, not merely cosmetic: the FtD
  * mod reports a winning TEAM index, and `sideForTeamIndex` in
@@ -44,18 +48,29 @@ export function battleTeams(state: PublicGameState): BattleTeamInput[] {
       }))
 
   const defender = otherSide(battle.aggressor)
+  // WF Ambush (wave 8). `facesAway` decides which fleet spawns turned around,
+  // and it is a SEPARATE field from isAttacker precisely so this inversion
+  // cannot reach team order — see the load-bearing note above. Left undefined
+  // on an ordinary battle, where buildCustomBattle falls back to isAttacker
+  // and nothing about the file changes.
+  const ambusher = battle.ambushedBy
+  const facesAway = (side: Side): boolean | undefined => (
+    ambusher === undefined ? undefined : side !== ambusher
+  )
   return [
     {
       name: `${state.factions[battle.aggressor]} (attacking)`,
       side: battle.aggressor,
       cards: fleetOn(battle.aggressor),
       isAttacker: true,
+      facesAway: facesAway(battle.aggressor),
     },
     {
       name: `${state.factions[defender]} (defending)`,
       side: defender,
       cards: fleetOn(defender),
       isAttacker: false,
+      facesAway: facesAway(defender),
     },
   ]
 }

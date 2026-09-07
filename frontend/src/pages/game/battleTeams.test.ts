@@ -144,3 +144,41 @@ describe('the identity battleTeams hands the FtD mod', () => {
     expect(block.Teams.flatMap((t) => t.Vehicles).map((v) => v.Name)).not.toContain('Broadside')
   })
 })
+
+
+// Wave 8 — WF Ambush. The engine records the ambusher on the battle; this is
+// where that becomes a facing in the generated FtD file.
+describe('battleTeams — an ambushed fleet spawns facing away', () => {
+  it('leaves facesAway unset on an ordinary battle', () => {
+    const [attacking, defending] = battleTeams(battleState())
+    expect(attacking!.facesAway).toBeUndefined()
+    expect(defending!.facesAway).toBeUndefined()
+  })
+
+  it('turns the ambushed fleet around and leaves the ambusher pointed at it', () => {
+    const state = battleState()
+    state.activeBattle!.ambushedBy = 'a'
+    const [attacking, defending] = battleTeams(state)
+    expect(attacking!.facesAway).toBe(false)
+    expect(defending!.facesAway).toBe(true)
+  })
+
+  // The ambusher is always the aggressor (ambushSpring refuses on defence),
+  // but the mapping is written off `ambushedBy` rather than assuming it, so a
+  // later card that ambushes on defence needs no change here.
+  it('reads the recorded side rather than assuming the aggressor', () => {
+    const state = battleState()
+    state.activeBattle!.ambushedBy = 'b'
+    const [attacking, defending] = battleTeams(state)
+    expect(attacking!.facesAway).toBe(true)
+    expect(defending!.facesAway).toBe(false)
+  })
+
+  it('reaches the built battle file as a flipped SpawnAngle', () => {
+    const state = battleState()
+    state.activeBattle!.ambushedBy = 'a'
+    const file = buildCustomBattle(battleTeams(state))
+    expect(file.Teams[0]!.Blueprints[0]!.SpawnAngle).toBe(0)
+    expect(file.Teams[1]!.Blueprints[0]!.SpawnAngle).toBe(180)
+  })
+})
