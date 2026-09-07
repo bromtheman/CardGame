@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { PhysicalCard } from '../components/PhysicalCard'
+import { catalogueCards } from '../lib/cardCatalogue'
 import { useCardsQuery } from '../lib/cards'
 
 export function CardsPage() {
@@ -15,9 +16,7 @@ export function CardsPage() {
   if (isLoading) return <main className="p-8 text-center">Loading cards…</main>
   if (error) return <main className="p-8 text-center text-red-400">Failed to load cards: {String(error)}</main>
 
-  const shown = (cards ?? []).filter((c) =>
-    active === 'CUSTOM' ? !c.is_built_in : c.is_built_in && c.faction === active,
-  )
+  const shown = catalogueCards(cards ?? [], active)
   return (
     <main className="mx-auto max-w-7xl p-6">
       <div className="flex flex-wrap items-center gap-2">
