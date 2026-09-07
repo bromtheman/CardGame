@@ -14,6 +14,7 @@ import { zoneEffectBadges } from './zoneEffectBadges'
 import { HandBar } from './HandBar'
 import { HAND_RAIL_H } from './handFanLayout'
 import { ZoneActions } from './ZoneActions'
+import { ConcedeButton } from './ConcedeButton'
 import { StealthyResponseBar } from './StealthyResponseBar'
 import { BattleOverlay } from './BattleOverlay'
 import { PendingChoiceDialog } from './PendingChoiceDialog'
@@ -289,6 +290,7 @@ export function GameBoardPage() {
           mySide={mySide}
           send={send}
           busy={busy}
+          onConcede={onConcede}
         />
       )}
       {isActive && (
@@ -303,6 +305,7 @@ export function GameBoardPage() {
           send={send}
           busy={busy}
           gameId={game.id}
+          onConcede={onConcede}
         />
       )}
       {isActive && state.pendingEffect && (
@@ -469,9 +472,7 @@ export function GameBoardPage() {
         }
         trailing={
           <div className="flex items-center gap-3">
-            <button disabled={busy || !isActive} onClick={onConcede} className="text-sm text-red-400 underline disabled:opacity-50">
-              Concede
-            </button>
+            <ConcedeButton onConcede={onConcede} busy={busy || !isActive} />
             <button
               disabled={busy || !isMyTurn || !isActive}
               onClick={onEndTurn}

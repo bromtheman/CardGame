@@ -12,6 +12,7 @@ import {
 import { AIRCRAFT_SPAWN_ALTITUDE_M } from '@shared/customBattle'
 import { shortHandNumber } from '@shared/format'
 
+import { ConcedeButton } from './ConcedeButton'
 import { LaunchInFtdButton } from './LaunchInFtdButton'
 import { applyPrefill, prefillSummary, winnerLabel } from './ftdPrefill'
 import type { FtdPrefill } from './ftdPrefill'
@@ -437,13 +438,14 @@ function FtdResultBanner({
 // component (via a key on the battle's identity) whenever a *new* battle
 // starts, so this local form state never leaks from one battle into another.
 export function BattleOverlay({
-  state, mySide, send, busy, gameId,
+  state, mySide, send, busy, gameId, onConcede,
 }: {
   state: PublicGameState
   mySide: Side
   send: (action: GameAction) => Promise<void>
   busy: boolean
   gameId: string
+  onConcede: () => void
 }) {
   const battle = state.activeBattle
   const participants = battle ? participantsOf(state, battle) : []
@@ -667,6 +669,16 @@ export function BattleOverlay({
             />
           </>
         )}
+
+        {/* This overlay is `fixed inset-0`, so it covers the hand rail that
+            used to hold the only Concede button on the board — a player who
+            wanted out of a battle had nothing to click. The engine always
+            allowed it (CONCEDE is in BATTLE_ACTIONS); only the UI blocked it.
+            Kept quiet and out of the way at the foot of the panel: it is an
+            escape hatch, not a call to action. */}
+        <div className="mt-4 flex justify-end border-t border-ocean-600/50 pt-3">
+          <ConcedeButton onConcede={onConcede} busy={busy} />
+        </div>
       </div>
     </div>
   )

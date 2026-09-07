@@ -16,6 +16,10 @@ export function useEscapeToCancel(open: boolean, onCancel: () => void) {
 }
 
 // Themed replacement for the native browser confirm dialog. Renders null when closed.
+// ⚠ z-[70], above every overlay the game board can raise: BattleOverlay and
+// the withdrawal modal are z-50, PendingChoiceDialog is z-[60]. Each of those
+// offers a Concede button, and the confirmation it opens has to sit ON TOP of
+// the thing that offered it — at z-50 it was painted underneath.
 export function ConfirmDialog({
   open, title, body, confirmLabel, danger, onConfirm, onCancel,
 }: {
@@ -32,7 +36,7 @@ export function ConfirmDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ocean-950/80"
+      className="fixed inset-0 z-[70] flex items-center justify-center bg-ocean-950/80"
       onClick={onCancel}
     >
       <div
