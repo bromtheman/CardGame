@@ -12,7 +12,7 @@ import {
 import { registerCostModifier, registerEffect } from './registry.ts'
 import type { EffectFn, EffectPayload } from './registry.ts'
 import type { EngineGame, Side, ZoneCardEntry } from '../engine/engineTypes.ts'
-import { checkVictory, findVehicle, otherSide, putInHand, zoneById } from '../engine/gameEngine.ts'
+import { checkVictory, findVehicle, grantKeywordsTo, otherSide, putInHand, zoneById } from '../engine/gameEngine.ts'
 import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
 import type { CardInstance } from '../engine/gameInit.ts'
 
@@ -98,9 +98,11 @@ registerEffect('cycloneOnPlay', ({ game, actor, card, targetZoneId }) => {
   if (typeof targetZoneId !== 'number') return false
   const zone = zoneById(game.state, targetZoneId)
   if (!zone) return false
+  // grantKeywordsTo (wave 8): records the grant so it dies with the hull
+  // rather than reshuffling back into its owner’s deck. It skips a hull that
+  // already carries FRAGILE, which is what the old `continue` did.
   for (const entry of zone.cards[otherSide(actor)]) {
-    if (entry.keywords.includes(KEYWORDS.FRAGILE)) continue
-    entry.keywords = [...entry.keywords, KEYWORDS.FRAGILE]
+    grantKeywordsTo(entry, [KEYWORDS.FRAGILE])
   }
   game.state.log.push(`${card.name} batters the enemy hulls in zone ${targetZoneId}`)
   return true

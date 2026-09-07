@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { KEYWORDS, LOG_MAX_ENTRIES } from '../gameSettings'
-import { applyAction, copyMeta, discardCard, effectiveCostInGame, normalizeState } from './index'
+import {
+  applyAction, copyMeta, discardCard, discardSnapshotOf, effectiveCostInGame, grantKeywordsTo,
+  grantSpawnsTo, normalizeState,
+} from './index'
 import { takeFromEnemyDeck } from '../effects/primitives.ts'
 import type { PublicGameState } from './gameInit.ts'
 import type { ZoneCardEntry } from './engineTypes.ts'
@@ -906,5 +909,110 @@ describe('END_TURN upkeep (wave 7)', () => {
     const r = applyAction(g, 'alice', { type: 'END_TURN' }, makeCtx())
     if (!r.ok) throw new Error(r.error)
     expect(r.game.state.log.some((l) => l.toLowerCase().includes('upkeep'))).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Wave 8 — grants made to a hull ALREADY ON THE BOARD must not outlive it.
+//
+// discardSnapshotOf's own header says "Every per-entry stamp must be named
+// here. TypeScript does NOT catch one you forget" — and two whole CLASSES of
+// stamp were unnamed: a keyword pushed onto entry.keywords (TG Hysteria and
+// Loathing's INOFFENSIVE, Spite/Agony's FRAGILE, Repairmen Ready's SCRAPPY)
+// and DWG Double Up's extra spawn. Both rode into state.destroyed and, through
+// reshuffleDiscard, back into the deck: the card returned permanently altered,
+// and altered AGAIN on every later death.
+//
+// Neither can be stripped by looking at the value alone. `inoffensive` is
+// PRINTED on several seeded cards and `additionalSpawns` is printed on nine,
+// so the strip has to be keyed on a marker that says "this instance was
+// granted it" — exactly what scrappyOnLoan already does for its one keyword.
+describe('discardSnapshotOf sheds board-granted keywords and spawns (wave 8)', () => {
+  it('strips the grantedKeywords marker AND the keywords it names', () => {
+    const snapshot = discardSnapshotOf(zoneEntry({
+      keywords: ['blocker', 'inoffensive'],
+      meta: { grantedKeywords: ['inoffensive'] },
+    }))
+    expect(snapshot.keywords).not.toContain('inoffensive')
+    expect(snapshot.keywords).toContain('blocker') // an unrelated keyword is untouched
+    expect(snapshot.meta).not.toHaveProperty('grantedKeywords')
+  })
+
+  // Keyed on the MARKER, never on the keyword — the rule scrappyOnLoan's own
+  // pair of tests pins. A hull that PRINTS inoffensive keeps it forever.
+  it('leaves a PRINTED keyword of the same name alone', () => {
+    const snapshot = discardSnapshotOf(zoneEntry({ keywords: ['inoffensive'] }))
+    expect(snapshot.keywords).toContain('inoffensive')
+  })
+
+  it('sheds every keyword the marker names, not just the first', () => {
+    const snapshot = discardSnapshotOf(zoneEntry({
+      keywords: ['scrappy', 'temporary', 'blocker'],
+      meta: { grantedKeywords: ['scrappy', 'temporary'] },
+    }))
+    expect(snapshot.keywords).toEqual(['blocker'])
+  })
+
+  it('strips grantedSpawns', () => {
+    const snapshot = discardSnapshotOf(zoneEntry({ meta: { grantedSpawns: 2 } }))
+    expect(snapshot.meta).not.toHaveProperty('grantedSpawns')
+  })
+
+  // ⚠ The trap a blanket strip would have walked into: additionalSpawns is
+  // PRINTED card data on nine seeded cards (Abactor, Curiosity, …). Only the
+  // granted counterpart comes off.
+  it('leaves PRINTED additionalSpawns alone', () => {
+    const snapshot = discardSnapshotOf(zoneEntry({ meta: { additionalSpawns: 1, grantedSpawns: 1 } }))
+    expect(snapshot.meta.additionalSpawns).toBe(1)
+    expect(snapshot.meta).not.toHaveProperty('grantedSpawns')
+  })
+})
+
+// The stamp half of the pair above. It lives beside discardSnapshotOf in
+// gameEngine.ts for the reason the scrappyOnLoan post-mortem gives: when the
+// marker and the mutation it describes are written in two different files,
+// one of them gets changed alone.
+describe('grantKeywordsTo / grantSpawnsTo record what they granted (wave 8)', () => {
+  it('adds the keyword and records it on the marker', () => {
+    const entry = zoneEntry({ keywords: ['blocker'] })
+    grantKeywordsTo(entry, ['inoffensive'])
+    expect(entry.keywords).toEqual(['blocker', 'inoffensive'])
+    expect(entry.meta.grantedKeywords).toEqual(['inoffensive'])
+  })
+
+  // ⚠ THE ONE THAT MATTERS. A card that PRINTS the keyword must not have it
+  // recorded as a grant — recording it would make discardSnapshotOf strip a
+  // printed keyword and quietly rewrite the card for the rest of the game.
+  it('records nothing for a keyword the card already carries', () => {
+    const entry = zoneEntry({ keywords: ['inoffensive'] })
+    grantKeywordsTo(entry, ['inoffensive'])
+    expect(entry.keywords).toEqual(['inoffensive'])
+    expect(entry.meta).not.toHaveProperty('grantedKeywords')
+  })
+
+  it('accumulates across two separate grants', () => {
+    const entry = zoneEntry({ keywords: [] })
+    grantKeywordsTo(entry, ['inoffensive'])
+    grantKeywordsTo(entry, ['fragile'])
+    expect(entry.meta.grantedKeywords).toEqual(['inoffensive', 'fragile'])
+  })
+
+  it('grantSpawnsTo accumulates onto its own counter, never onto printed additionalSpawns', () => {
+    const card = inst({ meta: { additionalSpawns: 1 } })
+    grantSpawnsTo(card, 1)
+    grantSpawnsTo(card, 1)
+    expect(card.meta.additionalSpawns).toBe(1)
+    expect(card.meta.grantedSpawns).toBe(2)
+  })
+
+  // The round trip both halves exist for: whatever was granted, the snapshot
+  // that reaches state.destroyed is the PRINTED card again.
+  it('round-trips: grant then discard leaves the printed card', () => {
+    const entry = zoneEntry({ keywords: ['blocker'], meta: { additionalSpawns: 1 } })
+    grantKeywordsTo(entry, ['inoffensive', 'halfCost'])
+    grantSpawnsTo(entry, 2)
+    const snapshot = discardSnapshotOf(entry)
+    expect(snapshot.keywords).toEqual(['blocker'])
+    expect(snapshot.meta).toEqual({ additionalSpawns: 1 })
   })
 })

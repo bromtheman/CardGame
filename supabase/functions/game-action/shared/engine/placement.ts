@@ -5,7 +5,8 @@ import {
 import type { CardInstance, PublicGameState } from './gameInit.ts'
 import type { ApplyResult, EngineContext, EngineGame, Side, ZoneCardEntry } from './engineTypes.ts'
 import {
-  copyMeta, discardCard, err, findVehicle, otherSide, registerHandler, zoneById,
+  additionalSpawnsOf, copyMeta, discardCard, err, findVehicle, grantKeywordsTo, otherSide,
+  registerHandler, zoneById,
 } from './gameEngine.ts'
 import { zoneCapFor } from './zoneCapacity.ts'
 import { costModifierFor, effectFor, effectName, noteUnimplemented } from '../effects/registry.ts'
@@ -358,16 +359,28 @@ function deployVehicle(
   // A granting surge stamps its keywords onto the hull that lands, not only
   // onto the price (spec §4.6, departure 2 — Thresher Shark). Derived from
   // `surged`, which the caller captured BEFORE pay(), rather than re-read here.
+  //
+  // Applied through grantKeywordsTo (wave 8) rather than merged into the
+  // literal: the surge’s keywords are a per-INSTANCE grant like every other,
+  // so they have to be RECORDED, or a surged hull dies, reshuffles, and is
+  // drawn again permanently Half-Cost. The helper carries withGranted’s
+  // idempotence, so a card that PRINTS one of them records nothing.
   const granted = surged ? grantedKeywordsOf(card) : []
-  const keywords = withGranted(card.keywords, granted)
   const entry: ZoneCardEntry = {
-    ...hull, keywords, playedOnTurn: game.turnNumber, movedOnTurn: null, activatedOnTurn: null,
+    ...hull, keywords: [...card.keywords],
+    playedOnTurn: game.turnNumber, movedOnTurn: null, activatedOnTurn: null,
   }
+  grantKeywordsTo(entry, granted)
   zone.cards[actor].push(entry)
   placedInstanceIds.push(entry.instanceId)
   // additionalSpawns: one payment lands N+1 hulls (spec §3.9). resourceSurge
   // (spec §4.6) adds more on top, but only when the surge condition held.
-  const printed = Math.max(0, Math.floor(Number(card.meta.additionalSpawns) || 0))
+  //
+  // `additionalSpawnsOf` sums the PRINTED count with Double Up's granted one
+  // (wave 8). The grant needs its own key because discardSnapshotOf has to
+  // strip it without touching the nine cards that print the other, so this is
+  // the one place the two are added back together.
+  const printed = additionalSpawnsOf(card)
   const wanted = Math.min(printed + (surged ? surgeSpawnsFor(card) : 0), ADDITIONAL_SPAWNS_CAP)
   // The zone-side cap binds AFTER ADDITIONAL_SPAWNS_CAP and is the tighter of
   // the two on a side with hulls already on it. legalZonesFor only guaranteed
@@ -381,9 +394,13 @@ function deployVehicle(
   const extra = Math.min(wanted, room)
   for (let i = 0; i < extra; i++) {
     const copy: ZoneCardEntry = {
-      ...hull, instanceId: ctx.newId(), meta: copyMeta(card.meta), keywords: [...keywords],
+      ...hull, instanceId: ctx.newId(), meta: copyMeta(card.meta), keywords: [...card.keywords],
       playedOnTurn: game.turnNumber, movedOnTurn: null, activatedOnTurn: null,
     }
+    // Each copy records its OWN grant. Sharing the entry’s would not do —
+    // they are separate instances that die separately, and copyMeta hands
+    // each one the CARD’s meta, which carries no marker.
+    grantKeywordsTo(copy, granted)
     zone.cards[actor].push(copy)
     placedInstanceIds.push(copy.instanceId)
   }

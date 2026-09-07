@@ -7,7 +7,7 @@ import {
 } from '../gameSettings.ts'
 import type { EngineContext, EngineGame, Side, ZoneCardEntry } from '../engine/engineTypes.ts'
 import type { SnapshotCard } from '../engine/gameInit.ts'
-import { discardCard, findVehicle, otherSide, putInHand, zoneById } from '../engine/gameEngine.ts'
+import { discardCard, findVehicle, grantKeywordsTo, otherSide, putInHand, zoneById } from '../engine/gameEngine.ts'
 import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
 import {
   catalogCard, choice, enemyVehicleOptions, grant, poolEligible, shuffled, spawnInto, summonHulls,
@@ -297,9 +297,10 @@ registerEffect('allForTheCauseEffect', ({ game, actor, ctx, targetZoneId }) => {
 
   let spawned = 0
   for (const entry of affected) {
-    if (!entry.keywords.includes(KEYWORDS.TEMPORARY)) {
-      entry.keywords = [...entry.keywords, KEYWORDS.TEMPORARY]
-    }
+    // grantKeywordsTo (wave 8), for the reason every other grant uses it: a
+    // hull culled for TEMPORARY still reaches the discard, and an unrecorded
+    // grant would come back out of the deck permanently Temporary.
+    grantKeywordsTo(entry, [KEYWORDS.TEMPORARY])
     const copies = entry.materialCost > ALL_FOR_THE_CAUSE_DOUBLE_COST ? 2 : 1
     for (let i = 0; i < copies; i++) {
       if (spawnInto(game, ctx, actor, zone.id, martyr)) spawned++

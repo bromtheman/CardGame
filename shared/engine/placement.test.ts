@@ -150,6 +150,26 @@ describe('additionalSpawns', () => {
     if (!r.ok) throw new Error(r.error)
     expect(r.game.state.zones[0].cards.a).toHaveLength(1)
   })
+
+  // Wave 8. Double Up writes `grantedSpawns`, its own counter, because
+  // `additionalSpawns` is printed card data that discardSnapshotOf must not
+  // touch. deployVehicle is where the two are added back together, so a card
+  // that both PRINTS extra copies and was Double Up'd lands all of them.
+  it('honours grantedSpawns on its own', () => {
+    const { g, card } = withHand({ vehicleType: 'ship', materialCost: 40000, meta: { grantedSpawns: 1 } })
+    const r = applyAction(g, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.zones[0].cards.a).toHaveLength(2)
+  })
+
+  it('sums printed additionalSpawns and granted ones', () => {
+    const { g, card } = withHand({
+      vehicleType: 'ship', materialCost: 40000, meta: { additionalSpawns: 1, grantedSpawns: 2 },
+    })
+    const r = applyAction(g, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.zones[0].cards.a).toHaveLength(4) // the card + 1 printed + 2 granted
+  })
 })
 
 // handEnteredTurn (spec §4.2) is a private HAND stamp normalizeState cannot
@@ -361,7 +381,7 @@ describe('PLAY_CARD_TARGETING_CARD_IN_HAND', () => {
     if (!r.ok) throw new Error(r.error)
     expect(r.game.privates.a.hand).toHaveLength(1)
     expect(r.game.privates.a.hand[0].instanceId).toBe(target.instanceId)
-    expect(r.game.privates.a.hand[0].meta.additionalSpawns).toBe(1)
+    expect(r.game.privates.a.hand[0].meta.grantedSpawns).toBe(1)
     expect(r.game.state.counts.a.hand).toBe(1)
     expect(r.game.state.resources.a.materials).toBe(95000) // 100000 - 5000
     expect(r.game.state.resources.a.cp).toBe(2) // 3 - 1

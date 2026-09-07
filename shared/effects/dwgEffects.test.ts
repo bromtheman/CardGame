@@ -324,7 +324,11 @@ describe('doubleUpEffect', () => {
     return { game, target }
   }
 
-  it('sets meta.additionalSpawns to 1 on first use', () => {
+  // ⚠ `grantedSpawns`, NOT `additionalSpawns` (wave 8). The latter is PRINTED
+  // card data on nine seeded cards, so a grant written there is
+  // indistinguishable from a print and discardSnapshotOf cannot strip one
+  // without rewriting the other. deployVehicle sums the two.
+  it('sets meta.grantedSpawns to 1 on first use, leaving printed data alone', () => {
     const { game, target } = withHandTarget()
     const doubleUpCard = inst({ type: 'ability', name: 'Double Up' })
     const ok = effectFor('doubleUpEffect')!({
@@ -332,10 +336,11 @@ describe('doubleUpEffect', () => {
     })
     expect(ok).toBe(true)
     const updated = game.privates.a.hand.find((c) => c.instanceId === target.instanceId)!
-    expect(updated.meta.additionalSpawns).toBe(1)
+    expect(updated.meta.grantedSpawns).toBe(1)
+    expect(updated.meta).not.toHaveProperty('additionalSpawns')
   })
 
-  it('increments meta.additionalSpawns to 2 on a second use', () => {
+  it('increments meta.grantedSpawns to 2 on a second use', () => {
     const { game, target } = withHandTarget()
     const doubleUpCard = inst({ type: 'ability', name: 'Double Up' })
     effectFor('doubleUpEffect')!({
@@ -346,7 +351,20 @@ describe('doubleUpEffect', () => {
     })
     expect(ok).toBe(true)
     const updated = game.privates.a.hand.find((c) => c.instanceId === target.instanceId)!
-    expect(updated.meta.additionalSpawns).toBe(2)
+    expect(updated.meta.grantedSpawns).toBe(2)
+  })
+
+  // A card that already prints extra copies stacks rather than being
+  // overwritten — the grant is a separate counter, and deployVehicle adds it.
+  it('stacks on top of a card that PRINTS additionalSpawns', () => {
+    const { game, target } = withHandTarget({ meta: { additionalSpawns: 1 } })
+    const doubleUpCard = inst({ type: 'ability', name: 'Double Up' })
+    effectFor('doubleUpEffect')!({
+      game, actor: 'a', card: doubleUpCard, ctx: makeCtx(), targetInstanceId: target.instanceId,
+    })
+    const updated = game.privates.a.hand.find((c) => c.instanceId === target.instanceId)!
+    expect(updated.meta.additionalSpawns).toBe(1)
+    expect(updated.meta.grantedSpawns).toBe(1)
   })
 
   it('succeeds when the effective cost is exactly DOUBLE_UP_MAX_COST (boundary is inclusive)', () => {
@@ -392,7 +410,7 @@ describe('doubleUpEffect', () => {
       })
       expect(ok).toBe(false)
       const untouched = game.privates.a.hand.find((c) => c.instanceId === target.instanceId)!
-      expect(untouched.meta.additionalSpawns).toBeUndefined()
+      expect(untouched.meta.grantedSpawns).toBeUndefined()
     },
   )
 

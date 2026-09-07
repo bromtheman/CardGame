@@ -485,3 +485,67 @@ describe('drawFromPool excludes retired cards', () => {
     expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Live'])
   })
 })
+
+// Wave 8 — an EMPTY deck reshuffles before the pool is filtered.
+//
+// The reported bug: SS Resolute ("search your deck for an SS ship") found
+// nothing with the deck on 0, even though the player's whole collection was
+// sitting in the discard. `drawCard` has always reshuffled when a draw would
+// otherwise fail; a deck POOL filtered the empty array and reported "no
+// matching card", so the card simply did nothing.
+//
+// ⚠ Guarded on the DECK being empty, not on the POOL being empty. "No matching
+// ship in a deck that still holds cards" is a legitimate fizzle the card text
+// allows for, and reshuffling there would pull the discard back mid-game on
+// every failed search.
+describe('drawFromPool — deck source reshuffles an empty deck (wave 8)', () => {
+  it('reshuffles the discard in when the deck is empty, then finds its match', () => {
+    const game = makeGame()
+    game.state.destroyed.a.push(snap({ name: 'Sub', vehicleType: 'sub' }))
+    const fn = drawFromPool({ source: 'deck', filter: { vehicleType: 'sub' }, count: 1 })
+    expect(fn({ game, actor: 'a', card: inst(), ctx: makeCtx() })).toBe(true)
+    expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Sub'])
+    expect(game.state.destroyed.a).toEqual([])
+    expect(game.state.counts.a).toEqual({ hand: 1, deck: 0 })
+  })
+
+  it('still applies the filter to what the reshuffle brought back', () => {
+    const game = makeGame()
+    game.state.destroyed.a.push(
+      snap({ name: 'Ship', vehicleType: 'ship' }),
+      snap({ name: 'Sub', vehicleType: 'sub' }),
+    )
+    const fn = drawFromPool({ source: 'deck', filter: { vehicleType: 'sub' }, count: 1 })
+    expect(fn({ game, actor: 'a', card: inst(), ctx: makeCtx() })).toBe(true)
+    expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Sub'])
+    expect(game.privates.a.deck.map((c) => c.name)).toEqual(['Ship'])
+  })
+
+  it('stamps costDelta on a card the reshuffle brought back, like any other pool pick', () => {
+    const game = makeGame()
+    game.state.destroyed.a.push(snap({ name: 'Sub', vehicleType: 'sub' }))
+    const fn = drawFromPool({ source: 'deck', filter: { vehicleType: 'sub' }, count: 1, costDelta: -40_000 })
+    fn({ game, actor: 'a', card: inst(), ctx: makeCtx() })
+    expect(game.privates.a.hand[0].meta.costDelta).toBe(-40_000)
+  })
+
+  // The guard. A deck that still holds cards is searched as it stands — a
+  // fruitless search must not empty the discard back into it.
+  it('does NOT reshuffle when the deck is non-empty but holds no match', () => {
+    const game = makeGame()
+    game.privates.a.deck.push(inst({ name: 'Ship', vehicleType: 'ship' }))
+    game.state.destroyed.a.push(snap({ name: 'Sub', vehicleType: 'sub' }))
+    const fn = drawFromPool({ source: 'deck', filter: { vehicleType: 'sub' }, count: 1 })
+    expect(fn({ game, actor: 'a', card: inst(), ctx: makeCtx() })).toBe(true)
+    expect(game.privates.a.hand).toHaveLength(0)
+    expect(game.state.destroyed.a.map((c) => c.name)).toEqual(['Sub'])
+  })
+
+  // Both empty is still the fizzle it always was — there is nothing anywhere.
+  it('fizzles when deck and discard are both empty', () => {
+    const game = makeGame()
+    const fn = drawFromPool({ source: 'deck', filter: { vehicleType: 'sub' }, count: 1 })
+    expect(fn({ game, actor: 'a', card: inst(), ctx: makeCtx() })).toBe(true)
+    expect(game.privates.a.hand).toHaveLength(0)
+  })
+})
