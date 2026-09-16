@@ -307,12 +307,13 @@ battle resume correctly.
 2. **Attack.** Per zone in the same preference, when the bot has a hull
    there: `ATTACK_ENEMY_BASE` first (blocker, destroyed base, fresh
    deployment, subs/Inoffensive-only, zero damage and already-activated are
-   all engine rejections — just try); then `ATTACK_ENEMY_FLEET` with every
-   own **non-Inoffensive** hull against every enemy hull in the zone, offered
-   only when the sum of the attackers' `effectiveMaterialCostOf` is at least
-   the enemies'. The engine rejects a selection that includes an Inoffensive
-   hull outright (`battleDeclare.ts`), so the policy filters them first; a
-   zone where the bot has only Inoffensive hulls offers no fleet attack.
+   all engine rejections — just try); then `ATTACK_ENEMY_FLEET { zoneId }`.
+   Since the 2026-09-16 amendment to spec §3.4 a fleet attack has no
+   selection — every own non-Inoffensive hull in the zone attacks every enemy
+   hull there — so the only decision is *whether* to declare: the policy
+   offers it when the sum of `effectiveMaterialCostOf` over its
+   non-Inoffensive hulls in the zone is at least the sum over the enemy's.
+   A zone where it has only Inoffensive hulls is an engine rejection.
 3. `END_TURN`.
 
 Play before attack: hulls played this turn cannot strike a base (spec §3.4),
