@@ -30,6 +30,7 @@ Reference material (read-only, do not port bugs):
 | Frontend | React SPA (Vite), no Next.js; Netlify hosting later |
 | Deck faction | Every deck selects a base faction (DWG/GT/LH/OW/SS/WF); it constrains built-in cards and attaches that faction's hero powers |
 | Hero powers | 4 universal (NEUTRAL) powers + per-faction powers from old BE `heroPowers.js`, seeded into a `hero_powers` table |
+| Fleet battle rosters (2026-09-16) | No selection: every eligible attacker in the zone fights every enemy vehicle there. Only defenders may withdraw — Stealthy, or a printed omission condition (3.4) |
 
 ## 2. Repository layout
 
@@ -118,11 +119,17 @@ have ≥1 vehicle there. Two options:
    `Σ floor(materialCost / 1000)` over the activator's eligible vehicles in the
    zone. Ineligible: submarines, **Inoffensive** vehicles, and vehicles played this
    turn (1-turn delay).
-2. **Attack the enemy fleet.** Requires ≥1 enemy vehicle in the zone. Activator
-   selects any number of their own vehicles (excluding **Inoffensive**) and any
-   number of enemy vehicles. If any selected enemy vehicle has **Stealthy**, its
-   owner is prompted to opt it out (3.7) before the battle locks in; a battle
-   whose defenders all opt out is cancelled (the zone activation is not spent).
+2. **Attack the enemy fleet.** Requires ≥1 enemy vehicle in the zone and ≥1 of
+   the activator's vehicles there able to attack. **There is no selection**
+   (amended 2026-09-16; before this the activator chose both rosters): every
+   one of the activator's vehicles in the zone except **Inoffensive** ones
+   attacks, and every enemy vehicle in the zone is attacked. The activator's
+   own Stealthy vehicles attack like any other. The only way a vehicle sits a
+   declared battle out is on the defending side: a defender with **Stealthy**
+   may be withdrawn by its owner (3.7) before the battle locks in, as may a
+   defender whose printed omission condition is met (effect-coverage spec
+   §4.8, now judged against the whole attacking force). A battle whose
+   defenders all withdraw is cancelled (the zone activation is not spent).
    This creates an **active battle** (see 3.5).
 
 ### 3.5 Battles (fought out-of-band in FTD)
@@ -170,7 +177,9 @@ MVP-implemented (from the design doc + old BE `gameSettings.js` comments):
 - **Inoffensive** — cannot participate in offensive battles or base attacks
 - **Half-Cost** — vehicle costs 50% of blueprint cost (the flier rule)
 - **Stealthy** — when the opponent declares a fleet attack, this vehicle's owner
-  may exclude it from the defending selection (opt out of defensive battles)
+  may withdraw it from the defence before the battle locks (opt out of defensive
+  battles). It is the defender's right only: a Stealthy vehicle on the attacking
+  side attacks with the rest (3.4)
 - **Mobile** — its owner may move it to another legal zone once per turn
   (via the MOVE_VEHICLE action; free, doesn't activate the zone)
 - **Robotic** — battle-conduct rule shown on the spawn sheet: unlimited
