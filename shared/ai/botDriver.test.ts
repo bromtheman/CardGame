@@ -126,12 +126,36 @@ describe('runBotUntilIdle', () => {
     const d = runBotUntilIdle(decision, BOT, makeCtx(), stuckPolicy())
     expect(d.applied).toEqual([FALLBACK.decision])
     expect(d.game.state.pendingReport).toBeNull()
+    expect(d.game.state.activeBattle).not.toBeNull()   // a reject: the battle awaits a corrected report
 
     const choice = makeGame({ activePlayer: 'alice', turnNumber: 3 })
     choice.state.pendingEffect = { effect: 'e', side: 'b', card: inst({}), kind: 'choice', prompt: '', options: [{ id: 'o', label: 'O' }] }
     const c = runBotUntilIdle(choice, BOT, makeCtx(), stuckPolicy())
     expect(c.applied).toEqual([FALLBACK.choice])
     expect(c.game.state.pendingEffect).toBeNull()
+  })
+
+  it('rejects a report whose own repairs the human cannot afford, instead of throwing', () => {
+    // The engine re-checks BOTH sides' repair bills at approval and refuses
+    // the whole approval when the submitter's own are unaffordable — so no
+    // approval, the bare one included, can ever land on this report. Reject
+    // is the one decision the non-submitter can always make; the human
+    // resubmits. Before the fix this was a thrown "fallback was refused" and
+    // a 500 for the human's own input.
+    const g = makeGame({ activePlayer: 'alice', turnNumber: 3 })
+    g.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'foe-1', materialCost: 100000 }))   // repair 50k
+    g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'mine-1' }))
+    g.state.activeBattle = {
+      zoneId: 1, aggressor: 'a', attackerIds: ['foe-1'], defenderIds: ['mine-1'],
+      distanceM: 1200, distanceModifiedBy: [], summons: [], continuation: null,
+    }
+    g.state.pendingReport = { submittedBy: 'a', results: { 'foe-1': 85, 'mine-1': 100 }, repairs: ['foe-1'] }
+    g.state.resources.a.materials = 10000
+    let out: ReturnType<typeof runBotUntilIdle> | undefined
+    expect(() => { out = runBotUntilIdle(g, BOT, makeCtx(), basicPolicy) }).not.toThrow()
+    expect(out!.applied).toEqual([FALLBACK.decision])
+    expect(out!.game.state.pendingReport).toBeNull()
+    expect(out!.game.state.activeBattle).not.toBeNull()
   })
 
   it('caps a runaway policy and still ends the turn', () => {

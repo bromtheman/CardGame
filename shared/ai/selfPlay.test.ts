@@ -14,9 +14,13 @@ import { runBotUntilIdle } from './botDriver'
 
 // The net for effect interactions among the seeded cards (spec §9): the bot
 // plays every one of its decks against a scripted human who deploys hulls,
-// picks fights half the time, and reports every battle with random ending HP
-// so deaths, repairs and death triggers all fire. Nothing here asserts on
-// strategy — only that no seed, deck or card can wedge or crash the driver.
+// picks fights half the time, withdraws every hull it may from the bot's
+// fleet attacks (so an attack the human can call off entirely IS called off,
+// and a policy that re-declares one livelocks here instead of in production
+// — a human who always fought hid exactly that), and reports every battle
+// with random ending HP so deaths, repairs and death triggers all fire.
+// Nothing here asserts on strategy — only that no seed, deck or card can
+// wedge or crash the driver.
 // Twenty seeds, as spec §9 aimed at: a game costs ~35 ms (measured
 // 2026-09-16), so the file stays near four seconds.
 const SEEDS = Array.from({ length: 20 }, (_, i) => i + 1)
@@ -65,7 +69,13 @@ function humanStep(game: EngineGame, rng: () => number): GameAction | null {
     if (options.length === 0) return { type: 'RESOLVE_PENDING_EFFECT', cancel: true }
     return { type: 'RESOLVE_PENDING_EFFECT', choiceId: options[Math.floor(rng() * options.length)].id }
   }
-  if (s.awaitingResponse) return s.awaitingResponse.aggressor === 'b' ? { type: 'RESPOND_TO_ATTACK', optOutIds: [] } : null
+  if (s.awaitingResponse) {
+    if (s.awaitingResponse.aggressor !== 'b') return null
+    // Withdraw everything the engine allows. When that is every target the
+    // attack is called off at no cost and the bot is back on its turn.
+    const { stealthyIds, omissibleIds } = s.awaitingResponse
+    return { type: 'RESPOND_TO_ATTACK', optOutIds: [...new Set([...stealthyIds, ...omissibleIds])] }
+  }
   if (s.pendingReport) return null
   if (s.activeBattle) {
     const results: Record<string, number> = {}

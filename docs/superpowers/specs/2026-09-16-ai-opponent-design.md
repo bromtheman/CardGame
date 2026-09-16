@@ -230,7 +230,7 @@ while (kind = botOwes(game, side)):
 |---|---|
 | `'turn'` | `END_TURN` |
 | `'response'` | `RESPOND_TO_ATTACK { optOutIds: [] }` |
-| `'decision'` | `DECIDE_BATTLE_REPORT { approve: true, repairs: [] }` |
+| `'decision'` | `DECIDE_BATTLE_REPORT { approve: false }` — reject: the one decision the non-submitter can always make; the policy approves whenever the engine allows |
 | `'choice'` | `RESOLVE_PENDING_EFFECT { cancel: true }` |
 
 The policy's output is only ever a suggestion; `applyAction` clones the game
@@ -319,7 +319,11 @@ battle resume correctly.
    hull there — so the only decision is *whether* to declare: the policy
    offers it when the sum of `effectiveMaterialCostOf` over its
    non-Inoffensive hulls in the zone is at least the sum over the enemy's.
-   A zone where it has only Inoffensive hulls is an engine rejection.
+   It never declares against a fleet the human could withdraw entirely
+   (every target Stealthy or omissible per `fleetAttackRosters`): such an
+   attack is called off at no cost and a stateless policy would re-declare
+   it forever. A zone where it has only Inoffensive hulls is an engine
+   rejection.
 3. `END_TURN`.
 
 Play before attack: hulls played this turn cannot strike a base (spec §3.4),
@@ -336,7 +340,9 @@ but they can be in a fleet battle, and a bigger fleet is the better battle.
   Candidates are ordered by `effectiveMaterialCostOf` descending (save the
   most valuable hull first) and taken while cumulative `repairCostOf` fits
   `state.resources[side].materials`. The engine's own affordability check
-  backstops any mismatch through the empty-repairs fallback.
+  backstops any mismatch through the bare approval that follows as the
+  second candidate; the driver's reject fallback (§5.2) is reached only by a
+  report nobody can approve.
 - **`'choice'`** — `RESOLVE_PENDING_EFFECT { choiceId }` for one of
   `pendingEffect.options` chosen uniformly by `rng`. Effect-aware choices are
   a follow-up (§12).
@@ -496,8 +502,10 @@ Recorded here and pointed at from the 2026-08-24 spec's decisions log.
 1. **The human reports every battle.** The defending-player-spawns-both-fleets
    rule (§3.5) already puts one human in charge of the fight; in a practice
    game that is always the human, whichever side declared.
-2. **The bot approves every report** and never submits one. Results are on the
-   honour system; a practice game is not evidence of anything.
+2. **The bot approves every report the engine lets it approve** and never
+   submits one. A report whose own repairs the submitter cannot afford is
+   rejected for resubmission (§5.2). Results are on the honour system; a
+   practice game is not evidence of anything.
 3. **The bot never concedes or abandons.** A game ends by base loss or by the
    human's concede/abandon.
 4. **Bot decks are built for the default deck rules.** A lobby whose

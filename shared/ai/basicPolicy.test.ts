@@ -90,6 +90,20 @@ describe('basicPolicy — turn', () => {
     expect(types(basicPolicy.candidates(viewFor(g, 'b', seq([0.5])), 'turn'))).toEqual(['ATTACK_ENEMY_FLEET', 'END_TURN'])
   })
 
+  it('never declares a fleet attack every defender could withdraw from', () => {
+    // A lone Stealthy defender: the human withdraws it at no cost, the attack
+    // is called off with the state unchanged, and a stateless policy would
+    // re-declare it forever (the livelock the final whole-branch review found).
+    const g = botTurn()
+    g.state.zones[0].baseHp.a = 0  // no base attack to get in the way
+    g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'mine-1', materialCost: 200000, playedOnTurn: 2 }))
+    g.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'ghost', materialCost: 50000, keywords: ['stealthy'] }))
+    expect(basicPolicy.candidates(viewFor(g, 'b', seq([0.5])), 'turn')).toEqual([{ type: 'END_TURN' }])
+    // One defender that cannot slip away is enough to make the fight real.
+    g.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'plain', materialCost: 50000 }))
+    expect(types(basicPolicy.candidates(viewFor(g, 'b', seq([0.5])), 'turn'))).toEqual(['ATTACK_ENEMY_FLEET', 'END_TURN'])
+  })
+
   it('skips a zone already activated this turn', () => {
     const g = botTurn()
     g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'mine-1', materialCost: 200000, playedOnTurn: 2 }))

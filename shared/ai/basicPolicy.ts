@@ -2,8 +2,8 @@ import { KEYWORDS, REPAIR_WINDOW_MIN_PERCENT, SURVIVE_HP_PERCENT, TRIGGERS } fro
 import type { GameAction } from '../engine/engineTypes.ts'
 import type { CardInstance, ZoneState } from '../engine/gameInit.ts'
 import {
-  battleParticipants, canAfford, effectiveMaterialCostOf, effectName, fragileInBattle, legalZonesFor,
-  otherSide, repairCostOf,
+  battleParticipants, canAfford, effectiveMaterialCostOf, effectName, fleetAttackRosters, fragileInBattle,
+  legalZonesFor, otherSide, repairCostOf,
 } from '../engine/index.ts'
 import type { BotView } from './botView.ts'
 
@@ -109,6 +109,15 @@ function playCandidates(view: BotView, zones: ZoneState[]): GameAction[] {
 // engine rejections — just try), then the fleet when the bot's non-Inoffensive
 // hulls are at least as costly as the enemy's. Spec §3.4 as amended
 // 2026-09-16: a fleet attack has no roster, so the only decision is whether.
+// The rosters come from the engine's own derivation (fleetAttackRosters), the
+// same one ATTACK_ENEMY_FLEET commits — so the force, the targets and the
+// withdrawable ids here are exactly what the declaration would produce.
+//
+// A fleet the human can withdraw entirely is never worth declaring: every
+// target Stealthy or omissible means the human either fights by choice or
+// calls the attack off at no cost (no activation is spent, the state is
+// unchanged), and a stateless policy would then re-declare it forever — the
+// livelock the final whole-branch review found. Spec §6.1.
 function attackCandidates(view: BotView, zones: ZoneState[]): GameAction[] {
   const out: GameAction[] = []
   const enemy = otherSide(view.side)
@@ -116,10 +125,11 @@ function attackCandidates(view: BotView, zones: ZoneState[]): GameAction[] {
     const mine = zone.cards[view.side]
     if (mine.length === 0 || zone.lastActivatedTurn === view.turnNumber) continue
     if (zone.baseHp[enemy] > 0) out.push({ type: 'ATTACK_ENEMY_BASE', zoneId: zone.id })
-    const theirs = zone.cards[enemy]
-    const force = mine.filter((c) => !c.keywords.includes(KEYWORDS.INOFFENSIVE))
-    if (theirs.length === 0 || force.length === 0) continue
-    if (strengthOf(force) >= strengthOf(theirs)) {
+    const rosters = fleetAttackRosters(view.state, view.side, zone.id)
+    if (!rosters || rosters.force.length === 0 || rosters.targets.length === 0) continue
+    const withdrawable = new Set([...rosters.stealthyIds, ...rosters.omissibleIds])
+    if (rosters.targets.every((t) => withdrawable.has(t.instanceId))) continue
+    if (strengthOf(rosters.force) >= strengthOf(rosters.targets)) {
       out.push({ type: 'ATTACK_ENEMY_FLEET', zoneId: zone.id })
     }
   }
