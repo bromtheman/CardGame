@@ -97,6 +97,50 @@ not "fix" that flag.
 - Debugging: `query_logs` for function logs; reproduce with a direct
   `supabase.functions.invoke` from a script (see testing.md E2E pattern).
 
+## Latency
+
+Three facts about where the time goes, measured from `function_edge_logs`
+(`execution_time_ms`) on 2026-09-16 and worth re-measuring after any change
+here. The query is at the bottom.
+
+- **The database is in `us-west-2`; functions run nearest the caller.** For a
+  US-East player that put every function execution in `us-east-1/2`, so each
+  sequential DB or auth round trip inside a call crossed the continent (three
+  in `battle-report`'s `fetch`/`submit`, more in `game-action`). Before the
+  fix: battle-report POST p50 622 ms / p90 1.0 s, game-action p50 929 ms /
+  p90 1.5 s. Every browser call now passes `region: FUNCTIONS_REGION`
+  (`frontend/src/lib/supabaseClient.ts`), and `issue` writes
+  `?forceFunctionRegion=us-west-2` into the endpoint it mints so the mod's
+  POST is pinned too, with no mod change. `x-sb-edge-region` on a response
+  (and in the logs) says where it actually ran.
+- **The `region` option sends an `x-region` header**, so every function's
+  CORS `Access-Control-Allow-Headers` lists it. A function deployed WITHOUT it
+  fails the preflight for every browser call, so: **deploy the four functions
+  before any frontend change that starts sending it.** Netlify and the
+  Supabase integration both fire on a push to `main`; a manual
+  `npm run functions:deploy` of all four first is how to avoid the window.
+- **Preflights were never cached.** No function set `Access-Control-Max-Age`,
+  so Chrome re-sent `OPTIONS` after 5 s — 410 preflights for 430 POSTs in one
+  day — each a full extra round trip (~150 ms of edge execution plus the
+  network) before the real request. All four now send `Max-Age: 7200`
+  (Chrome's cap).
+
+```sql
+-- query_logs: per-function execution time by region, last 24 h
+select log_attributes['request.pathname'] as path,
+       log_attributes['response.headers.x_sb_edge_region'] as region,
+       count() as n,
+       round(quantile(0.5)(toFloat64OrZero(log_attributes['execution_time_ms']))) as p50_ms,
+       round(quantile(0.9)(toFloat64OrZero(log_attributes['execution_time_ms']))) as p90_ms
+from logs where source = 'function_edge_logs' and log_attributes['request.method'] = 'POST'
+group by path, region order by path, n desc
+```
+
+The remaining per-call cost is structural: ~150 ms of edge overhead (an
+`OPTIONS` that does nothing measures that), `auth.getUser()` as a network
+call, and `select('*')` on `games` pulling a 9–28 KB `state` for functions
+that read five fields of it. Untouched so far.
+
 ## Shared-code sync (the manifest)
 
 Edge functions cannot import from outside their directory, so each carries a

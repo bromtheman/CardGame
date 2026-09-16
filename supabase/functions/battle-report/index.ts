@@ -30,10 +30,22 @@ import {
   sideForTeamIndex,
 } from './shared/battleReport.ts'
 
+// Two additions over the plain allow-all block, both measured in the edge logs
+// on 2026-09-16 (docs/claude/supabase.md, "Latency"):
+//
+//   * `x-region` in Allow-Headers: supabase-js sends it for a regional
+//     invocation (frontend/src/lib/supabaseClient.ts, FUNCTIONS_REGION). Miss
+//     it and the preflight fails, so NO browser call reaches the handler —
+//     which is why the functions must carry this before the frontend sends it.
+//   * Max-Age: without it Chrome re-sends OPTIONS after 5 s, so every poll and
+//     nearly every action paid a whole extra round trip (~150 ms of edge
+//     execution plus the network) before the real request. 7200 s is Chrome's
+//     cap. The other three functions carry the same block; keep them equal.
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-region',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Max-Age': '7200',
 }
 
 function json(status: number, body: unknown): Response {
@@ -50,6 +62,13 @@ function json(status: number, body: unknown): Response {
 const TOKEN_REJECTED =
   'This battle token is no longer valid. It may have expired, already been used, ' +
   'or belong to a battle that has finished. Download the battle from the card game again.'
+
+// The AWS region the project's database lives in (dashboard → project
+// settings). Written into the endpoint `issue` mints so the mod's POST runs
+// there too. Deliberately a plain string rather than a shared import: this
+// function syncs ONE shared file and this is a deployment fact, not part of
+// the wire contract. Its twin is FUNCTIONS_REGION in the frontend.
+const FUNCTIONS_REGION = 'us-west-2'
 
 function newToken(): string {
   const bytes = new Uint8Array(32)
@@ -165,7 +184,13 @@ Deno.serve(async (req) => {
       version: BATTLE_REPORT_WIRE_VERSION,
       token,
       // Server-authoritative, so the mod never has to be told where to post.
-      endpoint: `${supabaseUrl}/functions/v1/battle-report`,
+      // The query parameter pins execution to the database's region (the
+      // supabase-js `region` option does the same for the browser — see
+      // FUNCTIONS_REGION in frontend/src/lib/supabaseClient.ts). By default a
+      // function runs nearest the caller, which for a US-East player put each
+      // of `submit`'s three sequential database round trips across the
+      // continent. Pinning trades one longer client hop for three short ones.
+      endpoint: `${supabaseUrl}/functions/v1/battle-report?forceFunctionRegion=${FUNCTIONS_REGION}`,
       gameId,
       zoneId: activeBattle.zoneId,
       battleKey,

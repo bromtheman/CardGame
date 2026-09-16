@@ -97,6 +97,21 @@ async function signIn(prefix) {
 const rest = (p, opts) => api(`/rest/v1${p}`, opts)
 const fn = (name, token, body) => api(`/functions/v1/${name}`, { method: 'POST', token, body })
 
+// Exactly the request the FtD mod makes (BattleReporter.Post in the mod
+// repo): POST to the endpoint `issue` minted, verbatim, with a JSON body and
+// NO apikey or Authorization header at all. `region` is the edge region the
+// function ran in (`x-sb-edge-region`), so a scenario can prove the minted
+// endpoint pins execution to the database's region.
+async function modPost(endpoint, body) {
+  const res = await fetch(endpoint, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  })
+  const text = await res.text()
+  let parsed
+  try { parsed = text ? JSON.parse(text) : null } catch { parsed = text }
+  return { status: res.status, body: parsed, region: res.headers.get('x-sb-edge-region') }
+}
+
 // ------------------------------------------------------------------- cards
 
 async function builtIns(token) {
@@ -455,5 +470,5 @@ export {
   api, rest, fn, signIn,
   builtIns, buildDeck,
   startGame, cleanUp, report,
-  subscribeBroadcast,
+  subscribeBroadcast, modPost,
 }
