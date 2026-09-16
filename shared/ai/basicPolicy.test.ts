@@ -188,7 +188,7 @@ describe('basicPolicy — off-turn', () => {
     }
     const out = basicPolicy.candidates(viewFor(g, 'b', seq([0.0])), 'choice')
     expect(out).toHaveLength(3)
-    expect(new Set(out.map((a) => (a as { choiceId: string }).choiceId))).toEqual(new Set(['x', 'y', 'z']))
+    expect(out.map((a) => (a as { choiceId: string }).choiceId)).toEqual(['y', 'z', 'x'])
     expect(out.every((a) => a.type === 'RESOLVE_PENDING_EFFECT')).toBe(true)
   })
 
