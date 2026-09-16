@@ -403,8 +403,9 @@ Deno.serve(async (req) => {
       // A bot guest (spec §4.2): stamp the frozen flag START alone may write,
       // and load the whole built-in catalog so the bot's opening plays can
       // fire catalog effects. Off this path nothing below changes.
-      const { data: guestProfile } = await admin
+      const { data: guestProfile, error: guestError } = await admin
         .from('profiles').select('is_bot').eq('id', locked.guest_id).maybeSingle()
+      if (guestError) return fail(500, ['Failed to read the guest profile'])
       const guestIsBot = guestProfile?.is_bot === true
       const settings = guestIsBot
         ? { ...lockedParsed.settings, bot: { side: 'b' as const } }
