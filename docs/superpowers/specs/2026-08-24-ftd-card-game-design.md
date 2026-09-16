@@ -31,6 +31,7 @@ Reference material (read-only, do not port bugs):
 | Deck faction | Every deck selects a base faction (DWG/GT/LH/OW/SS/WF); it constrains built-in cards and attaches that faction's hero powers |
 | Hero powers | 4 universal (NEUTRAL) powers + per-faction powers from old BE `heroPowers.js`, seeded into a `hero_powers` table |
 | Fleet battle rosters (2026-09-16) | No selection: every eligible attacker in the zone fights every enemy vehicle there. Only defenders may withdraw — Stealthy, or a printed omission condition (3.4) |
+| Practice games (2026-09-16) | A server-driven bot (`PracticeAI`) fills the challenger seat; the human fights every battle in FTD and the bot approves every report. Rulings in [2026-09-16-ai-opponent-design.md](2026-09-16-ai-opponent-design.md) §11 |
 
 ## 2. Repository layout
 
