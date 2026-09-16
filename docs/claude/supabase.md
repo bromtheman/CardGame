@@ -10,8 +10,12 @@ Game", ref `wpgsjnjnvykxavaxibld`, operated through the Supabase MCP tools
 ## Edge functions
 
 Four functions, all deployed with `verify_jwt: false` — each does its own
-CORS handling in code, and three of them their own `getUser()` auth check. Do
-not "fix" that flag.
+CORS handling in code, and its own JWT check: `verifiedUserId` verifies the
+caller's token locally with `auth.getClaims()` against the project's ES256
+signing keys (JWKS cached per isolate), so no request pays a GoTrue round
+trip. Accepted trade (2026-09-16): a revoked session or deleted user stays
+valid until its token expires (1 h). Do not "fix" the flag, and do not
+recreate the verifying client per request — the JWKS cache lives on it.
 
 | Function | Role |
 |---|---|
@@ -21,9 +25,9 @@ not "fix" that flag.
 | `battle-report` | Prefill from the FtD mod: `issue`/`fetch` (browser, JWT) and `submit` (the mod, **token only**) |
 
 - ⚠ **`battle-report` is the one function where a caller with no Supabase
-  session is expected.** Its `submit` op deliberately never calls
-  `auth.getUser()` — a C# mod inside From The Depths has no session and must
-  never be given one. It authenticates with a hashed, single-use,
+  session is expected.** Its `submit` op deliberately never checks one
+  (`verifiedUserId` is called only by `issue`/`fetch`) — a C# mod inside From
+  The Depths has no session and must never be given one. It authenticates with a hashed, single-use,
   battle-scoped token minted by `issue` and embedded in the generated
   `.customBattle`. Every way a token can fail answers with **one opaque 401**,
   so an unauthenticated caller cannot probe which tokens exist; do not make
@@ -91,9 +95,10 @@ not "fix" that flag.
 - ⚠ **`npx tsc -p tsconfig.json --noEmit` does not typecheck edge functions.**
   The root tsconfig's `include` is `["shared", "supabase/seed"]`, so
   `supabase/functions/**` is outside it entirely (and `**/*.test.ts` is
-  excluded too). Careful reading is the only gate on edge-function code —
-  do not treat a green tsc as evidence that a change to `game-action` or
-  `lobby-action` compiles.
+  excluded too). **`npm run functions:check`** is the gate: Deno (via
+  `npx deno`, downloaded on first use) type-checks all four `index.ts` files
+  against the same `npm:@supabase/supabase-js@2` the deploy bundles. Run it
+  before any function deploy; a green tsc says nothing about them.
 - Debugging: `query_logs` for function logs; reproduce with a direct
   `supabase.functions.invoke` from a script (see testing.md E2E pattern).
 
@@ -136,10 +141,15 @@ from logs where source = 'function_edge_logs' and log_attributes['request.method
 group by path, region order by path, n desc
 ```
 
-The remaining per-call cost is structural: ~150 ms of edge overhead (an
-`OPTIONS` that does nothing measures that), `auth.getUser()` as a network
-call, and `select('*')` on `games` pulling a 9–28 KB `state` for functions
-that read five fields of it. Untouched so far.
+Two more, done the same day: **auth is local** (`getClaims`, above — a warm
+verification measured 0 ms against a ~30–70 ms in-region GoTrue call), and
+**independent round trips run in parallel** — `game-action`'s token check,
+`games` read and `game_players` read were three sequential hops that only
+ever needed the header and `gameId`; `battle-report`'s `issue`/`fetch` the
+same for two. The remaining per-call cost is structural: ~150 ms of edge
+overhead (an `OPTIONS` that does nothing measures that), cold starts, and
+`select('*')` on `games` pulling a 9–28 KB `state` for `battle-report`,
+which reads five fields of it.
 
 ## Shared-code sync (the manifest)
 

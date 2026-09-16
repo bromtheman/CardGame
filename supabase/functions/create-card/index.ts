@@ -23,6 +23,45 @@ function json(status: number, body: unknown): Response {
   })
 }
 
+// --- caller identity, verified locally --------------------------------------
+//
+// `getClaims` checks the JWT's signature against the project's public signing
+// keys (ES256 here) with WebCrypto, instead of `getUser()`'s round trip to
+// GoTrue on every request. The keys are fetched once and cached for ten
+// minutes ON THE CLIENT INSTANCE — which is why this client is module-scoped
+// and created lazily rather than per request: a fresh client each time would
+// just trade one network call for another.
+//
+// What changes: a session revoked, or a user deleted, mid-token stays valid
+// until that token expires (one hour). Accepted 2026-09-16 — nothing
+// player-facing hangs on that hour. What does not change: an expired,
+// tampered, or foreign-project token is still refused (the last through
+// getClaims' own getUser fallback for an unknown key id), and every 4xx
+// below still comes in the same order. The same block lives in all four
+// functions; keep them equal.
+let verifier: ReturnType<typeof createClient> | null = null
+async function verifiedUserId(
+  req: Request, supabaseUrl: string, anonKey: string,
+): Promise<string | null> {
+  const header = req.headers.get('Authorization') ?? ''
+  const jwt = header.startsWith('Bearer ') ? header.slice('Bearer '.length).trim() : ''
+  if (!jwt) return null
+  verifier ??= createClient(supabaseUrl, anonKey, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  })
+  try {
+    const { data, error } = await verifier.auth.getClaims(jwt)
+    if (error || !data) return null
+    const { sub, role } = data.claims
+    return role === 'authenticated' && typeof sub === 'string' && sub !== '' ? sub : null
+  } catch {
+    // A verification failure that is not an auth error (WebCrypto, a JWKS
+    // fetch that threw) reads as "not signed in", exactly as getUser()'s
+    // network failures did.
+    return null
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   if (req.method !== 'POST') return json(405, { errors: ['POST only'] })
@@ -34,12 +73,8 @@ Deno.serve(async (req) => {
     return json(500, { errors: ['Server misconfigured: missing Supabase environment'] })
   }
 
-  const authClient = createClient(supabaseUrl, anonKey, {
-    global: { headers: { Authorization: req.headers.get('Authorization') ?? '' } },
-  })
-  const { data: userData, error: userError } = await authClient.auth.getUser()
-  if (userError || !userData.user) return json(401, { errors: ['Not signed in'] })
-  const userId = userData.user.id
+  const userId = await verifiedUserId(req, supabaseUrl, anonKey)
+  if (!userId) return json(401, { errors: ['Not signed in'] })
 
   const admin = createClient(supabaseUrl, serviceKey)
   const { count } = await admin

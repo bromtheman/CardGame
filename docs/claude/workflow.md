@@ -8,7 +8,8 @@ backlog work.
 1. Feature work happens on a branch; `main` only moves by merge.
 2. Before proposing a merge, ALL gates pass on the branch
    (see [testing.md](testing.md)): `npx vitest run`,
-   `npx tsc -p tsconfig.json --noEmit`, `npm --prefix frontend run build`.
+   `npx tsc -p tsconfig.json --noEmit`, `npm --prefix frontend run build`,
+   and `npm run functions:check` when an edge function changed.
 3. **Secrets audit before every push** (standing user requirement). Grep the
    branch diff and any new files for secret material — service-role keys, JWTs,
    `sb_secret`, private keys:

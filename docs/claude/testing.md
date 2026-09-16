@@ -192,6 +192,7 @@ own storage and `AuthProvider` picks it up without a reload.
 npx vitest run
 npx tsc -p tsconfig.json --noEmit
 npm --prefix frontend run build
+npm run functions:check     # only if supabase/functions/** changed — tsc never reads them
 ```
 
 Note: the root tsconfig excludes `**/*.test.ts` / `**/*.spec.ts` (a Netlify
