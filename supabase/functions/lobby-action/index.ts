@@ -4,6 +4,11 @@ import type { DeckCardInfo } from './shared/engine/deckValidation.ts'
 import { buildInitialGame, secureRng, snapshotCard } from './shared/engine/gameInit.ts'
 import type { SnapshotCard } from './shared/engine/gameInit.ts'
 import { validateLobbySettings } from './shared/lobbySettings.ts'
+import { STARTING_TURN_NUMBER } from './shared/gameSettings.ts'
+import type { EngineGame } from './shared/engine/engineTypes.ts'
+import { basicPolicy } from './shared/ai/basicPolicy.ts'
+import { BOT_DECKS, isBotFaction } from './shared/ai/botDecks.ts'
+import { runBotUntilIdle } from './shared/ai/botDriver.ts'
 
 // Same block as battle-report/index.ts — the comment there says why x-region
 // and Max-Age are here. Keep the four functions equal.
@@ -76,7 +81,7 @@ Deno.serve(async (req) => {
 
   let body: {
     action?: unknown; lobbyId?: unknown; deckId?: unknown
-    ready?: unknown; settings?: unknown
+    ready?: unknown; settings?: unknown; faction?: unknown
   }
   try {
     body = await req.json()
@@ -250,6 +255,98 @@ Deno.serve(async (req) => {
     return json(200, { ok: true })
   }
 
+  // PracticeAI fills the challenger seat (2026-09-16 AI opponent spec §4.1).
+  // The bot occupies the seat exactly as a human would — guest_id, a deck row
+  // it owns, guest_faction, ready — so START below keeps its single path.
+  if (action === 'ADD_BOT') {
+    const faction = typeof body.faction === 'string' ? body.faction : ''
+    if (!isBotFaction(faction)) return json(400, { errors: ['Unknown AI faction'] })
+
+    const { data: lobby } = await admin
+      .from('lobbies').select('*').eq('id', lobbyId).maybeSingle()
+    if (!lobby) return json(404, { errors: ['Lobby not found'] })
+    if (lobby.host_id !== userId) return json(403, { errors: ['Only the host can add an AI opponent'] })
+    if (lobby.status !== 'open' || lobby.guest_id) {
+      return json(409, { errors: ['Lobby already has a challenger'] })
+    }
+
+    // Found by the flag, never by username (spec §3.1). Nothing else changes
+    // until the row exists, so deploying ahead of the bootstrap is safe.
+    const { data: botRow } = await admin
+      .from('profiles').select('id').eq('is_bot', true).order('created_at').limit(1).maybeSingle()
+    if (!botRow) return json(503, { errors: ['AI opponent is not provisioned'] })
+    const botId = botRow.id as string
+
+    // The bot's lists are built for the default deck rules (spec §11, ruling 4).
+    const parsed = validateLobbySettings(lobby.settings)
+    if ('errors' in parsed) return json(400, { errors: parsed.errors })
+    const deckRules = { ...DEFAULT_DECK_RULES, ...(parsed.settings.deckRules ?? {}) }
+
+    // Resolve names against the LIVE table — the rows the game will play.
+    const list = BOT_DECKS[faction]
+    const names = Object.keys(list)
+    const { data: cardRows, error: cardsError } = await admin
+      .from('cards')
+      .select('id, name, faction, vehicle_type, is_built_in, owner_id, meta')
+      .eq('is_built_in', true)
+      .in('faction', [faction, 'NEUTRAL'])
+      .in('name', names)
+    if (cardsError) return json(500, { errors: [cardsError.message] })
+    const byName = new Map((cardRows ?? []).map((c) => [c.name as string, c]))
+    const missing = names.filter((n) => !byName.has(n))
+    if (missing.length > 0) {
+      return json(409, {
+        errors: [`PracticeAI's ${faction} deck names cards the catalog does not have: ${missing.join(', ')} — run seed:verify`],
+      })
+    }
+    const cards: Record<string, number> = {}
+    for (const [name, copies] of Object.entries(list)) cards[byName.get(name)!.id as string] = copies
+    const infoMap = new Map<string, DeckCardInfo>(
+      (cardRows ?? []).map((c) => [c.id as string, {
+        id: c.id as string, isBuiltIn: c.is_built_in as boolean, faction: c.faction as string,
+        vehicleType: c.vehicle_type as string | null, ownerId: c.owner_id as string | null,
+        summonOnly: (c.meta as { summonOnly?: boolean } | null)?.summonOnly === true,
+        retired: (c.meta as { retired?: boolean } | null)?.retired === true,
+      }]),
+    )
+    const validity = validateDeck({ faction, cards }, infoMap, botId, deckRules)
+    if (!validity.valid) {
+      return json(409, { errors: ["PracticeAI's decks are built for the default deck rules", ...validity.errors] })
+    }
+
+    // Reuse a bot deck row whose cards match, else insert one. Never delete:
+    // lobbies.guest_deck_id is on-delete-set-null and a stale row is harmless.
+    const sameCards = (a: Record<string, number>, b: Record<string, number>): boolean => {
+      const ka = Object.keys(a).sort()
+      const kb = Object.keys(b).sort()
+      return ka.length === kb.length && ka.every((k, i) => k === kb[i] && a[k] === b[k])
+    }
+    const { data: existing } = await admin
+      .from('decks').select('id, cards').eq('owner_id', botId).eq('faction', faction)
+    let deckId = (existing ?? []).find((d) => sameCards(d.cards as Record<string, number>, cards))?.id as string | undefined
+    if (!deckId) {
+      const { data: inserted, error: insertError } = await admin
+        .from('decks')
+        .insert({ owner_id: botId, name: `PracticeAI ${faction}`, faction, cards })
+        .select('id')
+        .single()
+      if (insertError || !inserted) return json(500, { errors: [insertError?.message ?? 'Could not create the AI deck'] })
+      deckId = inserted.id as string
+    }
+
+    // Seat it, in the JOIN/KICK shape: a human who joined between the read
+    // and this write wins the race.
+    const { data: seated, error: seatError } = await admin
+      .from('lobbies')
+      .update({ guest_id: botId, guest_deck_id: deckId, guest_faction: faction, guest_ready: true })
+      .eq('id', lobbyId).eq('status', 'open').eq('host_id', userId).is('guest_id', null)
+      .select()
+      .maybeSingle()
+    if (seatError) return json(500, { errors: [seatError.message] })
+    if (!seated) return json(409, { errors: ['Lobby already has a challenger'] })
+    return json(200, { lobby: seated })
+  }
+
   if (action === 'START') {
     const { data: lobby } = await admin
       .from('lobbies').select('*').eq('id', lobbyId).maybeSingle()
@@ -302,6 +399,23 @@ Deno.serve(async (req) => {
       // this is the authoritative one.
       const lockedParsed = validateLobbySettings(locked.settings)
       if ('errors' in lockedParsed) return fail(400, lockedParsed.errors)
+
+      // A bot guest (spec §4.2): stamp the frozen flag START alone may write,
+      // and load the whole built-in catalog so the bot's opening plays can
+      // fire catalog effects. Off this path nothing below changes.
+      const { data: guestProfile } = await admin
+        .from('profiles').select('is_bot').eq('id', locked.guest_id).maybeSingle()
+      const guestIsBot = guestProfile?.is_bot === true
+      const settings = guestIsBot
+        ? { ...lockedParsed.settings, bot: { side: 'b' as const } }
+        : lockedParsed.settings
+      let catalog: SnapshotCard[] = []
+      if (guestIsBot) {
+        const { data: allRows, error: catalogError } = await admin
+          .from('cards').select('*').eq('is_built_in', true)
+        if (catalogError) return fail(500, ['Failed to load the card catalog'])
+        catalog = (allRows ?? []).map(snapshotCard)
+      }
 
       const { data: decks } = await admin
         .from('decks').select('*').in('id', [locked.host_deck_id, locked.guest_deck_id])
@@ -364,7 +478,7 @@ Deno.serve(async (req) => {
         gameId: crypto.randomUUID(),
         playerA: locked.host_id,
         playerB: locked.guest_id,
-        settings: lockedParsed.settings,
+        settings,
         deckA: { cards: hostCards, snapshots },
         deckB: { cards: guestCards, snapshots },
         factionA: String(hostDeck.faction),
@@ -373,11 +487,34 @@ Deno.serve(async (req) => {
         rng: secureRng,
       })
 
+      // The bot rolled first: it plays its opening turn before the row exists,
+      // so the human never loads a board the bot has not moved on. start_game_tx
+      // reads turnNumber/status/winnerId from p_game (migration
+      // 20260916210000); a human-first game passes the same keys at their
+      // starting values.
+      let game: EngineGame = {
+        ...built.game, status: 'active', winnerId: null, turnNumber: STARTING_TURN_NUMBER,
+        privates: { a: built.aPrivate, b: built.bPrivate },
+      }
+      if (guestIsBot && game.activePlayer === locked.guest_id) {
+        try {
+          game = runBotUntilIdle(
+            game, locked.guest_id, { rng: secureRng, newId: () => crypto.randomUUID(), catalog }, basicPolicy,
+          ).game
+        } catch (err) {
+          return fail(500, [`AI opponent failed on its opening turn: ${err instanceof Error ? err.message : String(err)}`])
+        }
+      }
+
       const { data: gameId, error: txError } = await admin.rpc('start_game_tx', {
         p_lobby_id: lobbyId,
-        p_game: built.game,
-        p_player_a_state: built.aPrivate,
-        p_player_b_state: built.bPrivate,
+        p_game: {
+          id: game.id, playerA: game.playerA, playerB: game.playerB, activePlayer: game.activePlayer,
+          settings: game.settings, state: game.state,
+          turnNumber: game.turnNumber, status: game.status, winnerId: game.winnerId ?? '',
+        },
+        p_player_a_state: game.privates.a,
+        p_player_b_state: game.privates.b,
       })
       if (txError) return fail(500, [txError.message])
       return json(200, { gameId })
