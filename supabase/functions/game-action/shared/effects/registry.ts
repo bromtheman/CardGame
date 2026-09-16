@@ -150,10 +150,13 @@ const ALL_META_KEYS = [...Object.values(TRIGGERS), 'costModifier']
 // name at all. Without this entry G2 reports the card as silent and the only
 // escapes are a KNOWN_GAPS entry the pass forbids or an EXEMPT one that would
 // be a lie.
+// `battleCap` (2026-09-16 spec M-3) joins them for slotDenial's reason: TG
+// Mirth Swarm prints one sentence, that sentence IS a rule read by joinBattle
+// (shared/engine/battleDeclare.ts), and the card names no effect at all.
 export const DATA_EFFECT_KEYS = [
   'additionalSpawns', 'resourceSurge', 'defensiveOmission', 'aircraftLock',
   'deployRequiresBattleLoss', 'noBaseDamage', 'deployRequiresAiVehicle',
-  'deployOrder', 'slotDenial',
+  'deployOrder', 'slotDenial', 'battleCap',
 ] as const
 
 // Spec §3.9: cards referencing unimplemented effects play as vanilla, with a

@@ -399,7 +399,7 @@ export const tgVehicles = [
     {
         name: 'Mirth Swarm',
         isBuiltIn: true,
-        cardText: '',
+        cardText: 'No more than one mirth swarm can participate in any one battle on a single side, even if spawned in by card effect',
         materialCost: 200000,
         blueprintCost: 200000,
         cpCost: 0,
@@ -412,6 +412,11 @@ export const tgVehicles = [
         keywords: [KEYWORDS.ROBOTIC, KEYWORDS.TEMPORARY, KEYWORDS.HALF_COST],
         meta: {
             summonOnly: true,
+            // M-3 (2026-09-16): read by joinBattle via battleCapReached —
+            // a rule, not an effect name, so the next capped card needs no
+            // engine edit. Must stay in DATA_EFFECT_KEYS: this card now has
+            // text and names no effect (G2).
+            battleCap: 1,
         }
     },
     {
@@ -434,7 +439,7 @@ export const tgVehicles = [
     {
         name: 'Mirth Factory',
         isBuiltIn: true,
-        cardText: 'Target friendly robotic vehicle. Whenever that vehicle is engaged in a fleet combat, spawn a Mirth swarm to fight along side it',
+        cardText: 'Target friendly AI ship. Whenever that vehicle is engaged in a fleet combat, spawn a Mirth swarm to fight along side it',
         materialCost: 60000,
         blueprintCost: 0,
         cpCost: 0,
@@ -451,8 +456,8 @@ export const tgVehicles = [
     {
         name: 'Obelisk',
         isBuiltIn: true,
-        cardText: 'Whenever this vehicle participates in a fleet battle, spawn a temporary Mirth swarm to fight on your side in the battlefield. You may only control one Obelisk per zone',
-        materialCost: 40000,
+        cardText: 'Whenever this vehicle participates in a fleet battle, spawn a temporary Mirth swarm to fight on your side in the battlefield. You may only control one Obelisk per zone.',
+        materialCost: 60000,
         blueprintCost: 32000,
         cpCost: 0,
         imageUrl: 'obelisk.png',
@@ -461,10 +466,10 @@ export const tgVehicles = [
         type: 'vehicle',
         faction: FACTIONS.TG,
         blueprintId: null,
-        keywords: [KEYWORDS.STEALTHY],
+        keywords: [],
         meta: {
             [TRIGGERS.ON_BATTLE_EFFECT]: 'obeliskBattle',
-            // One per zone PER SIDE (wave 8). A 40k ship that summons a free
+            // One per zone PER SIDE (wave 8). A 60k ship that summons a free
             // Mirth Swarm into every battle it joins multiplied a whole fleet
             // when stacked. Read by legalZonesFor, deployVehicle and moveEntry;
             // keyed on cardId, so a DWG-captured copy counts against the

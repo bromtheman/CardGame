@@ -160,7 +160,7 @@ describe('the TG faction cards, as the 2026-09-02 pass left them', () => {
     'Mirth Swarm': { materialCost: 200_000, blueprintCost: 200_000, vehicleType: 'plane', type: V, keywords: ['halfCost', 'robotic', 'temporary'] },
     'Havoc Factory': { materialCost: 25_000, blueprintCost: 0, vehicleType: null, type: A, keywords: [] },
     'Mirth Factory': { materialCost: 60_000, blueprintCost: 0, vehicleType: null, type: A, keywords: [] },
-    Obelisk: { materialCost: 40_000, blueprintCost: 32_000, vehicleType: 'ship', type: V, keywords: ['stealthy'] },
+    Obelisk: { materialCost: 60_000, blueprintCost: 32_000, vehicleType: 'ship', type: V, keywords: [] },
     Loathing: { materialCost: 225_000, blueprintCost: 268_000, vehicleType: 'ship', type: V, keywords: [] },
     Wonder: { materialCost: 700_000, blueprintCost: 865_000, vehicleType: 'ship', type: V, keywords: [] },
     Repurpose: { materialCost: 0, blueprintCost: 0, vehicleType: null, type: A, keywords: [] },

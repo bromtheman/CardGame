@@ -190,18 +190,45 @@ function lockBattle(
 //
 // Membership decides a summon's side (decision 18), so pushing onto the right
 // list is the whole of "which side did it join".
+//
+// M-3 (2026-09-16 spec): "no more than one mirth swarm can participate in any
+// one battle on a single side, even if spawned in by card effect". A DATA key
+// (`battleCap: n`) on the card, so the next capped card needs no engine edit
+// — the slotDenial/uniquePerZone shape — read strictly: a non-number or
+// non-positive value leaves the hull uncapped rather than unjoinable.
+//
+// Counts what is ALREADY fighting on that side, board hulls and summons alike
+// ("however it got there"), keyed on cardId like uniquePerZone so a copy
+// minted from the catalog matches a copy Drones put on the board. Exported so
+// the two spawners (obeliskBattle, the Factory escort) can pre-check and log a
+// skip instead of failing their trigger; joinBattle below checks it again so
+// no future spawner can bypass the rule.
+export function battleCapReached(
+  game: EngineGame, side: Side, card: { cardId: string; meta: Record<string, unknown> },
+): boolean {
+  const cap = card.meta.battleCap
+  if (typeof cap !== 'number' || !Number.isFinite(cap) || cap <= 0) return false
+  if (!game.state.activeBattle) return false
+  const fielded = lockRoster(game).filter((p) => p.side === side && p.entry.cardId === card.cardId).length
+  return fielded >= Math.floor(cap)
+}
+
 export function joinBattle(
   game: EngineGame, side: Side, instanceId: string, entry?: ZoneCardEntry,
 ): boolean {
   const battle = game.state.activeBattle
   if (!battle) return false
   if (battle.attackerIds.includes(instanceId) || battle.defenderIds.includes(instanceId)) return false
+  let joining: ZoneCardEntry | undefined = entry
   if (!entry) {
     const zone = zoneById(game.state, battle.zoneId)
-    if (!zone || !zone.cards[side].some((c) => c.instanceId === instanceId)) return false
-  } else {
-    battle.summons.push(entry)
+    joining = zone?.cards[side].find((c) => c.instanceId === instanceId) as ZoneCardEntry | undefined
+    if (!joining) return false
   }
+  // M-3. Checked BEFORE the summon is pushed, so a refused join leaves the
+  // battle exactly as it was.
+  if (battleCapReached(game, side, joining!)) return false
+  if (entry) battle.summons.push(entry)
   if (side === battle.aggressor) battle.attackerIds.push(instanceId)
   else battle.defenderIds.push(instanceId)
   return true

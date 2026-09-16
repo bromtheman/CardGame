@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { CATALOG_EFFECTS, RESOLVE_BYSTANDER_EFFECTS, effectFor, registerEffect } from './registry.ts'
-import { choice } from './primitives.ts'
+import { CATALOG_EFFECTS, DATA_EFFECT_KEYS, RESOLVE_BYSTANDER_EFFECTS, effectFor, registerEffect } from './registry.ts'
+import { choice, summonHulls } from './primitives.ts'
 import {
   ARGONAUT_COST_DELTA, BASE_DAMAGE_DIVISOR, BULL_SHARK_BASE_DAMAGE, CASH_ADVANCE_MATERIALS,
   EXCALIBUR_COST_DELTA, KEYWORDS, MATERIALS_PER_TURN, NOTHUNG_COST_DELTA, RESOLUTE_COST_DELTA,
@@ -8,7 +8,7 @@ import {
 } from '../gameSettings.ts'
 import { inst, makeCtx, makeGame, snap, zoneEntry } from '../engine/testFixtures.ts'
 import {
-  applyAction, declareForcedBattle, discardSnapshotOf, effectiveCostInGame, effectiveMaterialCostOf,
+  applyAction, battleCapReached, declareForcedBattle, discardSnapshotOf, effectiveCostInGame, effectiveMaterialCostOf,
   legalZonesFor,
   joinBattle,
   findVehicle,
@@ -4848,6 +4848,113 @@ describe('TG Obelisk — a Mirth Swarm battle summon (wave 7)', () => {
 })
 
 // ---------------------------------------------------------------------------
+// 2026-09-16 — M-3: "No more than one mirth swarm can participate in any one
+// battle on a single side, even if spawned in by card effect."
+//
+// A DATA key on Mirth Swarm (`battleCap: 1`), enforced at joinBattle — the one
+// function that appends to a live battle — and pre-checked by the two spawners
+// so a second summon is SKIPPED AND LOGGED rather than failing the trigger.
+describe('Mirth Swarm battle cap (2026-09-16 M-3)', () => {
+  const mirthSwarm = snap({
+    name: 'Mirth Swarm', faction: 'TG', vehicleType: 'plane', materialCost: 200_000,
+    keywords: [KEYWORDS.ROBOTIC, KEYWORDS.TEMPORARY, KEYWORDS.HALF_COST],
+    meta: { summonOnly: true, battleCap: 1 },
+  })
+  const havocSwarm = snap({
+    name: 'Havoc Swarm', faction: 'TG', vehicleType: 'plane', materialCost: 120_000,
+    keywords: [KEYWORDS.ROBOTIC, KEYWORDS.TEMPORARY, KEYWORDS.HALF_COST],
+    meta: { summonOnly: true },
+  })
+  const capCtx = () => makeCtx({ catalog: [mirthSwarm, havocSwarm] })
+  const obelisk = (instanceId: string, meta: Record<string, unknown> = {}) => zoneEntry({
+    instanceId, name: 'Obelisk', faction: 'TG', vehicleType: 'ship', materialCost: 60_000,
+    meta: { onBattleEffect: 'obeliskBattle', ...meta }, playedOnTurn: 1,
+  })
+  const fight = (game: EngineGame, attackerIds: string[], defenderIds: string[]) => {
+    if (!declareForcedBattle(game, capCtx(), { zoneId: 1, aggressor: 'a', attackerIds, defenderIds, cause: 'Test' })) {
+      throw new Error('battle not declared')
+    }
+    return game.state.activeBattle!
+  }
+  const swarmsOn = (battle: NonNullable<EngineGame['state']['activeBattle']>, ids: string[]) =>
+    battle.summons.filter((s) => s.name === 'Mirth Swarm' && ids.includes(s.instanceId)).length
+
+  it('two Obelisks on one side field ONE Mirth Swarm, and the second is logged as held back', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zones[0].cards.a.push(obelisk('ob1'), obelisk('ob2'))
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe', playedOnTurn: 1 }))
+    const battle = fight(game, ['ob1', 'ob2'], ['foe'])
+    expect(swarmsOn(battle, battle.attackerIds)).toBe(1)
+    expect(game.state.log.join('\n')).toContain('holds its Mirth Swarm back')
+    expect(game.state.log.join('\n')).not.toContain('could not resolve')
+  })
+
+  it('an Obelisk on EACH side fields one each — the cap is per side', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zones[0].cards.a.push(obelisk('ob1'))
+    game.state.zones[0].cards.b.push(obelisk('ob2'))
+    const battle = fight(game, ['ob1'], ['ob2'])
+    expect(swarmsOn(battle, battle.attackerIds)).toBe(1)
+    expect(swarmsOn(battle, battle.defenderIds)).toBe(1)
+  })
+
+  // The exact case M-2 makes reachable: Mirth Factory on an Obelisk.
+  it('an Obelisk escorted by a Mirth Factory still fields one Mirth Swarm', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zones[0].cards.a.push(obelisk('ob1', { factoryEscort: 'mirthFactoryEffect' }))
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe', playedOnTurn: 1 }))
+    const battle = fight(game, ['ob1'], ['foe'])
+    expect(battle.summons.map((s) => s.name)).toEqual(['Mirth Swarm'])
+  })
+
+  it('a Havoc Swarm escort is not capped — different card, different cardId', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zones[0].cards.a.push(obelisk('ob1', { factoryEscort: 'havocFactoryEffect' }))
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe', playedOnTurn: 1 }))
+    const battle = fight(game, ['ob1'], ['foe'])
+    expect(battle.summons.map((s) => s.name).sort()).toEqual(['Havoc Swarm', 'Mirth Swarm'])
+  })
+
+  // "However it got there": a BOARD Mirth Swarm (Drones) already in the
+  // battle counts, so the Obelisk's summon is held back.
+  it('counts a board Mirth Swarm already fighting on that side', () => {
+    const game = makeGame({ turnNumber: 3 })
+    const board = zoneEntry({ ...mirthSwarm, instanceId: 'drone1', playedOnTurn: 3 })
+    game.state.zones[0].cards.a.push(obelisk('ob1'), board)
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe', playedOnTurn: 1 }))
+    const battle = fight(game, ['ob1', 'drone1'], ['foe'])
+    expect(battle.summons).toHaveLength(0)
+  })
+
+  it('joinBattle itself refuses a capped hull, so no future spawner can bypass it', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'mine', playedOnTurn: 1 }))
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe', playedOnTurn: 1 }))
+    fight(game, ['mine'], ['foe'])
+    const [first, second] = summonHulls(game, capCtx(), 'Mirth Swarm', 2)!
+    expect(joinBattle(game, 'a', first.instanceId, first)).toBe(true)
+    expect(battleCapReached(game, 'a', second)).toBe(true)
+    expect(joinBattle(game, 'a', second.instanceId, second)).toBe(false)
+    expect(game.state.activeBattle!.summons).toHaveLength(1)
+  })
+
+  it('a hull without battleCap, or with a non-numeric one, is never capped', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'mine', playedOnTurn: 1 }))
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe', playedOnTurn: 1 }))
+    fight(game, ['mine'], ['foe'])
+    const havocs = summonHulls(game, capCtx(), 'Havoc Swarm', 2)!
+    for (const h of havocs) expect(joinBattle(game, 'a', h.instanceId, h)).toBe(true)
+    const typo = { ...havocs[0], instanceId: 'typo', meta: { battleCap: '1' } }
+    expect(battleCapReached(game, 'a', typo)).toBe(false)
+  })
+
+  it('battleCap is a recognised data key, so Mirth Swarm can carry text and no effect name', () => {
+    expect([...DATA_EFFECT_KEYS]).toContain('battleCap')
+  })
+})
+
+// ---------------------------------------------------------------------------
 // Wave 7, group C — TG Hysteria.
 //
 // "When this vehicle is played, you may target any enemy vehicle on the board
@@ -5725,6 +5832,39 @@ describe('TG Havoc/Mirth Factory — a rider on a hull (wave 7)', () => {
   })
 
   it('E-5: refuses a friendly hull that is not ROBOTIC', () => {
+    const r = playOnto('plain1', 'Havoc', (g) => {
+      g.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'plain1', keywords: [], playedOnTurn: 1 }))
+    })
+    expect(r).toMatchObject({ ok: false, status: 400 })
+  })
+
+  // M-2 (2026-09-16): Mirth Factory targets a friendly AI SHIP — isAiShip,
+  // the M-1 predicate — while Havoc Factory still reads ROBOTIC.
+  it('M-2: Mirth Factory accepts a friendly built-in ship that is not ROBOTIC', () => {
+    const r = playOnto('plain1', 'Mirth', (g) => {
+      g.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'plain1', keywords: [], playedOnTurn: 1 }))
+    })
+    if (!r.ok) throw new Error(r.error)
+    expect(findVehicle(r.game.state, 'plain1')!.entry.meta.factoryEscort).toBe('mirthFactoryEffect')
+  })
+
+  it('M-2: Mirth Factory refuses a ROBOTIC hull that is not a ship', () => {
+    const r = playOnto('bot-plane', 'Mirth', (g) => {
+      g.state.zones[0].cards.a.push(zoneEntry({
+        instanceId: 'bot-plane', vehicleType: 'plane', keywords: [KEYWORDS.ROBOTIC], playedOnTurn: 1,
+      }))
+    })
+    expect(r).toMatchObject({ ok: false, status: 400 })
+  })
+
+  it('M-2: Mirth Factory refuses a player-made ship', () => {
+    const r = playOnto('custom1', 'Mirth', (g) => {
+      g.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'custom1', isBuiltIn: false, playedOnTurn: 1 }))
+    })
+    expect(r).toMatchObject({ ok: false, status: 400 })
+  })
+
+  it('M-2: Havoc Factory still refuses a plain built-in ship — its text says robotic', () => {
     const r = playOnto('plain1', 'Havoc', (g) => {
       g.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'plain1', keywords: [], playedOnTurn: 1 }))
     })

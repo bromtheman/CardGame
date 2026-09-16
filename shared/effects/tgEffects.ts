@@ -1,8 +1,8 @@
 import {
-  catalogCard, choice, enemyVehicleOptions, friendlyVehicleOptions, grant, mintHull, spawnVehicles,
+  catalogCard, choice, enemyVehicleOptions, friendlyVehicleOptions, grant, isAiShip, mintHull, spawnVehicles,
   summonHulls,
 } from './primitives.ts'
-import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
+import { battleCapReached, declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
 import { checkVictory, copyMeta, findVehicle, grantKeywordsTo, otherSide, zoneById } from '../engine/gameEngine.ts'
 import { FACTORY_ESCORT_KEY, returnToHand, sacrificeEntry } from '../engine/battleTriggers.ts'
 import { effectiveMaterialCostOf } from '../engine/placement.ts'
@@ -72,9 +72,7 @@ registerEffect('fearOnPlay', spawnVehicles({
 // ✅ Mirth Swarm already prints TEMPORARY, so the word in the card text is
 // decorative and no keyword grant is passed.
 //
-// ⚠ Obelisk is STEALTHY, so an ATTACK_ENEMY_FLEET naming it raises the
-// response window instead of locking — and DP2's whole dispatch then happens
-// on RESPOND_TO_ATTACK. Live scenarios must go through that action.
+// M-3: at most one Mirth Swarm per side per battle — see battleCapReached.
 registerEffect('obeliskBattle', ({ game, actor, ctx, card, battle }) => {
   if (!battle || battle.phase !== 'lock' || !battle.isParticipant) return true
   const summons = summonHulls(game, ctx, 'Mirth Swarm', 1)
@@ -83,6 +81,12 @@ registerEffect('obeliskBattle', ({ game, actor, ctx, card, battle }) => {
   // failure and DP2's dispatcher logs it rather than throwing.
   if (!summons) return false
   const [swarm] = summons
+  // M-3: one Mirth Swarm per side per battle, however it got there. A second
+  // is SKIPPED and said so — not a failed trigger, the card did nothing wrong.
+  if (battleCapReached(game, actor, swarm)) {
+    game.state.log.push(`${card.name} holds its ${swarm.name} back — one already fights on its side`)
+    return true
+  }
   if (!joinBattle(game, actor, swarm.instanceId, swarm)) return false
   game.state.log.push(`${card.name} calls in a ${swarm.name}`)
   return true
@@ -585,8 +589,9 @@ registerEffect('vengefulBattle', ({ game, actor, card, battle }) => {
   return true
 }, { resolveBystander: true })
 
-// "Target friendly robotic vehicle. Whenever that vehicle is engaged in a
-// fleet combat, spawn a Havoc/Mirth swarm to fight along side it."
+// "Target friendly robotic vehicle." (Havoc) / "Target friendly AI ship."
+// (Mirth). Whenever that vehicle is engaged in a fleet combat, spawn a
+// Havoc/Mirth swarm to fight along side it.
 //
 // state.zoneEffects is per-ZONE. This is per-HULL, which is new — and the
 // target is a live ZoneCardEntry with its own meta, so the trigger is STAMPED
@@ -615,8 +620,9 @@ registerEffect('vengefulBattle', ({ game, actor, card, battle }) => {
 //
 // ⚠ Ruling E-5: PLAY_CARD_TARGETING_CARD_ON_FIELD checks only
 // findVehicle(targetInstanceId) — NOT ownership — so this validates own-side
-// AND robotic itself, or either Factory could be played onto an enemy hull.
-function factory(effectName: string, swarmName: string): EffectFn {
+// AND the card's own target predicate, or either Factory could be played onto
+// an enemy hull.
+function factory(effectName: string, swarmName: string, eligible: (e: ZoneCardEntry) => boolean): EffectFn {
   return ({ game, actor, ctx, card, battle, targetInstanceId }) => {
     // Escort half: dispatched at battle lock off the stamp. `battle` is the
     // only thing distinguishing the two entries — dwgWatersEffect's shape.
@@ -625,6 +631,12 @@ function factory(effectName: string, swarmName: string): EffectFn {
       const summons = summonHulls(game, ctx, swarmName, 1)
       if (!summons) return false
       const [hull] = summons
+      // M-3 (2026-09-16): Mirth Swarm prints battleCap: 1. Skipped and logged,
+      // never failed — obeliskBattle's shape.
+      if (battleCapReached(game, actor, hull)) {
+        game.state.log.push(`${card.name} holds its ${swarmName} back — one already fights on its side`)
+        return true
+      }
       if (!joinBattle(game, actor, hull.instanceId, hull)) return false
       game.state.log.push(`A ${swarmName} joins the battle alongside ${card.name}`)
       return true
@@ -633,15 +645,21 @@ function factory(effectName: string, swarmName: string): EffectFn {
     if (typeof targetInstanceId !== 'string') return false
     const found = findVehicle(game.state, targetInstanceId)
     if (!found || found.side !== actor) return false
-    if (!found.entry.keywords.includes(KEYWORDS.ROBOTIC)) return false
+    if (!eligible(found.entry)) return false
     found.entry.meta = { ...found.entry.meta, [FACTORY_ESCORT_KEY]: effectName }
     game.state.log.push(`${card.name} is assigned to ${found.entry.name}`)
     return true
   }
 }
 
-registerEffect('havocFactoryEffect', factory('havocFactoryEffect', 'Havoc Swarm'), { needsCatalog: true })
-registerEffect('mirthFactoryEffect', factory('mirthFactoryEffect', 'Mirth Swarm'), { needsCatalog: true })
+// Havoc Factory: "Target friendly robotic vehicle." — unchanged.
+registerEffect('havocFactoryEffect', factory(
+  'havocFactoryEffect', 'Havoc Swarm', (e) => e.keywords.includes(KEYWORDS.ROBOTIC),
+), { needsCatalog: true })
+// Mirth Factory: "Target friendly AI ship." (2026-09-16 M-2) — the M-1
+// predicate, so TG's robotic non-ships stop being targets and Obelisk, a
+// built-in TG ship, becomes one. The own-side check above stays (ruling E-5).
+registerEffect('mirthFactoryEffect', factory('mirthFactoryEffect', 'Mirth Swarm', isAiShip), { needsCatalog: true })
 
 // "Target a friendly and enemy vehicle. They can be in different zones. they
 // 1v1."
