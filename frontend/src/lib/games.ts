@@ -75,3 +75,21 @@ export function useUsernames(ids: (string | null | undefined)[]) {
     },
   })
 }
+
+// Username plus the bot flag, for the one place that needs both: the lobby
+// seat's "AI" pill. Game pages read botSideOf(settings) instead.
+export interface ProfileSummary { username: string; isBot: boolean }
+
+export function useProfiles(ids: (string | null | undefined)[]) {
+  const clean = [...new Set(ids.filter((x): x is string => !!x))].sort()
+  return useQuery({
+    queryKey: ['profiles', clean],
+    enabled: clean.length > 0,
+    queryFn: async (): Promise<Map<string, ProfileSummary>> => {
+      const { data, error } = await supabase
+        .from('profiles').select('id, username, is_bot').in('id', clean)
+      if (error) throw error
+      return new Map(data.map((p) => [p.id, { username: p.username, isBot: p.is_bot }]))
+    },
+  })
+}

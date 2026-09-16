@@ -438,13 +438,14 @@ function FtdResultBanner({
 // component (via a key on the battle's identity) whenever a *new* battle
 // starts, so this local form state never leaks from one battle into another.
 export function BattleOverlay({
-  state, mySide, send, busy, gameId, onConcede,
+  state, mySide, send, busy, gameId, practice, onConcede,
 }: {
   state: PublicGameState
   mySide: Side
   send: (action: GameAction) => Promise<void>
   busy: boolean
   gameId: string
+  practice: boolean
   onConcede: () => void
 }) {
   const battle = state.activeBattle
@@ -561,7 +562,11 @@ export function BattleOverlay({
         <p className="mt-1 text-sm text-ocean-300">
           Spawn distance: <span className="font-bold text-parchment-100">{battle.distanceM} m</span>
         </p>
-        {deploy && (
+        {practice ? (
+          <p className="mt-1 text-sm font-bold text-brass-400">
+            Practice game — you spawn both fleets, run the fight and submit the report; the AI approves it automatically.
+          </p>
+        ) : deploy && (
           <p className="mt-1 text-sm font-bold text-brass-400">
             {deploy.cancelled
               ? 'Deployment order: the two fleets demand opposite directives — they cancel. Spawn in the normal order.'

@@ -5,11 +5,12 @@ import { DEFAULT_LOBBY_SETTINGS, materialsPerTurnOf, validateLobbySettings } fro
 import type { LobbySettings } from '@shared/lobbySettings'
 import { MAX_MATERIALS_PER_TURN, MAX_ZONE_BASE_HP, MIN_MATERIALS_PER_TURN, ZONE_TYPES } from '@shared/gameSettings'
 import { shortHandNumber } from '@shared/format'
+import { BOT_FACTIONS } from '@shared/ai/botDecks'
 import { BoardPreview } from '../components/BoardPreview'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { useAuth } from '../lib/auth'
 import { useDecksQuery } from '../lib/decks'
-import { useUsernames } from '../lib/games'
+import { useProfiles } from '../lib/games'
 import { canStart, lobbyAction, lobbyVerdict, seatOf, useLobbyQuery } from '../lib/lobbies'
 import { useRealtimeInvalidate } from '../lib/realtime'
 import { supabase } from '../lib/supabaseClient'
@@ -41,7 +42,7 @@ export function LobbyPage() {
   const seat = lobby ? seatOf(lobby, me) : null
   if (seat !== null) wasSeatedRef.current = true
 
-  const { data: names } = useUsernames([lobby?.host_id, lobby?.guest_id])
+  const { data: profiles } = useProfiles([lobby?.host_id, lobby?.guest_id])
 
   useEffect(() => {
     if (isLoading || leavingRef.current) return
@@ -91,6 +92,11 @@ export function LobbyPage() {
 
   const kick = () => run(async () => {
     await lobbyAction({ action: 'KICK', lobbyId: id! })
+    await refresh()
+  })
+
+  const addBot = (faction: string) => run(async () => {
+    await lobbyAction({ action: 'ADD_BOT', lobbyId: id!, faction })
     await refresh()
   })
 
@@ -183,23 +189,22 @@ export function LobbyPage() {
       <div className="grid gap-3 md:grid-cols-[1.15fr_1fr]">
         <section className="flex flex-col gap-2">
           <Seat
-            label="Host" name={names?.get(lobby.host_id) ?? '…'} ready={lobby.host_ready}
+            label="Host" name={profiles?.get(lobby.host_id)?.username ?? '…'} ready={lobby.host_ready}
             mine={isHost} decks={decks ?? []} deckId={isHost ? myDeckId : ''}
             faction={isHost ? undefined : theirFaction}
             onDeck={setDeck} busy={busy}
           />
           {lobby.guest_id ? (
             <Seat
-              label="Challenger" name={names?.get(lobby.guest_id) ?? '…'} ready={lobby.guest_ready}
+              label="Challenger" name={profiles?.get(lobby.guest_id)?.username ?? '…'} ready={lobby.guest_ready}
               mine={!isHost} decks={decks ?? []} deckId={!isHost ? myDeckId : ''}
               faction={isHost ? theirFaction : undefined}
               onDeck={setDeck} busy={busy}
               onKick={isHost ? kick : undefined}
+              isBot={profiles?.get(lobby.guest_id)?.isBot ?? false}
             />
           ) : (
-            <div className="rounded border border-dashed border-ocean-600 bg-ocean-900/40 p-6 text-center text-ocean-300">
-              An empty berth. Share this page's link to fill it.
-            </div>
+            <EmptySeat isHost={isHost} busy={busy} onAddBot={addBot} />
           )}
         </section>
 
@@ -266,7 +271,7 @@ export function LobbyPage() {
   )
 }
 
-function Seat({ label, name, ready, mine, decks, deckId, faction, onDeck, busy, onKick }: {
+function Seat({ label, name, ready, mine, decks, deckId, faction, onDeck, busy, onKick, isBot }: {
   label: string
   name: string
   ready: boolean
@@ -280,6 +285,7 @@ function Seat({ label, name, ready, mine, decks, deckId, faction, onDeck, busy, 
   onDeck: (deckId: string) => void
   busy: boolean
   onKick?: () => void
+  isBot?: boolean
 }) {
   return (
     <div className={`rounded border p-3 ${ready ? 'border-brass-400' : 'border-ocean-600'} bg-ocean-900/60`}>
@@ -288,6 +294,9 @@ function Seat({ label, name, ready, mine, decks, deckId, faction, onDeck, busy, 
         <span className="font-bold text-parchment-100">{name}</span>
         {faction && (
           <span className="rounded-full bg-ocean-800 px-2 py-0.5 text-xs text-ocean-300">{faction}</span>
+        )}
+        {isBot && (
+          <span className="rounded-full bg-brass-400/20 px-2 py-0.5 text-xs font-bold text-brass-400">AI</span>
         )}
         <span className={`ml-auto rounded-full px-2 py-0.5 text-xs font-bold ${
           ready ? 'bg-brass-400 text-ocean-950' : 'bg-ocean-800 text-ocean-300'
@@ -307,6 +316,34 @@ function Seat({ label, name, ready, mine, decks, deckId, faction, onDeck, busy, 
           <option value="">Your deck…</option>
           {decks.map((d) => <option key={d.id} value={d.id}>{d.name} ({d.faction})</option>)}
         </select>
+      )}
+    </div>
+  )
+}
+
+// The host's view of an empty challenger berth offers PracticeAI (2026-09-16
+// AI opponent spec §7); a guest or a browser still sees the invitation.
+function EmptySeat({ isHost, busy, onAddBot }: {
+  isHost: boolean
+  busy: boolean
+  onAddBot: (faction: string) => void
+}) {
+  const [faction, setFaction] = useState<string>(BOT_FACTIONS[0])
+  return (
+    <div className="rounded border border-dashed border-ocean-600 bg-ocean-900/40 p-6 text-center text-ocean-300">
+      <p>An empty berth. Share this page's link to fill it.</p>
+      {isHost && (
+        <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+          <label className="text-sm" htmlFor="bot-faction">Or practise against</label>
+          <select id="bot-faction" className="rounded bg-ocean-950 p-2 text-parchment-100" value={faction}
+            disabled={busy} onChange={(e) => setFaction(e.target.value)}>
+            {BOT_FACTIONS.map((f) => <option key={f} value={f}>{f}</option>)}
+          </select>
+          <button type="button" disabled={busy} onClick={() => onAddBot(faction)}
+            className="rounded bg-brass-400 px-3 py-2 text-sm font-bold text-ocean-950 disabled:opacity-50">
+            Add AI opponent
+          </button>
+        </div>
       )}
     </div>
   )
