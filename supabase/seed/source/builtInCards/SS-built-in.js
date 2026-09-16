@@ -21,7 +21,7 @@ export const ssVehicles = [
     },{
         name: 'Victoria',
         isBuiltIn: true,
-        cardText: 'When this vehicle is played, pick one SS ship in hand and reduce its cost by 75k',
+        cardText: 'When played, pick one AI ship in hand and reduce its cost by 75k',
         materialCost: 250000,
         blueprintCost: 270185,
         cpCost: 0,
@@ -39,7 +39,7 @@ export const ssVehicles = [
     {
         name: 'Trondheim',
         isBuiltIn: true,
-        cardText: 'When this vehicle is destroyed, draw an SS ship from your deck and reduce its cost by 75k',
+        cardText: 'When this vehicle is destroyed, draw an AI ship and reduce its cost by 75k',
         materialCost: 375000,
         blueprintCost: 393000,
         cpCost: 0,
@@ -89,7 +89,7 @@ export const ssVehicles = [
     },{
         name: 'Excalibur',
         isBuiltIn: true,
-        cardText: 'Pick one SS ship in hand and reduce its cost by 200k',
+        cardText: 'Pick one AI ship in hand and reduce its cost by 200k',
         materialCost: 550000,
         blueprintCost: 553900,
         cpCost: 0,
@@ -194,7 +194,7 @@ export const ssVehicles = [
     }, {
         name: 'Resolute',
         isBuiltIn: true,
-        cardText: 'When this vehicle is played, draw an SS ship from your deck and reduce its cost by 40k',
+        cardText: 'When this vehicle is played, draw an AI ship from your deck. reduce its cost by 40k',
         materialCost: 60000,
         blueprintCost: 63300,
         cpCost: 0,
@@ -269,7 +269,7 @@ export const ssVehicles = [
      {
         name: 'Argonaut',
         isBuiltIn: true,
-        cardText: 'When this vehicle is destroyed, reduce the cost of a random SS ship in your hand by 50k',
+        cardText: 'When this is destroyed, reduce the cost of a random AI ship in your hand by 50k',
         materialCost: 90000,
         blueprintCost: 94000,
         cpCost: 0,
@@ -335,7 +335,7 @@ export const ssVehicles = [
      {
         name: 'Nothung',
         isBuiltIn: true,
-        cardText: 'When this vehicle is played, reduce the cost of every SS ship in your hand by 40k',
+        cardText: 'When played, reduce the cost of all AI ships in your hand by 40k',
         materialCost: 400000,
         blueprintCost: 478000,
         cpCost: 0,

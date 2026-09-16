@@ -354,27 +354,27 @@ describe('excaliburEffect', () => {
     expect(r.game.state.log.some((l) => l.includes('deployed to zone 1'))).toBe(true)
   })
 
-  // R-5: the filter narrowed from "built-in" to faction SS. A built-in DWG ship
-  // used to qualify and now does not.
-  it('refuses a built-in ship of another faction', () => {
+  // M-1 (2026-09-16): "AI ship" is any BUILT-IN ship, whatever its faction —
+  // the reverse of 2026-09-02's R-5. A built-in DWG ship qualifies again…
+  it('accepts a built-in ship of another faction', () => {
     const game = makeGame()
     const target = inst({ faction: 'DWG', isBuiltIn: true, type: 'vehicle', vehicleType: 'ship' })
     game.privates.a.hand.push(target)
     expect(effectFor('excaliburEffect')!({
       game, actor: 'a', card: inst(), ctx: makeCtx(), targetInstanceId: target.instanceId,
-    })).toBe(false)
+    })).toBe(true)
+    expect(game.privates.a.hand[0].meta.costDelta).toBe(EXCALIBUR_COST_DELTA)
   })
 
-  // …and a PLAYER-MADE SS ship now does qualify, which the old isBuiltIn
-  // filter refused. This is the half of R-5 a "narrowing" summary hides.
-  it('accepts a player-made SS ship', () => {
+  // …and a PLAYER-MADE SS ship no longer does. Motivation: a DWG-stolen SS
+  // card must keep working in a hand holding no SS ships.
+  it('refuses a player-made SS ship', () => {
     const game = makeGame()
     const target = inst({ faction: 'SS', isBuiltIn: false, type: 'vehicle', vehicleType: 'ship' })
     game.privates.a.hand.push(target)
     expect(effectFor('excaliburEffect')!({
       game, actor: 'a', card: inst(), ctx: makeCtx(), targetInstanceId: target.instanceId,
-    })).toBe(true)
-    expect(game.privates.a.hand[0].meta.costDelta).toBe(EXCALIBUR_COST_DELTA)
+    })).toBe(false)
   })
 })
 
@@ -3439,19 +3439,23 @@ describe('SS Nothung — a discount across the whole hand', () => {
       inst({ name: 'SS Sub', faction: 'SS', type: 'vehicle', vehicleType: 'sub' }),
       inst({ name: 'SS Ability', faction: 'SS', type: 'ability', vehicleType: null }),
       inst({ name: 'DWG Ship', faction: 'DWG', type: 'vehicle', vehicleType: 'ship' }),
+      inst({ name: 'Custom SS Ship', faction: 'SS', isBuiltIn: false, type: 'vehicle', vehicleType: 'ship' }),
     )
   }
 
-  it('discounts every SS ship in hand and nothing else', () => {
+  // M-1 (2026-09-16): every BUILT-IN ship in hand, of any faction. A
+  // player-made SS ship is the one that no longer qualifies.
+  it('discounts every AI ship in hand and nothing else', () => {
     const game = makeGame()
     hand(game)
     expect(effectFor('nothungOnPlay')!({ game, actor: 'a', card: inst({ name: 'Nothung' }), ctx: makeCtx() })).toBe(true)
     const byName = new Map(game.privates.a.hand.map((c) => [c.name, c.meta.costDelta]))
     expect(byName.get('SS Ship')).toBe(NOTHUNG_COST_DELTA)
     expect(byName.get('SS Ship 2')).toBe(-10_000 + NOTHUNG_COST_DELTA)
+    expect(byName.get('DWG Ship')).toBe(NOTHUNG_COST_DELTA)
     expect(byName.get('SS Sub')).toBeUndefined()
     expect(byName.get('SS Ability')).toBeUndefined()
-    expect(byName.get('DWG Ship')).toBeUndefined()
+    expect(byName.get('Custom SS Ship')).toBeUndefined()
   })
 
   it('leaves the OPPONENT hand alone', () => {
@@ -3865,7 +3869,7 @@ describe('SS Victoria — a discount on an SS ship in hand', () => {
   })
 
   it.each([
-    ['a non-SS ship', { faction: 'DWG' }],
+    ['a player-made ship', { isBuiltIn: false }],
     ['an SS sub', { vehicleType: 'sub' }],
     ['an SS ability', { type: 'ability' }],
   ])('refuses %s', (_label, over) => {
@@ -3875,6 +3879,17 @@ describe('SS Victoria — a discount on an SS ship in hand', () => {
     expect(effectFor('victoriaOnPlay')!({
       game, actor: 'a', card: victoria(), ctx: makeCtx(), targetInstanceId: target.instanceId,
     })).toBe(false)
+  })
+
+  // M-1: a built-in ship of ANY faction is an AI ship.
+  it('accepts a built-in ship of another faction', () => {
+    const game = makeGame()
+    const target = ssShip({ faction: 'DWG' })
+    game.privates.a.hand.push(target)
+    expect(effectFor('victoriaOnPlay')!({
+      game, actor: 'a', card: victoria(), ctx: makeCtx(), targetInstanceId: target.instanceId,
+    })).toBe(true)
+    expect(game.privates.a.hand[0].meta.costDelta).toBe(VICTORIA_COST_DELTA)
   })
 
   // DP6, Excalibur's own path: a VEHICLE carrying playOnCardEffect deploys to
@@ -6845,14 +6860,15 @@ describe('SS Cash advance — 150k and a card', () => {
 })
 
 describe('SS Trondheim and Resolute — a discounted SS ship out of the deck', () => {
-  // The SS ship is pushed LAST, with two non-matches ahead of it, so the
-  // draw can only be explained by the FILTER (faction + type + vehicleType)
-  // picking it out — not by fixture order. A "grab deck[0]" regression would
-  // return 'SS Sub' here and fail every assertion below.
+  // The AI ship is pushed LAST, with two non-matches ahead of it, so the draw
+  // can only be explained by the FILTER (isBuiltIn + type + vehicleType)
+  // picking it out — not by fixture order. Since M-1 the non-matches are an SS
+  // sub and a PLAYER-MADE SS ship; a "grab deck[0]" regression would return
+  // 'SS Sub' here and fail every assertion below.
   const deckOf = (game: EngineGame) => {
     game.privates.a.deck.push(
       inst({ name: 'SS Sub', faction: 'SS', type: 'vehicle', vehicleType: 'sub' }),
-      inst({ name: 'DWG Ship', faction: 'DWG', type: 'vehicle', vehicleType: 'ship' }),
+      inst({ name: 'Home-Brew', faction: 'SS', isBuiltIn: false, type: 'vehicle', vehicleType: 'ship' }),
       inst({ name: 'SS Ship A', faction: 'SS', type: 'vehicle', vehicleType: 'ship', materialCost: 300_000 }),
     )
   }
@@ -6860,14 +6876,25 @@ describe('SS Trondheim and Resolute — a discounted SS ship out of the deck', (
   it.each([
     ['trondheimOnDeath', TRONDHEIM_COST_DELTA],
     ['resoluteOnPlay', RESOLUTE_COST_DELTA],
-  ])('%s pulls an SS SHIP and stamps %i on it', (name, delta) => {
+  ])('%s pulls an AI SHIP and stamps %i on it', (name, delta) => {
     const game = makeGame()
     deckOf(game)
     expect(effectFor(name)!({ game, actor: 'a', card: inst(), ctx: makeCtx() })).toBe(true)
     expect(game.privates.a.hand.map((c) => c.name)).toEqual(['SS Ship A'])
     expect(game.privates.a.hand[0].meta.costDelta).toBe(delta)
-    expect(game.privates.a.deck.map((c) => c.name)).toEqual(['SS Sub', 'DWG Ship'])
+    expect(game.privates.a.deck.map((c) => c.name)).toEqual(['SS Sub', 'Home-Brew'])
     expect(game.state.counts.a).toEqual({ hand: 1, deck: 2 })
+  })
+
+  // M-1: a built-in ship of another faction is an AI ship too.
+  it.each(['trondheimOnDeath', 'resoluteOnPlay'])('%s draws a built-in ship of another faction', (name) => {
+    const game = makeGame()
+    game.privates.a.deck.push(
+      inst({ name: 'SS Sub', faction: 'SS', type: 'vehicle', vehicleType: 'sub' }),
+      inst({ name: 'DWG Ship', faction: 'DWG', type: 'vehicle', vehicleType: 'ship' }),
+    )
+    expect(effectFor(name)!({ game, actor: 'a', card: inst(), ctx: makeCtx() })).toBe(true)
+    expect(game.privates.a.hand.map((c) => c.name)).toEqual(['DWG Ship'])
   })
 
   // A deck pool is legitimately empty ("if you have one" is the shape of the
@@ -7028,15 +7055,23 @@ describe('SS Argonaut — a parting discount', () => {
     expect(cut).toHaveLength(1)
   })
 
-  it('ignores SS subs, SS abilities and other factions', () => {
+  it('ignores SS subs, SS abilities and player-made ships', () => {
     const game = makeGame()
     game.privates.a.hand.push(
       inst({ name: 'Sub', faction: 'SS', type: 'vehicle', vehicleType: 'sub' }),
       inst({ name: 'Ability', faction: 'SS', type: 'ability', vehicleType: null }),
-      inst({ name: 'DWG', faction: 'DWG', type: 'vehicle', vehicleType: 'ship' }),
+      inst({ name: 'Custom', faction: 'SS', isBuiltIn: false, type: 'vehicle', vehicleType: 'ship' }),
     )
     effectFor('argonautOnDeath')!({ game, actor: 'a', card: argonaut(), ctx: makeCtx() })
     expect(game.privates.a.hand.every((c) => c.meta.costDelta === undefined)).toBe(true)
+  })
+
+  // M-1: a built-in ship of another faction is in the pool.
+  it('discounts a built-in ship of another faction', () => {
+    const game = makeGame()
+    game.privates.a.hand.push(inst({ name: 'DWG', faction: 'DWG', type: 'vehicle', vehicleType: 'ship' }))
+    effectFor('argonautOnDeath')!({ game, actor: 'a', card: argonaut(), ctx: makeCtx() })
+    expect(game.privates.a.hand[0].meta.costDelta).toBe(ARGONAUT_COST_DELTA)
   })
 
   // A death effect that returns false logs a failed trigger without rejecting
@@ -8053,10 +8088,12 @@ describe('SS deck-search cards reshuffle an empty deck (wave 8)', () => {
   })
 
   // The discard is the deck's reservoir, not a second pool: a card that is not
-  // an SS ship comes back into the DECK and stays there.
+  // an AI ship comes back into the DECK and stays there. Since M-1 that is a
+  // PLAYER-MADE ship, not one of another faction — a built-in DWG ship would
+  // now match.
   it('leaves a non-matching card in the deck the reshuffle built', () => {
     const game = makeGame()
-    game.state.destroyed.a.push(snap({ name: 'Foreign', faction: 'DWG', vehicleType: 'ship' }))
+    game.state.destroyed.a.push(snap({ name: 'Foreign', faction: 'DWG', isBuiltIn: false, vehicleType: 'ship' }))
     const ok = effectFor('resoluteOnPlay')!({
       game, actor: 'a', card: inst({ name: 'Resolute' }), ctx: makeCtx(),
     })

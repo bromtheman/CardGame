@@ -186,7 +186,7 @@ export const PURIFIER_LOSS_WINDOW_TURNS = 1
 // damage and still costs its printed repair.
 export const TYR_HAND_DISCOUNT = 60_000
 
-export const EXCALIBUR_COST_DELTA = -200_000 // Excalibur: SS ship in hand costs 200k less (R-5)
+export const EXCALIBUR_COST_DELTA = -200_000 // Excalibur: AI ship in hand costs 200k less (M-1, reverses R-5)
 // Plunderer clause 2: "…draw one card from the enemy deck, but increase its
 // cost by 20k". A POSITIVE costDelta, unlike every other one in this file —
 // effectiveCostInGame sums it in and clamps only at zero, so it raises the
@@ -234,21 +234,24 @@ export const SLASHER_EARTH_RAKER_COUNT = 2
 export const EXCRUCIATOR_DRAW_COUNT = 2
 export const EXCRUCIATOR_COST_DELTA = -100_000
 
-// SS Victoria: "pick one SS ship in hand and reduce its cost by 75k". Its own
-// constant, not shared with Trondheim's identical -75k (Task 11) — the two are
-// equal by coincidence, which VENGEFUL_BASE_DAMAGE's comment above already
-// records as a reason to keep them apart.
+// SS Victoria: "pick one AI ship in hand and reduce its cost by 75k" (SS ->
+// AI, M-1). Its own constant, not shared with Trondheim's identical -75k
+// (Task 11) — the two are equal by coincidence, which VENGEFUL_BASE_DAMAGE's
+// comment above already records as a reason to keep them apart.
 export const VICTORIA_COST_DELTA = -75_000
 
-// SS Trondheim: "draw an SS ship from your deck and reduce its cost by 75k".
-// Its own constant despite equalling VICTORIA_COST_DELTA — two figures equal by
-// coincidence do not share one.
+// SS Trondheim: "draw an AI ship and reduce its cost by 75k" (SS -> AI, and
+// "from your deck" dropped, in the 2026-09-16 pass, M-1 — the card still
+// draws from the DECK in code). Its own constant despite equalling
+// VICTORIA_COST_DELTA — two figures equal by coincidence do not share one.
 export const TRONDHEIM_COST_DELTA = -75_000
-// SS Resolute: the same clause at 40k.
+// SS Resolute: the same clause at 40k — unlike Trondheim, its text still says
+// "from your deck".
 export const RESOLUTE_COST_DELTA = -40_000
 
-// SS Nothung: "reduce the cost of every SS ship in your hand by 40k". Its own
-// constant, not shared with RESOLUTE_COST_DELTA's identical -40k.
+// SS Nothung: "reduce the cost of all AI ships in your hand by 40k" (SS -> AI,
+// M-1). Its own constant, not shared with RESOLUTE_COST_DELTA's identical
+// -40k.
 export const NOTHUNG_COST_DELTA = -40_000
 
 // SS Sacrilego: "reduce the cost of SS ships in hand by 30k" on each survival.
@@ -257,8 +260,9 @@ export const NOTHUNG_COST_DELTA = -40_000
 // oversight.
 export const SACRILEGO_COST_DELTA = -30_000
 
-// SS Argonaut: "reduce the cost of a random SS ship in your hand by 50k" on
-// death. Its own constant, like every other SS hand discount in this pass.
+// SS Argonaut: "reduce the cost of a random AI ship in your hand by 50k" (SS
+// -> AI, M-1) on death. Its own constant, like every other SS hand discount in
+// this pass.
 export const ARGONAUT_COST_DELTA = -50_000
 
 // Human-readable names for the ten hero powers, used wherever a power id

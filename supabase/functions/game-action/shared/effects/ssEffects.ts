@@ -1,13 +1,13 @@
 import {
   AIR_STRAFE_PREDATOR_COUNT, ARGONAUT_COST_DELTA, BASE_DAMAGE_DIVISOR, BULL_SHARK_BASE_DAMAGE,
-  CASH_ADVANCE_MATERIALS, CATSHARK_MATERIALS,
+  CARD_TYPES, CASH_ADVANCE_MATERIALS, CATSHARK_MATERIALS,
   EXCALIBUR_COST_DELTA, FACTIONS, HERO_POWER_LABELS, KEYWORDS, NOTHUNG_COST_DELTA,
   REPAIRMEN_READY_DRAW_MAX_COST, RESOLUTE_COST_DELTA, RHEA_MAX_PLANE_COST, SACRILEGO_COST_DELTA,
   TRONDHEIM_COST_DELTA, TYR_HAND_DISCOUNT, VEHICLE_TYPES, VICTORIA_COST_DELTA,
 } from '../gameSettings.ts'
 import {
   catalogCard, costDelta, choice, drawFromPool, enemyVehicleOptions, friendlyVehicleOptions, grant,
-  grantKeywords, poolEligible, sequence, spawnInto, summonHulls,
+  grantKeywords, isAiShip, poolEligible, sequence, spawnInto, summonHulls,
 } from './primitives.ts'
 import { registerCostModifier, registerEffect } from './registry.ts'
 import type { EffectFn, EffectPayload } from './registry.ts'
@@ -16,27 +16,21 @@ import { checkVictory, findVehicle, grantKeywordsTo, otherSide, putInHand, zoneB
 import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
 import type { CardInstance } from '../engine/gameInit.ts'
 
-// "an SS ship" — the pool five cards in this wave share (Victoria, Trondheim,
-// Nothung, Sacrilego, Argonaut, Resolute). Written once so a later card cannot
-// disagree with an earlier one about what the phrase means.
+// "An AI ship" — the pool seven cards share (Victoria, Trondheim, Excalibur,
+// Nothung, Resolute, Argonaut, Sacrilego). Since the 2026-09-16 pass (M-1)
+// it is a BUILT-IN test rather than an SS-faction one: a built-in DWG hull
+// qualifies, a player-made SS ship does not. The predicate form is
+// primitives.ts's isAiShip; this is the same test as a PoolFilter for the
+// drawFromPool/costDelta factories. Repairmen Ready is NOT in this pool — its
+// text says "SS vehicle" and its gate stays faction === SS (below).
 //
-// It is a FACTION filter, not a card list, so it grows with the faction —
-// which is the trap ruling L-1 records for the LH robotics pool. That is fine
-// here and was not there: these cards print "SS ship", the faction IS the
-// intended pool, and SS is fully seeded.
-const SS_SHIP_FILTER = {
-  faction: FACTIONS.SS, type: 'vehicle', vehicleType: VEHICLE_TYPES.SHIP,
+// ⚠ Read the L-1 note above PoolFilter.metaFlag (primitives.ts) before
+// widening a catalog pool onto this filter: "built-in ship" is a query over
+// the whole cards table, and it grows with every faction seeded. Every user
+// here reads the owner's HAND or DECK, never the catalog.
+const AI_SHIP_FILTER = {
+  isBuiltIn: true, type: CARD_TYPES.VEHICLE, vehicleType: VEHICLE_TYPES.SHIP,
 } as const
-
-// Used in this file by Nothung (below), Sacrilego and Argonaut —
-// Trondheim/Resolute and Excalibur go through SS_SHIP_FILTER via
-// drawFromPool/costDelta instead. Exported because frontend/src/pages/game/
-// HandBar.tsx imports it too, as the one definition of "an SS ship" a hand
-// card is checked against — without the export that consumer would have to
-// re-derive the same three checks, the drift this predicate exists to
-// prevent.
-export const isSsShip = (c: CardInstance): boolean =>
-  c.faction === FACTIONS.SS && c.type === 'vehicle' && c.vehicleType === VEHICLE_TYPES.SHIP
 
 // The accumulate-don't-replace stamp, matching primitives.ts's costDelta() so a
 // card discounted twice is discounted twice. Used by the four effects that hit
@@ -51,37 +45,41 @@ registerEffect('ironMaidenOnDeath', grant({ draw: 1 }))
 registerEffect('victoriaOnDeath', grant({ draw: 1 }))
 registerEffect('maelstromOnPlay', grant({ cp: 1 }))
 
-// "When this vehicle is destroyed, draw an SS ship from your deck and reduce
-// its cost by 75k." / Resolute's on-play twin at 40k.
+// "When this vehicle is destroyed, draw an AI ship and reduce its cost by
+// 75k." / Resolute's on-play twin ("When this vehicle is played, draw an AI
+// ship from your deck. reduce its cost by 40k") at 40k. Trondheim's text
+// dropped "from your deck" in the 2026-09-16 pass (M-1); both still draw from
+// the owner's DECK in code below — the card text is not what `source: 'deck'`
+// tracks.
 //
 // From the owner's DECK, not the catalog — which is why neither carries
 // { needsCatalog: true } (spec §7.1 names both as the near miss that "it draws
 // a card" would get wrong). A deck pool is legitimately empty, so
 // drawFromPool's allowEmpty default resolves rather than failing: a death
 // effect that returned false would log a failed trigger on every Trondheim that
-// dies with no SS ship left.
+// dies with no AI ship left.
 registerEffect('trondheimOnDeath', drawFromPool({
-  source: 'deck', filter: SS_SHIP_FILTER, count: 1, costDelta: TRONDHEIM_COST_DELTA,
+  source: 'deck', filter: AI_SHIP_FILTER, count: 1, costDelta: TRONDHEIM_COST_DELTA,
 }))
 registerEffect('resoluteOnPlay', drawFromPool({
-  source: 'deck', filter: SS_SHIP_FILTER, count: 1, costDelta: RESOLUTE_COST_DELTA,
+  source: 'deck', filter: AI_SHIP_FILTER, count: 1, costDelta: RESOLUTE_COST_DELTA,
 }))
 
-// "When this vehicle is played, reduce the cost of every SS ship in your hand
-// by 40k." This REPLACES the Sacrilego spawn the card used to print — same
-// registry id, new behaviour, which is what a balance pass is and is not the
-// R-6 collision (that is two DIFFERENT cards sharing a name).
+// "When played, reduce the cost of all AI ships in your hand by 40k." This
+// REPLACES the Sacrilego spawn the card used to print — same registry id, new
+// behaviour, which is what a balance pass is and is not the R-6 collision
+// (that is two DIFFERENT cards sharing a name).
 //
 // No { needsCatalog: true } any more: the spawn read ctx.catalog, this reads
 // only the hand.
 //
 // ⚠ The log carries neither names NOR a count. state.log is public, and "refits
-// 3 ships" tells the opponent how many SS ships are in a hidden hand.
+// 3 ships" tells the opponent how many AI ships are in a hidden hand.
 registerEffect('nothungOnPlay', ({ game, actor, card }) => {
   for (const held of game.privates[actor].hand) {
-    if (isSsShip(held)) discountInHand(held, NOTHUNG_COST_DELTA)
+    if (isAiShip(held)) discountInHand(held, NOTHUNG_COST_DELTA)
   }
-  game.state.log.push(`${card.name} refits the SS ships in player ${actor.toUpperCase()}'s hand`)
+  game.state.log.push(`${card.name} refits the AI ships in player ${actor.toUpperCase()}'s hand`)
   return true
 })
 
@@ -152,18 +150,16 @@ registerEffect('rheaOnPlay', drawFromPool({
   strip: ['temporary'],
 }), { needsCatalog: true })
 
-// "Pick one SS ship in hand and reduce its cost by 200k." The filter moved
-// AI -> SS in the 2026-09-02 pass (ruling R-5), so it is now a FACTION test
-// rather than isBuiltIn — which both narrows it (a built-in DWG ship no longer
-// qualifies) and widens it (a player-made SS ship now does). WF Excruciator's
-// text still says "AI" and keeps the built-in meaning; the phrase is not
-// global. Dispatched by DP6's hand direction (PLAY_CARD_TARGETING_CARD_IN_HAND,
-// spec §4.3): Excalibur deploys to its zone first, then this fires against the
-// hand target, and Excalibur itself is not spendCard'd — it is a hull, not a
-// spent ability.
+// "Pick one AI ship in hand and reduce its cost by 200k." The filter moved
+// SS -> AI (built-in, any faction) in the 2026-09-16 pass (M-1), reversing
+// R-5. WF Excruciator's text still says "AI" and keeps the built-in meaning;
+// the phrase is not global. Dispatched by DP6's hand direction
+// (PLAY_CARD_TARGETING_CARD_IN_HAND, spec §4.3): Excalibur deploys to its zone
+// first, then this fires against the hand target, and Excalibur itself is not
+// spendCard'd — it is a hull, not a spent ability.
 registerEffect('excaliburEffect', costDelta({
   delta: EXCALIBUR_COST_DELTA,
-  filter: SS_SHIP_FILTER,
+  filter: AI_SHIP_FILTER,
 }))
 
 // "Grant target vehicle scrappy. If the target is an SS vehicle that costs
@@ -292,11 +288,12 @@ registerEffect(AIR_STRAFE, choice({
   },
 }), { needsCatalog: true })
 
-// "When this vehicle is played, pick one SS ship in hand and reduce its cost
-// by 75k." Excalibur's mechanism exactly — DP6's hand direction
-// (PLAY_CARD_TARGETING_CARD_IN_HAND): Victoria deploys to her zone first, then
-// this fires against the hand target, and she is not spendCard'd because she is
-// a hull, not a spent ability.
+// "When played, pick one AI ship in hand and reduce its cost by 75k." (SS ->
+// AI, built-in any faction, in the 2026-09-16 pass, M-1.) Excalibur's
+// mechanism exactly — DP6's hand direction (PLAY_CARD_TARGETING_CARD_IN_HAND):
+// Victoria deploys to her zone first, then this fires against the hand
+// target, and she is not spendCard'd because she is a hull, not a spent
+// ability.
 //
 // The 2026-08-30 pass replaced Victoria's draw-on-death with an activated
 // ability; this pass replaces THAT with an on-play effect, which orphans
@@ -304,7 +301,7 @@ registerEffect(AIR_STRAFE, choice({
 // never be reused.
 registerEffect('victoriaOnPlay', costDelta({
   delta: VICTORIA_COST_DELTA,
-  filter: SS_SHIP_FILTER,
+  filter: AI_SHIP_FILTER,
 }))
 
 // "Each turn you may spend 200k resources to spawn another victoria into this
@@ -630,7 +627,7 @@ registerEffect(SACRILEGO, ({ game, actor, card, battle }) => {
   // and the hand is hidden (Nothung's rule).
   if (!battle.survived) return true
   for (const held of game.privates[actor].hand) {
-    if (isSsShip(held)) discountInHand(held, SACRILEGO_COST_DELTA)
+    if (isAiShip(held)) discountInHand(held, SACRILEGO_COST_DELTA)
   }
   game.state.log.push(`${card.name} survives and cuts the yard's price for player ${actor.toUpperCase()}`)
   return true
@@ -891,8 +888,8 @@ registerEffect(HYDRA, choice({
   },
 }))
 
-// "When this vehicle is destroyed, reduce the cost of a random SS ship in your
-// hand by 50k."
+// "When this is destroyed, reduce the cost of a random AI ship in your hand
+// by 50k." (SS -> AI, built-in any faction, in the 2026-09-16 pass, M-1.)
 //
 // ⚠ Argonaut KEEPS SCRAPPY (ruling R-4). card-effects.md rule 10 used to forbid
 // SCRAPPY beside an onDeathEffect on the false ground that the trigger would be
@@ -909,7 +906,7 @@ registerEffect(HYDRA, choice({
 // count — so ONE line runs on every path, whether or not a card actually got
 // discounted.
 registerEffect('argonautOnDeath', ({ game, actor, card, ctx }) => {
-  const pool = game.privates[actor].hand.filter(isSsShip)
+  const pool = game.privates[actor].hand.filter(isAiShip)
   if (pool.length > 0) {
     discountInHand(pool[Math.floor(ctx.rng() * pool.length)], ARGONAUT_COST_DELTA)
   }

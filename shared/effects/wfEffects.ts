@@ -22,12 +22,14 @@ import type { EffectPayload } from './registry.ts'
 //
 // "AI vehicle" is isBuiltIn === true, NOT a faction (spec R-5) — this card's
 // own meaning, which the 2026-09-02 pass deliberately leaves unchanged. Air
-// Strafe and Martyr Attack still read "AI"/"player design" the same
-// built-in way. Repairmen Ready and Excalibur do NOT: that same pass moved
-// both of those from isBuiltIn to faction === 'SS', so their printed phrase
-// is no longer "AI vehicle" either ("SS vehicle" and "SS ship"). This card
-// staying on the built-in meaning is emphatically NOT a WF
-// filter, which is the plausible-looking wrong answer R-5 exists to forbid.
+// Strafe and Martyr Attack still read "AI"/"player design" the same built-in
+// way, and so — again, since the 2026-09-16 pass's M-1 reversed R-5 — does
+// Excalibur, through its own isAiShip predicate (built-in AND a ship, which
+// is narrower than this card's plain "vehicle"). Repairmen Ready is the one
+// that stayed on faction === 'SS' through both passes, so its printed phrase
+// is "SS vehicle", never "AI vehicle". This card staying on the built-in
+// meaning is emphatically NOT a WF filter, which is the plausible-looking
+// wrong answer R-5 exists to forbid.
 //
 // It reads the owner's OWN DECK, so it takes NO { needsCatalog: true }:
 // nothing here touches ctx.catalog, and "it draws cards" is not the test for

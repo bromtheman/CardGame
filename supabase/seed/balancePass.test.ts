@@ -67,7 +67,10 @@ const CARDS: Record<string, Expected> = {
     materialCost: 90_000, blueprintCost: 94_000, keywords: ['scrappy'],
     vehicleType: 'ship',
     // Death trigger added by the 2026-09-02 pass (ruling R-4); costs unchanged.
-    cardText: 'When this vehicle is destroyed, reduce the cost of a random SS ship in your hand by 50k',
+    // Text moved SS ship -> AI ship in the 2026-09-16 pass (M-1) and is
+    // updated in place here, per §2.3; the current wording is also pinned in
+    // balance/ss.balance.test.ts.
+    cardText: 'When this is destroyed, reduce the cost of a random AI ship in your hand by 50k',
   },
   'SS:Nothung': {
     materialCost: 400_000, blueprintCost: 478_000, keywords: ['blocker'], vehicleType: 'ship', // 2026-09-02 pass
