@@ -405,6 +405,7 @@ export function GameBoardPage() {
           >
             {canActivateZones && (
               <ZoneActions
+                state={state}
                 zone={zone}
                 mySide={mySide}
                 theirSide={theirSide}

@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import type { ZoneState } from '@shared/engine/gameInit'
+import type { PublicGameState, ZoneState } from '@shared/engine/gameInit'
 import type { GameAction, Side, ZoneCardEntry } from '@shared/engine/engineTypes'
-import { baseDamageFrom } from '@shared/engine/index'
+import { baseDamageFrom, fleetAttackRosters } from '@shared/engine/index'
 import { KEYWORDS } from '@shared/gameSettings'
 import { FleetAttackDialog } from './FleetAttackDialog'
 
@@ -10,6 +10,7 @@ import { FleetAttackDialog } from './FleetAttackDialog'
 // the engine (baseAttack.ts / battleDeclare.ts) re-validates authoritatively
 // and is the source of truth if this ever drifts.
 export function ZoneActions({
+  state,
   zone,
   mySide,
   theirSide,
@@ -17,6 +18,7 @@ export function ZoneActions({
   send,
   busy,
 }: {
+  state: PublicGameState
   zone: ZoneState
   mySide: Side
   theirSide: Side
@@ -41,7 +43,13 @@ export function ZoneActions({
     bombardReason = 'No eligible strikers (subs, Inoffensive, and freshly deployed vehicles cannot strike)'
   }
 
-  const canFleetAttack = !activated && mine.length > 0 && theirs.length > 0
+  // The engine's own derivation (spec §3.4 as amended 2026-09-16: no roster to
+  // pick), so the button and ATTACK_ENEMY_FLEET agree on what "can attack" means.
+  const rosters = fleetAttackRosters(state, mySide, zone.id)
+  let fleetReason: string | null = null
+  if (activated) fleetReason = 'This zone was already activated this turn'
+  else if (!rosters || rosters.targets.length === 0) fleetReason = 'No enemy vehicles here'
+  else if (rosters.force.length === 0) fleetReason = 'No vehicle of yours here can attack (Inoffensive)'
 
   function onBombard() {
     void send({ type: 'ATTACK_ENEMY_BASE', zoneId: zone.id })
@@ -58,8 +66,8 @@ export function ZoneActions({
         Bombard base{bombardReason ? '' : ` (${predictedDamage})`}
       </button>
       <button
-        disabled={busy || !canFleetAttack}
-        title={activated ? 'This zone was already activated this turn' : undefined}
+        disabled={busy || !!fleetReason}
+        title={fleetReason ?? undefined}
         onClick={() => setFleetAttackOpen(true)}
         className="rounded border border-ocean-600 px-3 py-1 text-sm font-bold text-parchment-100 disabled:cursor-not-allowed disabled:opacity-50"
       >
@@ -67,9 +75,9 @@ export function ZoneActions({
       </button>
       {fleetAttackOpen && (
         <FleetAttackDialog
+          state={state}
           zone={zone}
           mySide={mySide}
-          theirSide={theirSide}
           turnNumber={turnNumber}
           send={send}
           busy={busy}

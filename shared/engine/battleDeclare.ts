@@ -1,6 +1,7 @@
 import { KEYWORDS, SPAWN_DISTANCE_DEFAULT_M, VEHICLE_TYPES } from '../gameSettings.ts'
 import type { BattleContinuation, EngineContext, Side, ZoneCardEntry } from './engineTypes.ts'
 import type { EngineGame } from './engineTypes.ts'
+import type { PublicGameState } from './gameInit.ts'
 import { err, findVehicle, otherSide, registerHandler, zoneById } from './gameEngine.ts'
 import { dispatchBattleLock, lockRoster } from './battleTriggers.ts'
 
@@ -281,64 +282,74 @@ export function declareForcedBattle(game: EngineGame, ctx: EngineContext, spec: 
   return true
 }
 
-registerHandler('ATTACK_ENEMY_FLEET', (game, actor, action, ctx) => {
-  if (action.type !== 'ATTACK_ENEMY_FLEET') return err(400, 'Bad action')
-  if (!Array.isArray(action.attackerIds) || !Array.isArray(action.targetIds)) {
-    return err(400, 'attackerIds and targetIds must be arrays')
-  }
-  if (
-    new Set(action.attackerIds).size !== action.attackerIds.length ||
-    new Set(action.targetIds).size !== action.targetIds.length
-  ) {
-    return err(400, 'Selections contain duplicates')
-  }
-  const zone = zoneById(game.state, action.zoneId)
-  if (!zone) return err(400, 'No such zone')
-  if (zone.lastActivatedTurn === game.turnNumber) return err(409, 'That zone was already activated this turn')
-  const enemy = otherSide(actor)
-  const mine = zone.cards[actor]
-  const theirs = zone.cards[enemy]
-  if (action.attackerIds.length === 0 || action.targetIds.length === 0) {
-    return err(400, 'Pick at least one attacker and one target')
-  }
-  for (const id of action.attackerIds) {
-    const card = mine.find((c) => c.instanceId === id)
-    if (!card) return err(400, 'Attacker selection includes a vehicle that is not yours in that zone')
-    if (card.keywords.includes(KEYWORDS.INOFFENSIVE)) {
-      return err(400, `${card.name} is Inoffensive and cannot attack`)
-    }
-  }
-  // Spec §4.8: the attacking FORCE is the committed selection, not everything
-  // the aggressor owns in the zone — a hull sitting the battle out is not
-  // attacking. Read off the same ids already validated above.
-  const forceHasShipOrTank = action.attackerIds.some((id) => {
-    const card = mine.find((c) => c.instanceId === id)
-    return card?.vehicleType === VEHICLE_TYPES.SHIP || card?.vehicleType === VEHICLE_TYPES.TANK
-  })
+// Spec §3.4 option 2, amended 2026-09-16: a fleet attack has NO selection.
+// Every hull of the aggressor's in the zone attacks except Inoffensive ones,
+// and every enemy hull there is attacked. The aggressor's own Stealthy hulls
+// go in with the rest — withdrawal is the defender's right only, through the
+// response window below. A stale client may still send attackerIds/targetIds;
+// they are ignored rather than refused, so a tab served before this rule
+// neither 400s nor gets to honour a partial pick.
+export interface FleetAttackRosters {
+  force: ZoneCardEntry[]     // the aggressor's hulls in the zone bar Inoffensive ones — all of them attack
+  targets: ZoneCardEntry[]   // every enemy hull in the zone
+  stealthyIds: string[]      // targets the defender may withdraw unconditionally
+  omissibleIds: string[]     // targets whose printed omission condition is met against `force`
+}
+
+// What ATTACK_ENEMY_FLEET will commit for `side` in `zoneId`, before it does.
+// Exported because FleetAttackDialog shows the player exactly this — and a
+// second, hand-kept derivation is how BattleOverlay once came to build reports
+// the engine rejected (docs/claude/frontend.md, "Never mirror engine logic").
+// Null for an unknown zone; otherwise the lists may be empty, and the handler
+// decides what an empty list means.
+export function fleetAttackRosters(
+  state: PublicGameState, side: Side, zoneId: number,
+): FleetAttackRosters | null {
+  const zone = zoneById(state, zoneId)
+  if (!zone) return null
+  const force = (zone.cards[side] as ZoneCardEntry[]).filter((c) => !c.keywords.includes(KEYWORDS.INOFFENSIVE))
+  const targets = zone.cards[otherSide(side)] as ZoneCardEntry[]
+  // Spec §4.8: the omission condition reads the attacking FORCE — which since
+  // the 2026-09-16 amendment is everything the aggressor owns in the zone bar
+  // Inoffensive hulls, because nothing can be benched any more.
+  const forceHasShipOrTank = force.some(
+    (c) => c.vehicleType === VEHICLE_TYPES.SHIP || c.vehicleType === VEHICLE_TYPES.TANK,
+  )
   const stealthyIds: string[] = []
   const omissibleIds: string[] = []
-  for (const id of action.targetIds) {
-    const card = theirs.find((c) => c.instanceId === id)
-    if (!card) return err(400, 'Target selection includes a vehicle that is not in that zone')
-    if (card.keywords.includes(KEYWORDS.STEALTHY)) stealthyIds.push(id)
+  for (const card of targets) {
+    if (card.keywords.includes(KEYWORDS.STEALTHY)) stealthyIds.push(card.instanceId)
     // Plain card data, not a registry name (spec §4.8) — an effect returns a
     // boolean meaning "resolved" and may mutate, so one cannot serve as a pure
     // eligibility predicate.
     if (card.meta.defensiveOmission === OMISSION_UNLESS_SHIP_OR_TANK && !forceHasShipOrTank) {
-      omissibleIds.push(id)
+      omissibleIds.push(card.instanceId)
     }
   }
-  // The window now opens on EITHER list. Before wave 4 only Stealthy could
-  // raise it, and an attack with no stealthy target locked immediately.
+  return { force, targets, stealthyIds, omissibleIds }
+}
+
+registerHandler('ATTACK_ENEMY_FLEET', (game, actor, action, ctx) => {
+  if (action.type !== 'ATTACK_ENEMY_FLEET') return err(400, 'Bad action')
+  const zone = zoneById(game.state, action.zoneId)
+  if (!zone) return err(400, 'No such zone')
+  if (zone.lastActivatedTurn === game.turnNumber) return err(409, 'That zone was already activated this turn')
+  const rosters = fleetAttackRosters(game.state, actor, action.zoneId)!
+  if (rosters.force.length === 0) return err(400, 'You have no vehicle able to attack in that zone')
+  if (rosters.targets.length === 0) return err(400, 'There is no enemy vehicle in that zone')
+  const attackerIds = rosters.force.map((c) => c.instanceId)
+  const targetIds = rosters.targets.map((c) => c.instanceId)
+  const { stealthyIds, omissibleIds } = rosters
+  // The window opens on EITHER list. Before wave 4 only Stealthy could raise
+  // it, and an attack with no stealthy target locked immediately.
   if (stealthyIds.length > 0 || omissibleIds.length > 0) {
     game.state.awaitingResponse = {
-      zoneId: action.zoneId, aggressor: actor,
-      attackerIds: action.attackerIds, targetIds: action.targetIds, stealthyIds, omissibleIds,
+      zoneId: action.zoneId, aggressor: actor, attackerIds, targetIds, stealthyIds, omissibleIds,
     }
     game.state.log.push(`Fleet attack declared in zone ${action.zoneId} — some defenders may withdraw`)
     return { ok: true, game }
   }
-  lockBattle(game, ctx, action.zoneId, actor, action.attackerIds, action.targetIds)
+  lockBattle(game, ctx, action.zoneId, actor, attackerIds, targetIds)
   return { ok: true, game }
 })
 

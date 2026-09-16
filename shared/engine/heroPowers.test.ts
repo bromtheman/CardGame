@@ -625,7 +625,7 @@ describe('USE_HERO_POWER flankingManeuver (WF)', () => {
   it('at my own fleet-attack lock there: consumes the rider, marks the defenders Fragile, grants deploy-after', () => {
     const { game, attacker, defender } = flanked()
     const r = applyAction(game, 'alice', {
-      type: 'ATTACK_ENEMY_FLEET', zoneId: 1, attackerIds: [attacker.instanceId], targetIds: [defender.instanceId],
+      type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
     })
     if (!r.ok) throw new Error(r.error)
     expect(r.game.state.zoneEffects).toEqual([])
@@ -636,7 +636,7 @@ describe('USE_HERO_POWER flankingManeuver (WF)', () => {
   it('leaves a battle in another zone alone', () => {
     const { game, attacker, defender } = flanked(2)
     const r = applyAction(game, 'alice', {
-      type: 'ATTACK_ENEMY_FLEET', zoneId: 1, attackerIds: [attacker.instanceId], targetIds: [defender.instanceId],
+      type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
     })
     if (!r.ok) throw new Error(r.error)
     expect(r.game.state.zoneEffects).toHaveLength(1)
@@ -646,7 +646,7 @@ describe('USE_HERO_POWER flankingManeuver (WF)', () => {
     const { game, attacker, defender } = flanked()
     game.activePlayer = 'bob'
     const r = applyAction(game, 'bob', {
-      type: 'ATTACK_ENEMY_FLEET', zoneId: 1, attackerIds: [defender.instanceId], targetIds: [attacker.instanceId],
+      type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
     })
     if (!r.ok) throw new Error(r.error)
     expect(r.game.state.zoneEffects).toEqual([rider])

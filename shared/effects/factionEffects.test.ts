@@ -904,7 +904,7 @@ describe('wave 3 — forced battles', () => {
       // (DECIDE_BATTLE_REPORT nulls activeBattle) so a second battle may lock.
       game.state.activeBattle = null
       const r = applyAction(game, 'alice', {
-        type: 'ATTACK_ENEMY_FLEET', zoneId: 1, attackerIds: ['atk-1'], targetIds: ['foe-1'],
+        type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
       })
       expect(r.ok).toBe(true)
     })
@@ -1410,7 +1410,7 @@ describe('wave 3 — forced battles', () => {
       // (DECIDE_BATTLE_REPORT nulls activeBattle) so a second battle may lock.
       three.game.state.activeBattle = null
       const attack = applyAction(three.game, 'alice', {
-        type: 'ATTACK_ENEMY_FLEET', zoneId: 1, attackerIds: ['mate'], targetIds: ['foe'],
+        type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
       })
       expect(attack.ok).toBe(true)
     })
@@ -1495,7 +1495,7 @@ describe('wave 3 — forced battles', () => {
       if (!resolved.ok) throw new Error(resolved.error)
       resolved.game.state.activeBattle = null // as if DECIDE_BATTLE_REPORT already ran
       const attack = applyAction(resolved.game, 'alice', {
-        type: 'ATTACK_ENEMY_FLEET', zoneId: 1, attackerIds: ['ec1'], targetIds: ['foe-1'],
+        type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
       }, ctx)
       expect(attack).toMatchObject({ ok: false, status: 409 })
     })
@@ -1799,7 +1799,6 @@ describe('wave 4 — battle triggers at lock', () => {
       const before = game.state.resources.b.materials
       const r = applyAction(game, 'alice', {
         type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
-        attackerIds: [attacker.instanceId], targetIds: [catshark.instanceId],
       }, makeCtx())
       if (!r.ok) throw new Error(r.error)
       expect(r.game.state.resources.b.materials).toBe(before + 30_000)
@@ -1839,7 +1838,7 @@ describe('wave 4 — battle triggers at lock', () => {
       game.state.zones[0].cards.b.push(dryad)
       const ctx = makeCtx({ catalog: [dryadHull] })
       const declared = applyAction(game, 'alice', {
-        type: 'ATTACK_ENEMY_FLEET', zoneId: 1, attackerIds: ['foe-1'], targetIds: ['dryad-1'],
+        type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
       }, ctx)
       if (!declared.ok) throw new Error(declared.error)
       const spawnedId = declared.game.state.zones[0].cards.b[1].instanceId
@@ -1871,7 +1870,7 @@ describe('wave 4 — battle triggers at lock', () => {
       game.state.zones[0].cards.b.push(dryad)
       const ctx = makeCtx({ catalog: [dryadHull] })
       const declared = applyAction(game, 'alice', {
-        type: 'ATTACK_ENEMY_FLEET', zoneId: 1, attackerIds: ['foe-1'], targetIds: ['dryad-1'],
+        type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
       }, ctx)
       if (!declared.ok) throw new Error(declared.error)
       const spawnedId = declared.game.state.zones[0].cards.b[1].instanceId
@@ -1913,7 +1912,6 @@ describe('wave 4 — battle triggers at lock', () => {
       game.state.zones[0].cards.b.push(d1, d2)
       const r = applyAction(game, 'alice', {
         type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
-        attackerIds: [attacker.instanceId], targetIds: [d1.instanceId, d2.instanceId],
       }, makeCtx({ catalog: [dryadHull] }))
       if (!r.ok) throw new Error(r.error)
       expect(r.game.state.zones[0].cards.b).toHaveLength(4)
@@ -1981,7 +1979,6 @@ describe('wave 4 — battle triggers at lock', () => {
       game.state.zones[0].cards.b.push(throne)
       const r = applyAction(game, 'alice', {
         type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
-        attackerIds: [attacker.instanceId], targetIds: [throne.instanceId],
       }, makeCtx({ catalog: [parapetHull] }))
       if (!r.ok) throw new Error(r.error)
       const battle = r.game.state.activeBattle
@@ -2201,7 +2198,6 @@ describe('wave 4 — battle triggers at resolve', () => {
       // immediately — which is where the loan is granted for real.
       const locked = applyAction(game, 'alice', {
         type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
-        attackerIds: [sac.instanceId, shipA.instanceId, shipB.instanceId], targetIds: [foe.instanceId],
       }, makeCtx())
       if (!locked.ok) throw new Error(locked.error)
 
@@ -2360,7 +2356,6 @@ describe('wave 4 — battle triggers at resolve', () => {
     game.state.zones[0].cards.b.push(cordon, airship)
     const declared = applyAction(game, 'alice', {
       type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
-      attackerIds: [attacker.instanceId], targetIds: [cordon.instanceId, airship.instanceId],
     }, makeCtx())
     if (!declared.ok) throw new Error(declared.error)
     const submitted = applyAction(declared.game, 'alice', {
@@ -2472,7 +2467,6 @@ describe('wave 4 — terawattJoin', () => {
     game.state.zones[0].cards.b.push(lone, terawatt)
     const r = applyAction(game, 'alice', {
       type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
-      attackerIds: [attacker.instanceId], targetIds: [lone.instanceId],
     }, makeCtx())
     if (!r.ok) throw new Error(r.error)
     expect(r.game.state.pendingEffect).toBeNull()
@@ -2724,7 +2718,7 @@ describe('wave 5 — Ambush', () => {
 
   const attack = (game: EngineGame, ids: { attacker: string; defender: string }) =>
     applyAction(game, 'alice', {
-      type: 'ATTACK_ENEMY_FLEET', zoneId: 1, attackerIds: [ids.attacker], targetIds: [ids.defender],
+      type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
     }, ambushCtx())
 
   it('claims the zone with a rest-of-turn rider that draws if unused', () => {
@@ -2835,7 +2829,6 @@ describe('wave 5 — Ambush', () => {
     const bobsTurn = { ...game, activePlayer: 'bob', turnNumber: 3.5 }
     const r = applyAction(bobsTurn, 'bob', {
       type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
-      attackerIds: [defender.instanceId], targetIds: [attacker.instanceId],
     }, ambushCtx())
     if (!r.ok) throw new Error(r.error)
     expect(r.game.state.pendingEffect).toBeNull()
@@ -2884,7 +2877,6 @@ describe('wave 5 — Ambush', () => {
     game.state.zones[0].cards.a.push(chooser)
     const r = applyAction(game, 'alice', {
       type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
-      attackerIds: [attacker.instanceId, chooser.instanceId], targetIds: [defender.instanceId],
     }, ambushCtx())
     if (!r.ok) throw new Error(r.error)
     expect(r.game.state.pendingEffect?.card.name).toBe('Chooser')
@@ -3066,7 +3058,7 @@ describe('wave 5 — Recurring Threat', () => {
   function attacked(game: EngineGame, raiderId: string, defenderId: string) {
     const bobsTurn = { ...game, activePlayer: 'bob', turnNumber: 3.5 }
     return applyAction(bobsTurn, 'bob', {
-      type: 'ATTACK_ENEMY_FLEET', zoneId: 1, attackerIds: [raiderId], targetIds: [defenderId],
+      type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
     }, threatCtx())
   }
 
@@ -3152,7 +3144,6 @@ describe('wave 5 — Recurring Threat', () => {
     if (!cast1.ok) throw new Error(cast1.error)
     const r = applyAction(cast1.game, 'alice', {
       type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
-      attackerIds: [mine[1].instanceId], targetIds: [raider.instanceId],
     }, threatCtx())
     if (!r.ok) throw new Error(r.error)
     expect(r.game.state.pendingEffect).toBeNull()
@@ -3414,7 +3405,6 @@ describe('wave 5 — Sabotage', () => {
     if (!r.ok) throw new Error(r.error)
     const locked = applyAction(r.game, 'alice', {
       type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
-      attackerIds: [attacker.instanceId], targetIds: [target.instanceId],
     }, sabCtx())
     if (!locked.ok) throw new Error(locked.error)
     const submitted = applyAction(locked.game, 'alice', {
@@ -3668,7 +3658,6 @@ describe('wave 6 — WF Harbringer', () => {
     game.state.zones[0].cards.b.push(victim)
     const declared = applyAction(game, 'alice', {
       type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
-      attackerIds: [harbringer.instanceId], targetIds: [victim.instanceId],
     }, harbCtx())
     if (!declared.ok) throw new Error(declared.error)
     expect(declared.game.state.pendingEffect?.side).toBe('a')
@@ -3696,7 +3685,6 @@ describe('wave 6 — WF Harbringer', () => {
     game.state.zones[0].cards.b.push(victim)
     const declared = applyAction(game, 'alice', {
       type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
-      attackerIds: [harbringer.instanceId], targetIds: [victim.instanceId],
     }, harbCtx())
     if (!declared.ok) throw new Error(declared.error)
     const r = applyAction(
@@ -4574,7 +4562,7 @@ describe('wave 6 — mutation survivors', () => {
       // 75_000: Buzzsaw's real 2026-09-02 cost. Only needs to clear the pool's
       // own <=100k filter to be offered — the tests below move it themselves.
       return ok(applyAction(game, 'alice', {
-        type: 'ATTACK_ENEMY_FLEET', zoneId: 1, attackerIds: ['h1'], targetIds: ['v1'],
+        type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
       }, makeCtx({ catalog: [wfShip('Buzzsaw', 75_000)] })))
     }
 
