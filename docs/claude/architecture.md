@@ -266,14 +266,25 @@ frontend (supabase-js) ──invoke──> edge function ──applyAction──
   is the one that has to come about. ⚠ `isAttacker` is never flipped to
   achieve that — it also decides team ORDER, and `sideForTeamIndex` reads that
   order to turn a reported winning team index back into a side.
+- **A fleet attack has no roster to pick** (spec §3.4 as amended 2026-09-16).
+  `ATTACK_ENEMY_FLEET` is `{ zoneId }`; `fleetAttackRosters(state, side,
+  zoneId)` (`battleDeclare.ts`) derives the force — every hull of the
+  aggressor's in the zone bar Inoffensive ones, the aggressor's own Stealthy
+  hulls included — and the targets, every enemy hull there. It is **exported**
+  so `FleetAttackDialog` and `ZoneActions` show and gate on exactly what the
+  handler will commit, never a mirror. A stale client's `attackerIds`/`targetIds`
+  are ignored, not refused. Card effects that force a battle still name their
+  own rosters through `declareForcedBattle`.
 - `awaitingResponse` — the defender's window before a fleet attack locks:
   `{zoneId, aggressor, attackerIds, targetIds, stealthyIds, omissibleIds}`.
   **Two** opt-out lists, not one. `stealthyIds` is unconditional (the Stealthy
   keyword). `omissibleIds` (wave 4) holds defenders carrying
   `meta.defensiveOmission` whose condition is met *for this attack* — a carrier
-  may sit out unless the attacker's **committed selection** holds a ship or
-  tank, so it cannot be derived from the card alone and is computed in
-  `ATTACK_ENEMY_FLEET`. The window opens when **either** list is non-empty;
+  may sit out unless the attacking **force** holds a ship or tank. That force
+  was the aggressor's committed selection until 2026-09-16 and is now the
+  whole zone bar Inoffensive hulls, so it still cannot be derived from the
+  card alone and is computed in `fleetAttackRosters`. The window opens when
+  **either** list is non-empty;
   before wave 4 only Stealthy could raise it. `RESPOND_TO_ATTACK` accepts an
   opt-out from either. Spec §4.8; `normalizeState` defaults `omissibleIds`.
   ⚠ No seeded card has carried `defensiveOmission` since the 2026-09-02 balance

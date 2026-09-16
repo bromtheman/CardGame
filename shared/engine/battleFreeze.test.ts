@@ -86,7 +86,7 @@ const SAMPLES: Record<string, GameAction> = {
   MOVE_VEHICLE: { type: 'MOVE_VEHICLE', instanceId: 'x', zoneId: 2 },
   ACTIVATE_VEHICLE: { type: 'ACTIVATE_VEHICLE', instanceId: 'x' },
   ATTACK_ENEMY_BASE: { type: 'ATTACK_ENEMY_BASE', zoneId: 2 },
-  ATTACK_ENEMY_FLEET: { type: 'ATTACK_ENEMY_FLEET', zoneId: 2, attackerIds: ['x'], targetIds: ['y'] },
+  ATTACK_ENEMY_FLEET: { type: 'ATTACK_ENEMY_FLEET', zoneId: 2, },
   RESPOND_TO_ATTACK: { type: 'RESPOND_TO_ATTACK', optOutIds: [] },
   SUBMIT_BATTLE_REPORT: { type: 'SUBMIT_BATTLE_REPORT', results: {}, repairs: [] },
   DECIDE_BATTLE_REPORT: { type: 'DECIDE_BATTLE_REPORT', approve: true },
