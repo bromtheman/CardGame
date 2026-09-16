@@ -31,7 +31,8 @@ step('lobby created', !!lobbyId, `HTTP ${lobbyRes.status}`)
 const added = await fn('lobby-action', p1.token, { action: 'ADD_BOT', lobbyId, faction: BOT_FACTION })
 step('ADD_BOT seats PracticeAI', added.status === 200 && !!added.body?.lobby?.guest_id,
   `HTTP ${added.status} ${JSON.stringify(added.body).slice(0, 160)}`)
-step('bot seat is ready with its faction', added.body?.lobby?.guest_ready === true && added.body?.lobby?.guest_faction === BOT_FACTION)
+step('bot seat is ready with its faction', added.body?.lobby?.guest_ready === true && added.body?.lobby?.guest_faction === BOT_FACTION,
+  `ready=${added.body?.lobby?.guest_ready} faction=${added.body?.lobby?.guest_faction}`)
 
 const again = await fn('lobby-action', p1.token, { action: 'ADD_BOT', lobbyId, faction: BOT_FACTION })
 step('a second ADD_BOT is refused (seat taken)', again.status === 409, `HTTP ${again.status}`)
@@ -84,13 +85,14 @@ for (let round = 1; round <= 3; round++) {
     const resolved = await load()
     step(`round ${round}: the bot approves the report and the game unfreezes`,
       rep.status === 200 && resolved.state.pendingReport === null && resolved.state.activeBattle === null,
-      `HTTP ${rep.status}`)
+      `HTTP ${rep.status}, pendingReport=${resolved.state.pendingReport ? 'set' : 'null'}, activeBattle=${resolved.state.activeBattle ? 'set' : 'null'}`)
   }
 }
 
 const conceded = await act({ type: 'CONCEDE' })
 step('P1 concedes to close the practice game', conceded.status === 200, `HTTP ${conceded.status}`)
 game = await load()
-step('game complete, bot is the winner', game?.status === 'complete' && game?.winner_id !== p1.userId, game?.status)
+step('game complete, bot is the winner', game?.status === 'complete' && game?.winner_id !== p1.userId,
+  `status=${game?.status} winner=${game?.winner_id === p1.userId ? 'P1 (wrong)' : game?.winner_id ?? 'none'}`)
 
 await report([{ lobbyId, gameId }], p1)
