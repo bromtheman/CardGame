@@ -12,3 +12,6 @@ skills-lock.json
 
 # QA login credentials — never commit
 scripts/qa-accounts.local
+
+# Written by `npm run functions:check` (deno check); the deploy bundler resolves npm: specifiers itself.
+deno.lock

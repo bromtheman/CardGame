@@ -20,6 +20,45 @@ function json(status: number, body: unknown): Response {
   })
 }
 
+// --- caller identity, verified locally --------------------------------------
+//
+// `getClaims` checks the JWT's signature against the project's public signing
+// keys (ES256 here) with WebCrypto, instead of `getUser()`'s round trip to
+// GoTrue on every request. The keys are fetched once and cached for ten
+// minutes ON THE CLIENT INSTANCE — which is why this client is module-scoped
+// and created lazily rather than per request: a fresh client each time would
+// just trade one network call for another.
+//
+// What changes: a session revoked, or a user deleted, mid-token stays valid
+// until that token expires (one hour). Accepted 2026-09-16 — nothing
+// player-facing hangs on that hour. What does not change: an expired,
+// tampered, or foreign-project token is still refused (the last through
+// getClaims' own getUser fallback for an unknown key id), and every 4xx
+// below still comes in the same order. The same block lives in all four
+// functions; keep them equal.
+let verifier: ReturnType<typeof createClient> | null = null
+async function verifiedUserId(
+  req: Request, supabaseUrl: string, anonKey: string,
+): Promise<string | null> {
+  const header = req.headers.get('Authorization') ?? ''
+  const jwt = header.startsWith('Bearer ') ? header.slice('Bearer '.length).trim() : ''
+  if (!jwt) return null
+  verifier ??= createClient(supabaseUrl, anonKey, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  })
+  try {
+    const { data, error } = await verifier.auth.getClaims(jwt)
+    if (error || !data) return null
+    const { sub, role } = data.claims
+    return role === 'authenticated' && typeof sub === 'string' && sub !== '' ? sub : null
+  } catch {
+    // A verification failure that is not an auth error (WebCrypto, a JWKS
+    // fetch that threw) reads as "not signed in", exactly as getUser()'s
+    // network failures did.
+    return null
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   if (req.method !== 'POST') return json(405, { errors: ['POST only'] })
@@ -31,13 +70,11 @@ Deno.serve(async (req) => {
     return json(500, { errors: ['Server misconfigured: missing Supabase environment'] })
   }
 
-  const authClient = createClient(supabaseUrl, anonKey, {
-    global: { headers: { Authorization: req.headers.get('Authorization') ?? '' } },
-  })
-  const { data: userData, error: userError } = await authClient.auth.getUser()
-  if (userError || !userData.user) return json(401, { errors: ['Not signed in'] })
-  const userId = userData.user.id
-
+  // Local, cheap checks first — no credential at all is a 401 before any
+  // work, and a malformed body is a 400 before any round trip.
+  if (!(req.headers.get('Authorization') ?? '').startsWith('Bearer ')) {
+    return json(401, { errors: ['Not signed in'] })
+  }
   let body: { gameId?: unknown; expectedVersion?: unknown; action?: unknown }
   try {
     body = await req.json()
@@ -51,8 +88,19 @@ Deno.serve(async (req) => {
     return json(400, { errors: ['gameId, expectedVersion, and action are required'] })
   }
 
+  // Three round trips that never depended on each other — the token check
+  // needs only the header, the two reads need only gameId — run as one. The
+  // membership and version checks below still gate everything that follows,
+  // in the same order as before, and a refused caller is sent nothing from
+  // the reads. (An unauthenticated request now costs two indexed reads whose
+  // results are discarded; it already cost a GoTrue call.)
   const admin = createClient(supabaseUrl, serviceKey)
-  const { data: row } = await admin.from('games').select('*').eq('id', gameId).maybeSingle()
+  const [userId, { data: row }, { data: playerRows }] = await Promise.all([
+    verifiedUserId(req, supabaseUrl, anonKey),
+    admin.from('games').select('*').eq('id', gameId).maybeSingle(),
+    admin.from('game_players').select('*').eq('game_id', gameId),
+  ])
+  if (!userId) return json(401, { errors: ['Not signed in'] })
   if (!row) return json(404, { errors: ['Game not found'] })
   if (row.player_a !== userId && row.player_b !== userId) {
     return json(403, { errors: ['You are not in this game'] })
@@ -60,8 +108,6 @@ Deno.serve(async (req) => {
   if (row.version !== expectedVersion) {
     return json(409, { errors: ['Version conflict — refresh'] })
   }
-  const { data: playerRows } = await admin
-    .from('game_players').select('*').eq('game_id', gameId)
   const aRow = playerRows?.find((p) => p.player_id === row.player_a)
   const bRow = playerRows?.find((p) => p.player_id === row.player_b)
   if (!aRow || !bRow) return json(500, { errors: ['Game state is incomplete'] })

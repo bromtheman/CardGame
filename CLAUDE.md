@@ -56,6 +56,7 @@ npx vitest run                      # all tests. NEVER pass --root — it silent
 npx tsc -p tsconfig.json --noEmit   # typecheck shared/ + supabase/seed (frontend has its own)
 npm --prefix frontend run build     # frontend typecheck + production build
 npm --prefix frontend run lint      # oxlint
+npm run functions:check             # Deno type-check of the four edge functions (tsc never reads them)
 npm run functions:sync              # copy shared/ modules into edge functions (see rule below)
 npm run seed:verify                 # diff LIVE card rows against seed_data.sql (see rule below)
 ```
