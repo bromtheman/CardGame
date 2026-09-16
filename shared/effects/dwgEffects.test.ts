@@ -620,7 +620,6 @@ describe('plundererRaid', () => {
     game.state.zones[0].cards.b.push(foe)
     const declared = applyAction(game, 'alice', {
       type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
-      attackerIds: [plunderer.instanceId], targetIds: [foe.instanceId],
     }, makeCtx())
     if (!declared.ok) throw new Error(declared.error)
     const submitted = applyAction(declared.game, 'alice', {
@@ -695,7 +694,6 @@ describe('DWG Waters clauses 2 and 3', () => {
       game.state.zones[0].cards.b.push(defender)
       const r = applyAction(game, 'alice', {
         type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
-        attackerIds: [attacker.instanceId], targetIds: [defender.instanceId],
       }, makeCtx({ catalog: fullCatalog }))
       if (!r.ok) throw new Error(r.error)
       expect(r.game.state.pendingEffect?.side).toBe('b')
@@ -710,7 +708,6 @@ describe('DWG Waters clauses 2 and 3', () => {
       game.state.zones[0].cards.b.push(defender)
       const declared = applyAction(game, 'alice', {
         type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
-        attackerIds: [attacker.instanceId], targetIds: [defender.instanceId],
       }, makeCtx({ catalog: fullCatalog }))
       if (!declared.ok) throw new Error(declared.error)
       const r = applyAction(declared.game, 'bob', {
@@ -731,7 +728,6 @@ describe('DWG Waters clauses 2 and 3', () => {
       game.state.zones[0].cards.b.push(defender)
       const r = applyAction(game, 'alice', {
         type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
-        attackerIds: [attacker.instanceId], targetIds: [defender.instanceId],
       }, makeCtx({ catalog: fullCatalog }))
       if (!r.ok) throw new Error(r.error)
       expect(r.game.state.pendingEffect).toBeNull()
@@ -745,7 +741,6 @@ describe('DWG Waters clauses 2 and 3', () => {
       game.state.zones[0].cards.b.push(defender)
       const r = applyAction(game, 'alice', {
         type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
-        attackerIds: [attacker.instanceId], targetIds: [defender.instanceId],
       }, makeCtx({ catalog: fullCatalog }))
       if (!r.ok) throw new Error(r.error)
       expect(r.game.state.pendingEffect).toBeNull()
@@ -759,7 +754,6 @@ describe('DWG Waters clauses 2 and 3', () => {
       game.state.zones[0].cards.b.push(defender)
       const declared = applyAction(game, 'alice', {
         type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
-        attackerIds: [attacker.instanceId], targetIds: [defender.instanceId],
       }, makeCtx({ catalog: fullCatalog }))
       if (!declared.ok) throw new Error(declared.error)
       const r = applyAction(declared.game, 'bob', {
@@ -1128,7 +1122,6 @@ describe('wave 5 — Ongoing Attrition', () => {
     const { game, mine, theirs } = claimed({ mine: 3, theirs: 1 })
     const r = applyAction(game, 'alice', {
       type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
-      attackerIds: [mine[0].instanceId], targetIds: [theirs[0].instanceId],
     }, attritionCtx())
     if (!r.ok) throw new Error(r.error)
     // Surplus is ZONE population (3 - 1 = 2), not the committed selection —
@@ -1141,7 +1134,6 @@ describe('wave 5 — Ongoing Attrition', () => {
     const { game, mine, theirs } = claimed({ mine: 1, theirs: 1 })
     const r = applyAction(game, 'alice', {
       type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
-      attackerIds: [mine[0].instanceId], targetIds: [theirs[0].instanceId],
     }, attritionCtx())
     if (!r.ok) throw new Error(r.error)
     expect(r.game.state.zones[0].baseHp.b).toBe(1000)
@@ -1161,7 +1153,6 @@ describe('wave 5 — Ongoing Attrition', () => {
     const { game, mine, theirs } = claimed({ mine: 3, theirs: 1, theirKeywords: ['blocker'] })
     const r = applyAction(game, 'alice', {
       type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
-      attackerIds: [mine[0].instanceId], targetIds: [theirs[0].instanceId],
     }, attritionCtx())
     if (!r.ok) throw new Error(r.error)
     expect(r.game.state.zones[0].baseHp.b).toBe(1000)
@@ -1174,7 +1165,6 @@ describe('wave 5 — Ongoing Attrition', () => {
     game.state.zones[0].baseHp.b = 0
     const r = applyAction(game, 'alice', {
       type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
-      attackerIds: [mine[0].instanceId], targetIds: [theirs[0].instanceId],
     }, attritionCtx())
     if (!r.ok) throw new Error(r.error)
     expect(r.game.state.zones[0].baseHp.b).toBe(0)
@@ -1186,7 +1176,6 @@ describe('wave 5 — Ongoing Attrition', () => {
     const bobsTurn = { ...game, activePlayer: 'bob', turnNumber: 3.5 }
     const r = applyAction(bobsTurn, 'bob', {
       type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
-      attackerIds: [theirs[0].instanceId], targetIds: [mine[0].instanceId],
     }, attritionCtx())
     if (!r.ok) throw new Error(r.error)
     expect(r.game.state.zones[0].baseHp.b).toBe(1000)
@@ -1199,7 +1188,6 @@ describe('wave 5 — Ongoing Attrition', () => {
     game.state.zones[2].baseHp.b = 0  // one zone already lost
     const r = applyAction(game, 'alice', {
       type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
-      attackerIds: [mine[0].instanceId], targetIds: [theirs[0].instanceId],
     }, attritionCtx())
     if (!r.ok) throw new Error(r.error)
     expect(r.game.state.zones[0].baseHp.b).toBe(0)
@@ -1258,7 +1246,6 @@ describe('wave 5 — Ongoing Attrition', () => {
     const { game, mine, theirs } = claimed({ mine: 3, theirs: 1 })
     const struck = applyAction(game, 'alice', {
       type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
-      attackerIds: [mine[0].instanceId], targetIds: [theirs[0].instanceId],
     }, attritionCtx())
     if (!struck.ok) throw new Error(struck.error)
     struck.game.state.activeBattle = null // the battle is over

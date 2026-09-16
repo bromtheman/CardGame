@@ -1042,6 +1042,11 @@ could raise it. `RESPOND_TO_ATTACK` accepts an opt-out id drawn from either list
 everything downstream — the "all defenders slipped away" call-off, the lock — is
 unchanged.
 
+*Amended 2026-09-16: the main spec's §3.4 removed the selection. The attacking
+force is now every non-Inoffensive hull the aggressor has in the zone, and the
+condition is judged against that; `fleetAttackRosters` in `battleDeclare.ts`
+is the one derivation.*
+
 Two rulings fall out:
 
 - **A forced battle is exempt**, exactly as it is from the Stealthy opt-out

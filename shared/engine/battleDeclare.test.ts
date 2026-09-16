@@ -1,7 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import {
   applyAction, declareForcedBattle, DEPLOY_ORDER_FIRST, DEPLOY_ORDER_LAST, deployOrderFor,
-  joinBattle, normalizeState, OMISSION_UNLESS_SHIP_OR_TANK,
+  fleetAttackRosters, joinBattle, normalizeState, OMISSION_UNLESS_SHIP_OR_TANK,
 } from './index'
 import { loadSeedData } from '../../supabase/seed/transform'
 import { registerEffect } from '../effects/registry'
@@ -21,7 +21,7 @@ describe('ATTACK_ENEMY_FLEET', () => {
   it('locks a battle at default distance and spends the activation', () => {
     const { g, atk, def } = battleground()
     const r = applyAction(g, 'alice', {
-      type: 'ATTACK_ENEMY_FLEET', zoneId: 1, attackerIds: [atk.instanceId], targetIds: [def.instanceId],
+      type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
     })
     if (!r.ok) throw new Error(r.error)
     expect(r.game.state.activeBattle).toMatchObject({
@@ -36,7 +36,7 @@ describe('ATTACK_ENEMY_FLEET', () => {
     // exactly "Fleet battle declared", byte-identical to before the split.
     const { g, atk, def } = battleground()
     const r = applyAction(g, 'alice', {
-      type: 'ATTACK_ENEMY_FLEET', zoneId: 1, attackerIds: [atk.instanceId], targetIds: [def.instanceId],
+      type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
     })
     if (!r.ok) throw new Error(r.error)
     expect(r.game.state.zones[0].lastActivatedTurn).toBe(3)
@@ -44,47 +44,12 @@ describe('ATTACK_ENEMY_FLEET', () => {
       'Fleet battle declared in zone 1 — 1 vs 1. Fight it in From The Depths, then report results.',
     )
   })
-  it('rejects inoffensive attackers, foreign ids, and empty selections', () => {
-    const { g, def } = battleground()
-    const ino = zoneEntry({ keywords: ['inoffensive'], playedOnTurn: 2 })
-    g.state.zones[0].cards.a.push(ino)
-    expect(applyAction(g, 'alice', {
-      type: 'ATTACK_ENEMY_FLEET', zoneId: 1, attackerIds: [ino.instanceId], targetIds: [def.instanceId],
-    })).toMatchObject({ ok: false, status: 400 })
-    expect(applyAction(g, 'alice', {
-      type: 'ATTACK_ENEMY_FLEET', zoneId: 1, attackerIds: ['ghost'], targetIds: [def.instanceId],
-    })).toMatchObject({ ok: false, status: 400 })
-    expect(applyAction(g, 'alice', {
-      type: 'ATTACK_ENEMY_FLEET', zoneId: 1, attackerIds: [], targetIds: [def.instanceId],
-    })).toMatchObject({ ok: false, status: 400 })
-  })
-  it('rejects malformed (non-array) attacker/target selections instead of throwing', () => {
-    const { g, def } = battleground()
-    expect(applyAction(g, 'alice', {
-      type: 'ATTACK_ENEMY_FLEET', zoneId: 1, attackerIds: {} as never, targetIds: [def.instanceId],
-    })).toMatchObject({ ok: false, status: 400 })
-    expect(applyAction(g, 'alice', {
-      type: 'ATTACK_ENEMY_FLEET', zoneId: 1, attackerIds: [def.instanceId], targetIds: {} as never,
-    })).toMatchObject({ ok: false, status: 400 })
-  })
-  it('rejects duplicate ids within a selection', () => {
-    const { g, atk, def } = battleground()
-    expect(applyAction(g, 'alice', {
-      type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
-      attackerIds: [atk.instanceId, atk.instanceId], targetIds: [def.instanceId],
-    })).toMatchObject({ ok: false, status: 400 })
-    expect(applyAction(g, 'alice', {
-      type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
-      attackerIds: [atk.instanceId], targetIds: [def.instanceId, def.instanceId],
-    })).toMatchObject({ ok: false, status: 400 })
-  })
   it('routes stealthy targets through the response window', () => {
     const { g, atk, def } = battleground()
     const sneak = zoneEntry({ keywords: ['stealthy'] })
     g.state.zones[0].cards.b.push(sneak)
     const r = applyAction(g, 'alice', {
       type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
-      attackerIds: [atk.instanceId], targetIds: [def.instanceId, sneak.instanceId],
     })
     if (!r.ok) throw new Error(r.error)
     expect(r.game.state.awaitingResponse).toMatchObject({ stealthyIds: [sneak.instanceId] })
@@ -102,7 +67,7 @@ describe('ATTACK_ENEMY_FLEET', () => {
     const sneak = zoneEntry({ keywords: ['stealthy'] })
     g.state.zones[0].cards.b.push(sneak)
     const r = applyAction(g, 'alice', {
-      type: 'ATTACK_ENEMY_FLEET', zoneId: 1, attackerIds: [atk.instanceId], targetIds: [sneak.instanceId],
+      type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
     })
     if (!r.ok) throw new Error(r.error)
     const r2 = applyAction(r.game, 'bob', { type: 'RESPOND_TO_ATTACK', optOutIds: [sneak.instanceId] })
@@ -118,13 +83,145 @@ describe('ATTACK_ENEMY_FLEET', () => {
     g.state.zones[0].cards.b.push(sneak)
     const r = applyAction(g, 'alice', {
       type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
-      attackerIds: [atk.instanceId], targetIds: [def.instanceId, sneak.instanceId],
     })
     if (!r.ok) throw new Error(r.error)
     expect(applyAction(r.game, 'alice', { type: 'RESPOND_TO_ATTACK', optOutIds: [] }))
       .toMatchObject({ ok: false, status: 403 })
     expect(applyAction(r.game, 'bob', { type: 'RESPOND_TO_ATTACK', optOutIds: [def.instanceId] }))
       .toMatchObject({ ok: false, status: 400 })
+  })
+})
+
+// Spec §3.4 option 2 as amended 2026-09-16: a fleet attack has no selection.
+// Every non-Inoffensive hull of the aggressor's in the zone attacks, every
+// enemy hull there is attacked, and the only way out of a declared battle is
+// the defender's — Stealthy, or a printed omission condition.
+describe('ATTACK_ENEMY_FLEET commits every eligible hull (spec §3.4, 2026-09-16)', () => {
+  function fleets() {
+    const g = makeGame({ turnNumber: 3 })
+    const a1 = zoneEntry({ name: 'A1', playedOnTurn: 2 })
+    const a2 = zoneEntry({ name: 'A2', playedOnTurn: 3 })
+    const b1 = zoneEntry({ name: 'B1' })
+    const b2 = zoneEntry({ name: 'B2' })
+    g.state.zones[0].cards.a.push(a1, a2)
+    g.state.zones[0].cards.b.push(b1, b2)
+    return { g, a1, a2, b1, b2 }
+  }
+
+  it('declares with the zone alone: every own hull attacks every enemy hull', () => {
+    const { g, a1, a2, b1, b2 } = fleets()
+    const r = applyAction(g, 'alice', { type: 'ATTACK_ENEMY_FLEET', zoneId: 1 })
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.activeBattle).toMatchObject({
+      zoneId: 1, aggressor: 'a',
+      attackerIds: [a1.instanceId, a2.instanceId],
+      defenderIds: [b1.instanceId, b2.instanceId],
+    })
+    expect(r.game.state.zones[0].lastActivatedTurn).toBe(3)
+  })
+
+  it("leaves the aggressor's Inoffensive hull out instead of refusing", () => {
+    const { g, a1, a2, b1, b2 } = fleets()
+    const ino = zoneEntry({ name: 'Tender', keywords: ['inoffensive'], playedOnTurn: 2 })
+    g.state.zones[0].cards.a.push(ino)
+    const r = applyAction(g, 'alice', { type: 'ATTACK_ENEMY_FLEET', zoneId: 1 })
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.activeBattle?.attackerIds).toEqual([a1.instanceId, a2.instanceId])
+    expect(r.game.state.activeBattle?.defenderIds).toEqual([b1.instanceId, b2.instanceId])
+  })
+
+  it("sends the aggressor's own Stealthy hull in with the rest — withdrawal is the defender's right only", () => {
+    const { g, a1, a2 } = fleets()
+    const sneak = zoneEntry({ name: 'Sneak', keywords: ['stealthy'], playedOnTurn: 2 })
+    g.state.zones[0].cards.a.push(sneak)
+    const r = applyAction(g, 'alice', { type: 'ATTACK_ENEMY_FLEET', zoneId: 1 })
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.awaitingResponse).toBeNull()
+    expect(r.game.state.activeBattle?.attackerIds).toEqual([a1.instanceId, a2.instanceId, sneak.instanceId])
+  })
+
+  it('refuses when none of the aggressor’s hulls in the zone can attack', () => {
+    const g = makeGame({ turnNumber: 3 })
+    g.state.zones[0].cards.a.push(zoneEntry({ keywords: ['inoffensive'], playedOnTurn: 2 }))
+    g.state.zones[0].cards.b.push(zoneEntry({}))
+    const r = applyAction(g, 'alice', { type: 'ATTACK_ENEMY_FLEET', zoneId: 1 })
+    expect(r).toMatchObject({ ok: false, status: 400 })
+    if (r.ok) throw new Error('unreachable')
+    expect(r.error).toMatch(/able to attack/i)
+    expect(g.state.zones[0].lastActivatedTurn).toBeNull()
+  })
+
+  it('refuses when the zone holds no enemy hull', () => {
+    const g = makeGame({ turnNumber: 3 })
+    g.state.zones[0].cards.a.push(zoneEntry({ playedOnTurn: 2 }))
+    const r = applyAction(g, 'alice', { type: 'ATTACK_ENEMY_FLEET', zoneId: 1 })
+    expect(r).toMatchObject({ ok: false, status: 400 })
+    if (r.ok) throw new Error('unreachable')
+    expect(r.error).toMatch(/no enemy/i)
+  })
+
+  it('ignores a stale client’s attackerIds/targetIds and commits the full rosters anyway', () => {
+    // An open tab served before this rule still sends the arrays; the engine
+    // must not 400 it and must not honour a partial pick either.
+    const { g, a1, a2, b1, b2 } = fleets()
+    const stale = {
+      type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
+    } as unknown as Parameters<typeof applyAction>[2]
+    const r = applyAction(g, 'alice', stale)
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.activeBattle?.attackerIds).toEqual([a1.instanceId, a2.instanceId])
+    expect(r.game.state.activeBattle?.defenderIds).toEqual([b1.instanceId, b2.instanceId])
+  })
+
+  it('opens the withdrawal window over every enemy hull, naming the Stealthy ones', () => {
+    const { g, a1, a2, b1, b2 } = fleets()
+    const sneak = zoneEntry({ name: 'Sneak', keywords: ['stealthy'] })
+    g.state.zones[0].cards.b.push(sneak)
+    const r = applyAction(g, 'alice', { type: 'ATTACK_ENEMY_FLEET', zoneId: 1 })
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.awaitingResponse).toMatchObject({
+      zoneId: 1, aggressor: 'a',
+      attackerIds: [a1.instanceId, a2.instanceId],
+      targetIds: [b1.instanceId, b2.instanceId, sneak.instanceId],
+      stealthyIds: [sneak.instanceId],
+    })
+    expect(r.game.state.activeBattle).toBeNull()
+  })
+
+  // The dialog shows the player what the engine WILL commit, so the derivation
+  // is exported and imported rather than mirrored (docs/claude/frontend.md,
+  // "Never mirror engine logic").
+  it('exports fleetAttackRosters — the one derivation the handler and the dialog share', () => {
+    const g = makeGame({ turnNumber: 3 })
+    const p1 = zoneEntry({ vehicleType: 'plane', playedOnTurn: 2 })
+    const p2 = zoneEntry({ vehicleType: 'plane', playedOnTurn: 2 })
+    const ino = zoneEntry({ vehicleType: 'plane', keywords: ['inoffensive'], playedOnTurn: 2 })
+    const plain = zoneEntry({})
+    const sneak = zoneEntry({ keywords: ['stealthy'] })
+    const buzz = zoneEntry({ name: 'Buzzsaw', meta: { defensiveOmission: OMISSION_UNLESS_SHIP_OR_TANK } })
+    g.state.zones[0].cards.a.push(p1, ino, p2)
+    g.state.zones[0].cards.b.push(plain, sneak, buzz)
+    const rosters = fleetAttackRosters(g.state, 'a', 1)
+    expect(rosters?.force.map((c) => c.instanceId)).toEqual([p1.instanceId, p2.instanceId])
+    expect(rosters?.targets.map((c) => c.instanceId)).toEqual([plain.instanceId, sneak.instanceId, buzz.instanceId])
+    expect(rosters?.stealthyIds).toEqual([sneak.instanceId])
+    expect(rosters?.omissibleIds).toEqual([buzz.instanceId])
+    expect(fleetAttackRosters(g.state, 'a', 9)).toBeNull()
+  })
+
+  it('judges a printed omission condition against the whole attacking force', () => {
+    // Before the amendment the force was the committed selection, so a ship
+    // left on the bench did not count. Now nothing is benched.
+    const g = makeGame({ turnNumber: 3 })
+    const plane = zoneEntry({ vehicleType: 'plane', playedOnTurn: 2 })
+    const ship = zoneEntry({ vehicleType: 'ship', playedOnTurn: 2 })
+    const buzz = zoneEntry({ name: 'Buzzsaw', meta: { defensiveOmission: OMISSION_UNLESS_SHIP_OR_TANK } })
+    g.state.zones[0].cards.a.push(plane, ship)
+    g.state.zones[0].cards.b.push(buzz)
+    const r = applyAction(g, 'alice', { type: 'ATTACK_ENEMY_FLEET', zoneId: 1 }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.awaitingResponse).toBeNull()
+    expect(r.game.state.activeBattle?.attackerIds).toEqual([plane.instanceId, ship.instanceId])
   })
 })
 
@@ -143,7 +240,7 @@ describe('declareForcedBattle', () => {
     // zone's activation survived a forced battle for a later ordinary attack.
     g.state.activeBattle = null
     const r = applyAction(g, 'alice', {
-      type: 'ATTACK_ENEMY_FLEET', zoneId: 1, attackerIds: [atk.instanceId], targetIds: [def.instanceId],
+      type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
     })
     expect(r.ok).toBe(true)
   })
@@ -158,7 +255,7 @@ describe('declareForcedBattle', () => {
     expect(g.state.zones[0].lastActivatedTurn).toBe(3)
     g.state.activeBattle = null
     const r = applyAction(g, 'alice', {
-      type: 'ATTACK_ENEMY_FLEET', zoneId: 1, attackerIds: [atk.instanceId], targetIds: [def.instanceId],
+      type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
     })
     expect(r).toMatchObject({ ok: false, status: 409, error: 'That zone was already activated this turn' })
   })
@@ -304,7 +401,7 @@ describe('DP2 lock dispatch', () => {
     g.state.zones[0].cards.a.push(atk)
     g.state.zones[0].cards.b.push(def)
     const r = applyAction(g, 'alice', {
-      type: 'ATTACK_ENEMY_FLEET', zoneId: 1, attackerIds: [atk.instanceId], targetIds: [def.instanceId],
+      type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
     }, makeCtx())
     if (!r.ok) throw new Error(r.error)
     expect(lockFired).toEqual([
@@ -324,7 +421,7 @@ describe('DP2 lock dispatch', () => {
     g.state.zones[0].cards.a.push(atk)
     g.state.zones[0].cards.b.push(def)
     const opened = applyAction(g, 'alice', {
-      type: 'ATTACK_ENEMY_FLEET', zoneId: 1, attackerIds: [atk.instanceId], targetIds: [def.instanceId],
+      type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
     }, makeCtx())
     if (!opened.ok) throw new Error(opened.error)
     expect(lockFired).toEqual([])
@@ -375,7 +472,6 @@ function attackWith(attackers: ZoneCardEntry[], targets: ZoneCardEntry[]) {
   for (const t of targets) g.state.zones[0].cards.b.push(t)
   const r = applyAction(g, 'alice', {
     type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
-    attackerIds: attackers.map((a) => a.instanceId), targetIds: targets.map((t) => t.instanceId),
   }, makeCtx())
   if (!r.ok) throw new Error(r.error)
   return r.game
@@ -439,23 +535,10 @@ describe('defender omission', () => {
     expect(carriers.map((c) => c.name)).toEqual([])
   })
 
-  // Spec §4.8: the "force" is the attacker's committed selection, not
-  // everything they own in the zone. A hull sitting the battle out is not
-  // attacking.
-  it('reads the force as the selection, not the whole zone', () => {
-    const g = makeGame({ turnNumber: 3 })
-    const plane = zoneEntry({ vehicleType: 'plane', playedOnTurn: 2 })
-    const benchedShip = zoneEntry({ vehicleType: 'ship', playedOnTurn: 2 })
-    const buzz = omissible()
-    g.state.zones[0].cards.a.push(plane, benchedShip)
-    g.state.zones[0].cards.b.push(buzz)
-    const r = applyAction(g, 'alice', {
-      type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
-      attackerIds: [plane.instanceId], targetIds: [buzz.instanceId],
-    }, makeCtx())
-    if (!r.ok) throw new Error(r.error)
-    expect(r.game.state.awaitingResponse?.omissibleIds).toEqual([buzz.instanceId])
-  })
+  // Spec §4.8 used to read the "force" as the attacker's committed selection;
+  // since the 2026-09-16 amendment to §3.4 nothing can be benched, so the
+  // force is the whole zone bar Inoffensive hulls. Pinned in the
+  // "commits every eligible hull" block above.
 
   it('opens the window on an omissible defender with no stealthy one present', () => {
     const buzz = omissible()

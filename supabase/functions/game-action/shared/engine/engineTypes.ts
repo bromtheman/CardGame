@@ -154,7 +154,10 @@ export type GameAction =
   | { type: 'MOVE_VEHICLE'; instanceId: string; zoneId: number }
   | { type: 'ACTIVATE_VEHICLE'; instanceId: string; targetInstanceId?: string; zoneId?: number }
   | { type: 'ATTACK_ENEMY_BASE'; zoneId: number }
-  | { type: 'ATTACK_ENEMY_FLEET'; zoneId: number; attackerIds: string[]; targetIds: string[] }
+  // No roster (spec §3.4, amended 2026-09-16): every non-Inoffensive hull of
+  // the aggressor's in the zone attacks every enemy hull there. A stale client
+  // may still send attackerIds/targetIds; the engine ignores them.
+  | { type: 'ATTACK_ENEMY_FLEET'; zoneId: number }
   | { type: 'RESPOND_TO_ATTACK'; optOutIds: string[] }
   | { type: 'SUBMIT_BATTLE_REPORT'; results: Record<string, number>; repairs: string[] }
   | { type: 'DECIDE_BATTLE_REPORT'; approve: boolean; repairs?: string[] }

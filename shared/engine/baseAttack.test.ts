@@ -182,7 +182,6 @@ describe('noBaseDamage', () => {
     g.state.zones[0].cards.b.push(victim)
     const r = applyAction(g, 'alice', {
       type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
-      attackerIds: [p.instanceId], targetIds: [victim.instanceId],
     }, makeCtx())
     if (!r.ok) throw new Error(r.error)
     expect(r.game.state.activeBattle?.attackerIds).toEqual([p.instanceId])
