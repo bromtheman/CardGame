@@ -17,9 +17,9 @@ import { runBotUntilIdle } from './botDriver'
 // picks fights half the time, and reports every battle with random ending HP
 // so deaths, repairs and death triggers all fire. Nothing here asserts on
 // strategy — only that no seed, deck or card can wedge or crash the driver.
-// Eight seeds keeps the file near ten seconds; raise it once the engine's
-// clone cost is known to allow more (spec §9 aimed at ~20).
-const SEEDS = [1, 2, 3, 4, 5, 6, 7, 8]
+// Twenty seeds, as spec §9 aimed at: a game costs ~35 ms (measured
+// 2026-09-16), so the file stays near four seconds.
+const SEEDS = Array.from({ length: 20 }, (_, i) => i + 1)
 const TURN_CAP = 40
 const STEP_CAP = 2000
 
