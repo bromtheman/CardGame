@@ -221,6 +221,12 @@ The migration and the function must both be live before any browser calls
 - **Both captains can mint a token for the same battle.** The second `submit`
   gets a clean 409 saying a report is already pending, which is right — but only
   one of them is running the fight, so in practice only one ever posts.
-- **The overlay polls** (`FTD_RESULT_POLL_MS`, 15s) rather than using realtime.
+- ~~**The overlay polls** (`FTD_RESULT_POLL_MS`, 15s) rather than using realtime.
   `battle_tokens` is not in the realtime publication and has no RLS policy, both
-  deliberately, so `useRealtimeInvalidate` is not open to it.
+  deliberately, so `useRealtimeInvalidate` is not open to it.~~ **Resolved
+  2026-09-16:** the result is pushed by a `battle_tokens` trigger broadcasting
+  a wake-up on the private topic `game:<id>:ftd` (migration
+  `20260916180202_ftd_result_broadcast.sql`, `useFtdResultBroadcast`). The
+  table is still unpublished and policy-less — broadcast needs neither — and
+  the poll survives at 30 s as the fallback. Measured: the overlay refetched
+  0.9 s after the mod's POST, against up to 15 s before.

@@ -16,7 +16,7 @@ import { ConcedeButton } from './ConcedeButton'
 import { LaunchInFtdButton } from './LaunchInFtdButton'
 import { applyPrefill, prefillSummary, winnerLabel } from './ftdPrefill'
 import type { FtdPrefill } from './ftdPrefill'
-import { useFtdResultQuery } from './ftdReporting'
+import { useFtdResultBroadcast, useFtdResultQuery } from './ftdReporting'
 import { splitRosterBySide } from './reportTeams'
 
 type Battle = NonNullable<PublicGameState['activeBattle']>
@@ -457,10 +457,11 @@ export function BattleOverlay({
   const [prefillNote, setPrefillNote] = useState<string | null>(null)
   // Only asked for while there is a battle and no report yet — once a report is
   // pending there is nothing left to prefill. Hooks run before the early return
-  // below, so this is called unconditionally and gated by `enabled`.
-  const { data: ftdResult } = useFtdResultQuery(
-    gameId, state.activeBattle !== null && state.pendingReport === null,
-  )
+  // below, so both are called unconditionally and gated by `enabled`: the
+  // query holds the result, the broadcast refetches it the moment one lands.
+  const wantFtdResult = state.activeBattle !== null && state.pendingReport === null
+  const { data: ftdResult } = useFtdResultQuery(gameId, wantFtdResult)
+  useFtdResultBroadcast(gameId, wantFtdResult)
 
   if (!battle) return null
 

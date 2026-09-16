@@ -39,6 +39,21 @@ not "fix" that flag.
   and so needs neither registry — which is also why it does not know the
   battle roster, and does not need to.
 
+  **The result is pushed to the open overlay** without the function knowing:
+  migration `20260916180202_ftd_result_broadcast.sql` puts a trigger on
+  `battle_tokens` that, when `reported` lands, calls `realtime.send` on the
+  private topic `game:<id>:ftd` (event `ftd_result`) with only game id,
+  battle key and timestamp. A `realtime.messages` SELECT policy lets exactly
+  the two participants of that game join the topic; the table stays out of
+  the publication with no policy of its own. The overlay answers the wake-up
+  by calling `fetch` — still the only read path. `realtime.send` swallows its
+  own errors as a WARNING (`WarnSendingBroadcastMessage` in postgres logs), so
+  a broken broadcast never fails a redeem; the overlay's 30 s poll is the
+  fallback. The topic/event strings live in `shared/battleReport.ts` and
+  `battleReport.test.ts` reads the migration to keep them in step.
+  `scripts/smoke-battle-report.mjs` proves the push live (a subscribed captain
+  is woken; an anonymous socket and a non-participant are refused at join).
+
 - Version-check contract: client sends `expectedVersion`; RPC returns `null` on
   mismatch → function returns **409** → client refetches. Errors come back as
   `{ errors: string[] }` with 4xx status.
@@ -247,8 +262,9 @@ automatically" — is closed by `scripts/deploy-function.mjs` above.)
 
 - Migrations live in `supabase/migrations/` and are applied on merge to `main`
   by the GitHub integration. Existing ones cover profiles, cards/hero_powers,
-  signup hardening, decks/storage, lobbies/games, the `apply_action_tx` RPC, and
-  `profiles.is_admin`.
+  signup hardening, decks/storage, lobbies/games, the `apply_action_tx` RPC,
+  `profiles.is_admin`, battle tokens, lobby ready/optional decks, and the FtD
+  result broadcast (trigger + `realtime.messages` policy).
 - **A migration filename's timestamp IS its identity.** The integration applies
   any version not already in `supabase_migrations.schema_migrations`, so a file
   whose timestamp is not the recorded one gets replayed against a database that

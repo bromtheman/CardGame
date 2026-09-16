@@ -29,6 +29,12 @@
 //     and approved by the OTHER one. Nothing in this feature may route around
 //     DECIDE_BATTLE_REPORT's `actor === report.submittedBy` 403, and the run
 //     asserts the submitter cannot approve their own report.
+//   * THE RESULT IS PUSHED, AND ONLY TO THE TWO CAPTAINS. A trigger on
+//     battle_tokens broadcasts a wake-up on the game's private topic when the
+//     report lands (migration *_ftd_result_broadcast.sql). A captain
+//     subscribed before the submit must receive it; a socket with no session,
+//     or a signed-in user asking for another game's topic, must be refused
+//     at join. The payload must name the game and battle and nothing else.
 //
 // Requires the migration applied and the function deployed — it fails loudly
 // with a pointer if either is missing.
@@ -39,7 +45,7 @@
 // Credentials come from scripts/qa-accounts.local (gitignored).
 
 import {
-  step, die, fn, signIn, builtIns, startGame, report, keep,
+  step, die, fn, signIn, builtIns, startGame, report, keep, subscribeBroadcast,
 } from './smoke-lib.mjs'
 
 // Deliberately RE-DERIVED here rather than imported from
@@ -141,11 +147,49 @@ step('both refusals are byte-identical, so a caller cannot probe',
   JSON.stringify(badToken.body) === JSON.stringify(wrongBattle.body),
   JSON.stringify(badToken.body).slice(0, 120))
 
+// -------------------------------------------------------------- broadcast
+
+// The push half: the other captain's open overlay is woken by a database
+// broadcast the moment the report lands, so no browser waits on a poll.
+// Subscribe BEFORE the submit, exactly as the overlay does.
+const topic = `game:${g.gameId}:ftd`
+const listener = await subscribeBroadcast({ topic, token: p2.token })
+step("the other captain can join the game's private result topic",
+  listener.joined?.payload?.status === 'ok',
+  JSON.stringify(listener.joined?.payload).slice(0, 160))
+
+const anonymous = await subscribeBroadcast({ topic })
+step('a socket with no session is refused the topic at join',
+  anonymous.joined?.payload?.status === 'error',
+  JSON.stringify(anonymous.joined?.payload).slice(0, 160))
+anonymous.close()
+
+const otherGame = await subscribeBroadcast({
+  topic: 'game:00000000-0000-4000-8000-000000000000:ftd', token: p2.token,
+})
+step('a signed-in user is refused a game they are not in',
+  otherGame.joined?.payload?.status === 'error',
+  JSON.stringify(otherGame.joined?.payload).slice(0, 160))
+otherGame.close()
+
 // The load-bearing one: NO Authorization beyond the anon key. This is exactly
 // what the mod sends.
+const sentAt = Date.now()
 const submitted = await fn('battle-report', undefined, submitBody)
 step('a caller with no Supabase session can submit the result',
   submitted.status === 200, `HTTP ${submitted.status}: ${JSON.stringify(submitted.body).slice(0, 200)}`)
+
+const woke = await listener.next((m) => m.event === 'broadcast' && m.payload?.event === 'ftd_result')
+const wokeAt = Date.now()
+listener.close()
+step('the report woke the subscribed captain',
+  !!woke, woke ? `${wokeAt - sentAt} ms after the POST was sent` : 'no ftd_result frame within 8 s')
+const wake = woke?.payload?.payload ?? {}
+step('the wake-up names this game and battle, and carries nothing else',
+  wake.gameId === g.gameId && wake.battleKey === issued.body.battleKey
+    && typeof wake.reportedAt === 'string'
+    && Object.keys(wake).sort().join(',') === 'battleKey,gameId,id,reportedAt',
+  Object.keys(wake).sort().join(','))
 
 const replay = await fn('battle-report', undefined, submitBody)
 step('the token is single use', replay.status === 401, `HTTP ${replay.status}`)
