@@ -30,7 +30,8 @@
     "ai/botGame.ts",
     "ai/botDecks.ts",
     "ai/botView.ts",
-    "ai/basicPolicy.ts"
+    "ai/basicPolicy.ts",
+    "ai/botDriver.ts"
   ],
   "game-action": [
     "gameSettings.ts",
@@ -61,7 +62,8 @@
     "effects/tgEffects.ts",
     "ai/botGame.ts",
     "ai/botView.ts",
-    "ai/basicPolicy.ts"
+    "ai/basicPolicy.ts",
+    "ai/botDriver.ts"
   ],
   "battle-report": ["battleReport.ts"]
 }
