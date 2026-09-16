@@ -141,8 +141,8 @@ who joined between the read and the write wins the race:
 .eq('id', lobbyId).eq('status', 'open').eq('host_id', userId).is('guest_id', null)
 ```
 
-No row updated → 409. Returns `{ ok: true }`. Realtime delivers the seat to
-the host's page as it does for a human join.
+No row updated → 409. Returns `{ lobby }` — the updated row, the JOIN shape.
+Realtime delivers the seat to the host's page as it does for a human join.
 
 ### 4.2 `START` additions
 
@@ -159,10 +159,11 @@ after `locked`:
    — and run the driver (§5) on it before `start_game_tx`. The RPC receives
    the post-turn game and privates.
 
-For a bot game `START` loads the whole built-in catalog (one query,
-`is_built_in = true`) and derives both the deck `snapshots` and the engine
-`ctx.catalog` from it, because the bot's opening plays may fire catalog
-effects. `lobby-action` therefore imports `./shared/engine/index.ts` (the
+For a bot game `START` additionally loads the whole built-in catalog (one
+query, `is_built_in = true`) for the engine `ctx.catalog` — the deck
+`snapshots` still come from the per-deck rows query, so the human path is
+untouched — because the bot's opening plays may fire catalog effects.
+`lobby-action` therefore imports `./shared/engine/index.ts` (the
 registry-populating index, per the CLAUDE.md hard rule), and the sync manifest
 grows to match (§10.2).
 
