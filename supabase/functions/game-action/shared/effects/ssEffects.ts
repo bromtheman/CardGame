@@ -3,7 +3,7 @@ import {
   CARD_TYPES, CASH_ADVANCE_MATERIALS, CATSHARK_MATERIALS,
   EXCALIBUR_COST_DELTA, FACTIONS, HERO_POWER_LABELS, KEYWORDS, NOTHUNG_COST_DELTA,
   REPAIRMEN_READY_DRAW_MAX_COST, RESOLUTE_COST_DELTA, RHEA_MAX_PLANE_COST, SACRILEGO_COST_DELTA,
-  TRONDHEIM_COST_DELTA, TYR_HAND_DISCOUNT, VEHICLE_TYPES, VICTORIA_COST_DELTA,
+  TRONDHEIM_COST_DELTA, TYR_HAND_DISCOUNT, TYR_MIN_COST, VEHICLE_TYPES, VICTORIA_COST_DELTA,
 } from '../gameSettings.ts'
 import {
   catalogCard, costDelta, choice, drawFromPool, enemyVehicleOptions, friendlyVehicleOptions, grant,
@@ -730,10 +730,10 @@ registerEffect(BLOCKADE, (payload) => {
 // modifier makes effectiveCostInGame NaN, and that reads as unaffordable at
 // every check AND writes NaN into the payer's materials at pay().
 //
-// Math.max(0, …) is on the STEP COUNT, not on the price. The price floor is
-// effectiveCostInGame's own Math.max(0, …) and must not be duplicated here
-// (spec §4.2); this clamp is a different guarantee — a card whose stamp is
-// somehow in the future must not cost MORE.
+// Math.max(0, …) is on the STEP COUNT, not on the price. The ZERO floor is
+// effectiveCostInGame's own Math.max(0, …) and is not duplicated here (spec §4.2);
+// the 500k floor below is Tyr's own card rule (2026-09-16 M-7) and floors only this
+// modifier's output.
 registerCostModifier('tyrCostModifier', (_state, _side, card, turnNumber) => {
   const entered = card.handEnteredTurn
   if (typeof entered !== 'number' || !Number.isFinite(entered)) return 0
@@ -741,7 +741,12 @@ registerCostModifier('tyrCostModifier', (_state, _side, card, turnNumber) => {
   // when turnNumber is the non-finite half of the subtraction, and nothing
   // upstream guarantees the engine's own turn counter is finite.
   if (!Number.isFinite(turnNumber)) return 0
-  return -TYR_HAND_DISCOUNT * Math.max(0, Math.floor(turnNumber - entered))
+  const decay = -TYR_HAND_DISCOUNT * Math.max(0, Math.floor(turnNumber - entered))
+  // "Min 500k" (M-7, ruling Q5): this floors Tyr's OWN decay at the printed
+  // price minus TYR_MIN_COST. It is a CARD floor and deliberately not a copy
+  // of effectiveCostInGame's zero clamp — another card's costDelta stamp is
+  // summed in after this returns and may still take the final price lower.
+  return Math.max(decay, -Math.max(0, card.materialCost - TYR_MIN_COST))
 })
 
 // "Whenever this survives an offensive fleet battle, deal 200k damage to enemy

@@ -4,7 +4,7 @@ import { choice } from './primitives.ts'
 import {
   ARGONAUT_COST_DELTA, BASE_DAMAGE_DIVISOR, BULL_SHARK_BASE_DAMAGE, CASH_ADVANCE_MATERIALS,
   EXCALIBUR_COST_DELTA, KEYWORDS, MATERIALS_PER_TURN, NOTHUNG_COST_DELTA, RESOLUTE_COST_DELTA,
-  SACRILEGO_COST_DELTA, TRONDHEIM_COST_DELTA, TYR_HAND_DISCOUNT, VICTORIA_COST_DELTA,
+  SACRILEGO_COST_DELTA, TRONDHEIM_COST_DELTA, TYR_HAND_DISCOUNT, TYR_MIN_COST, VICTORIA_COST_DELTA,
 } from '../gameSettings.ts'
 import { inst, makeCtx, makeGame, snap, zoneEntry } from '../engine/testFixtures.ts'
 import {
@@ -6666,11 +6666,25 @@ describe('SS Tyr — a discount that grows in your hand', () => {
     expect(priceAt(5, 3)).toBe(950_000 - 2 * TYR_HAND_DISCOUNT)
   })
 
-  // The floor is effectiveCostInGame's existing Math.max(0, …). This asserts
-  // the PRICE, not a second clamp — one added here would be untested and
-  // unneeded (spec §4.2).
-  it('bottoms out at free rather than going negative', () => {
-    expect(priceAt(100, 1)).toBe(0)
+  // M-7 (2026-09-16): "Min 500k". The decay alone can never take the printed
+  // price below TYR_MIN_COST — 950k − 500k = 450k is seven and a half steps,
+  // so step 8 lands exactly on the floor and step 100 stays there.
+  it('never decays below TYR_MIN_COST', () => {
+    expect(priceAt(9, 1)).toBe(TYR_MIN_COST)
+    expect(priceAt(100, 1)).toBe(TYR_MIN_COST)
+  })
+
+  it('takes the last partial step down to the floor, not past it', () => {
+    expect(priceAt(8, 1)).toBe(950_000 - 7 * TYR_HAND_DISCOUNT) // 530k, above the floor
+    expect(priceAt(9, 1)).toBe(500_000)                          // 8 steps would be 470k — floored
+  })
+
+  // Q5: the floor is on Tyr's OWN decay. Another card's stamp still applies
+  // beneath it, so an Excalibur'd Tyr at the floor costs 300k.
+  it('lets other discounts apply beneath the floor', () => {
+    const card = tyr(1)
+    card.meta = { ...card.meta, costDelta: EXCALIBUR_COST_DELTA }
+    expect(effectiveCostInGame(makeGame().state, 'a', card, 100)).toBe(TYR_MIN_COST + EXCALIBUR_COST_DELTA)
   })
 
   // ⚠ THE PRODUCTION CASE. Hands live in game_players rows, which

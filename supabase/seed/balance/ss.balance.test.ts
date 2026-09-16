@@ -43,9 +43,9 @@ interface Expected {
 // SETS — order in the seed literal is not meaningful.
 const CARDS: Record<string, Expected> = {
   'SS:Tyr': {
-    materialCost: 950_000, blueprintCost: 983_000, keywords: ['blocker'],
+    materialCost: 950_000, blueprintCost: 983_000, keywords: ['blocker', 'fragile'],
     vehicleType: 'ship',
-    cardText: 'This card costs 60k less for every turn it spends in your hand',
+    cardText: 'This card costs 60k less for every turn it spends in your hand. Min 500k',
   },
   'SS:Tiger Shark': {
     materialCost: 690_000, blueprintCost: 914_000, keywords: [], vehicleType: 'ship',

@@ -186,6 +186,13 @@ export const PURIFIER_LOSS_WINDOW_TURNS = 1
 // damage and still costs its printed repair.
 export const TYR_HAND_DISCOUNT = 60_000
 
+// Tyr's "Min 500k" (2026-09-16 pass, M-7): the hand-residence decay above can
+// never take the PRINTED price below this. It is a floor on Tyr's OWN decay,
+// not on the final price (ruling Q5) — another card's costDelta stamp still
+// applies beneath it, and effectiveCostInGame's zero clamp is a different
+// guarantee again.
+export const TYR_MIN_COST = 500_000
+
 export const EXCALIBUR_COST_DELTA = -200_000 // Excalibur: AI ship in hand costs 200k less (M-1, reverses R-5)
 // Plunderer clause 2: "…draw one card from the enemy deck, but increase its
 // cost by 20k". A POSITIVE costDelta, unlike every other one in this file —
