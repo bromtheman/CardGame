@@ -178,8 +178,23 @@ Deno.serve(async (req) => {
     // that consent the same way UPDATE_SETTINGS does — the guest changing
     // their own deck carries no such obligation, since the host still holds
     // the Start button and can simply look before pressing it.
+    //
+    // Unless the guest is PracticeAI. A bot's consent is standing: it never
+    // re-readies, so clearing guest_ready here would leave START's lock
+    // (guest_ready = true) unpassable and the lobby un-startable. A host-side
+    // change the bot's deck cannot meet surfaces as START's "Guest deck: …"
+    // error, after which the host KICKs and re-adds (AI spec §4.2, §11
+    // ruling 4).
+    const { data: guestProfile, error: guestError } = isHost && lobby.guest_id
+      ? await admin.from('profiles').select('is_bot').eq('id', lobby.guest_id).maybeSingle()
+      : { data: null, error: null }
+    if (guestError) return json(500, { errors: [guestError.message] })
+    const guestIsBot = guestProfile?.is_bot === true
     const patch = isHost
-      ? { host_deck_id: deckId, host_faction: deck.faction, host_ready: false, guest_ready: false }
+      ? {
+        host_deck_id: deckId, host_faction: deck.faction, host_ready: false,
+        ...(guestIsBot ? {} : { guest_ready: false }),
+      }
       : { guest_deck_id: deckId, guest_faction: deck.faction, guest_ready: false }
 
     // The identity predicate belongs in the UPDATE's own WHERE, not only in
@@ -234,9 +249,26 @@ Deno.serve(async (req) => {
     // Clears guest_ready, never host_ready (spec §4.1): the host authored the
     // change, so their consent is implicit; the guest re-affirms against the
     // battlefield they can now see in the preview.
+    //
+    // Unless the guest is PracticeAI. A bot's consent is standing: it never
+    // re-readies, so clearing guest_ready here would leave START's lock
+    // (guest_ready = true) unpassable and the lobby un-startable. A rules
+    // change the bot's deck cannot meet surfaces as START's "Guest deck: …"
+    // error, after which the host KICKs and re-adds (AI spec §4.2, §11
+    // ruling 4). The read is advisory only — the UPDATE below keeps every
+    // predicate that makes it the host's own open lobby.
+    const { data: lobby, error: lobbyError } = await admin
+      .from('lobbies').select('guest_id').eq('id', lobbyId).maybeSingle()
+    if (lobbyError) return json(500, { errors: [lobbyError.message] })
+    if (!lobby) return json(404, { errors: ['Lobby not found'] })
+    const { data: guestProfile, error: guestError } = lobby.guest_id
+      ? await admin.from('profiles').select('is_bot').eq('id', lobby.guest_id).maybeSingle()
+      : { data: null, error: null }
+    if (guestError) return json(500, { errors: [guestError.message] })
+    const guestIsBot = guestProfile?.is_bot === true
     const { data: updated, error: updateError } = await admin
       .from('lobbies')
-      .update({ settings: parsed.settings, guest_ready: false })
+      .update({ settings: parsed.settings, ...(guestIsBot ? {} : { guest_ready: false }) })
       .eq('id', lobbyId).eq('status', 'open').eq('host_id', userId)
       .select().maybeSingle()
     if (updateError) return json(500, { errors: [updateError.message] })
@@ -272,8 +304,11 @@ Deno.serve(async (req) => {
 
     // Found by the flag, never by username (spec §3.1). Nothing else changes
     // until the row exists, so deploying ahead of the bootstrap is safe.
-    const { data: botRow } = await admin
+    // A failed query is a 500 with its message, not a 503: "not provisioned"
+    // means the row is absent, and must not stand in for a read that errored.
+    const { data: botRow, error: botError } = await admin
       .from('profiles').select('id').eq('is_bot', true).order('created_at').limit(1).maybeSingle()
+    if (botError) return json(500, { errors: [botError.message] })
     if (!botRow) return json(503, { errors: ['AI opponent is not provisioned'] })
     const botId = botRow.id as string
 

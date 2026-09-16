@@ -147,7 +147,7 @@ Realtime delivers the seat to the host's page as it does for a human join.
 ### 4.2 `START` additions
 
 `START` runs unchanged — the lock statement, the deck ownership checks (the
-bot owns its deck row), `validateDeck` for both seats — with two additions
+bot owns its deck row), `validateDeck` for both seats — with three additions
 after `locked`:
 
 1. One read: `select is_bot from profiles where id = locked.guest_id`. If the
@@ -158,6 +158,9 @@ after `locked`:
    `{ ...built.game, status: 'active', winnerId: null, turnNumber: STARTING_TURN_NUMBER, privates: { a: built.aPrivate, b: built.bPrivate } }`
    — and run the driver (§5) on it before `start_game_tx`. The RPC receives
    the post-turn game and privates.
+3. `SET_DECK` (host) and `UPDATE_SETTINGS` keep `guest_ready` when the guest
+   is the bot — PracticeAI never re-readies; a rules change its deck cannot
+   meet surfaces as START's `Guest deck: …` error (ruling 4).
 
 For a bot game `START` additionally loads the whole built-in catalog (one
 query, `is_built_in = true`) for the engine `ctx.catalog` — the deck
