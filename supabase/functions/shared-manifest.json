@@ -29,7 +29,8 @@
     "effects/tgEffects.ts",
     "ai/botGame.ts",
     "ai/botDecks.ts",
-    "ai/botView.ts"
+    "ai/botView.ts",
+    "ai/basicPolicy.ts"
   ],
   "game-action": [
     "gameSettings.ts",
@@ -59,7 +60,8 @@
     "effects/wfEffects.ts",
     "effects/tgEffects.ts",
     "ai/botGame.ts",
-    "ai/botView.ts"
+    "ai/botView.ts",
+    "ai/basicPolicy.ts"
   ],
   "battle-report": ["battleReport.ts"]
 }
