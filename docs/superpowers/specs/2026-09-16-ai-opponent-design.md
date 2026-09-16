@@ -73,8 +73,13 @@ before the migration or a deploy, and
 ### 3.2 Bot decks in code
 
 `shared/ai/botDecks.ts` exports
-`BOT_DECKS: Record<Exclude<Faction, 'NEUTRAL'>, Record<string, number>>` —
-card **name → copies**, one list per faction (DWG, GT, LH, OW, SS, WF, TG).
+`BOT_DECKS: Record<BotFaction, Record<string, number>>` (`BotFaction` is the
+union of the five below, `BOT_FACTIONS` the ordered list) —
+card **name → copies**, one list per faction the bot can field: **DWG, OW, SS,
+WF, TG**. GT and LH are left out (owner decision 2026-09-16: neither faction
+is fully implemented yet; GT is also all-flier and cannot satisfy the
+default flier cap). Adding one later is a new list plus a `BOT_FACTIONS`
+entry.
 Names are the key because seeded ids are deterministic
 (`uuidv5("card:FACTION:NAME")`, `supabase/seed/transform.ts`) and names read
 in review; ids are resolved at `ADD_BOT` time (§4.1).
@@ -345,7 +350,7 @@ misplay: it cannot cheat, deadlock, or act out of turn, only play weakly.
 ## 7. Frontend
 
 - **`LobbyPage`** — in the host's view of the empty challenger seat, a
-  faction `<select>` (the seven `BOT_DECKS` keys) and an **Add AI opponent**
+  faction `<select>` (the five `BOT_DECKS` keys) and an **Add AI opponent**
   button → `lobby-action ADD_BOT` (new `addBot` in `frontend/src/lib/lobbies.ts`).
   The filled seat renders as today plus an **AI** pill; **Remove** is the
   existing `KICK`. Guests never see the control. The usernames query in
@@ -370,7 +375,7 @@ request, so nothing waits on a second client.
 | `supabase/migrations/<ts>_ai_opponent.sql` | `profiles.is_bot`; `start_game_tx` replaced in place (§10.1) |
 | `shared/engine/engineTypes.ts` | `settings.bot?: { side: Side }` |
 | `shared/ai/botGame.ts` | `BOT_USERNAME`, `botSideOf`, `botPlayerId` |
-| `shared/ai/botDecks.ts` (+ `.test.ts`) | the seven lists; seed-source pin |
+| `shared/ai/botDecks.ts` (+ `.test.ts`) | the five lists; seed-source pin |
 | `shared/ai/botView.ts` (+ `.test.ts`) | `BotView`, `viewFor`; isolation test |
 | `shared/ai/basicPolicy.ts` (+ `.test.ts`) | §6 |
 | `shared/ai/botDriver.ts` (+ `.test.ts`) | §5 |
@@ -412,7 +417,7 @@ Unit, on `makeGame`/`makeCtx`/`zoneEntry` fixtures with a seeded rng:
 Seeded **self-play smoke** (`shared/ai/selfPlay.test.ts`): the bot against a
 scripted opponent that ends its turns, answers responses with no opt-outs,
 resolves choices at random, and reports every battle with rng-drawn ending HP
-so deaths, repairs and death triggers fire — over ~20 seeds × all seven bot
+so deaths, repairs and death triggers fire — over ~20 seeds × all five bot
 decks on the default board, asserting no throw and either a terminal status
 or a 40-turn cap. This is the net for effect interactions among the 170
 seeded cards; a failure names the seed and deck so it reproduces.
