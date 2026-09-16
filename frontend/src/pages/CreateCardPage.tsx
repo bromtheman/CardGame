@@ -7,7 +7,7 @@ import { autoKeywords, computeMaterialCost, validateCustomCardInput } from '@sha
 import type { VehicleType } from '@shared/types'
 import { PhysicalCard } from '../components/PhysicalCard'
 import type { CardRow } from '../lib/cards'
-import { supabase } from '../lib/supabaseClient'
+import { FUNCTIONS_REGION, supabase } from '../lib/supabaseClient'
 import { useAuth } from '../lib/auth'
 
 export function CreateCardPage() {
@@ -60,7 +60,7 @@ export function CreateCardPage() {
       form.append('vehicleType', vehicleType)
       form.append('blueprintCost', String(blueprintCost))
       if (imageFile) form.append('image', imageFile)
-      const { error } = await supabase.functions.invoke('create-card', { body: form })
+      const { error } = await supabase.functions.invoke('create-card', { body: form, region: FUNCTIONS_REGION })
       if (error) {
         // supabase-js wraps non-2xx responses; the function's {errors} body
         // is only reachable through error.context.

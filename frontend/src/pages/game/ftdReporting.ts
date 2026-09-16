@@ -11,7 +11,7 @@ import { FunctionsHttpError } from '@supabase/supabase-js'
 import { FTD_RESULT_EVENT, ftdResultTopic } from '@shared/battleReport'
 
 import { useBroadcastInvalidate } from '../../lib/realtime'
-import { supabase } from '../../lib/supabaseClient'
+import { FUNCTIONS_REGION, supabase } from '../../lib/supabaseClient'
 import type { FtdPrefill } from './ftdPrefill'
 
 /**
@@ -35,7 +35,7 @@ export const FTD_RESULT_POLL_MS = 30_000
 // Same error contract every other call site here uses: FunctionsHttpError ->
 // the function's own `{ errors: string[] }` body -> one readable sentence.
 async function invoke<T>(body: Record<string, unknown>): Promise<T> {
-  const { data, error } = await supabase.functions.invoke('battle-report', { body })
+  const { data, error } = await supabase.functions.invoke('battle-report', { body, region: FUNCTIONS_REGION })
   if (error) {
     if (error instanceof FunctionsHttpError) {
       const parsed = await error.context.json().catch(() => null)

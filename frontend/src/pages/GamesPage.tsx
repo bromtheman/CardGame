@@ -6,7 +6,7 @@ import { type GameRow, isMyMove, useGamesQuery, useUsernames } from '../lib/game
 import { useRealtimeInvalidate } from '../lib/realtime'
 import { useAuth } from '../lib/auth'
 import { timeAgo } from '../lib/time'
-import { supabase } from '../lib/supabaseClient'
+import { FUNCTIONS_REGION, supabase } from '../lib/supabaseClient'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 
 export function GamesPage() {
@@ -38,7 +38,7 @@ export function GamesPage() {
       return next
     })
     const { error: fnError } = await supabase.functions.invoke('game-action', {
-      body: { gameId: g.id, expectedVersion: g.version, action: { type: 'ABANDON' } },
+      body: { gameId: g.id, expectedVersion: g.version, action: { type: 'ABANDON' } }, region: FUNCTIONS_REGION,
     })
     if (fnError) {
       let message = fnError.message
