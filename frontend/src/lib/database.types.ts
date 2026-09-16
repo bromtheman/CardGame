@@ -351,16 +351,19 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          is_bot: boolean
           username: string
         }
         Insert: {
           created_at?: string
           id: string
+          is_bot?: boolean
           username: string
         }
         Update: {
           created_at?: string
           id?: string
+          is_bot?: boolean
           username?: string
         }
         Relationships: []
