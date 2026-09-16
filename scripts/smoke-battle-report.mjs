@@ -14,7 +14,12 @@
 //
 //   * A CALLER WITH NO SUPABASE SESSION CAN SUBMIT. The whole point: the mod
 //     has no user JWT and never gets one. The `submit` op deliberately does
-//     not call auth.getUser(), and this drives it with the anon key alone.
+//     not call auth.getUser(), and this drives it exactly as the mod does —
+//     the minted endpoint verbatim, a JSON body, and no apikey at all.
+//   * THE MINTED ENDPOINT PINS THE MOD TO THE DATABASE'S REGION. Its
+//     `forceFunctionRegion` parameter is what keeps `submit`'s three
+//     sequential database round trips local; the response's edge region
+//     header proves it took effect.
 //   * THE TOKEN IS SINGLE USE. The mutex is a conditional UPDATE inside
 //     redeem_battle_token; a second POST with the same token must fail.
 //   * EVERY TOKEN FAILURE LOOKS THE SAME. Unknown, wrong battle, already
@@ -29,6 +34,12 @@
 //     and approved by the OTHER one. Nothing in this feature may route around
 //     DECIDE_BATTLE_REPORT's `actor === report.submittedBy` 403, and the run
 //     asserts the submitter cannot approve their own report.
+//   * THE RESULT IS PUSHED, AND ONLY TO THE TWO CAPTAINS. A trigger on
+//     battle_tokens broadcasts a wake-up on the game's private topic when the
+//     report lands (migration *_ftd_result_broadcast.sql). A captain
+//     subscribed before the submit must receive it; a socket with no session,
+//     or a signed-in user asking for another game's topic, must be refused
+//     at join. The payload must name the game and battle and nothing else.
 //
 // Requires the migration applied and the function deployed — it fails loudly
 // with a pointer if either is missing.
@@ -39,7 +50,7 @@
 // Credentials come from scripts/qa-accounts.local (gitignored).
 
 import {
-  step, die, fn, signIn, builtIns, startGame, report, keep,
+  step, die, fn, signIn, builtIns, startGame, report, keep, subscribeBroadcast, modPost,
 } from './smoke-lib.mjs'
 
 // Deliberately RE-DERIVED here rather than imported from
@@ -104,9 +115,11 @@ step('issued a battle token', issued.status === 200 && !!issued.body?.token,
 step('token is scoped to THIS battle',
   issued.body?.battleKey === expectedBattleKey(battle),
   `${issued.body?.battleKey} vs ${expectedBattleKey(battle)}`)
-step('endpoint is server-authoritative',
-  typeof issued.body?.endpoint === 'string' && issued.body.endpoint.endsWith('/battle-report'),
+step('endpoint is server-authoritative and pinned to the database region',
+  typeof issued.body?.endpoint === 'string'
+    && issued.body.endpoint.includes('/functions/v1/battle-report?forceFunctionRegion=us-west-2'),
   issued.body?.endpoint)
+const endpoint = issued.body?.endpoint ?? ''
 
 const nonParticipant = await fn('battle-report', p2.token, { op: 'issue', gameId: g.gameId })
 step('the other captain can mint their own token too',
@@ -131,23 +144,63 @@ const submitBody = {
   vehicles,
 }
 
-const badToken = await fn('battle-report', undefined, { ...submitBody, token: 'not-a-real-token' })
+const badToken = await modPost(endpoint, { ...submitBody, token: 'not-a-real-token' })
 step('an unknown token is refused', badToken.status === 401, `HTTP ${badToken.status}`)
 
-const wrongBattle = await fn('battle-report', undefined, { ...submitBody, battleKey: '9|a|x|y' })
+const wrongBattle = await modPost(endpoint, { ...submitBody, battleKey: '9|a|x|y' })
 step('a token echoing the wrong battle is refused', wrongBattle.status === 401,
   `HTTP ${wrongBattle.status}`)
 step('both refusals are byte-identical, so a caller cannot probe',
   JSON.stringify(badToken.body) === JSON.stringify(wrongBattle.body),
   JSON.stringify(badToken.body).slice(0, 120))
 
-// The load-bearing one: NO Authorization beyond the anon key. This is exactly
-// what the mod sends.
-const submitted = await fn('battle-report', undefined, submitBody)
+// -------------------------------------------------------------- broadcast
+
+// The push half: the other captain's open overlay is woken by a database
+// broadcast the moment the report lands, so no browser waits on a poll.
+// Subscribe BEFORE the submit, exactly as the overlay does.
+const topic = `game:${g.gameId}:ftd`
+const listener = await subscribeBroadcast({ topic, token: p2.token })
+step("the other captain can join the game's private result topic",
+  listener.joined?.payload?.status === 'ok',
+  JSON.stringify(listener.joined?.payload).slice(0, 160))
+
+const anonymous = await subscribeBroadcast({ topic })
+step('a socket with no session is refused the topic at join',
+  anonymous.joined?.payload?.status === 'error',
+  JSON.stringify(anonymous.joined?.payload).slice(0, 160))
+anonymous.close()
+
+const otherGame = await subscribeBroadcast({
+  topic: 'game:00000000-0000-4000-8000-000000000000:ftd', token: p2.token,
+})
+step('a signed-in user is refused a game they are not in',
+  otherGame.joined?.payload?.status === 'error',
+  JSON.stringify(otherGame.joined?.payload).slice(0, 160))
+otherGame.close()
+
+// The load-bearing one: no session, no apikey, the minted endpoint verbatim.
+// This is exactly what the mod sends.
+const sentAt = Date.now()
+const submitted = await modPost(endpoint, submitBody)
 step('a caller with no Supabase session can submit the result',
   submitted.status === 200, `HTTP ${submitted.status}: ${JSON.stringify(submitted.body).slice(0, 200)}`)
+step("the mod's POST ran in the database's region", submitted.region === 'us-west-2',
+  `x-sb-edge-region: ${submitted.region}`)
 
-const replay = await fn('battle-report', undefined, submitBody)
+const woke = await listener.next((m) => m.event === 'broadcast' && m.payload?.event === 'ftd_result')
+const wokeAt = Date.now()
+listener.close()
+step('the report woke the subscribed captain',
+  !!woke, woke ? `${wokeAt - sentAt} ms after the POST was sent` : 'no ftd_result frame within 8 s')
+const wake = woke?.payload?.payload ?? {}
+step('the wake-up names this game and battle, and carries nothing else',
+  wake.gameId === g.gameId && wake.battleKey === issued.body.battleKey
+    && typeof wake.reportedAt === 'string'
+    && Object.keys(wake).sort().join(',') === 'battleKey,gameId,id,reportedAt',
+  Object.keys(wake).sort().join(','))
+
+const replay = await modPost(endpoint, submitBody)
 step('the token is single use', replay.status === 401, `HTTP ${replay.status}`)
 
 // ------------------------------------------------------------------ fetch
@@ -199,7 +252,7 @@ step('the reported wreck left the board',
   `${theirs.name} destroyed`)
 
 // A token minted for a battle that has since resolved must be dead.
-const stale = await fn('battle-report', undefined, {
+const stale = await modPost(endpoint, {
   ...submitBody, token: nonParticipant.body.token, battleKey: nonParticipant.body.battleKey,
 })
 step('a token for a finished battle is refused', stale.status === 409 || stale.status === 401,

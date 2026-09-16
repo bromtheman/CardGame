@@ -97,6 +97,21 @@ async function signIn(prefix) {
 const rest = (p, opts) => api(`/rest/v1${p}`, opts)
 const fn = (name, token, body) => api(`/functions/v1/${name}`, { method: 'POST', token, body })
 
+// Exactly the request the FtD mod makes (BattleReporter.Post in the mod
+// repo): POST to the endpoint `issue` minted, verbatim, with a JSON body and
+// NO apikey or Authorization header at all. `region` is the edge region the
+// function ran in (`x-sb-edge-region`), so a scenario can prove the minted
+// endpoint pins execution to the database's region.
+async function modPost(endpoint, body) {
+  const res = await fetch(endpoint, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  })
+  const text = await res.text()
+  let parsed
+  try { parsed = text ? JSON.parse(text) : null } catch { parsed = text }
+  return { status: res.status, body: parsed, region: res.headers.get('x-sb-edge-region') }
+}
+
 // ------------------------------------------------------------------- cards
 
 async function builtIns(token) {
@@ -379,6 +394,59 @@ async function cleanUp(games = [], p1) {
   for (const g of games) await rest(`/lobbies?id=eq.${g.lobbyId}`, { method: 'DELETE', token: p1.token })
 }
 
+// ---------------------------------------------------------------- realtime
+
+// A bare-bones realtime subscriber over Node's built-in WebSocket, speaking
+// phoenix's v1 JSON framing (`vsn=1.0.0`: one object per frame). It exists so
+// a scenario can prove a DATABASE broadcast reaches a subscribed captain —
+// the push half of the FtD handshake — without pulling supabase-js into a
+// root-level script (it is a frontend dependency only).
+//
+// `token` undefined joins with the anon key alone, which is how to show a
+// topic is refused to a caller who is not signed in. Returns the join reply
+// (`joined.payload.status` is 'ok' or 'error'), `next(pred, ms)` to wait for
+// a matching frame, and `close()`.
+async function subscribeBroadcast({ topic, token, timeoutMs = 8000 }) {
+  const wsUrl = `${BASE.replace(/^http/, 'ws')}/realtime/v1/websocket`
+    + `?apikey=${encodeURIComponent(ANON)}&vsn=1.0.0`
+  const ws = new WebSocket(wsUrl)
+  const inbox = []
+  ws.addEventListener('message', (ev) => {
+    try { inbox.push(JSON.parse(ev.data)) } catch { /* not a frame we care about */ }
+  })
+  await new Promise((resolve, reject) => {
+    ws.addEventListener('open', resolve, { once: true })
+    ws.addEventListener('error', () => reject(new Error('realtime websocket failed to open')), { once: true })
+  })
+  const next = async (pred, ms = timeoutMs) => {
+    const deadline = Date.now() + ms
+    while (Date.now() < deadline) {
+      const i = inbox.findIndex(pred)
+      if (i >= 0) return inbox.splice(i, 1)[0]
+      await new Promise((r) => setTimeout(r, 25))
+    }
+    return null
+  }
+  // The same join payload realtime-js builds for a `{ config: { private: true } }`
+  // channel with one broadcast listener.
+  ws.send(JSON.stringify({
+    topic: `realtime:${topic}`,
+    event: 'phx_join',
+    ref: '1',
+    payload: {
+      config: {
+        broadcast: { self: false, ack: false },
+        presence: { key: '', enabled: false },
+        postgres_changes: [],
+        private: true,
+      },
+      ...(token ? { access_token: token } : {}),
+    },
+  }))
+  const joined = await next((m) => m.event === 'phx_reply' && m.ref === '1')
+  return { joined, next, close: () => ws.close() }
+}
+
 // ------------------------------------------------------------------ report
 
 // The tail both harnesses share: totals, then the game ids so a kept run can
@@ -402,4 +470,5 @@ export {
   api, rest, fn, signIn,
   builtIns, buildDeck,
   startGame, cleanUp, report,
+  subscribeBroadcast, modPost,
 }

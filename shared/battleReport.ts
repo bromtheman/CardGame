@@ -40,6 +40,26 @@ export const BATTLE_TOKEN_TTL_MS = 12 * 60 * 60 * 1000
 export const MAX_REPORTED_VEHICLES = 64
 
 /**
+ * The realtime wake-up that tells an open battle overlay a result has landed.
+ *
+ * When the mod's `submit` redeems a token, a trigger on `battle_tokens`
+ * broadcasts this event on the game's private topic (migration
+ * `*_ftd_result_broadcast.sql`), and the overlay answers by refetching
+ * `battle-report`'s `fetch` op. The broadcast carries no prefill and no token
+ * — only that there is something to fetch — so the trust boundary is exactly
+ * where it was: `battle_tokens` stays out of the realtime publication and
+ * has no RLS policy, and `fetch` remains the one way to read a result.
+ *
+ * The SQL builds the same topic by concatenation; `battleReport.test.ts` reads
+ * the migration to hold the two in step.
+ */
+export const FTD_RESULT_EVENT = 'ftd_result'
+
+export function ftdResultTopic(gameId: string): string {
+  return `game:${gameId}:ftd`
+}
+
+/**
  * The subset of `state.activeBattle` that identifies WHICH battle this is.
  *
  * Typed structurally rather than importing `ActiveBattle` from

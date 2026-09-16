@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { FunctionsHttpError } from '@supabase/supabase-js'
 import type { GameAction } from '@shared/engine/engineTypes'
-import { supabase } from '../../lib/supabaseClient'
+import { FUNCTIONS_REGION, supabase } from '../../lib/supabaseClient'
 
 export function useGameActions(gameId: string | undefined, version: number | undefined) {
   const queryClient = useQueryClient()
@@ -15,7 +15,7 @@ export function useGameActions(gameId: string | undefined, version: number | und
     setError(null)
     try {
       const { error: fnError } = await supabase.functions.invoke('game-action', {
-        body: { gameId, expectedVersion: version, action },
+        body: { gameId, expectedVersion: version, action }, region: FUNCTIONS_REGION,
       })
       if (fnError) {
         if (fnError instanceof FunctionsHttpError) {

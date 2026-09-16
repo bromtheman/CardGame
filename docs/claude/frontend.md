@@ -61,6 +61,28 @@ QueryClient is configured `{ refetchOnReconnect: 'always', retry: 2 }`. Call
 sites: GamesPage, LobbiesPage ×2, GameBoardPage ×2, LobbyPage — reuse the hook,
 don't hand-roll channels.
 
+`useBroadcastInvalidate(topic | null, event, queryKeys)` is the same loop for a
+**private broadcast** topic (`{ config: { private: true } }`, authorised by the
+`realtime.messages` policies). It exists for data that must stay out of the
+publication — the FtD result wake-up (`useFtdResultBroadcast` in
+`ftdReporting.ts`, topic `game:<id>:ftd` from `shared/battleReport.ts`, sent
+by a `battle_tokens` trigger). Two rules that differ from the postgres_changes
+variant, both load-bearing:
+
+- **The topic is reused exactly**, because here the topic IS the subscription.
+  So a reconnect `await`s `removeChannel()` on the old channel before opening
+  the new one: `RealtimeClient._remove` drops every channel whose topic
+  matches the one closing, so a same-topic channel opened while the old one
+  is still leaving is silently orphaned when that close lands.
+- **The payload is ignored.** A broadcast is a wake-up; the invalidated query
+  (`fetch`, JWT + membership check) is the source of truth. Keep it that way —
+  putting the prefill in the broadcast would move a read path off the
+  function that guards it.
+
+`null` topic = unsubscribed, so a caller can gate the subscription on a
+condition without conditional hooks. The overlay keeps `useFtdResultQuery`'s
+`refetchInterval` (30 s) as the fallback for a channel that never recovers.
+
 ## Lobby room (`src/pages/LobbyPage.tsx`, `/lobby/:id`)
 
 Full-screen like the game board: `App.tsx` hides the site `NavBar` on both

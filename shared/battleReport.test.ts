@@ -1,10 +1,15 @@
+import { readFileSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
+
 import { describe, expect, it } from 'vitest'
 
 import {
   BATTLE_REPORT_WIRE_VERSION,
+  FTD_RESULT_EVENT,
   MAX_REPORTED_VEHICLES,
   battleKeyOf,
   buildPrefillResults,
+  ftdResultTopic,
   hpFromVehicle,
   sideForTeamIndex,
 } from './battleReport.ts'
@@ -174,5 +179,32 @@ describe('sideForTeamIndex', () => {
   it('returns null for an index that is neither team rather than guessing', () => {
     expect(sideForTeamIndex('a', 2)).toBeNull()
     expect(sideForTeamIndex('a', -1)).toBeNull()
+  })
+})
+
+describe('ftd result broadcast contract', () => {
+  it('names the private topic after the game', () => {
+    expect(ftdResultTopic('9b1c4e2a-0000-4000-8000-000000000001'))
+      .toBe('game:9b1c4e2a-0000-4000-8000-000000000001:ftd')
+  })
+
+  // The database trigger and the browser subscription are two halves of one
+  // contract written in two languages. This reads the migration so a rename on
+  // either side fails here rather than as a wake-up that never arrives — the
+  // same guard functionSharedSync gives the edge-function copies.
+  it('is exactly what the battle_tokens trigger broadcasts', () => {
+    const dir = join(__dirname, '..', 'supabase', 'migrations')
+    const file = readdirSync(dir).find((f) => f.endsWith('_ftd_result_broadcast.sql'))
+    expect(file, 'migration *_ftd_result_broadcast.sql is missing').toBeDefined()
+    const sql = readFileSync(join(dir, file!), 'utf8')
+
+    // The event name is a plain literal in the SQL.
+    expect(sql).toContain(`'${FTD_RESULT_EVENT}'`)
+
+    // The topic is `game:<id>:ftd`; the SQL builds it by concatenation, so
+    // check both halves round-trip through ftdResultTopic rather than pinning
+    // one exact expression.
+    const [prefix, suffix] = ftdResultTopic('*').split('*')
+    expect(sql).toContain(`'${prefix}' || new.game_id::text || '${suffix}'`)
   })
 })

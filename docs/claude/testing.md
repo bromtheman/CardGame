@@ -80,7 +80,10 @@ npx vitest run shared/effects       # path filter — the ONLY sanctioned way to
 
 ✅ **The plumbing is already extracted — do not re-extract it.**
 `scripts/smoke-lib.mjs` exports `keep`, `die`, `step`, `results`, `api`, `rest`,
-`fn`, `signIn`, `builtIns`, `buildDeck`, `startGame`, `cleanUp` and `report`,
+`fn`, `signIn`, `builtIns`, `buildDeck`, `startGame`, `cleanUp`, `report` and
+`subscribeBroadcast` (a dependency-free realtime subscriber over Node's own
+WebSocket, for proving a database broadcast reaches — or is refused to — a
+caller),
 plus the per-game helpers `sideOf`, `activeIs`, `passTo`, `drawUntil`,
 `lockIfPending`, `attempt`, `waitForMaterials`, `spendInto` and `deployShip`.
 `smoke-wave5/6/7.mjs` and `smoke-pass-2026-09-02.mjs` (the SS wave of the

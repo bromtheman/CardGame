@@ -8,25 +8,34 @@
 // of that line means no mock is needed to test it.
 import { useQuery } from '@tanstack/react-query'
 import { FunctionsHttpError } from '@supabase/supabase-js'
+import { FTD_RESULT_EVENT, ftdResultTopic } from '@shared/battleReport'
 
-import { supabase } from '../../lib/supabaseClient'
+import { useBroadcastInvalidate } from '../../lib/realtime'
+import { FUNCTIONS_REGION, supabase } from '../../lib/supabaseClient'
 import type { FtdPrefill } from './ftdPrefill'
 
 /**
- * How often the overlay asks whether the mod has reported yet.
+ * How often the overlay re-asks whether the mod has reported, as a FALLBACK.
  *
- * Polled rather than pushed: `battle_tokens` is not in the realtime publication
- * and has no RLS policy (the migration explains why — its rows are one
- * player's live token hashes), so the `useRealtimeInvalidate` route the rest of
- * the board uses is not open to it. A battle overlay is short-lived and open on
- * at most two browsers, so this is a handful of requests per fight.
+ * The result is pushed: when the mod's `submit` lands, a trigger on
+ * `battle_tokens` broadcasts `FTD_RESULT_EVENT` on the game's private topic
+ * and `useFtdResultBroadcast` below refetches at once (see the
+ * `*_ftd_result_broadcast.sql` migration). `battle_tokens` itself stays out of
+ * the realtime publication with no RLS policy — its rows are one player's live
+ * token hashes — which is why this is a broadcast and not the postgres_changes
+ * route the rest of the board uses.
+ *
+ * The poll remains for the case the push cannot cover: a channel that never
+ * recovers, or `realtime.send` failing (it logs a warning rather than failing
+ * the redeem). Slow enough to be cheap, fast enough that the feature still
+ * works, just slower, with realtime down.
  */
-export const FTD_RESULT_POLL_MS = 15_000
+export const FTD_RESULT_POLL_MS = 30_000
 
 // Same error contract every other call site here uses: FunctionsHttpError ->
 // the function's own `{ errors: string[] }` body -> one readable sentence.
 async function invoke<T>(body: Record<string, unknown>): Promise<T> {
-  const { data, error } = await supabase.functions.invoke('battle-report', { body })
+  const { data, error } = await supabase.functions.invoke('battle-report', { body, region: FUNCTIONS_REGION })
   if (error) {
     if (error instanceof FunctionsHttpError) {
       const parsed = await error.context.json().catch(() => null)
@@ -59,10 +68,12 @@ export function issueBattleToken(gameId: string): Promise<IssuedBattleToken> {
   return invoke<IssuedBattleToken>({ op: 'issue', gameId })
 }
 
+const ftdResultKey = (gameId: string | undefined) => ['ftdResult', gameId]
+
 /** Whatever the mod has reported for the battle currently under way, or null. */
 export function useFtdResultQuery(gameId: string | undefined, enabled: boolean) {
   return useQuery({
-    queryKey: ['ftdResult', gameId],
+    queryKey: ftdResultKey(gameId),
     enabled: !!gameId && enabled,
     refetchInterval: FTD_RESULT_POLL_MS,
     queryFn: async (): Promise<FtdPrefill | null> => {
@@ -70,4 +81,18 @@ export function useFtdResultQuery(gameId: string | undefined, enabled: boolean) 
       return data.result ?? null
     },
   })
+}
+
+/**
+ * The push half of `useFtdResultQuery`: joins the game's private result topic
+ * while `enabled` and refetches the query the moment the mod's report lands.
+ * Only participants can join (the `realtime.messages` policy), and the event
+ * carries nothing worth reading — `fetch` is still where the numbers come from.
+ */
+export function useFtdResultBroadcast(gameId: string | undefined, enabled: boolean) {
+  useBroadcastInvalidate(
+    gameId && enabled ? ftdResultTopic(gameId) : null,
+    FTD_RESULT_EVENT,
+    [ftdResultKey(gameId)],
+  )
 }

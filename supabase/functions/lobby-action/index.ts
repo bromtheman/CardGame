@@ -5,10 +5,13 @@ import { buildInitialGame, secureRng, snapshotCard } from './shared/engine/gameI
 import type { SnapshotCard } from './shared/engine/gameInit.ts'
 import { validateLobbySettings } from './shared/lobbySettings.ts'
 
+// Same block as battle-report/index.ts — the comment there says why x-region
+// and Max-Age are here. Keep the four functions equal.
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-region',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Max-Age': '7200',
 }
 
 function json(status: number, body: unknown): Response {

@@ -39,6 +39,21 @@ not "fix" that flag.
   and so needs neither registry — which is also why it does not know the
   battle roster, and does not need to.
 
+  **The result is pushed to the open overlay** without the function knowing:
+  migration `20260916180202_ftd_result_broadcast.sql` puts a trigger on
+  `battle_tokens` that, when `reported` lands, calls `realtime.send` on the
+  private topic `game:<id>:ftd` (event `ftd_result`) with only game id,
+  battle key and timestamp. A `realtime.messages` SELECT policy lets exactly
+  the two participants of that game join the topic; the table stays out of
+  the publication with no policy of its own. The overlay answers the wake-up
+  by calling `fetch` — still the only read path. `realtime.send` swallows its
+  own errors as a WARNING (`WarnSendingBroadcastMessage` in postgres logs), so
+  a broken broadcast never fails a redeem; the overlay's 30 s poll is the
+  fallback. The topic/event strings live in `shared/battleReport.ts` and
+  `battleReport.test.ts` reads the migration to keep them in step.
+  `scripts/smoke-battle-report.mjs` proves the push live (a subscribed captain
+  is woken; an anonymous socket and a non-participant are refused at join).
+
 - Version-check contract: client sends `expectedVersion`; RPC returns `null` on
   mismatch → function returns **409** → client refetches. Errors come back as
   `{ errors: string[] }` with 4xx status.
@@ -81,6 +96,50 @@ not "fix" that flag.
   `lobby-action` compiles.
 - Debugging: `query_logs` for function logs; reproduce with a direct
   `supabase.functions.invoke` from a script (see testing.md E2E pattern).
+
+## Latency
+
+Three facts about where the time goes, measured from `function_edge_logs`
+(`execution_time_ms`) on 2026-09-16 and worth re-measuring after any change
+here. The query is at the bottom.
+
+- **The database is in `us-west-2`; functions run nearest the caller.** For a
+  US-East player that put every function execution in `us-east-1/2`, so each
+  sequential DB or auth round trip inside a call crossed the continent (three
+  in `battle-report`'s `fetch`/`submit`, more in `game-action`). Before the
+  fix: battle-report POST p50 622 ms / p90 1.0 s, game-action p50 929 ms /
+  p90 1.5 s. Every browser call now passes `region: FUNCTIONS_REGION`
+  (`frontend/src/lib/supabaseClient.ts`), and `issue` writes
+  `?forceFunctionRegion=us-west-2` into the endpoint it mints so the mod's
+  POST is pinned too, with no mod change. `x-sb-edge-region` on a response
+  (and in the logs) says where it actually ran.
+- **The `region` option sends an `x-region` header**, so every function's
+  CORS `Access-Control-Allow-Headers` lists it. A function deployed WITHOUT it
+  fails the preflight for every browser call, so: **deploy the four functions
+  before any frontend change that starts sending it.** Netlify and the
+  Supabase integration both fire on a push to `main`; a manual
+  `npm run functions:deploy` of all four first is how to avoid the window.
+- **Preflights were never cached.** No function set `Access-Control-Max-Age`,
+  so Chrome re-sent `OPTIONS` after 5 s — 410 preflights for 430 POSTs in one
+  day — each a full extra round trip (~150 ms of edge execution plus the
+  network) before the real request. All four now send `Max-Age: 7200`
+  (Chrome's cap).
+
+```sql
+-- query_logs: per-function execution time by region, last 24 h
+select log_attributes['request.pathname'] as path,
+       log_attributes['response.headers.x_sb_edge_region'] as region,
+       count() as n,
+       round(quantile(0.5)(toFloat64OrZero(log_attributes['execution_time_ms']))) as p50_ms,
+       round(quantile(0.9)(toFloat64OrZero(log_attributes['execution_time_ms']))) as p90_ms
+from logs where source = 'function_edge_logs' and log_attributes['request.method'] = 'POST'
+group by path, region order by path, n desc
+```
+
+The remaining per-call cost is structural: ~150 ms of edge overhead (an
+`OPTIONS` that does nothing measures that), `auth.getUser()` as a network
+call, and `select('*')` on `games` pulling a 9–28 KB `state` for functions
+that read five fields of it. Untouched so far.
 
 ## Shared-code sync (the manifest)
 
@@ -247,8 +306,9 @@ automatically" — is closed by `scripts/deploy-function.mjs` above.)
 
 - Migrations live in `supabase/migrations/` and are applied on merge to `main`
   by the GitHub integration. Existing ones cover profiles, cards/hero_powers,
-  signup hardening, decks/storage, lobbies/games, the `apply_action_tx` RPC, and
-  `profiles.is_admin`.
+  signup hardening, decks/storage, lobbies/games, the `apply_action_tx` RPC,
+  `profiles.is_admin`, battle tokens, lobby ready/optional decks, and the FtD
+  result broadcast (trigger + `realtime.messages` policy).
 - **A migration filename's timestamp IS its identity.** The integration applies
   any version not already in `supabase_migrations.schema_migrations`, so a file
   whose timestamp is not the recorded one gets replayed against a database that

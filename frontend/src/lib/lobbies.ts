@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { FunctionsHttpError } from '@supabase/supabase-js'
 import type { LobbySettings } from '@shared/lobbySettings'
 import type { Database } from './database.types'
-import { supabase } from './supabaseClient'
+import { FUNCTIONS_REGION, supabase } from './supabaseClient'
 
 export type LobbyRow = Database['public']['Tables']['lobbies']['Row']
 
@@ -109,7 +109,7 @@ export interface LobbyActionBody {
 }
 
 export async function lobbyAction(body: LobbyActionBody) {
-  const { data, error } = await supabase.functions.invoke('lobby-action', { body })
+  const { data, error } = await supabase.functions.invoke('lobby-action', { body, region: FUNCTIONS_REGION })
   if (error) {
     if (error instanceof FunctionsHttpError) {
       const parsed = await error.context.json().catch(() => null)
