@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { GameAction } from '../engine/engineTypes'
 import { inst, makeGame, zoneEntry } from '../engine/testFixtures'
+import { legalZonesFor } from '../engine/index'
 import { basicPolicy, zonesByPreference } from './basicPolicy'
 import { viewFor } from './botView'
 
@@ -100,5 +101,27 @@ describe('basicPolicy — turn', () => {
   it('ends the turn when there is nothing else to do', () => {
     const g = botTurn()
     expect(basicPolicy.candidates(viewFor(g, 'b', seq([0.5])), 'turn')).toEqual([{ type: 'END_TURN' }])
+  })
+
+  it('offers a hand-targeting vehicle plainly as well, so it stays playable with no target', () => {
+    const sword = inst({ instanceId: 'sword', materialCost: 40000, meta: { playOnCardEffect: 'x' } })
+    const g = botTurn({ privates: { a: { hand: [], deck: [] }, b: { hand: [sword], deck: [] } } })
+    const legal = legalZonesFor(g.state, 'b', sword, g.turnNumber)
+    const firstZoneId = zonesByPreference(viewFor(g, 'b', seq([0.5]))).find((z) => legal.includes(z.id))!.id
+
+    const out = basicPolicy.candidates(viewFor(g, 'b', seq([0.5])), 'turn')
+    expect(out).toContainEqual({ type: 'PLAY_CARD_TO_ZONE', instanceId: 'sword', zoneId: firstZoneId })
+    expect(out.some((a) => a.type === 'PLAY_CARD_TARGETING_CARD_IN_HAND')).toBe(false)
+
+    g.privates.b.hand.push(inst({ instanceId: 'other', materialCost: 40000 }))
+    const out2 = basicPolicy.candidates(viewFor(g, 'b', seq([0.5])), 'turn')
+    const targetedIndex = out2.findIndex((a) =>
+      a.type === 'PLAY_CARD_TARGETING_CARD_IN_HAND' && a.instanceId === 'sword' &&
+      a.targetInstanceId === 'other' && a.zoneId === firstZoneId)
+    const plainIndex = out2.findIndex((a) =>
+      a.type === 'PLAY_CARD_TO_ZONE' && a.instanceId === 'sword' && a.zoneId === firstZoneId)
+    expect(targetedIndex).toBeGreaterThanOrEqual(0)
+    expect(plainIndex).toBeGreaterThanOrEqual(0)
+    expect(targetedIndex).toBeLessThan(plainIndex)
   })
 })

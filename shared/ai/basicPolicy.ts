@@ -53,6 +53,9 @@ export function zonesByPreference(view: BotView): ZoneState[] {
 // exactly as HandBar.tsx decides it for a human: playOnZoneEffect → a zone,
 // playOnVehicleEffect → a hull on the field, playOnCardEffect → another hand
 // card (with a zone too when the card is itself a vehicle), else a plain play.
+// A hand-targeting vehicle offers the targeted plays first, then a plain
+// PLAY_CARD_TO_ZONE fallback for that same zone — HandBar.tsx falls through
+// the same way, so the hull stays playable with no legal hand target.
 function playCandidates(view: BotView, zones: ZoneState[]): GameAction[] {
   const out: GameAction[] = []
   const affordable = view.hand.filter((c) => canAfford(view.state, view.side, c))
@@ -77,9 +80,8 @@ function playCandidates(view: BotView, zones: ZoneState[]): GameAction[] {
             instanceId: card.instanceId, targetInstanceId, zoneId: zone.id,
           })
         }
-      } else {
-        out.push({ type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: zone.id })
       }
+      out.push({ type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: zone.id })
     }
   }
   for (const card of abilities) {
