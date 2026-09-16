@@ -125,3 +125,75 @@ describe('basicPolicy — turn', () => {
     expect(targetedIndex).toBeLessThan(plainIndex)
   })
 })
+
+describe('basicPolicy — off-turn', () => {
+  it('opts nothing out of a fleet attack', () => {
+    const g = makeGame({ activePlayer: 'alice', turnNumber: 3 })
+    g.state.awaitingResponse = {
+      zoneId: 1, aggressor: 'a', attackerIds: ['foe-1'], targetIds: ['mine-1'], stealthyIds: ['mine-1'], omissibleIds: [],
+    }
+    expect(basicPolicy.candidates(viewFor(g, 'b', seq([0.5])), 'response'))
+      .toEqual([{ type: 'RESPOND_TO_ATTACK', optOutIds: [] }])
+  })
+
+  it('approves, repairing the dearest hulls in the band that fit the budget — never Fragile, summoned or Scrappy ones', () => {
+    const g = makeGame({ activePlayer: 'alice', turnNumber: 3 })
+    const dear = zoneEntry({ instanceId: 'dear', materialCost: 200000 })      // repair 100k
+    const mid = zoneEntry({ instanceId: 'mid', materialCost: 100000 })        // repair 50k — will not fit after `dear`
+    const fragile = zoneEntry({ instanceId: 'fragile', materialCost: 300000, keywords: ['fragile'] })
+    const scrappy = zoneEntry({ instanceId: 'scrappy', materialCost: 100000, keywords: ['scrappy'] })
+    const fine = zoneEntry({ instanceId: 'fine', materialCost: 500000 })      // reported at 95 — survives on its own
+    const summon = inst({ instanceId: 'summon', materialCost: 400000 })
+    const foe = zoneEntry({ instanceId: 'foe-1', materialCost: 100000 })
+    g.state.zones[0].cards.b.push(dear, mid, fragile, scrappy, fine)
+    g.state.zones[0].cards.a.push(foe)
+    g.state.activeBattle = {
+      zoneId: 1, aggressor: 'a', attackerIds: ['foe-1'],
+      defenderIds: ['dear', 'mid', 'fragile', 'scrappy', 'fine', 'summon'],
+      distanceM: 1200, distanceModifiedBy: [], summons: [summon], continuation: null,
+    }
+    g.state.pendingReport = {
+      submittedBy: 'a',
+      results: { 'foe-1': 100, dear: 85, mid: 85, fragile: 85, scrappy: 85, fine: 95, summon: 85 },
+      repairs: [],
+    }
+    g.state.resources.b.materials = 120000
+    const out = basicPolicy.candidates(viewFor(g, 'b', seq([0.5])), 'decision')
+    expect(out).toEqual([
+      { type: 'DECIDE_BATTLE_REPORT', approve: true, repairs: ['dear'] },
+      { type: 'DECIDE_BATTLE_REPORT', approve: true, repairs: [] },
+    ])
+  })
+
+  it('approves without repairs when nothing is worth repairing', () => {
+    const g = makeGame({ activePlayer: 'alice', turnNumber: 3 })
+    const mine = zoneEntry({ instanceId: 'mine-1', materialCost: 100000 })
+    const foe = zoneEntry({ instanceId: 'foe-1', materialCost: 100000 })
+    g.state.zones[0].cards.b.push(mine)
+    g.state.zones[0].cards.a.push(foe)
+    g.state.activeBattle = {
+      zoneId: 1, aggressor: 'a', attackerIds: ['foe-1'], defenderIds: ['mine-1'],
+      distanceM: 1200, distanceModifiedBy: [], summons: [], continuation: null,
+    }
+    g.state.pendingReport = { submittedBy: 'a', results: { 'foe-1': 100, 'mine-1': 40 }, repairs: [] }
+    expect(basicPolicy.candidates(viewFor(g, 'b', seq([0.5])), 'decision'))
+      .toEqual([{ type: 'DECIDE_BATTLE_REPORT', approve: true, repairs: [] }])
+  })
+
+  it('offers every option of a pending choice, in rng order', () => {
+    const g = makeGame({ activePlayer: 'alice', turnNumber: 3 })
+    g.state.pendingEffect = {
+      effect: 'someEffect', side: 'b', card: inst({}), kind: 'choice', prompt: 'Pick',
+      options: [{ id: 'x', label: 'X' }, { id: 'y', label: 'Y' }, { id: 'z', label: 'Z' }],
+    }
+    const out = basicPolicy.candidates(viewFor(g, 'b', seq([0.0])), 'choice')
+    expect(out).toHaveLength(3)
+    expect(new Set(out.map((a) => (a as { choiceId: string }).choiceId))).toEqual(new Set(['x', 'y', 'z']))
+    expect(out.every((a) => a.type === 'RESOLVE_PENDING_EFFECT')).toBe(true)
+  })
+
+  it('has nothing to offer for a choice that is not there', () => {
+    const g = makeGame({ activePlayer: 'alice', turnNumber: 3 })
+    expect(basicPolicy.candidates(viewFor(g, 'b', seq([0.5])), 'choice')).toEqual([])
+  })
+})
