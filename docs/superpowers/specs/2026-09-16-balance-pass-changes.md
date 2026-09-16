@@ -169,29 +169,58 @@ with an enemy airship or plane. If airship you provide is worth less than what
 you get, the opponent draws a card and reduces that cards cost by the
 difference.`
 
-## 4. Open questions — rule on each before its failing test, record the ruling here
+## 4. Rulings — taken 2026-09-16, binding on this pass
 
-- **Q1 Mutiny, full zone:** if the actor's side is at `zoneCapFor`, refuse the
-  play (recommended) or exceed the cap?
-- **Q2 Mutiny, expiry:** the cull discards to the side list the hull sits in —
-  the thief's discard. Original owner's instead (needs an origin stamp)?
-  Recommended: original owner.
-- **Q3 Sinners Luck "swap":** exchange zone AND side (recommended — a swap), or
-  side only?
-- **Q4 Sinners Luck "worth":** printed `materialCost` (recommended) or
-  `effectiveMaterialCostOf`?
-- **Q5 Tyr "Min 500k":** floors Tyr's own decay only (recommended; other
-  `costDelta` stamps still apply below it), or the final price?
-- **Q6 Obelisk `uniquePerZone`:** the wave-8 rule (2026-09-07) is a repo-side
-  ruling the external baseline never had, so its absence from the changelog is
-  not a decision to drop it. Recommended: keep the key and its text clause; take
-  the cost and STEALTHY changes.
-- **Q7 Spawn Audacious 40k→400k:** a 10× move the narrative never mentions
-  (the 09-02 file said 40k). Confirm before pinning.
-- **Q8 Silent moves** — present in the entries, absent from the narrative:
-  costs of Buccaneer, Pilferer, Blockade, Obelisk, Spawn Audacious, Bulwark,
-  Eyrie, Purifier; Loggerhead +HALF_COST; Audacious and Tyr +FRAGILE.
-  Implemented as listed unless vetoed.
+- **Q1 Mutiny, full zone: REFUSE the play.** `mutinyEffect` returns `false`
+  when `zone.cards[actor].length >= zoneCapFor(state, actor, zone.id)` — and
+  also when `uniquePerZoneBlocked(state, actor, zone.id, target)` would trip
+  (stealing a second Albacore/Obelisk into a zone you already hold one in).
+  The same two gates `moveEntry` applies to walking a hull in. The 400k is
+  never spent: the handler 400s and `applyAction` discards the clone.
+- **Q2 Mutiny, expiry: the ORIGINAL OWNER's discard.** Mutiny stamps
+  `meta.homeSide = <side it was stolen from>` on the stolen entry;
+  `discardCard` files a hull under `homeSide ?? controller`, and
+  `discardSnapshotOf` strips the stamp. This covers the turn-start cull AND a
+  stolen hull dying in battle — either way it goes home, so it can reshuffle
+  into the deck it belongs to.
+- **Q3 Sinners Luck "swap": exchange side AND zone.** Airships and planes fly
+  in every biome, so no biome check is needed. The swap bypasses the zone
+  cap (it is not a play, and is net-zero per side — Boarding Party's latitude)
+  and does not consult `uniquePerZone` (recorded edge: a swapped-in Albacore
+  may land beside the receiver's own).
+- **Q4 Sinners Luck "worth": printed `materialCost`.** The difference is
+  stamped as `costDelta −(received − given)` on the card the opponent draws;
+  the log names neither the card nor its price.
+- **Q5 Tyr "Min 500k": floors Tyr's OWN decay only.** `tyrCostModifier`
+  returns `max(−60k × steps, −(materialCost − TYR_MIN_COST))`; other
+  `costDelta` stamps (Excalibur, Nothung, …) still apply beneath the floor.
+- **Q6 Obelisk: keep `uniquePerZone` and its text clause**; take the cost
+  (40k→60k) and the STEALTHY removal.
+- **Q7 Spawn Audacious: 400k, as the entry says.** It closes the recorded
+  40k Spawn Audacious → Repurpose-for-330k loop (`tgEffects.ts`), which
+  reads as deliberate rather than a typo.
+- **Q8 Silent moves: implemented as listed.** Buccaneer 220k, Pilferer 100k,
+  Blockade 120k, Obelisk 60k, Spawn Audacious 400k, Bulwark 600k, Eyrie 650k,
+  Purifier 760k; Loggerhead +HALF_COST; Audacious and Tyr +FRAGILE.
+
+Three engine details the sections above left open, each decided by the
+nearest precedent:
+
+- **D-1 A side change re-stamps `playedOnTurn`** (Mutiny's stolen hull; both
+  Sinners Luck hulls), exactly as Boarding Party does. A stolen hull can
+  therefore fight a fleet battle this turn but cannot BOMBARD
+  (`baseStrikersIn` excludes fresh deployments). `movedOnTurn` and
+  `activatedOnTurn` reset with it.
+- **D-2 M-3's cap is enforced in `joinBattle`** (the two spawners) and
+  nowhere else. It counts hulls already on that side of the live battle via
+  `lockRoster` — board hulls and summons alike — keyed on `cardId`, read off
+  the new `battleCap` data key (`DATA_EFFECT_KEYS`). The DECLARED roster of
+  `ATTACK_ENEMY_FLEET` is not gated: two board Mirth Swarms (Drones plus a
+  refresh in one turn) could still attack together. Recorded, not fixed.
+- **D-3 Sinners Luck is a two-hop `choice()`** (Braveheart's shape).
+  Declining is the existing `RESOLVE_PENDING_EFFECT { cancel: true }` path
+  the dialog already offers; an empty pool at either hop resolves as "nothing
+  happens" (Kraken's null shape), so the ship still deploys.
 
 ## 5. Changelog vs repo — where they disagree
 
