@@ -86,6 +86,11 @@ export const tgVehicles = [
         keywords: [KEYWORDS.ROBOTIC],
         meta: {
             [TRIGGERS.ON_BATTLE_EFFECT]: 'horrorBattle',
+            // Retired by the 2026-09-16 pass (M-9): Fear's rewrite removed
+            // its last spawner. The row stays so in-flight snapshots and
+            // unedited decks still resolve, and horrorBattle stays registered
+            // (Harbringer's precedent, 2026-09-02 §2.1).
+            retired: true,
         }
     },
     {
@@ -254,7 +259,7 @@ export const tgVehicles = [
     {
         name: 'Fear',
         isBuiltIn: true,
-        cardText: 'When this vehicle is played, spawn a friendly horror into each zone',
+        cardText: 'When this vehicle is played, draw a card',
         materialCost: 500000,
         blueprintCost: 800000,
         cpCost: 0,

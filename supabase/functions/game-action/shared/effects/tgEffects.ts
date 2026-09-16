@@ -1,5 +1,5 @@
 import {
-  catalogCard, choice, enemyVehicleOptions, friendlyVehicleOptions, grant, isAiShip, mintHull, spawnVehicles,
+  catalogCard, choice, enemyVehicleOptions, friendlyVehicleOptions, grant, isAiShip, mintHull,
   summonHulls,
 } from './primitives.ts'
 import { battleCapReached, declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
@@ -26,32 +26,12 @@ import { registerEffect } from './registry.ts'
 // the trigger would be silently unreachable.
 registerEffect('jealousyOnDeath', grant({ draw: 1 }))
 
-// "When this vehicle is played, spawn a friendly horror into each zone."
-// sapphireScreenEffect's shape, with no keyword grant — Horror's printed
-// keywords are the whole of what lands.
-//
-// ⚠ Fear names Horror rather than a vanilla hull for a reason, and the
-// consequence is worth stating rather than discovering in a battle report:
-// SPAWNING IS NOT PLAYING (spec §7.4), and that rule skips `onPlayEffect` and
-// NOTHING ELSE. Horror's own `onBattleEffect` is read off each spawned entry's
-// printed meta by DP2, so all three Horrors fire their own copy rule. This is
-// wave 6's Nothung/Sacrilego ruling again.
-//
-// ⚠ Spawns also bypass placement legality, so a Horror (a ship) lands in the
-// land zone that a ship could never be PLAYED into.
-//
-// Balance note, recorded rather than fixed: the 2026-09-02 pass cut Fear to
-// 500k, so its own upkeep is 75k/turn (UPKEEP_RATE 0.15) and it lands as early
-// as turn 7, the first turn a 500k card can be played at all (spec §7.3, U-8).
-// The three Horrors it spawns add nothing to that upkeep — Horror dropped
-// UPKEEP_REQUIRED in the same pass — but each is its own self-replicating
-// engine per horrorBattle's own balance note below.
-registerEffect('fearOnPlay', spawnVehicles({
-  cardName: 'Horror',
-  count: 1,
-  zones: 'all',
-}), { needsCatalog: true })
-
+// "When this vehicle is played, draw a card." (2026-09-16 pass.) Same registry
+// id as the Horror-spawning version it replaces — a balance pass rewriting its
+// own card, not the R-6 collision. No { needsCatalog: true } any more: the
+// spawn read ctx.catalog, a draw reads only the deck. Fear was Horror's last
+// spawner, which is what let M-9 retire Horror without deleting it.
+registerEffect('fearOnPlay', grant({ draw: 1 }))
 // "Whenever this vehicle participates in a fleet battle, spawn a temporary
 // Mirth swarm to fight on your side in the battlefield."
 //
