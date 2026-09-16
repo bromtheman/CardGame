@@ -307,12 +307,13 @@ export function discardSnapshotOf(card: CardInstance): SnapshotCard {
   // later death. This is the strip list the comment above warns about; nothing
   // in TypeScript would have caught the omission.
   //
-  // `scrappyOnLoan` (2026-09-02) comes off for factoryEscort's exact reason: it
-  // is a per-INSTANCE marker for a keyword Sacrilego lends only for the
-  // duration of one battle. Left on, a hull that dies mid-battle would file it
-  // into state.destroyed and return through reshuffleDiscard permanently
-  // Scrappy — and would then be stripped by a LATER Sacrilego resolve that
-  // never lent it anything.
+  // `scrappyOnLoan` (2026-09-02, writer deleted 2026-09-16) comes off for
+  // factoryEscort's exact reason: it is a per-INSTANCE marker for a keyword
+  // Sacrilego lends only for the duration of one battle. Left on, a hull that
+  // dies mid-battle would file it into state.destroyed and return through
+  // reshuffleDiscard permanently Scrappy — and would then be stripped by a
+  // LATER Sacrilego resolve that never lent it anything. No effect writes it
+  // any more; it stays for hulls in games dealt before that deploy (spec R-8).
   //
   // ⚠ Fix round 1 (2026-09-02): the loan is TWO mutations, not one — the
   // marker above, AND the `scrappy` keyword itself, pushed onto entry.keywords

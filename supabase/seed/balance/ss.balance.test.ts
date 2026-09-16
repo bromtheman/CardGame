@@ -101,8 +101,8 @@ const CARDS: Record<string, Expected> = {
   },
   'SS:Sacrilego': {
     materialCost: 10_000, blueprintCost: 86_000,
-    keywords: ['scrappy', 'stealthy', 'mobile'], vehicleType: 'ship',
-    cardText: 'Whenever this vehicle participates in a fleet battle, friendly ships receive SCRAPPY keyword for that battle. Whenever this vehicle survives a fleet battle, reduce the cost of SS ships in hand by 30k.',
+    keywords: ['scrappy', 'stealthy'], vehicleType: 'ship',
+    cardText: 'Whenever this vehicle survives a fleet battle, reduce the cost of AI ships in hand by 30k.',
   },
   'SS:Typhoon': {
     materialCost: 130_000, blueprintCost: 135_323, keywords: [], vehicleType: 'sub',

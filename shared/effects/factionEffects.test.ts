@@ -2072,53 +2072,33 @@ describe('wave 4 — battle triggers at resolve', () => {
       return { game, sac, mate, printed, sub, foe }
     }
 
-    it('grants SCRAPPY at lock to friendly SHIPS in the battle, and marks the loan', () => {
-      const { game, sac, mate, printed, sub, foe } = staged()
-      const ok = effectFor('sacrilegoBattle')!({ game, actor: 'a', card: sac, ctx: makeCtx(), battle: sacLock() })
-      expect(ok).toBe(true)
-      expect(mate.keywords).toContain('scrappy')
-      expect(mate.meta.scrappyOnLoan).toBe(true)
-      // A hull that already PRINTS scrappy is never marked, so it never loses it.
-      expect(printed.meta.scrappyOnLoan).toBeUndefined()
-      // Ships, not every vehicle — the text says "friendly ships".
-      expect(sub.keywords).not.toContain('scrappy')
-      // And never the enemy's.
-      expect(foe.keywords).not.toContain('scrappy')
-    })
-
-    it('takes the loan back at resolve, and leaves a printed or previously granted SCRAPPY alone', () => {
-      const { game, sac, mate, printed } = staged()
-      effectFor('sacrilegoBattle')!({ game, actor: 'a', card: sac, ctx: makeCtx(), battle: sacLock() })
-      game.state.activeBattle = null
-      effectFor('sacrilegoBattle')!({ game, actor: 'a', card: sac, ctx: makeCtx(), battle: sacResolve() })
+    // 2026-09-16: the fleet-wide SCRAPPY grant is GONE (spec §2, SS table).
+    // Only the survive-discount remains, so lock is a no-op on every hull.
+    it('grants nothing at lock', () => {
+      const { game, sac, mate, printed, sub } = staged()
+      expect(effectFor('sacrilegoBattle')!({ game, actor: 'a', card: sac, ctx: makeCtx(), battle: sacLock() })).toBe(true)
       expect(mate.keywords).not.toContain('scrappy')
       expect(mate.meta.scrappyOnLoan).toBeUndefined()
-      expect(printed.keywords).toContain('scrappy')
+      expect(printed.keywords).toEqual(['scrappy']) // printed, untouched
+      expect(sub.keywords).not.toContain('scrappy')
     })
 
-    // The loan is returned even when Sacrilego dies: `participants` still holds
-    // a destroyed hull's entry at resolve, so the trigger still fires for it.
-    it('takes the loan back even when Sacrilego did not survive', () => {
-      const { game, sac, mate } = staged()
-      effectFor('sacrilegoBattle')!({ game, actor: 'a', card: sac, ctx: makeCtx(), battle: sacLock() })
-      game.state.activeBattle = null
-      game.state.zones[0].cards.a = game.state.zones[0].cards.a.filter((c) => c.instanceId !== 'sac')
-      effectFor('sacrilegoBattle')!({
-        game, actor: 'a', card: sac, ctx: makeCtx(), battle: sacResolve({ survived: false }),
-      })
-      expect(mate.keywords).not.toContain('scrappy')
-    })
-
-    it('cuts 30k off every SS ship in hand on a survival', () => {
+    // M-1: every BUILT-IN ship in hand, of any faction — never a player-made one.
+    it('cuts 30k off every AI ship in hand on a survival', () => {
       const { game, sac } = staged()
       game.privates.a.hand.push(
         inst({ name: 'SS Ship', faction: 'SS', type: 'vehicle', vehicleType: 'ship' }),
+        inst({ name: 'DWG Ship', faction: 'DWG', type: 'vehicle', vehicleType: 'ship' }),
         inst({ name: 'SS Sub', faction: 'SS', type: 'vehicle', vehicleType: 'sub' }),
+        inst({ name: 'Custom', faction: 'SS', isBuiltIn: false, type: 'vehicle', vehicleType: 'ship' }),
       )
       game.state.activeBattle = null
       effectFor('sacrilegoBattle')!({ game, actor: 'a', card: sac, ctx: makeCtx(), battle: sacResolve() })
-      expect(game.privates.a.hand[0].meta.costDelta).toBe(SACRILEGO_COST_DELTA)
-      expect(game.privates.a.hand[1].meta.costDelta).toBeUndefined()
+      const byName = new Map(game.privates.a.hand.map((c) => [c.name, c.meta.costDelta]))
+      expect(byName.get('SS Ship')).toBe(SACRILEGO_COST_DELTA)
+      expect(byName.get('DWG Ship')).toBe(SACRILEGO_COST_DELTA)
+      expect(byName.get('SS Sub')).toBeUndefined()
+      expect(byName.get('Custom')).toBeUndefined()
     })
 
     it('cuts nothing when it did not survive', () => {
@@ -2149,6 +2129,9 @@ describe('wave 4 — battle triggers at resolve', () => {
       expect(mate.keywords).not.toContain('scrappy')
     })
 
+    // 2026-09-16: no effect WRITES scrappyOnLoan any more; the strip is kept for
+    // hulls in games dealt before the deploy.
+    //
     // ⚠ Fix round 1. The strip list (docs/claude/architecture.md) has to shed
     // the loan's TWO mutations, not one: `meta.scrappyOnLoan` AND the
     // `scrappy` keyword itself pushed onto `entry.keywords` at lock. A hull
@@ -2175,73 +2158,37 @@ describe('wave 4 — battle triggers at resolve', () => {
       expect(snapshot.keywords).toContain('scrappy')
     })
 
-    // End to end through the real engine (ATTACK_ENEMY_FLEET -> the Stealthy
-    // response window Sacrilego's own printed keyword opens ->
-    // SUBMIT_BATTLE_REPORT -> DECIDE_BATTLE_REPORT), so the lock/resolve
-    // dispatch, the repair math, and the discard snapshot all run for real
-    // rather than being driven one at a time through effectFor.
-    it('loans SCRAPPY for a real battle, frees a repair, and sheds the loan on both survivors and the dead', () => {
+    // End to end through the real engine. Escort A lands in the repair band;
+    // with no loan it is NOT auto-repaired and its owner pays for the repair.
+    it('lends no SCRAPPY in a real battle — a repair in the band is paid for', () => {
       const game = makeGame({ turnNumber: 3 })
       const sac = zoneEntry({
         instanceId: 'sac', name: 'Sacrilego', vehicleType: 'ship',
-        keywords: ['scrappy', 'stealthy', 'mobile'], meta: { onBattleEffect: 'sacrilegoBattle' },
+        keywords: ['scrappy', 'stealthy'], meta: { onBattleEffect: 'sacrilegoBattle' },
       })
-      const shipA = zoneEntry({ instanceId: 'shipA', name: 'Escort A', vehicleType: 'ship' })
-      const shipB = zoneEntry({ instanceId: 'shipB', name: 'Escort B', vehicleType: 'ship' })
+      const shipA = zoneEntry({ instanceId: 'shipA', name: 'Escort A', vehicleType: 'ship', materialCost: 100_000 })
       const foe = zoneEntry({ instanceId: 'foe', name: 'Foe', vehicleType: 'ship' })
-      game.state.zones[0].cards.a.push(sac, shipA, shipB)
+      game.state.zones[0].cards.a.push(sac, shipA)
       game.state.zones[0].cards.b.push(foe)
-
-      // Alice (side a, the default activePlayer — ATTACK_ENEMY_FLEET is an
-      // on-turn action) attacks with her whole fleet. The single target (foe)
-      // carries no Stealthy, so no response window opens and the battle locks
-      // immediately — which is where the loan is granted for real.
+      game.state.resources.a.materials = 500_000
       const locked = applyAction(game, 'alice', {
         type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
       }, makeCtx())
       if (!locked.ok) throw new Error(locked.error)
-
       const lockedA = locked.game.state.zones[0].cards.a.find((c) => c.instanceId === 'shipA')!
-      expect(lockedA.keywords).toContain('scrappy')
-      expect(lockedA.meta.scrappyOnLoan).toBe(true)
-
-      // Sacrilego and the foe both comfortably survive. Escort A lands in the
-      // repair band (REPAIR_WINDOW_MIN_PERCENT=80 <= 80 < SURVIVE_HP_PERCENT=
-      // 90) with the LOANED keyword, so autoRepairIds should pick it for a
-      // free repair. Escort B falls below the band and is destroyed, still
-      // carrying the loan at the moment it is snapshotted into the discard.
+      expect(lockedA.keywords).not.toContain('scrappy')
+      expect(lockedA.meta.scrappyOnLoan).toBeUndefined()
       const submitted = applyAction(locked.game, 'alice', {
         type: 'SUBMIT_BATTLE_REPORT',
-        results: {
-          [sac.instanceId]: 95, [shipA.instanceId]: 80, [shipB.instanceId]: 40, [foe.instanceId]: 95,
-        },
-        repairs: [],
+        results: { sac: 95, shipA: 85, foe: 95 },
+        repairs: ['shipA'],
       }, makeCtx())
       if (!submitted.ok) throw new Error(submitted.error)
-
-      const materialsBefore = submitted.game.state.resources.a.materials
+      const before = submitted.game.state.resources.a.materials
       const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, makeCtx())
       if (!decided.ok) throw new Error(decided.error)
-
-      // (a) Escort A's repair was FREE: repairCostOf returns 0 for a Scrappy
-      // hull, so player A's materials are unchanged, and the log shows it was
-      // repaired rather than destroyed.
-      expect(decided.game.state.resources.a.materials).toBe(materialsBefore)
+      expect(decided.game.state.resources.a.materials).toBeLessThan(before)
       expect(decided.game.state.log.join('\n')).toContain('Escort A was repaired')
-
-      // (b) Escort A survived on the board — Sacrilego's own resolve trigger
-      // (it also survived) strips the loan from every hull still carrying it.
-      const survivorA = decided.game.state.zones[0].cards.a.find((c) => c.instanceId === 'shipA')!
-      expect(survivorA.keywords).not.toContain('scrappy')
-      expect(survivorA.meta.scrappyOnLoan).toBeUndefined()
-
-      // (c) Escort B never reaches Sacrilego's board-walking strip — it left
-      // the board in the SAME handler, before that strip runs. Only
-      // discardSnapshotOf's own fix keeps its discard entry from carrying the
-      // keyword forever.
-      const buried = decided.game.state.destroyed.a.find((c) => c.name === 'Escort B')!
-      expect(buried.keywords).not.toContain('scrappy')
-      expect((buried.meta as Record<string, unknown>).scrappyOnLoan).toBeUndefined()
     })
   })
 

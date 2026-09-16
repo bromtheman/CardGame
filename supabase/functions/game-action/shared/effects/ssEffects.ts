@@ -558,74 +558,21 @@ registerEffect('dryadBattle', ({ game, actor, ctx, battle }) => {
   return true
 }, { needsCatalog: true })
 
-const SACRILEGO = 'sacrilegoBattle'
-const SCRAPPY_ON_LOAN = 'scrappyOnLoan'
-
-// "Whenever this vehicle participates in a fleet battle, friendly ships receive
-// SCRAPPY keyword for that battle. Whenever this vehicle survives a fleet
-// battle, reduce the cost of SS ships in hand by 30k."
+// "Whenever this vehicle survives a fleet battle, reduce the cost of AI ships
+// in hand by 30k." (2026-09-16 — the fleet-wide SCRAPPY loan the card used to
+// print is gone, and with it the lock clause and the resolve-time strip. The
+// `scrappyOnLoan` strip in discardSnapshotOf STAYS for hulls in games dealt
+// before this deploy, spec R-8.)
 //
-// ⚠ "FOR THAT BATTLE" IS A REAL WINDOW, not a rounding of "permanently".
-// SCRAPPY is read in exactly two places, both inside DECIDE_BATTLE_REPORT:
-// repairCostOf and autoRepairIds (battleResolve.ts). So the interval between
-// LOCK and RESOLVE is precisely the span in which the keyword can be observed —
-// grant at lock, take it back at resolve, and no reader sees it outside the
-// battle. A permanent grant would make every FUTURE repair free too, which the
-// card does not say.
+// Same registry id, new behaviour — a balance pass rewriting its own card,
+// which is not the R-6 collision (two DIFFERENT cards sharing a name).
 //
-// The loan is remembered per HULL under `scrappyOnLoan`, the shape TG's
-// Havoc/Mirth Factory established with `factoryEscort`. A hull that already
-// carries SCRAPPY — printed (Catshark), or granted permanently by Repairmen
-// Ready — is never marked and so is never stripped.
-//
-// ⚠ `scrappyOnLoan` is in discardSnapshotOf's strip list. Nothing in TypeScript
-// would have caught its absence.
-//
-// Both clauses read the ROSTER off game.state.activeBattle, which is set before
-// dispatchBattleLock runs (battleDeclare.ts's setBattle). By RESOLVE it is
-// already null — which is why the strip walks the actor's board rather than the
-// roster, and is also why a second Sacrilego in the same battle is harmless:
-// both want the same hulls stripped.
-registerEffect(SACRILEGO, ({ game, actor, card, battle }) => {
+// The log carries neither names nor a count — state.log is public and the
+// hand is hidden (Nothung's rule). "Survives" needs no findVehicle guard:
+// `battle.survived` is per participant and false for a hull that died.
+registerEffect('sacrilegoBattle', ({ game, actor, card, battle }) => {
   if (!battle || !battle.isParticipant) return true
-
-  if (battle.phase === 'lock') {
-    const live = game.state.activeBattle
-    if (!live) return true
-    const mine = battle.isDefender ? live.defenderIds : live.attackerIds
-    for (const id of mine) {
-      const found = findVehicle(game.state, id)
-      // Board hulls only. A battle SUMMON evaporates on report approval whatever
-      // its HP (spec §4.4), so a free repair means nothing to one.
-      if (!found || found.side !== actor) continue
-      const entry = found.entry
-      if (entry.vehicleType !== VEHICLE_TYPES.SHIP) continue
-      if (entry.keywords.includes(KEYWORDS.SCRAPPY)) continue
-      entry.keywords = [...entry.keywords, KEYWORDS.SCRAPPY]
-      entry.meta = { ...entry.meta, [SCRAPPY_ON_LOAN]: true }
-    }
-    game.state.log.push(`${card.name} rigs the fleet for field repairs`)
-    return true
-  }
-
-  if (battle.phase !== 'resolve') return true
-
-  // Clause 1's other half: take the loan back. Runs whether or not Sacrilego
-  // survived — `participants` still holds a destroyed hull's entry at resolve,
-  // so this trigger fires for a dead Sacrilego too, which is what stops the
-  // keyword outliving the battle that lent it.
-  for (const zone of game.state.zones) {
-    for (const entry of zone.cards[actor]) {
-      if (entry.meta[SCRAPPY_ON_LOAN] !== true) continue
-      entry.keywords = entry.keywords.filter((k) => k !== KEYWORDS.SCRAPPY)
-      const { [SCRAPPY_ON_LOAN]: _loan, ...rest } = entry.meta
-      entry.meta = rest
-    }
-  }
-
-  // Clause 2. The log carries neither names nor a count — state.log is public
-  // and the hand is hidden (Nothung's rule).
-  if (!battle.survived) return true
+  if (battle.phase !== 'resolve' || !battle.survived) return true
   for (const held of game.privates[actor].hand) {
     if (isAiShip(held)) discountInHand(held, SACRILEGO_COST_DELTA)
   }
