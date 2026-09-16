@@ -3,6 +3,9 @@ import { applyAction, CATALOG_EFFECTS, CATALOG_HERO_POWERS, normalizeState } fro
 import { secureRng, snapshotCard } from './shared/engine/gameInit.ts'
 import type { SnapshotCard } from './shared/engine/gameInit.ts'
 import type { EngineGame, GameAction, PrivateState, Side } from './shared/engine/engineTypes.ts'
+import { basicPolicy } from './shared/ai/basicPolicy.ts'
+import { runBotUntilIdle } from './shared/ai/botDriver.ts'
+import { botPlayerId, botSideOf } from './shared/ai/botGame.ts'
 
 // Same block as battle-report/index.ts — the comment there says why x-region
 // and Max-Age are here. Keep the four functions equal.
@@ -175,7 +178,11 @@ Deno.serve(async (req) => {
   const heroPowerWantsCatalog =
     action.type === 'USE_HERO_POWER' && CATALOG_HERO_POWERS.has(String(action.power))
 
-  if (heroPowerWantsCatalog || zoneEffectWantsCatalog || candidates.some(wantsCatalog)) {
+  // Sixth source (2026-09-16 AI opponent spec §5.4): a practice game. The
+  // bot's own plays are in none of the probes above — its hand is not the
+  // caller's — so the catalog is loaded unconditionally for one.
+  const practiceGame = botSideOf(engineGame.settings) !== null
+  if (heroPowerWantsCatalog || zoneEffectWantsCatalog || practiceGame || candidates.some(wantsCatalog)) {
     const { data: cardRows, error: catalogError } = await admin.from('cards').select('*').eq('is_built_in', true)
     if (catalogError) return json(500, { errors: ['Failed to load the card catalog'] })
     catalog = (cardRows ?? []).map(snapshotCard)
@@ -189,7 +196,22 @@ Deno.serve(async (req) => {
     return json(400, { errors: ['Malformed action'] })
   }
   if (!result.ok) return json(result.status, { errors: [result.error] })
-  const next = result.game
+  let next = result.game
+
+  // A practice game: the bot acts until it owes nothing, in memory, and the
+  // single apply_action_tx below commits the human's action and the bot's
+  // reply together (spec §5.4). A throw here is an engine bug surfacing —
+  // answered as its own 500 with nothing committed, so the game stays
+  // consistent and the message is visible. CONCEDE/ABANDON end the game
+  // first, so botOwes is null for them.
+  const botId = botPlayerId(next)
+  if (botId) {
+    try {
+      next = runBotUntilIdle(next, botId, ctx, basicPolicy).game
+    } catch (err) {
+      return json(500, { errors: [`AI opponent failed: ${err instanceof Error ? err.message : String(err)}`] })
+    }
+  }
 
   // One transaction for public state + both private rows (apply_action_tx,
   // Task 1's migration); null return = version conflict.
