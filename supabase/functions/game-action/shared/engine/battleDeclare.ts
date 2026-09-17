@@ -194,8 +194,11 @@ function lockBattle(
 // M-3 (2026-09-16 spec): "no more than one mirth swarm can participate in any
 // one battle on a single side, even if spawned in by card effect". A DATA key
 // (`battleCap: n`) on the card, so the next capped card needs no engine edit
-// — the slotDenial/uniquePerZone shape — read strictly: a non-number or
-// non-positive value leaves the hull uncapped rather than unjoinable.
+// — the slotDenial/uniquePerZone shape — read strictly: a non-number, or a
+// value that floors below 1 (so 0.5 as much as 0 or -1), leaves the hull
+// uncapped rather than unjoinable. The guard is on the FLOORED value because
+// the comparison below is: a cap of 0.5 that passed a `cap <= 0` check would
+// floor to 0 and make the hull one nothing could ever field.
 //
 // Counts what is ALREADY fighting on that side, board hulls and summons alike
 // ("however it got there"), keyed on cardId like uniquePerZone so a copy
@@ -207,7 +210,7 @@ export function battleCapReached(
   game: EngineGame, side: Side, card: { cardId: string; meta: Record<string, unknown> },
 ): boolean {
   const cap = card.meta.battleCap
-  if (typeof cap !== 'number' || !Number.isFinite(cap) || cap <= 0) return false
+  if (typeof cap !== 'number' || !Number.isFinite(cap) || Math.floor(cap) < 1) return false
   if (!game.state.activeBattle) return false
   const fielded = lockRoster(game).filter((p) => p.side === side && p.entry.cardId === card.cardId).length
   return fielded >= Math.floor(cap)

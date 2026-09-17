@@ -131,6 +131,35 @@ describe('loggerheadOnDeath', () => {
     expect(copy.materialCost).toBe(0)
     expect(copy.meta).not.toHaveProperty('costDelta')
   })
+
+  // Fix round (2026-09-16 review, minor A): the deck copy used to be built with
+  // copyMeta plus a two-field destructure, so every OTHER per-instance stamp
+  // rode into the deck. A Mutiny-stolen Loggerhead that dies in the thief's
+  // turn arrives stamped `homeSide` and carrying a granted TEMPORARY (with its
+  // `grantedKeywords` marker); left on, the thief's deck would hand out a
+  // Loggerhead that files itself into the ENEMY's discard and is permanently
+  // Temporary — and a Hysteria'd one would come back permanently Inoffensive.
+  // discardSnapshotOf already owns that strip list; the copy must go through it.
+  it('builds the free copy as a clean discard snapshot — no homeSide, no granted keyword', () => {
+    const game = makeGame()
+    const dying = zoneEntry({
+      name: 'Loggerhead', materialCost: 80_000,
+      keywords: [KEYWORDS.TEMPORARY],
+      meta: { homeSide: 'b', grantedKeywords: [KEYWORDS.TEMPORARY] },
+      activatedOnTurn: 2,
+    })
+    const ok = effectFor('loggerheadOnDeath')!({
+      game, actor: 'a', card: dying, ctx: makeCtx(),
+    })
+    expect(ok).toBe(true)
+    expect(game.privates.a.deck).toHaveLength(1)
+    const copy = game.privates.a.deck[0]
+    expect(copy.materialCost).toBe(0)
+    expect(copy.meta).not.toHaveProperty('homeSide')
+    expect(copy.meta).not.toHaveProperty('grantedKeywords')
+    expect(copy.keywords).not.toContain(KEYWORDS.TEMPORARY)
+    expect(copy).not.toHaveProperty('activatedOnTurn')
+  })
 })
 
 describe('reservesEffect', () => {

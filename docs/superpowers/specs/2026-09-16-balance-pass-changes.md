@@ -247,8 +247,12 @@ nearest precedent:
 - Close-out (2026-09-16): implemented by `docs/superpowers/plans/2026-09-16-balance-pass.md`.
   Not built by design: gating `ATTACK_ENEMY_FLEET`'s declared roster on
   `battleCap` (ruling D-2); a `uniquePerZone` check on Sinners Luck's swap
-  (Q3). `scripts/smoke-wave6.mjs` still asserts `aircraftLock` on Albacore
-  and Tarpon and is stale as of this pass.
+  (Q3). `scripts/smoke-wave6.mjs` was updated in the fix round: its seed
+  check asserts Albacore's `uniquePerZone` and Tarpon's empty meta in place
+  of the `aircraftLock` M-6 removed, and its game-B scenario now proves the
+  M-6 rule end to end (a second Albacore refused, the owner's other aircraft
+  and the enemy's both allowed). Not re-run against the live backend in that
+  round — the seed had not been applied yet.
 - Sacrilego (M-1, spec R-8): a hull loaned SCRAPPY by the OLD lock-phase code
   in a battle still open at deploy keeps the loan after resolve until it
   dies (only `discardSnapshotOf` strips it now).
@@ -257,6 +261,13 @@ nearest precedent:
   revive-on-death triggers (TG Nostalgia `returnToHand`, OW Iron Cordon
   `reviveEntry`) miss for a hull stolen by Mutiny and log "could not
   resolve" — fails safe.
+- Mutiny (M-4): a stolen hull's death trigger fires for the THIEF —
+  `battleResolve` pushes each casualty into `destroyedEntries` with the side
+  it fought for, and `fireDeathEffect` takes that side as `actor` — so Mutiny
+  on a Brigand, Trondheim, Argonaut or Iron Maiden followed by a suicide
+  attack harvests the trigger (the Mutiny copy, the discounted AI ship, the
+  hand discount, the draw) for the thief while the hull itself files home.
+  Coherent with "gain control"; recorded, not changed.
 - Sinners Luck (M-5, Q3): the swap also bypasses `aircraftLock` (no seeded
   carrier since M-6), a third unrecorded edge beside the cap and
   `uniquePerZone`.

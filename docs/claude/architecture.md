@@ -410,8 +410,12 @@ A second, drifting copy of the derivation would reopen that.
 This used to be two separate destructures (the cull and the death path) that
 had to be kept in step; `discardCard` collapsed them, so there is now one place
 to get right instead of two. `loggerheadOnDeath` in `shared/effects/dwgEffects.ts`
-still has the same shape and is one stamp behind — inert, because it pushes to
-the deck rather than to `destroyed`.
+kept its own hand-rolled copy of the shape until 2026-09-16 and was NOT inert
+for pushing to the deck rather than to `destroyed`: the deck is where a stamp
+does its damage, and a Mutiny-stolen Loggerhead dying on the thief's turn
+pushed a copy carrying `homeSide` and a granted TEMPORARY into the thief's
+deck. It now builds the copy from `discardSnapshotOf` (then `copyMeta`), so
+there is genuinely one strip list.
 
 **`isSummonOnly(card)`** guards `discardCard` itself, which is why one check
 covers every exit: `meta.summonOnly` cards are spawned, never drafted, so they

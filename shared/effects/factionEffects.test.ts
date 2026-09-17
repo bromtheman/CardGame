@@ -4879,6 +4879,11 @@ describe('Mirth Swarm battle cap (2026-09-16 M-3)', () => {
     for (const h of havocs) expect(joinBattle(game, 'a', h.instanceId, h)).toBe(true)
     const typo = { ...havocs[0], instanceId: 'typo', meta: { battleCap: '1' } }
     expect(battleCapReached(game, 'a', typo)).toBe(false)
+    // A cap in (0, 1) floors to 0, and 0 is "uncapped", not "unjoinable": the
+    // header's strict reading is about the FLOORED value, so 0.5 must not turn
+    // into a hull that nothing can ever field (2026-09-16 review, minor B).
+    const half = { ...havocs[0], instanceId: 'half', meta: { battleCap: 0.5 } }
+    expect(battleCapReached(game, 'a', half)).toBe(false)
   })
 
   it('battleCap is a recognised data key, so Mirth Swarm can carry text and no effect name', () => {

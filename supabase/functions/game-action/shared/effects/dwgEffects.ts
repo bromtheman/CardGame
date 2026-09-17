@@ -88,15 +88,19 @@ registerCostModifier('plundererCostModifier', (state, side) => {
 // shuffle a 0-cost copy into its owner's deck (Loggerhead, on death)
 registerEffect('loggerheadOnDeath', ({ game, actor, card, ctx }) => {
   const deck = game.privates[actor].deck
-  // card arrives as a ZoneCardEntry at death — strip the zone stamps so the
-  // deck copy is a clean CardInstance
-  const { playedOnTurn: _p, movedOnTurn: _m, ...snapshot } = card as ZoneCardEntry
-  // A per-instance price stamp (e.g. a Plunderer raid's +20k surcharge, spec
-  // §6.1) must not ride into the deck on a card whose own text promises it
-  // costs 0. copyMeta strips only the phantom capturedCopy stamp, so strip
-  // costDelta here too — the same shape as the tgEffects.ts:238 precedent
-  // (horrorBattle strips factoryEscort on top of copyMeta the same way).
-  const meta = (({ costDelta: _costDelta, ...rest }) => rest)(copyMeta(snapshot.meta))
+  // card arrives as a ZoneCardEntry at death. The deck copy is built from
+  // discardSnapshotOf — the ONE strip list for everything per-instance (the
+  // zone/hand stamps, costDelta, factoryEscort, homeSide, grantedSpawns, and
+  // grantedKeywords together with the keywords they granted) — rather than
+  // from a hand-rolled destructure, which is how this copy used to carry a
+  // Mutiny theft's `homeSide` and a granted TEMPORARY into the thief's deck
+  // (2026-09-16 review), and a Hysteria'd hull's INOFFENSIVE before that. The
+  // strip also covers a Plunderer raid's +20k costDelta (spec §6.1), which the
+  // card's own "It costs 0." must not inherit. copyMeta then drops the phantom
+  // capturedCopy stamp that discardSnapshotOf deliberately leaves alone — a
+  // hull minted off a captured copy is a card of the minter's own.
+  const snapshot = discardSnapshotOf(card)
+  const meta = copyMeta(snapshot.meta)
   deck.push({ ...snapshot, instanceId: ctx.newId(), materialCost: 0, meta })
   for (let i = deck.length - 1; i > 0; i--) {
     const j = Math.floor(ctx.rng() * (i + 1))
