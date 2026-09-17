@@ -1,16 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { cardId, loadSeedData } from '../../supabase/seed/transform'
 import type { SeedCard } from '../types'
-import { STARTING_TURN_NUMBER } from '../gameSettings'
-import { DEFAULT_LOBBY_SETTINGS } from '../lobbySettings'
-import type { EngineContext, EngineGame, GameAction } from '../engine/engineTypes'
-import { buildInitialGame } from '../engine/gameInit'
 import type { SnapshotCard } from '../engine/gameInit'
-import { applyAction, battleParticipants, legalZonesFor } from '../engine/index'
+import { applyAction } from '../engine/index'
 import { basicPolicy } from './basicPolicy'
-import { BOT_DECKS, BOT_FACTIONS } from './botDecks'
-import type { BotFaction } from './botDecks'
+import { BOT_FACTIONS } from './botDecks'
 import { runBotUntilIdle } from './botDriver'
+import { humanStep, newGame, STEP_CAP, TURN_CAP } from './selfPlayHarness'
 
 // The net for effect interactions among the seeded cards (spec §9): the bot
 // plays every one of its decks against a scripted human who deploys hulls,
@@ -24,20 +20,6 @@ import { runBotUntilIdle } from './botDriver'
 // Twenty seeds, as spec §9 aimed at: a game costs ~35 ms (measured
 // 2026-09-16), so the file stays near four seconds.
 const SEEDS = Array.from({ length: 20 }, (_, i) => i + 1)
-const TURN_CAP = 40
-const STEP_CAP = 2000
-
-// mulberry32 — small, fast, and the seed reproduces a failure exactly.
-function mulberry32(seed: number): () => number {
-  let t = seed >>> 0
-  return () => {
-    t = (t + 0x6d2b79f5) >>> 0
-    let x = t
-    x = Math.imul(x ^ (x >>> 15), x | 1)
-    x ^= x + Math.imul(x ^ (x >>> 7), x | 61)
-    return ((x ^ (x >>> 14)) >>> 0) / 4294967296
-  }
-}
 
 function toSnapshot(card: SeedCard): SnapshotCard {
   return {
@@ -49,61 +31,6 @@ function toSnapshot(card: SeedCard): SnapshotCard {
   }
 }
 
-function deckFor(faction: BotFaction, snapshots: Map<string, SnapshotCard>, byName: Map<string, SnapshotCard>) {
-  const cards: Record<string, number> = {}
-  for (const [name, copies] of Object.entries(BOT_DECKS[faction])) {
-    const snap = byName.get(`${faction}:${name}`)
-    if (!snap) throw new Error(`${faction} deck names "${name}", which the seed source does not have`)
-    cards[snap.cardId] = copies
-    snapshots.set(snap.cardId, snap)
-  }
-  return cards
-}
-
-// The scripted human, side 'a'. One action per call; null means nobody owes.
-function humanStep(game: EngineGame, rng: () => number): GameAction | null {
-  const s = game.state
-  if (s.pendingEffect) {
-    if (s.pendingEffect.side !== 'a') return null
-    const options = s.pendingEffect.options
-    if (options.length === 0) return { type: 'RESOLVE_PENDING_EFFECT', cancel: true }
-    return { type: 'RESOLVE_PENDING_EFFECT', choiceId: options[Math.floor(rng() * options.length)].id }
-  }
-  if (s.awaitingResponse) {
-    if (s.awaitingResponse.aggressor !== 'b') return null
-    // Withdraw everything the engine allows. When that is every target the
-    // attack is called off at no cost and the bot is back on its turn.
-    const { stealthyIds, omissibleIds } = s.awaitingResponse
-    return { type: 'RESPOND_TO_ATTACK', optOutIds: [...new Set([...stealthyIds, ...omissibleIds])] }
-  }
-  if (s.pendingReport) return null
-  if (s.activeBattle) {
-    const results: Record<string, number> = {}
-    for (const id of battleParticipants(s).keys()) results[id] = Math.floor(rng() * 101)
-    return { type: 'SUBMIT_BATTLE_REPORT', results, repairs: [] }
-  }
-  if (game.activePlayer !== 'alice') return null
-  // Deploy the first affordable vehicle that has a legal zone. Vehicles that
-  // need a hand target (playOnCardEffect — SS Victoria/Excalibur) are skipped:
-  // this script plays plainly, and the engine would refuse them.
-  for (const card of game.privates.a.hand) {
-    if (card.type !== 'vehicle' || card.meta.playOnCardEffect !== undefined) continue
-    if (card.materialCost > s.resources.a.materials || card.cpCost > s.resources.a.cp) continue
-    const zones = legalZonesFor(s, 'a', card, game.turnNumber)
-    if (zones.length > 0) {
-      return { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: zones[Math.floor(rng() * zones.length)] }
-    }
-  }
-  // Pick a fight half the time where both sides hold the zone.
-  for (const zone of s.zones) {
-    if (zone.lastActivatedTurn === game.turnNumber) continue
-    if (zone.cards.a.length > 0 && zone.cards.b.length > 0 && rng() < 0.5) {
-      return { type: 'ATTACK_ENEMY_FLEET', zoneId: zone.id }
-    }
-  }
-  return { type: 'END_TURN' }
-}
-
 describe('self-play', () => {
   for (const [i, botFaction] of BOT_FACTIONS.entries()) {
     const humanFaction = BOT_FACTIONS[(i + 1) % BOT_FACTIONS.length]
@@ -112,23 +39,8 @@ describe('self-play', () => {
       const catalog = cards.filter((c) => c.isBuiltIn).map(toSnapshot)
       const byName = new Map(catalog.map((c) => [`${c.faction}:${c.name}`, c]))
       for (const seed of SEEDS) {
-        const rng = mulberry32(seed)
-        const snapshots = new Map<string, SnapshotCard>()
-        const deckA = deckFor(humanFaction, snapshots, byName)
-        const deckB = deckFor(botFaction, snapshots, byName)
-        let n = 0
-        const settings = { ...DEFAULT_LOBBY_SETTINGS, bot: { side: 'b' as const } }
-        const built = buildInitialGame({
-          gameId: `self-play-${seed}`, playerA: 'alice', playerB: 'bot', settings,
-          deckA: { cards: deckA, snapshots }, deckB: { cards: deckB, snapshots },
-          factionA: humanFaction, factionB: botFaction,
-          instanceId: () => `i-${n++}`, rng,
-        })
-        let game: EngineGame = {
-          ...built.game, status: 'active', winnerId: null, turnNumber: STARTING_TURN_NUMBER,
-          privates: { a: built.aPrivate, b: built.bPrivate },
-        }
-        const ctx: EngineContext = { rng, newId: () => `n-${n++}`, catalog }
+        const { game: start, ctx, rng } = newGame({ seed, factionA: humanFaction, factionB: botFaction, catalog, byName })
+        let game = start
         const where = () => `(seed ${seed}, ${botFaction} vs ${humanFaction}, turn ${game.turnNumber})`
         for (let step = 0; step < STEP_CAP; step++) {
           try {
