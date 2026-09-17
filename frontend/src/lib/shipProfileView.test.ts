@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { shipProfileOf } from '@shared/shipProfiles'
-import { pips, shipProfileRows } from './shipProfileView'
+import { pips, shipProfileHeadline, shipProfileRows } from './shipProfileView'
 
 describe('pips', () => {
   it('draws a five-wide meter with the score filled', () => {
@@ -29,5 +29,18 @@ describe('shipProfileRows', () => {
       key: 'submarines', label: 'vs Submarines', score: 1, meter: '●○○○○',
       spoken: 'vs Submarines 1 of 5', why: profile.matchups.submarines.why,
     })
+  })
+})
+
+describe('shipProfileHeadline', () => {
+  const crossbones = shipProfileOf('DWG', 'Crossbones')!
+
+  it('states the role, the FtD strength and the rank among the faction’s designs', () => {
+    expect(shipProfileHeadline(crossbones, 'DWG')).toBe('CRAM battleship, flagship · FtD strength 7,118 · #1 among DWG designs')
+  })
+
+  it('calls a tied rank joint — the WF craft FtD scores 0 all share one', () => {
+    const martyr = { ...crossbones, role: 'kamikaze nuke drone', strength: 0, rank: 44, rankTied: true as const }
+    expect(shipProfileHeadline(martyr, 'WF')).toBe('kamikaze nuke drone · FtD strength 0 · joint #44 among WF designs')
   })
 })

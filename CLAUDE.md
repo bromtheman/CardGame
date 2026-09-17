@@ -39,15 +39,18 @@ regression.
 
 ## Browser verification
 
-Vite is configured for port 5173 (`.claude/launch.json`), but it **increments to
-the next free port when 5173 is taken** — which it routinely is when another
-worktree is already serving. So a second worktree silently lands on 5174+.
+Vite is configured for port 5173 (`.claude/launch.json`), which is routinely
+taken when another worktree is already serving. The launch config has
+`autoPort`, so the browser preview then assigns a free port and passes it as
+`PORT`, which `frontend/vite.config.ts` honours — the preview's port and
+Vite's agree (a plain `npm run dev` still lands on 5173, or Vite's own next
+free port).
 
-Print the port the dev server actually bound to, and navigate to *that* exact
-origin; never assume 3000/5173. Check it also matches the origin already signed
-in to the browser pane — a session on `localhost:5173` does not carry over to
-`localhost:5174`, and the mismatch presents as a spurious auth failure rather
-than as a wrong-port error.
+Still read the port the dev server actually bound to from its log, and
+navigate to *that* exact origin; never assume 3000/5173. Check it also matches
+the origin already signed in to the browser pane — a session on
+`localhost:5173` does not carry over to another port, and the mismatch
+presents as a spurious auth failure rather than as a wrong-port error.
 
 ## Commands (run from repo root)
 

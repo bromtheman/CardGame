@@ -8,7 +8,7 @@ import type { CardRow } from '../lib/cards'
 import { cardImageOrFallback } from '../lib/cards'
 import { attributesOf } from '../lib/keywords'
 import type { ProfileRow } from '../lib/shipProfileView'
-import { shipProfileRows } from '../lib/shipProfileView'
+import { shipProfileHeadline, shipProfileRows } from '../lib/shipProfileView'
 import { useEscapeToCancel } from './ConfirmDialog'
 
 function keywordsOf(card: CardRow): string[] {
@@ -52,7 +52,7 @@ function ShipProfilePanel({ profile, faction }: { profile: ShipProfile; faction:
     <div className="mt-3 flex flex-col gap-4 rounded border border-ocean-600 bg-ocean-950/50 p-4">
       <div>
         <p className="text-xs uppercase tracking-wide text-ocean-300">
-          {profile.role} · FtD strength {profile.strength.toLocaleString()} · #{profile.rank} among {faction} designs
+          {shipProfileHeadline(profile, faction)}
         </p>
         <p className="mt-1 text-lg leading-snug">{profile.summary}</p>
         {profile.note && <p className="mt-1 text-sm italic text-ocean-300">{profile.note}</p>}
