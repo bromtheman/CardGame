@@ -26,6 +26,10 @@ describe('parsePlanAnswer', () => {
     expect(parsed.expectation.summary.length).toBe(EXPECTATION_MAX_CHARS)
     expect(parsed.tableTalk!.length).toBe(TABLE_TALK_MAX_CHARS)
   })
+  it('accepts a fenced answer the same as the unfenced one', () => {
+    const fenced = '```json\n' + JSON.stringify(good) + '\n```'
+    expect(parsePlanAnswer(fenced)).toEqual(parsePlanAnswer(JSON.stringify(good)))
+  })
   it('publishes the same limits in the schema', () => {
     const schema = PLAN_SCHEMA as { properties: { plan: { maxItems: number }; tableTalk: { anyOf: { maxLength?: number }[] } } }
     expect(schema.properties.plan.maxItems).toBe(LLM_MAX_PLAN_LENGTH)

@@ -390,7 +390,9 @@ heuristic plays and every request files one `disabled` telemetry row.
    count(*), sum(cost_usd), avg(latency_ms), count(*) filter (where
    fallback_reason is not null) fallbacks from public.bot_decisions group by 1
    order by 1 desc;`. `cached_tokens` shows whether the provider caches the
-   primer.
+   primer; when a row fell back, `fallback_reason` and `error` say why.
+   `table_talk` is the line the model proposed — the driver's guard may have
+   dropped it, so compare with the game's log.
 
 `public.bot_decisions` has RLS on and **no policies** (the `battle_tokens`
 pattern): the service role writes after the commit under

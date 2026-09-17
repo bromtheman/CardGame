@@ -123,7 +123,10 @@ if (!accessToken) {
     step('model disabled on the deployed function — heuristic played, no table-talk', talkLines.length === 0, `${talkLines.length} table-talk lines`)
   } else {
     step('at least one model call succeeded', live.length > 0, rows.map((r) => `${r.kind}:${r.fallback_reason ?? 'ok'}/${r.latency_ms}ms`).join(' '))
-    step('PracticeAI spoke at least once', talkLines.length > 0, talkLines[0] ?? '')
+    // Not a pass/fail: the model may answer null, or the guard may drop
+    // every line over three turns. See table_talk's own note (telemetry.ts,
+    // spec §7.1) — this is informational, not a failure.
+    console.log(`  ${talkLines.length > 0 ? 'INFO' : 'WARN'}  PracticeAI table-talk lines seen: ${talkLines.length}${talkLines[0] ? ' — ' + talkLines[0] : ''}`)
   }
 }
 

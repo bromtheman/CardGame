@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { inst, makeCtx, makeGame, zoneEntry } from '../../engine/testFixtures'
 import { basicPolicy } from '../basicPolicy'
 import { runBotUntilIdle } from '../botDriver'
+import { viewFor } from '../botView'
 import { LlmHttpError, LlmTimeoutError } from './llmClient'
 import type { LlmClient, LlmRequest } from './llmClient'
 import { LlmPolicy } from './llmPolicy'
@@ -110,18 +111,34 @@ describe('LlmPolicy', () => {
     expect(client.calls.length).toBe(1)                                                // tripped: no second call
     expect(policy.rows.map((r) => r.fallbackReason)).toEqual(['malformed'])
     expect(policy.needsMenu).toBe(false)   // tripped: the driver must stop building a menu
+    expect(policy.rows[0].error).toMatch(/^unparseable answer/)
   })
 
-  it('files http and timeout reasons', async () => {
+  it('files http and timeout reasons, with the failure detail in error', async () => {
     const http = new LlmPolicy(fakeClient([new LlmHttpError(429, 'slow down')]), basicPolicy, 'fake/model', fast)
     await runBotUntilIdle(turnGame(), BOT, makeCtx(), http)
     expect(http.rows.map((r) => r.fallbackReason)).toEqual(['http'])
+    expect(http.rows[0].error).toContain('HTTP 429')
 
     const slow = new LlmPolicy(fakeClient(['hang']), basicPolicy, 'fake/model', fast)
     const { applied } = await runBotUntilIdle(turnGame(), BOT, makeCtx(), slow)
     expect(applied.map((a) => a.type)).toEqual(['PLAY_CARD_TO_ZONE', 'END_TURN'])
     expect(slow.rows.map((r) => r.fallbackReason)).toEqual(['timeout'])
     expect(slow.rows[0].latencyMs).toBeGreaterThan(0)
+    expect(slow.rows[0].error).toBeTruthy()
+  })
+
+  it('spends no call and files no row on an empty menu', async () => {
+    const client: LlmClient & { calls: LlmRequest[] } = {
+      model: 'fake/model', calls: [],
+      async complete() { throw new Error('must not be called') },
+    }
+    const policy = new LlmPolicy(client, basicPolicy, 'fake/model', fast)
+    const view = viewFor(turnGame(), 'b', () => 0.5, [])
+    const candidates = await policy.candidates(view, 'decision')
+    expect(candidates).toEqual(basicPolicy.candidates(view, 'decision'))
+    expect(client.calls.length).toBe(0)
+    expect(policy.rows.length).toBe(0)
   })
 
   it('trips on the call cap and on the time budget', async () => {

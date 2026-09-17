@@ -12,6 +12,6 @@ export interface BotEnv { OPENROUTER_API_KEY?: string; BOT_MODEL?: string; BOT_L
 export function makeBotPolicy(env: BotEnv, fetchImpl?: typeof fetch): LlmPolicy {
   const model = env.BOT_MODEL?.trim() || DEFAULT_BOT_MODEL
   const key = env.OPENROUTER_API_KEY?.trim() ?? ''
-  const disabled = key === '' || env.BOT_LLM_DISABLED === '1'
+  const disabled = key === '' || ['1', 'true'].includes((env.BOT_LLM_DISABLED ?? '').trim().toLowerCase())
   return new LlmPolicy(disabled ? null : new OpenRouterClient(key, model, fetchImpl), basicPolicy, model)
 }

@@ -37,9 +37,16 @@ export const PLAN_SCHEMA = {
 
 const isRecord = (x: unknown): x is Record<string, unknown> => x !== null && typeof x === 'object' && !Array.isArray(x)
 
+// Some models wrap a JSON answer in a markdown code fence despite the
+// strict schema; strip one before parsing rather than treating it as
+// malformed.
+const FENCE_RE = /^```(?:json)?\s*([\s\S]*?)\s*```$/
+
 export function parsePlanAnswer(text: string): PlanAnswer | null {
+  const trimmed = text.trim()
+  const fenced = FENCE_RE.exec(trimmed)
   let raw: unknown
-  try { raw = JSON.parse(text) } catch { return null }
+  try { raw = JSON.parse(fenced ? fenced[1] : trimmed) } catch { return null }
   if (!isRecord(raw)) return null
   const { plan, expectation, tableTalk } = raw
   if (!Array.isArray(plan) || plan.length === 0 || !plan.every((n) => Number.isInteger(n))) return null

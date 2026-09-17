@@ -47,7 +47,7 @@ function zoneBlock(z: ZoneState, side: Side, enemy: Side, turnNumber: number): s
 const ASK: Record<OwedKind, string> = {
   turn: 'It is your turn. Give your plan for the turn as menu numbers in order, ending with the END TURN number.',
   response: 'The enemy has declared a fleet attack on you. Choose one menu number: fight with everyone, or withdraw the Stealthy hulls you would rather keep.',
-  decision: 'The human has reported the battle. Choose one menu number: approve (choosing repairs) or reject the report.',
+  decision: 'The human has reported the battle. Results are on the honour system: choose one menu number to approve the report, picking which of your damaged vehicles to repair.',
   choice: 'One of your effects asks for a choice. Choose one menu number.',
 }
 

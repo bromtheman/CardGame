@@ -23,6 +23,7 @@ create table public.bot_decisions (
   table_talk        text,
   fallback_reason   text check (fallback_reason in
                       ('timeout', 'http', 'malformed', 'budget', 'disabled', 'plan_rejected')),
+  error             text, -- the failure's status and message excerpt when fallback_reason is set; never a key
   created_at        timestamptz not null default now()
 );
 

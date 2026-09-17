@@ -122,7 +122,8 @@ Actions are compared with `sameAction(a, b)` (`moveMenu.ts`): equality of
    is still legal *now*) → return `[plan[0], ...fallback.candidates(view, kind)]`.
    The heuristic tail means an engine refusal of a verified move (an engine
    bug) still ends in a legal action; the policy records `plan_rejected`
-   when `onAccepted` sees a non-plan action.
+   when `onAccepted` sees a non-plan action. An empty menu answers with the
+   heuristic's candidates without a call or a row.
 3. **Otherwise the model is asked** — no plan, plan exhausted, kind changed,
    or `plan[0]` no longer in the menu (materials moved, a choice arose, a
    battle froze the turn). If `calls >= LLM_MAX_CALLS_PER_REQUEST` or
@@ -223,7 +224,7 @@ affordability check, no phase check; the engine does all of that in §4.2.
 |---|---|
 | `turn` | `END_TURN`. `ATTACK_ENEMY_BASE` and `ATTACK_ENEMY_FLEET` per zone. Plays: each hand card by its trigger key, the dispatch `HandBar.tsx` and `basicPolicy` already use — `playOnZoneEffect` → `PLAY_CARD_TO_ZONE` per zone; `playOnVehicleEffect` → `PLAY_CARD_TARGETING_CARD_ON_FIELD` per hull on the field, both sides; `playOnCardEffect` → `PLAY_CARD_TARGETING_CARD_IN_HAND` per other hand card (× per zone when the card is a vehicle); otherwise `PLAY_CARD_TO_ZONE` per zone for a vehicle or `PLAY_ABILITY_CARD` for an ability. `USE_HERO_POWER` for each power in `heroPowers.ts` × its declared parameters: `salvage` × each own destroyed vehicle; `tacticalPositioning` × `±HERO_POWER_DISTANCE_MOD_M`; `draw`; `rapidRedeployment` × own hull × other zone; `boardingParty` × own ship × enemy ship in the same zone; `changeOrder` and `flyby` × each hand card; `counterIntelligence` × own hull on the field; `drones`; `flankingManeuver` × zone — a power already in `usedHeroPowers`, or owned by another faction (`FACTION_POWERS`, exported from `heroPowers.ts`), is not enumerated. `SET_ALERT_CARD` per hand card. `MOVE_VEHICLE` own hull × other zone. `ACTIVATE_VEHICLE` for each own hull whose snapshot carries `onActivate` and at least one activation price (`activateCpCost` or `activateMaterialCost` — `activate.ts`'s rule), × its target form: no target, each zone, each hull on the field. |
 | `response` | `RESPOND_TO_ATTACK` with `optOutIds` = `[]`; every id in `stealthyIds ∪ omissibleIds`; each single id. |
-| `decision` | `DECIDE_BATTLE_REPORT { approve: false }`; `{ approve: true, repairs: [] }`; approve with each prefix of the bot's eligible repairs ordered dearest-first (the heuristic's list: own participants in the repair window, not summons, not `fragileInBattle`, not Scrappy); approve with each single eligible hull. |
+| `decision` | `DECIDE_BATTLE_REPORT { approve: true, repairs: [] }`; approve with each prefix of the bot's eligible repairs ordered dearest-first (the heuristic's list: own participants in the repair window, not summons, not `fragileInBattle`, not Scrappy); approve with each single eligible hull. |
 | `choice` | `RESOLVE_PENDING_EFFECT { choiceId }` per `pendingEffect.options[].id`; `{ cancel: true }`. |
 
 Enumeration order is the order of that table's cells, so when the trial cap
@@ -417,9 +418,11 @@ log.
   initial load of a game — only for lines that arrive.
 - **Thinking state:** in a bot game, while `useGameActions`' `busy` is set
   for an action that hands the turn to the bot (`END_TURN`,
-  `SUBMIT_BATTLE_REPORT`, `RESOLVE_PENDING_EFFECT`, `RESPOND_TO_ATTACK`),
-  the End turn control reads *"PracticeAI is thinking…"* instead of merely
-  disabling. No timer, no polling — it clears when the request returns.
+  `SUBMIT_BATTLE_REPORT`, `RESOLVE_PENDING_EFFECT`, `RESPOND_TO_ATTACK`,
+  `ATTACK_ENEMY_FLEET` — the bot's response to a fleet attack is a model
+  call that resolves inside that same request), the End turn control reads
+  *"PracticeAI is thinking…"* instead of merely disabling. No timer, no
+  polling — it clears when the request returns.
 
 ## 7. Telemetry — `public.bot_decisions`
 
@@ -443,9 +446,10 @@ create table public.bot_decisions (
   applied           jsonb not null default '[]'::jsonb,
   expectation       jsonb,
   report            jsonb,
-  table_talk        text,
+  table_talk        text,  -- the line the model proposed; the driver's guard may have dropped it — compare with the game's log
   fallback_reason   text check (fallback_reason in
                       ('timeout', 'http', 'malformed', 'budget', 'disabled', 'plan_rejected')),
+  error             text, -- the failure's status and message excerpt when fallback_reason is set; never a key
   created_at        timestamptz not null default now()
 );
 create index bot_decisions_game_version_idx on public.bot_decisions (game_id, version);
@@ -456,7 +460,9 @@ alter table public.bot_decisions enable row level security;
 
 `turn_number` is numeric because `games.turn_number` counts half-turns.
 `plan` holds the menu items chosen (id, text, action) and `applied` the
-actions the engine accepted from it; `report` on a `decision` row holds the
+actions the engine accepted from it. `error` holds the failure's HTTP status
+and message excerpt (never a key) so a wrong key, a rate limit and a
+model-id typo are distinguishable from the rows. `report` on a `decision` row holds the
 report's `results` and the repairs approved, so a battle's expected-versus-
 actual is a self-join on `game_id` between the `turn` row whose
 `expectation->'battle'->>'zoneId'` matches and the next `decision` row — no
@@ -631,6 +637,9 @@ table-talk, and passes — the heuristic path is still the deploy-safety net.
 4. **Failure is silent to the player and loud in telemetry.** No log line,
    no toast; a `fallback_reason` row.
 5. Every ruling in the AI opponent spec's §11 stands.
+6. **The bot never rejects a report by choice.** Reject is only the driver's
+   fallback for a report nobody can approve (parent spec §11.2); the menu
+   never offers it and the prompt says results are on the honour system.
 
 ## 13. Follow-ups
 

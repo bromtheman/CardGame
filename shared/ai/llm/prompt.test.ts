@@ -59,4 +59,16 @@ describe('the prompt', () => {
     expect(user).toContain('Pick a target')
     expect(user).toContain('Zone one')
   })
+  it('asks to approve a decision on the honour system, never offering to reject', () => {
+    const g = makeGame({ activePlayer: BOT, turnNumber: 3 })
+    g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'm-1', materialCost: 100000 }), zoneEntry({ instanceId: 'm-2', materialCost: 60000 }))
+    g.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'f-1', materialCost: 50000 }))
+    g.state.activeBattle = { zoneId: 1, aggressor: 'b', attackerIds: ['m-1', 'm-2'], defenderIds: ['f-1'], distanceM: 1200, distanceModifiedBy: [], summons: [], continuation: null }
+    g.state.pendingReport = { submittedBy: 'a', results: { 'm-1': 85, 'm-2': 85, 'f-1': 100 }, repairs: [] }
+    const menu = buildMenu(g, BOT, makeCtx(), 'decision')
+    const user = buildUserPrompt({ view: viewFor(g, 'b', () => 0.5, menu), kind: 'decision', menu })
+    expect(user).toContain('BATTLE REPORT for zone 1')
+    expect(user).toContain('honour system')
+    expect(user.toLowerCase()).not.toContain('reject the report')
+  })
 })

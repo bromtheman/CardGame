@@ -1,7 +1,7 @@
 import type { GameAction } from '../../engine/engineTypes.ts'
 import type { BotPolicy, OwedKind } from '../basicPolicy.ts'
 import type { BotView } from '../botView.ts'
-import { EMPTY_USAGE, LlmTimeoutError } from './llmClient.ts'
+import { EMPTY_USAGE, LlmHttpError, LlmTimeoutError } from './llmClient.ts'
 import type { LlmClient, LlmUsage } from './llmClient.ts'
 import {
   LLM_CALL_TIMEOUT_MS, LLM_MAX_CALLS_PER_REQUEST, LLM_MAX_OUTPUT_TOKENS, LLM_REQUEST_BUDGET_MS, LLM_TEMPERATURE,
@@ -74,6 +74,10 @@ export class LlmPolicy implements BotPolicy {
       return this.fallback.candidates(view, kind)
     }
     const menu = view.menu ?? []
+    // A report nobody can approve yields an empty decision menu (reject is
+    // not enumerated — moveMenu.ts's enumerateDecision); the driver's
+    // fallback handles it. No call, no row.
+    if (menu.length === 0) return this.fallback.candidates(view, kind)
     const next = this.plan[0]
     if (next && this.planKind === kind && menu.some((m) => sameAction(m.action, next.action))) {
       return [next.action, ...(await this.fallback.candidates(view, kind))]
@@ -130,6 +134,7 @@ export class LlmPolicy implements BotPolicy {
     let text: string | null = null
     let usage: LlmUsage = EMPTY_USAGE
     let reason: FallbackReason | null = null
+    let detail: string | null = null
     try {
       const res = await this.client!.complete({
         system: buildSystemPrompt(view.state.factions[view.side]),
@@ -142,6 +147,7 @@ export class LlmPolicy implements BotPolicy {
       usage = res.usage
     } catch (e) {
       reason = ac.signal.aborted || e instanceof LlmTimeoutError ? 'timeout' : 'http'
+      detail = (e instanceof LlmHttpError ? `HTTP ${e.status}: ${e.message}` : e instanceof Error ? e.message : String(e)).slice(0, 160)
     } finally {
       clearTimeout(timer)
     }
@@ -149,8 +155,11 @@ export class LlmPolicy implements BotPolicy {
     this.spentMs += latencyMs
     const answer = reason === null && text !== null ? parsePlanAnswer(text) : null
     const items = answer ? answer.plan.map((id) => menu.find((m) => m.id === id)).filter((m): m is MenuItem => m !== undefined) : []
-    if (reason === null && items.length === 0) reason = 'malformed'
-    const row = this.row(view, kind, menu.length, latencyMs, reason, usage)
+    if (reason === null && items.length === 0) {
+      reason = 'malformed'
+      detail = `unparseable answer: ${(text ?? '').slice(0, 160)}`
+    }
+    const row = this.row(view, kind, menu.length, latencyMs, reason, usage, detail)
     if (answer && reason === null) {
       row.plan = items.map((m) => ({ id: m.id, text: m.text, action: m.action }))
       row.expectation = answer.expectation
@@ -166,14 +175,17 @@ export class LlmPolicy implements BotPolicy {
     return items
   }
 
-  private row(view: BotView, kind: OwedKind, menuSize: number, latencyMs: number, reason: FallbackReason | null, usage: LlmUsage = EMPTY_USAGE): TelemetryRow {
+  private row(
+    view: BotView, kind: OwedKind, menuSize: number, latencyMs: number, reason: FallbackReason | null,
+    usage: LlmUsage = EMPTY_USAGE, error: string | null = null,
+  ): TelemetryRow {
     const report = view.state.pendingReport
     return {
       turnNumber: view.turnNumber, kind, model: this.model, latencyMs,
       promptTokens: usage.promptTokens, completionTokens: usage.completionTokens, cachedTokens: usage.cachedTokens, costUsd: usage.costUsd,
       menuSize, plan: [], applied: [], expectation: null,
       report: kind === 'decision' && report ? { results: report.results, repairs: report.repairs } : null,
-      tableTalk: null, fallbackReason: reason,
+      tableTalk: null, fallbackReason: reason, error,
     }
   }
 }

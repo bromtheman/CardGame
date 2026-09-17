@@ -25,8 +25,15 @@ export interface TelemetryRow {
   applied: GameAction[]
   expectation: Expectation | null
   report: { results: Record<string, number>; repairs: string[] } | null
+  // The line the model proposed; the driver's guard may have dropped it —
+  // compare with the game's log.
   tableTalk: string | null
   fallbackReason: FallbackReason | null
+  // The failure's HTTP status and message excerpt when fallbackReason is
+  // set; never a key. Distinguishes a wrong key (401), a rate limit (429),
+  // a provider 5xx and a model-id typo (400) — all of which read as just
+  // 'http' in fallbackReason alone.
+  error: string | null
 }
 
 export function toBotDecisionRow(row: TelemetryRow, gameId: string, version: number) {
@@ -35,6 +42,6 @@ export function toBotDecisionRow(row: TelemetryRow, gameId: string, version: num
     latency_ms: row.latencyMs, prompt_tokens: row.promptTokens, completion_tokens: row.completionTokens,
     cached_tokens: row.cachedTokens, cost_usd: row.costUsd, menu_size: row.menuSize,
     plan: row.plan, applied: row.applied, expectation: row.expectation, report: row.report,
-    table_talk: row.tableTalk, fallback_reason: row.fallbackReason,
+    table_talk: row.tableTalk, fallback_reason: row.fallbackReason, error: row.error,
   }
 }

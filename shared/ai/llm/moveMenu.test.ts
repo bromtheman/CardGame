@@ -44,6 +44,20 @@ describe('buildMenu', () => {
     expect(menu.some((a) => a.type === 'USE_HERO_POWER' && a.power === 'boardingParty')).toBe(false)
   })
 
+  // A throwing trial is not reachable through the public API today — Drones
+  // (the one hero power the enumerator reaches that reads ctx.catalog) fails
+  // gracefully with an ok:false result even when the catalog can't supply
+  // its card, rather than throwing. This still pins buildMenu against the
+  // scenario the try/catch guards: a catalog-dependent power enumerated and
+  // trialed with an empty catalog must not break the rest of the menu.
+  it('still returns a menu when a catalog-dependent hero power is trialed against an empty catalog', () => {
+    const g = makeGame({ activePlayer: BOT, turnNumber: 3 })
+    g.state.factions.b = 'TG'   // owns Drones, so it is enumerated and trialed
+    const menu = buildMenu(g, BOT, makeCtx(), 'turn')   // makeCtx() defaults catalog: []
+    expect(menu.some((m) => m.action.type === 'END_TURN')).toBe(true)
+    expect(menu.some((m) => m.action.type === 'USE_HERO_POWER' && m.action.power === 'drones')).toBe(false)
+  })
+
   it('enumerates responses, decisions and choices', () => {
     const g = makeGame({ activePlayer: 'alice', turnNumber: 3 })
     g.state.awaitingResponse = {
@@ -75,7 +89,6 @@ describe('buildMenu', () => {
     d.state.pendingReport = { submittedBy: 'a', results: { 'm-1': 85, 'm-2': 85, 'f-1': 100 }, repairs: [] }
     const decisions = buildMenu(d, BOT, makeCtx(), 'decision').map((m) => m.action)
     expect(decisions).toEqual([
-      { type: 'DECIDE_BATTLE_REPORT', approve: false },
       { type: 'DECIDE_BATTLE_REPORT', approve: true, repairs: [] },
       { type: 'DECIDE_BATTLE_REPORT', approve: true, repairs: ['m-1'] },
       { type: 'DECIDE_BATTLE_REPORT', approve: true, repairs: ['m-1', 'm-2'] },

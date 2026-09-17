@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import type { CardInstance, PublicGameState } from '@shared/engine/gameInit'
-import type { Side } from '@shared/engine/engineTypes'
+import type { GameAction, Side } from '@shared/engine/engineTypes'
 import type { LobbySettings } from '@shared/lobbySettings'
 import { battleFrozen, biomeAllows, effectiveCostInGame, effectName, findVehicle, legalZonesFor, zoneCapFor } from '@shared/engine/index'
 import { shortHandNumber } from '@shared/format'
@@ -25,6 +25,13 @@ import { BotSpeechBubble } from './BotSpeechBubble'
 import { latestTableTalk, tableTalkText } from './tableTalkDelta'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
 import ironIcon from '../../assets/icons/ironSVG.svg'
+
+// Actions whose request carries the bot's whole reply (LLM spec §6.3):
+// ATTACK_ENEMY_FLEET is included because the bot's response to a fleet
+// attack — a model call — resolves inside that same request.
+const THINKING_ACTIONS: ReadonlyArray<GameAction['type']> = [
+  'END_TURN', 'SUBMIT_BATTLE_REPORT', 'RESOLVE_PENDING_EFFECT', 'RESPOND_TO_ATTACK', 'ATTACK_ENEMY_FLEET',
+]
 
 export function GameBoardPage() {
   const { id } = useParams<{ id: string }>()
@@ -83,9 +90,7 @@ export function GameBoardPage() {
   const isMyTurn = game.active_player === me
   const isActive = game.status === 'active'
   const botSide = botSideOf(game.settings)
-  // Actions whose request carries the bot's whole reply (LLM spec §6.3).
-  const thinking = botSide !== null && pendingType !== null &&
-    ['END_TURN', 'SUBMIT_BATTLE_REPORT', 'RESOLVE_PENDING_EFFECT', 'RESPOND_TO_ATTACK'].includes(pendingType)
+  const thinking = botSide !== null && pendingType !== null && THINKING_ACTIONS.includes(pendingType)
   // Vehicles only deploy where legalZonesFor says; a zone-targeted ability
   // (playOnZoneEffect) may target any zone, so every zone highlights for it.
   const legalForPlacing = placingCard
