@@ -398,6 +398,27 @@ export const dwgVehicles = [
         }
     },
     {
+        name: 'Brigand',
+        isBuiltIn: true,
+        cardText: 'When this is destroyed, draw a copy of Mutiny',
+        materialCost: 350000,
+        blueprintCost: 356000,
+        cpCost: 0,
+        imageUrl: 'brigand.png',
+        playerId: null,
+        vehicleType: VEHICLE_TYPES.SHIP,
+        type: 'vehicle',
+        faction: FACTIONS.DWG,
+        blueprintId: null,
+        // SCRAPPY beside a death trigger is deliberate (rule 10 as corrected;
+        // Argonaut's precedent): the free repair narrows the window, it does
+        // not close it.
+        keywords: [KEYWORDS.SCRAPPY],
+        meta: {
+            [TRIGGERS.ON_DEATH]: 'brigandOnDeath',
+        }
+    },
+    {
         name: 'Sinners Luck',
         isBuiltIn: true,
         cardText: '',

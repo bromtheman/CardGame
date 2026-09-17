@@ -1465,3 +1465,42 @@ describe('mutinyEffect (2026-09-16 M-4)', () => {
     expect(CATALOG_EFFECTS.has('mutinyEffect')).toBe(false)
   })
 })
+
+// 2026-09-16 — DWG Brigand (new to the repo): "When this is destroyed, draw a
+// copy of Mutiny". SCRAPPY plus a death trigger is allowed (card-effects.md
+// rule 10 as corrected; Argonaut's precedent). slasherOnPlay's shape: mint from
+// the catalog by name, through poolEligible, into the hand via putInHand.
+describe('brigandOnDeath (2026-09-16)', () => {
+  const mutinyRow = snap({
+    name: 'Mutiny', faction: 'DWG', type: 'ability', vehicleType: null, materialCost: 400_000,
+    meta: { playOnVehicleEffect: 'mutinyEffect' },
+  })
+  const brigand = () => zoneEntry({ name: 'Brigand', faction: 'DWG', vehicleType: 'ship', keywords: ['scrappy'] })
+
+  it('puts one Mutiny into the owner\'s hand and resyncs the count', () => {
+    const game = makeGame()
+    const ok = effectFor('brigandOnDeath')!({ game, actor: 'a', card: brigand(), ctx: makeCtx({ catalog: [mutinyRow] }) })
+    expect(ok).toBe(true)
+    expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Mutiny'])
+    expect(game.privates.a.hand[0].meta.playOnVehicleEffect).toBe('mutinyEffect')
+    expect(game.privates.a.hand[0].handEnteredTurn).toBe(game.turnNumber)
+    expect(game.state.counts.a.hand).toBe(1)
+  })
+
+  it('never names the card in the public log', () => {
+    const game = makeGame()
+    effectFor('brigandOnDeath')!({ game, actor: 'a', card: brigand(), ctx: makeCtx({ catalog: [mutinyRow] }) })
+    expect(game.state.log.join(' ')).not.toContain('Mutiny')
+  })
+
+  // A death effect must return false on failure, never throw (architecture.md).
+  it('returns false when the catalog has no Mutiny', () => {
+    const game = makeGame()
+    expect(effectFor('brigandOnDeath')!({ game, actor: 'a', card: brigand(), ctx: makeCtx({ catalog: [] }) })).toBe(false)
+  })
+
+  // ⚠ Unit tests cannot catch a missing flag — makeCtx hands them a catalog.
+  it('is registered as needing the catalog', () => {
+    expect(CATALOG_EFFECTS.has('brigandOnDeath')).toBe(true)
+  })
+})

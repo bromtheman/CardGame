@@ -14,7 +14,7 @@ import { zoneCapFor } from '../engine/zoneCapacity.ts'
 import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
 import { baseDamageFrom, baseStrikersIn } from '../engine/baseAttack.ts'
 import { fireDeathEffect } from '../engine/battleTriggers.ts'
-import { choice, grant, mintHull, poolEligible, summonHulls, takeFromEnemyDeck } from './primitives.ts'
+import { catalogCard, choice, grant, mintHull, poolEligible, summonHulls, takeFromEnemyDeck } from './primitives.ts'
 import { registerCostModifier, registerEffect } from './registry.ts'
 import type { EffectPayload } from './registry.ts'
 
@@ -658,3 +658,22 @@ registerEffect('mutinyEffect', ({ game, actor, card, targetInstanceId }) => {
   )
   return true
 })
+
+// "When this is destroyed, draw a copy of Mutiny." (2026-09-16.) slasherOnPlay's
+// shape: a named catalog mint through poolEligible into the hand via putInHand.
+// Its own registry id (R-6). SCRAPPY sits beside this trigger deliberately —
+// rule 10 as corrected narrows the death window to below 80%, it does not
+// close it (Argonaut's precedent).
+//
+// { needsCatalog: true } is load-bearing: game-action's probe scans on-field
+// hulls' metas at DECIDE_BATTLE_REPORT, so the flag is what loads the catalog
+// for a death trigger. Never named in the log — the card is entering a hidden
+// hand, however public its printed text makes the guess.
+registerEffect('brigandOnDeath', ({ game, actor, card, ctx }) => {
+  const mutiny = catalogCard(ctx, 'Mutiny')
+  // A named card the catalog cannot supply is a data bug, not an empty pool.
+  if (!mutiny || !poolEligible(mutiny)) return false
+  putInHand(game, actor, { ...mutiny, instanceId: ctx.newId() })
+  game.state.log.push(`${card.name} goes down — its crew slips a card into player ${actor.toUpperCase()}'s hand`)
+  return true
+}, { needsCatalog: true })
