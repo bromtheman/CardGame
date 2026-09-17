@@ -15,6 +15,15 @@ describe('faction notes', () => {
     for (const [faction, note] of Object.entries(FACTION_NOTES)) expect(note.text, faction).not.toMatch(/\d/)
   })
 
+  it('tell every faction to spend each turn, and that repairs are rare and no reason to hold materials back', () => {
+    // The owner's ruling (2026-09-17): repairs are the one use unspent
+    // materials keep, they seldom come up, and fielding more firepower beats
+    // them — so the tip says spend, and ranks the exception below a hull.
+    expect(GENERAL_TIPS).toMatch(/^- Spend your materials every turn\./m)
+    expect(GENERAL_TIPS).toMatch(/repairs[^\n]*rarely/i)
+    expect(GENERAL_TIPS).toMatch(/firepower/)
+  })
+
   it('cover only factions the bot can field', () => {
     for (const faction of Object.keys(FACTION_NOTES)) expect(isBotFaction(faction), faction).toBe(true)
   })

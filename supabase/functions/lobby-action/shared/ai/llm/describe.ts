@@ -1,7 +1,8 @@
 import { HERO_POWER_LABELS, KEYWORDS } from '../../gameSettings.ts'
 import type { EngineGame, GameAction, Side } from '../../engine/engineTypes.ts'
-import { effectiveMaterialCostOf, repairCostOf } from '../../engine/index.ts'
+import { effectiveMaterialCostOf, repairCostOf, upkeepOwedBy } from '../../engine/index.ts'
 import { shortHandNumber } from '../../format.ts'
+import { materialsPerTurnOf } from '../../lobbySettings.ts'
 import { MENU_LOG_LINES_PER_ITEM } from './llmSettings.ts'
 import { newLogLines } from './logDelta.ts'
 
@@ -145,7 +146,21 @@ export function describeOutcome(before: EngineGame, after: EngineGame, side: Sid
   }
   if (a.activeBattle && !b.activeBattle) parts.push('battle locks; fought in From The Depths')
   if (a.activeBattle === null && b.activeBattle !== null) parts.push('battle resolved')
-  if (after.activePlayer !== before.activePlayer) parts.push('ends your turn')
+  if (after.activePlayer !== before.activePlayer) {
+    // endTurn leaves the ending side's materials alone and OVERWRITES them
+    // at that side's next turn start (gameEngine.ts), so the diff above is
+    // silent for END TURN — and the model read the silence as banking
+    // (2026-09-17 bot_decisions: "end turn to build materials for Scourge").
+    // Price the turn end the way every other item is priced, and say that
+    // next turn's income owes nothing to what is held now: floor(next turn)
+    // × the lobby rate, less the upkeep the board would owe (U-3 clamp).
+    const unspent = after.state.resources[side].materials
+    if (unspent > 0) {
+      const income = Math.max(0, Math.floor(before.turnNumber + 1) * materialsPerTurnOf(after.settings) - upkeepOwedBy(after.state, side))
+      parts.push(`forfeits ${money(unspent)} unspent materials (next turn you get ${money(income)} either way)`)
+    }
+    parts.push('ends your turn')
+  }
   if (after.status !== 'active') parts.push(`game over — ${after.winnerId === (side === 'a' ? after.playerA : after.playerB) ? 'you win' : 'you lose'}`)
   const lines = newLogLines(b.log, a.log).slice(0, MENU_LOG_LINES_PER_ITEM)
   if (lines.length) parts.push(`Log: ${lines.map((l) => `"${l}"`).join(' | ')}`)

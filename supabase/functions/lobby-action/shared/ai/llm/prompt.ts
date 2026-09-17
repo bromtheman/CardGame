@@ -57,7 +57,12 @@ export function buildUserPrompt({ view, kind, menu, situation, planSoFar }: Prom
   const enemy: Side = side === 'a' ? 'b' : 'a'
   const out: string[] = []
   out.push(`Turn ${view.turnNumber} — you are player ${side.toUpperCase()} (${s.factions[side]}) against ${s.factions[enemy]}.`)
-  out.push(`You: ${money(s.resources[side].materials)} materials, ${s.resources[side].cp} CP. Opponent: ${money(s.resources[enemy].materials)} materials, ${s.resources[enemy].cp} CP.`)
+  // The materials carry their expiry on a turn call: income is SET each
+  // turn (gameEngine.ts endTurn), and the model banked what it could have
+  // spent (2026-09-17 bot_decisions). A response or a decision may arrive
+  // on the opponent's turn, where "spend this turn" would misdirect.
+  const spendCue = kind === 'turn' ? ' to spend this turn (anything unspent is lost when you end it)' : ''
+  out.push(`You: ${money(s.resources[side].materials)} materials${spendCue}, ${s.resources[side].cp} CP. Opponent: ${money(s.resources[enemy].materials)} materials, ${s.resources[enemy].cp} CP.`)
   out.push(`Opponent: ${s.counts[enemy].hand} card${s.counts[enemy].hand === 1 ? '' : 's'} in hand, ${s.counts[enemy].deck} in deck. You: ${s.counts[side].deck} in deck.`)
   if (s.usedHeroPowers[side].length) out.push(`Hero powers you have used: ${s.usedHeroPowers[side].join(', ')}.`)
   if (s.alertCard) out.push(`Alert card revealed by player ${s.alertCard.side.toUpperCase()}: ${s.alertCard.name}.`)

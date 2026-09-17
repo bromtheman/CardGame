@@ -10,6 +10,15 @@ describe('rules primer', () => {
     expect(stripped).not.toMatch(/\d/)
     for (const text of Object.values(KEYWORD_GLOSSARY)) expect(text).not.toMatch(/\d/)
   })
+  it('gives the economy its own rule: materials are overwritten each turn, never saved', () => {
+    // One clause inside the turn-flow bullet lost to the model's "materials
+    // are a stockpile" prior (2026-09-17 bot_decisions: "conserving resources
+    // until my material income increases"). The rule stands alone, and says
+    // what saving actually does — nothing.
+    const rules = PRIMER_TEMPLATE.slice(PRIMER_TEMPLATE.indexOf('RULES'), PRIMER_TEMPLATE.indexOf('KEYWORDS'))
+    expect(rules).toContain('\n- Materials are not savings.')
+    expect(rules).toMatch(/overwritten .* whether you spent everything or nothing/)
+  })
   it('has a glossary line for every keyword the engine knows', () => {
     for (const keyword of Object.values(KEYWORDS)) expect(KEYWORD_GLOSSARY[keyword], keyword).toBeTruthy()
   })
