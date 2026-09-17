@@ -1,0 +1,50 @@
+# Applies supabase/seed/seed_data.sql to the live project after every merge
+# that changes it, then verifies the live table matches.
+#
+# Why: merging deploys CODE through the Supabase GitHub integration, never card
+# data — config.toml carries no seed settings and no migration inserts cards.
+# Twice already the new effect code went live against the old rows and cards
+# lied to players (CLAUDE.md, "Seed data does NOT deploy"). This job closes
+# that gap with the same two scripts a human would run: scripts/apply-seed.mjs
+# (idempotent upserts, nothing deleted) and scripts/verify-seed.mjs (exit 1 on
+# any drift). Both use only Node built-ins, so there is no install step.
+#
+# Needs one repository secret: SUPABASE_ACCESS_TOKEN — a personal access token
+# (sbp_…) from https://supabase.com/dashboard/account/tokens, the same token
+# functions:deploy uses. Until it is set, the job fails fast with the script's
+# own "SUPABASE_ACCESS_TOKEN is not set" message and production is unchanged.
+#
+# Runs concurrently with the integration's function deploy; both are idempotent
+# and the window between them is seconds. `workflow_dispatch` lets you re-run it
+# by hand (e.g. after adding the secret) from the Actions tab.
+name: Apply seed data
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - supabase/seed/seed_data.sql
+      - scripts/apply-seed.mjs
+      - scripts/verify-seed.mjs
+      - .github/workflows/seed-apply.yml
+  workflow_dispatch:
+
+concurrency:
+  group: seed-apply
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply seed_data.sql (idempotent upserts)
+        run: node scripts/apply-seed.mjs
+      - name: Verify live cards match seed_data.sql
+        run: node scripts/verify-seed.mjs

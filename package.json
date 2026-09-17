@@ -5,6 +5,7 @@
   "scripts": {
     "seed:build": "tsx supabase/seed/cli.ts",
     "seed:verify": "node scripts/verify-seed.mjs",
+    "seed:apply": "node scripts/apply-seed.mjs",
     "test": "vitest run",
     "bot:eval": "tsx scripts/eval-bot.ts",
     "functions:sync": "node scripts/sync-function-shared.mjs",
