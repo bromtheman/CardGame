@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { KEYWORDS, MATERIALS_PER_TURN, SURVIVE_HP_PERCENT } from '../../gameSettings'
+import { shipProfilesForFaction } from '../../shipProfiles'
 import { FACTION_NOTES, GENERAL_TIPS } from './factionNotes'
 import { KEYWORD_GLOSSARY, PRIMER_TEMPLATE, renderPrimer } from './rulesPrimer'
 
@@ -41,6 +42,25 @@ describe('rules primer', () => {
     expect(text).toContain(GENERAL_TIPS)
     expect(text).not.toContain('YOUR FACTION')
     expect(text).not.toContain('Crossbones')
+    expect(text).not.toMatch(/\n\n\n/)
+  })
+  it('rosters every profiled hull of the faction under YOUR FLEET, between the playstyle notes and the answer shape', () => {
+    const text = renderPrimer('DWG')
+    expect(text.indexOf('YOUR FACTION')).toBeLessThan(text.indexOf('YOUR FLEET'))
+    expect(text.indexOf('YOUR FLEET')).toBeLessThan(text.indexOf('HOW YOU PLAY'))
+    const fleet = text.slice(text.indexOf('YOUR FLEET'), text.indexOf('HOW YOU PLAY'))
+    const profiles = shipProfilesForFaction('DWG')
+    expect(profiles.length).toBeGreaterThan(0)
+    for (const { name } of profiles) expect(fleet).toContain(`\n- ${name} (`)
+    expect(fleet).toContain(
+      '- Crossbones (CRAM battleship, flagship): fire 5, tough 4, speed 2, range 5; vs ships 5, aircraft 2, subs 1, missiles 3. Brawler, not glass cannon.',
+    )
+    // The scale is explained in words, once, so the digits on each line read as scores.
+    expect(fleet).toMatch(/one weakest to five strongest/)
+  })
+  it('leaves the fleet section out entirely for a faction with no profiles yet', () => {
+    const text = renderPrimer('OW')
+    expect(text).not.toContain('YOUR FLEET')
     expect(text).not.toMatch(/\n\n\n/)
   })
 })

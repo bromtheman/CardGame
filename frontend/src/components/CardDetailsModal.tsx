@@ -1,10 +1,14 @@
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { shortHandNumber } from '@shared/format'
 import { effectiveMaterialCostOf } from '@shared/engine/index'
+import type { ShipProfile } from '@shared/shipProfiles'
+import { shipProfileOf } from '@shared/shipProfiles'
 import type { CardRow } from '../lib/cards'
 import { cardImageOrFallback } from '../lib/cards'
 import { attributesOf } from '../lib/keywords'
+import type { ProfileRow } from '../lib/shipProfileView'
+import { shipProfileRows } from '../lib/shipProfileView'
 import { useEscapeToCancel } from './ConfirmDialog'
 
 function keywordsOf(card: CardRow): string[] {
@@ -16,6 +20,61 @@ function CostChip({ label, value, muted }: { label: string; value: string; muted
     <div className={`rounded border px-3 py-2 ${muted ? 'border-ocean-600 text-ocean-300' : 'border-brass-400'}`}>
       <p className="text-xs uppercase tracking-wide text-ocean-300">{label}</p>
       <p className="font-display text-xl">{value}</p>
+    </div>
+  )
+}
+
+function MeterList({ rows }: { rows: ProfileRow[] }) {
+  return (
+    <ul className="flex flex-col gap-1.5">
+      {rows.map((r) => (
+        <li key={r.key} className="grid grid-cols-[7.5rem_auto_1fr] items-baseline gap-x-3">
+          <span className="font-bold">{r.label}</span>
+          <span className="font-mono tracking-widest text-brass-400" role="img" aria-label={r.spoken}>{r.meter}</span>
+          <span className="text-sm text-ocean-300">{r.why}</span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+// The glimpse of the real craft behind a built-in hull (shared/shipProfiles.ts):
+// what it is, how it rates, and what it is good and bad against — the
+// report's own words, so a player picking a fleet knows what they are
+// sending into the From The Depths battle.
+function ShipProfilePanel({ profile, faction }: { profile: ShipProfile; faction: string }) {
+  const { scores, matchups } = shipProfileRows(profile)
+  const facts: [string, string | undefined][] = [
+    ['Type', profile.type], ['Speed', profile.speed], ['Fights at', profile.fightsAt],
+    ['Sees', profile.sees], ['Escort', profile.escort],
+  ]
+  return (
+    <div className="mt-3 flex flex-col gap-4 rounded border border-ocean-600 bg-ocean-950/50 p-4">
+      <div>
+        <p className="text-xs uppercase tracking-wide text-ocean-300">
+          {profile.role} · FtD strength {profile.strength.toLocaleString()} · #{profile.rank} among {faction} designs
+        </p>
+        <p className="mt-1 text-lg leading-snug">{profile.summary}</p>
+        {profile.note && <p className="mt-1 text-sm italic text-ocean-300">{profile.note}</p>}
+      </div>
+      {/* Stacked, not side by side: the column is ~590px wide and the reasons need the room. */}
+      <MeterList rows={scores} />
+      <MeterList rows={matchups} />
+      <p className="text-sm leading-relaxed">
+        <span className="font-bold text-brass-400">Verdict: {profile.verdict}.</span> {profile.verdictDetail}
+      </p>
+      <dl className="grid grid-cols-[5.5rem_1fr] gap-x-3 gap-y-1 text-sm">
+        {facts.map(([label, value]) => value && (
+          <Fragment key={label}>
+            <dt className="text-ocean-300">{label}</dt>
+            <dd className="leading-snug">{value}</dd>
+          </Fragment>
+        ))}
+      </dl>
+      <p className="text-xs text-ocean-300">
+        Scores are fifths of the Neter campaign&rsquo;s craft (1 = bottom fifth, 5 = top fifth); matchups are
+        judgement calls from the weapon fit.
+      </p>
     </div>
   )
 }
@@ -75,6 +134,8 @@ export function CardDetailsModal({
   const attributes = attributesOf(card.vehicle_type, keywords)
   const halved = effectiveMaterialCostOf({ materialCost: card.material_cost, keywords })
   const inGameCost = effectiveCost ?? halved
+  // Built-in only: a custom card may borrow a seeded name without being that craft.
+  const profile = card.is_built_in ? shipProfileOf(card.faction, card.name) : null
 
   return createPortal(
     <div
@@ -134,8 +195,11 @@ export function CardDetailsModal({
         </section>
 
         <section className="flex min-w-0 flex-1 flex-col">
+          {/* The Close button rides the column's first heading, whichever that is. */}
           <div className="flex items-start justify-between gap-4">
-            <h3 className="font-display text-2xl">What this card&rsquo;s attributes do</h3>
+            <h3 className="font-display text-2xl">
+              {profile ? 'How it fights in From The Depths' : <>What this card&rsquo;s attributes do</>}
+            </h3>
             <button
               type="button"
               onClick={onClose}
@@ -145,6 +209,12 @@ export function CardDetailsModal({
               Close
             </button>
           </div>
+          {profile && (
+            <>
+              <ShipProfilePanel profile={profile} faction={card.faction} />
+              <h3 className="mt-6 font-display text-2xl">What this card&rsquo;s attributes do</h3>
+            </>
+          )}
           {attributes.length === 0 ? (
             <p className="mt-4 text-ocean-300">
               This card has no vehicle type or modifiers — everything it does is in its card text.

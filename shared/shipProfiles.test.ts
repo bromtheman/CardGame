@@ -1,0 +1,61 @@
+import { describe, expect, it } from 'vitest'
+import { loadSeedData } from '../supabase/seed/transform'
+import { SHIP_PROFILES, shipProfileOf, shipProfilesForFaction } from './shipProfiles'
+
+// The profiles are generated from FtDArmament's per-faction reports and keyed
+// FACTION:Name — the same key the seed derives card ids from — so they are
+// pinned to the seed the way the bot decks and the faction notes are: every
+// key must be a seeded, draftable-or-summonable built-in VEHICLE spelled as
+// the seed prints it, and every such vehicle of a profiled faction must have
+// a profile, so a rename, a retirement or a new hull fails here rather than
+// leaving a card without its glimpse.
+
+describe('ship profiles', () => {
+  it('looks a built-in card up by faction and name, and misses otherwise', () => {
+    expect(shipProfileOf('DWG', 'Crossbones')?.role).toBe('CRAM battleship, flagship')
+    expect(shipProfileOf('DWG', 'No Such Ship')).toBeNull()
+    expect(shipProfileOf('OW', 'Crossbones')).toBeNull()
+  })
+
+  it('lists one faction’s profiles in report order (cheapest first), by card name', () => {
+    const dwg = shipProfilesForFaction('DWG')
+    expect(dwg.map((p) => p.name).slice(0, 3)).toEqual(['Corsair', 'Marauder', 'Loggerhead'])
+    expect(dwg.at(-1)?.name).toBe('Tarpon')
+    expect(shipProfilesForFaction('OW')).toEqual([])
+  })
+
+  it('carries whole-number scores from one to five and non-empty prose', () => {
+    for (const [key, p] of Object.entries(SHIP_PROFILES)) {
+      for (const [k, r] of [...Object.entries(p.scores), ...Object.entries(p.matchups)]) {
+        expect(Number.isInteger(r.score) && r.score >= 1 && r.score <= 5, `${key} ${k}`).toBe(true)
+        expect(r.why, `${key} ${k} why`).not.toBe('')
+      }
+      for (const field of ['role', 'type', 'speed', 'fightsAt', 'sees', 'summary', 'verdict', 'verdictDetail'] as const) {
+        expect(p[field], `${key} ${field}`).not.toBe('')
+      }
+    }
+  })
+
+  it('keys every profile to a seeded, non-retired built-in vehicle, spelled as the seed prints it', async () => {
+    const { cards } = await loadSeedData()
+    const byKey = new Map(cards.map((c) => [`${c.faction}:${c.name}`, c]))
+    for (const key of Object.keys(SHIP_PROFILES)) {
+      const card = byKey.get(key)
+      expect(card, `${key} is not a seeded card`).toBeDefined()
+      expect(card!.type, `${key} is not a vehicle`).toBe('vehicle')
+      expect(card!.isBuiltIn, `${key} is not built in`).toBe(true)
+      expect((card!.meta as Record<string, unknown> | undefined)?.retired, `${key} is retired`).not.toBe(true)
+    }
+  })
+
+  it('profiles every non-retired vehicle of a faction that has any profile', async () => {
+    const { cards } = await loadSeedData()
+    const factions = new Set(Object.keys(SHIP_PROFILES).map((k) => k.split(':')[0]))
+    expect(factions.size).toBeGreaterThan(0)
+    for (const card of cards) {
+      if (!factions.has(card.faction) || card.type !== 'vehicle') continue
+      if ((card.meta as Record<string, unknown> | undefined)?.retired === true) continue
+      expect(shipProfileOf(card.faction, card.name), `${card.faction}:${card.name} has no ship profile`).not.toBeNull()
+    }
+  })
+})

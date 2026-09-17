@@ -569,3 +569,16 @@ one more caller of `applyAction`; nothing in the engine knows it exists.
   a retirement or a deck edit fails there. Adding a faction's notes is one
   entry in `FACTION_NOTES`; the file is in `shared-manifest.json`, so
   `functions:sync` after editing it.
+  After the notes comes `YOUR FLEET`: one line per hull of the faction from
+  `shared/shipProfiles.ts` — role, the FtD fighting scores and matchups, and
+  the report's one-line summary — left out entirely for a faction without
+  profiles. The profiles are GENERATED, per faction, from FtDArmament's
+  `<Faction>.cards.md` reports by `npm run profiles:import -- <report>`
+  into `shared/shipProfiles/<FACTION>.ts`; never hand-edit those
+  files. They are keyed `FACTION:Name` like the seed's card ids, and
+  `shipProfiles.test.ts` pins every key to a seeded, non-retired vehicle AND
+  requires every such vehicle of a profiled faction to have one. Unlike the
+  notes, this prose may carry digits — quintiles and FtD facts, never a
+  card-game number; the importer drops the report's FtD material cost for
+  that reason. A new faction needs its export spread into `SHIP_PROFILES`,
+  the generated file added to `shared-manifest.json`, and `functions:sync`.
