@@ -16,7 +16,8 @@ export interface FactionNote {
   mentions: string[]
 }
 
-export const GENERAL_TIPS = `- Once a zone is lost, leave it be. Do not waste resources trying to salvage a zone that is about to be lost; the opponent's vehicles are likely trapped there after it is over, so they are penalized for over-committing.
+export const GENERAL_TIPS = `- Spend your materials every turn. Anything left when you end the turn is gone, and next turn's income is the same either way, so there is never a reason to save. Repairs are the one thing leftover materials can still buy, and a weak one: they rarely come up, and a repaired hull is worth far less than the extra firepower the same materials would have fielded. If you can afford another hull, play it.
+- Once a zone is lost, leave it be. Do not waste resources trying to salvage a zone that is about to be lost; the opponent's vehicles are likely trapped there after it is over, so they are penalized for over-committing.
 - If a zone is stacked against you, Half-Cost and Temporary cards can generate quick value and equalize the zone, since it is hard to kill ships when their force is overwhelming. Abilities can also cut down their force before a battle.
 - Stealthy vehicles can build up in a zone safely ahead of time, so that you can play more forces there later.`
 

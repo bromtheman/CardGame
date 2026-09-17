@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { KEYWORDS } from '../../gameSettings'
 import { applyAction } from '../../engine/index'
 import { inst, makeCtx, makeGame, zoneEntry } from '../../engine/testFixtures'
 import { describeAction, describeMenuItem, describeOutcome } from './describe'
@@ -51,6 +52,25 @@ describe('describeOutcome', () => {
     const text = describeMenuItem(g, after, 'b', { type: 'END_TURN' })
     expect(text.startsWith('END TURN → ')).toBe(true)
     expect(text).toContain('ends your turn')
+  })
+  it('prices END TURN: unspent materials are forfeited, and next turn’s income is the same either way', () => {
+    // The engine never zeroes the ending side's materials — it overwrites
+    // them at that side's next turn start — so a plain state diff shows
+    // nothing, and the model read "END TURN → ends your turn" as banking.
+    // Fixture: 100k unspent at turn 3; the bot's next turn is 4, floor(4) × 75k.
+    const g = makeGame({ activePlayer: BOT, turnNumber: 3 })
+    expect(describeOutcome(g, applied(g, { type: 'END_TURN' }), 'b'))
+      .toContain('forfeits 100k unspent materials (next turn you get 300k either way); ends your turn')
+
+    const spent = makeGame({ activePlayer: BOT, turnNumber: 3 })
+    spent.state.resources.b.materials = 0
+    expect(describeOutcome(spent, applied(spent, { type: 'END_TURN' }), 'b')).not.toContain('forfeit')
+  })
+  it('nets next turn’s income of the upkeep the board will owe, so a TG bot is not promised materials it will not get', () => {
+    const g = makeGame({ activePlayer: BOT, turnNumber: 3 })
+    g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'u1', name: 'Tyr', materialCost: 100000, keywords: [KEYWORDS.UPKEEP_REQUIRED] }))
+    // 300k income less 15% of 100k.
+    expect(describeOutcome(g, applied(g, { type: 'END_TURN' }), 'b')).toContain('next turn you get 285k either way')
   })
   it('counts only vehicle losses — a scrapped ability card is not a lost hull, a destroyed vehicle still is', () => {
     // state.destroyed is the general discard pile: spendCard files every

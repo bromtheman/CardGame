@@ -44,6 +44,22 @@ describe('the prompt', () => {
     expect(user).toContain('MENU')
     expect(user).toMatch(/plan .* END TURN/i)
   })
+  it('frames the materials as this turn’s to spend on a turn call, and only there', () => {
+    // The model banked materials it could have spent (2026-09-17
+    // bot_decisions), so the number it plans against carries its expiry. A
+    // response or a decision arrives mid-turn — often the opponent's — where
+    // "spend this turn" would misdirect.
+    const g = fixture()
+    const menu = buildMenu(g, BOT, makeCtx(), 'turn')
+    const user = buildUserPrompt({ view: viewFor(g, 'b', () => 0.5, menu), kind: 'turn', menu })
+    expect(user).toContain('You: 100k materials to spend this turn (anything unspent is lost when you end it), 3 CP. Opponent: 100k materials, 3 CP.')
+
+    g.state.pendingEffect = { effect: 'e', side: 'b', card: inst({ name: 'Trebuchet' }), kind: 'choice', prompt: 'Pick a target', options: [{ id: 'x', label: 'Zone one' }] }
+    const choiceMenu = buildMenu(g, BOT, makeCtx(), 'choice')
+    const choice = buildUserPrompt({ view: viewFor(g, 'b', () => 0.5, choiceMenu), kind: 'choice', menu: choiceMenu })
+    expect(choice).toContain('You: 100k materials, 3 CP.')
+    expect(choice).not.toContain('spend this turn')
+  })
   it('adds the situation and the plan so far on a reaction call', () => {
     const g = fixture()
     const menu = buildMenu(g, BOT, makeCtx(), 'turn')

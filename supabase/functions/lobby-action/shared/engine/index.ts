@@ -1,4 +1,5 @@
 export * from './gameEngine.ts'
+export { upkeepOwedBy } from './costs.ts'
 export * from './zoneCapacity.ts'
 export * from './placement.ts'
 import './placement.ts'
