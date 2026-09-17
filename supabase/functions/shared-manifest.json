@@ -31,7 +31,8 @@
     "ai/botDecks.ts",
     "ai/botView.ts",
     "ai/basicPolicy.ts",
-    "ai/botDriver.ts"
+    "ai/botDriver.ts",
+    "ai/fallbacks.ts"
   ],
   "game-action": [
     "gameSettings.ts",
@@ -63,7 +64,8 @@
     "ai/botGame.ts",
     "ai/botView.ts",
     "ai/basicPolicy.ts",
-    "ai/botDriver.ts"
+    "ai/botDriver.ts",
+    "ai/fallbacks.ts"
   ],
   "battle-report": ["battleReport.ts"]
 }

@@ -2,6 +2,8 @@ import type { EngineContext, EngineGame, GameAction, Side } from '../engine/engi
 import { applyAction, otherSide, sideOf } from '../engine/index.ts'
 import type { BotPolicy, OwedKind } from './basicPolicy.ts'
 import { viewFor } from './botView.ts'
+import { FALLBACK } from './fallbacks.ts'
+export { FALLBACK } from './fallbacks.ts'
 
 // Accepted policy actions per request before the driver stops listening to
 // the policy and applies fallbacks only (2026-09-16 AI opponent spec §5.2).
@@ -23,24 +25,6 @@ export function botOwes(game: EngineGame, botSide: Side): OwedKind | null {
   if (s.activeBattle) return null
   const botId = botSide === 'a' ? game.playerA : game.playerB
   return game.activePlayer === botId ? 'turn' : null
-}
-
-// One action per owed kind that the engine's own rules always accept from a
-// state that produces that kind. botDriver.test.ts pins each one.
-//
-// The decision fallback is a REJECT, not a bare approval: approval re-checks
-// both sides' repair bills, and a report whose own repairs the submitter
-// cannot afford is one the engine lets nobody approve — a bare approval
-// would be refused too, and the human's own input would come back as a 500.
-// Reject is the one decision the non-submitter can always make. The policy's
-// candidates (approve with repairs, then bare approve) still land whenever
-// the engine allows, so spec §11 ruling 2 holds: the fallback fires only for
-// a report no one could approve, and the human resubmits (spec §5.2).
-export const FALLBACK: Record<OwedKind, GameAction> = {
-  turn: { type: 'END_TURN' },
-  response: { type: 'RESPOND_TO_ATTACK', optOutIds: [] },
-  decision: { type: 'DECIDE_BATTLE_REPORT', approve: false },
-  choice: { type: 'RESOLVE_PENDING_EFFECT', cancel: true },
 }
 
 // Act as the bot until it owes nothing. Pure: applyAction clones, so the

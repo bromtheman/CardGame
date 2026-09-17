@@ -12,7 +12,7 @@ import { catalogCard, spawnInto } from '../effects/primitives.ts'
 
 // power → faction that alone may use it. Powers absent from this map (the
 // four universal ones) are open to any faction.
-const FACTION_POWERS: Record<
+export const FACTION_POWERS: Record<
   'boardingParty' | 'changeOrder' | 'flyby' | 'counterIntelligence' | 'drones' | 'flankingManeuver', string
 > = {
   boardingParty: 'DWG', changeOrder: 'OW', flyby: 'LH',
