@@ -13,7 +13,7 @@ describe('parsePlanAnswer', () => {
   it('rejects malformed JSON, wrong shapes and bad enums', () => {
     expect(parsePlanAnswer('not json')).toBeNull()
     expect(parsePlanAnswer(JSON.stringify({ ...good, plan: [] }))).toBeNull()
-    expect(parsePlanAnswer(JSON.stringify({ ...good, plan: ['1'] }))).toBeNull()
+    expect(parsePlanAnswer(JSON.stringify({ ...good, plan: ['one'] }))).toBeNull()
     expect(parsePlanAnswer(JSON.stringify({ ...good, plan: [1.5] }))).toBeNull()
     expect(parsePlanAnswer(JSON.stringify({ ...good, expectation: { summary: 's' } }))).toBeNull()
     expect(parsePlanAnswer(JSON.stringify({ ...good, expectation: { summary: 's', battle: { zoneId: 1, outcome: 'draw', confidence: 0.5 } } }))).toBeNull()
@@ -29,6 +29,11 @@ describe('parsePlanAnswer', () => {
   it('accepts a fenced answer the same as the unfenced one', () => {
     const fenced = '```json\n' + JSON.stringify(good) + '\n```'
     expect(parsePlanAnswer(fenced)).toEqual(parsePlanAnswer(JSON.stringify(good)))
+  })
+  it('coerces menu ids a model wrote as "#2" or "2" strings, and still rejects non-ids', () => {
+    expect(parsePlanAnswer(JSON.stringify({ ...good, plan: ['#2', '3', 1] }))!.plan).toEqual([2, 3, 1])
+    expect(parsePlanAnswer(JSON.stringify({ ...good, plan: ['x'] }))).toBeNull()
+    expect(parsePlanAnswer(JSON.stringify({ ...good, plan: ['#'] }))).toBeNull()
   })
   it('publishes the same limits in the schema', () => {
     const schema = PLAN_SCHEMA as { properties: { plan: { maxItems: number }; tableTalk: { anyOf: { maxLength?: number }[] } } }

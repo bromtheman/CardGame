@@ -42,6 +42,13 @@ const isRecord = (x: unknown): x is Record<string, unknown> => x !== null && typ
 // malformed.
 const FENCE_RE = /^```(?:json)?\s*([\s\S]*?)\s*```$/
 
+function menuId(x: unknown): number | null {
+  if (Number.isInteger(x)) return x as number
+  if (typeof x !== 'string') return null
+  const digits = x.trim().replace(/^#/, '')
+  return /^\d+$/.test(digits) ? Number(digits) : null
+}
+
 export function parsePlanAnswer(text: string): PlanAnswer | null {
   const trimmed = text.trim()
   const fenced = FENCE_RE.exec(trimmed)
@@ -49,7 +56,11 @@ export function parsePlanAnswer(text: string): PlanAnswer | null {
   try { raw = JSON.parse(fenced ? fenced[1] : trimmed) } catch { return null }
   if (!isRecord(raw)) return null
   const { plan, expectation, tableTalk } = raw
-  if (!Array.isArray(plan) || plan.length === 0 || !plan.every((n) => Number.isInteger(n))) return null
+  if (!Array.isArray(plan) || plan.length === 0) return null
+  // A reasoning model sometimes writes ids the way the menu prints them
+  // ("#2") or as bare strings; those are ids, not a malformed answer.
+  const ids = plan.map(menuId)
+  if (ids.some((n) => n === null)) return null
   if (!isRecord(expectation) || typeof expectation.summary !== 'string' || !('battle' in expectation)) return null
   let battle: Expectation['battle'] = null
   if (expectation.battle !== null) {
@@ -60,7 +71,7 @@ export function parsePlanAnswer(text: string): PlanAnswer | null {
   }
   if (tableTalk !== null && typeof tableTalk !== 'string') return null
   return {
-    plan: (plan as number[]).slice(0, LLM_MAX_PLAN_LENGTH),
+    plan: (ids as number[]).slice(0, LLM_MAX_PLAN_LENGTH),
     expectation: { summary: expectation.summary.slice(0, EXPECTATION_MAX_CHARS), battle },
     tableTalk: tableTalk === null ? null : tableTalk.slice(0, TABLE_TALK_MAX_CHARS),
   }

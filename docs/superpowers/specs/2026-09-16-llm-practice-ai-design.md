@@ -502,7 +502,7 @@ switch, heuristic only, no deploy needed.
 | `LLM_REQUEST_BUDGET_MS` | 8 000 | total model time per request |
 | `LLM_MAX_CALLS_PER_REQUEST` | 4 | plan + reactions |
 | `LLM_MAX_PLAN_LENGTH` | 12 | menu ids per answer; the schema's `maxItems` |
-| `LLM_MAX_OUTPUT_TOKENS` | 600 | |
+| `LLM_MAX_OUTPUT_TOKENS` | 65 536 | the provider's `max_completion_tokens`; Mercury reasons inside this budget (~1k tokens, ~2 s per call) — 600 truncated every answer (2026-09-17) |
 | `LLM_TEMPERATURE` | 0.7 | goal C; the eval reports its effect |
 | `MENU_MAX_TRIALS` | 400 | verification CPU bound |
 | `MENU_MAX_ITEMS` | 80 | prompt bound |
