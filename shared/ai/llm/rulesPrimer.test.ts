@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { KEYWORDS, MATERIALS_PER_TURN, SURVIVE_HP_PERCENT } from '../../gameSettings'
+import { FACTION_NOTES, GENERAL_TIPS } from './factionNotes'
 import { KEYWORD_GLOSSARY, PRIMER_TEMPLATE, renderPrimer } from './rulesPrimer'
 
 describe('rules primer', () => {
@@ -25,5 +26,21 @@ describe('rules primer', () => {
     expect(text).toContain(String(MATERIALS_PER_TURN))
     expect(text).toContain(`${SURVIVE_HP_PERCENT}%`)
     expect(text).toContain(KEYWORD_GLOSSARY[KEYWORDS.BLOCKER])
+  })
+  it('appends the general tips and the faction’s own playstyle notes, ahead of the answer shape', () => {
+    const text = renderPrimer('DWG')
+    expect(text).toContain('GENERAL TIPS')
+    expect(text).toContain(GENERAL_TIPS)
+    expect(text).toContain('YOUR FACTION')
+    expect(text).toContain(FACTION_NOTES.DWG!.text)
+    expect(text.indexOf('GENERAL TIPS')).toBeLessThan(text.indexOf('YOUR FACTION'))
+    expect(text.indexOf('YOUR FACTION')).toBeLessThan(text.indexOf('HOW YOU PLAY'))
+  })
+  it('leaves the faction section out entirely for a faction with no notes yet', () => {
+    const text = renderPrimer('OW')
+    expect(text).toContain(GENERAL_TIPS)
+    expect(text).not.toContain('YOUR FACTION')
+    expect(text).not.toContain('Crossbones')
+    expect(text).not.toMatch(/\n\n\n/)
   })
 })
