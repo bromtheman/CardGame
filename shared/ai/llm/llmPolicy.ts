@@ -28,7 +28,6 @@ export const DEFAULT_LLM_POLICY_SETTINGS: LlmPolicySettings = {
 // the policy for the rest of the request so failures cannot stack timeouts
 // on the human's click.
 export class LlmPolicy implements BotPolicy {
-  readonly needsMenu: boolean
   readonly rows: TelemetryRow[] = []
   private plan: MenuItem[] = []
   private planKind: OwedKind | null = null
@@ -47,9 +46,15 @@ export class LlmPolicy implements BotPolicy {
     private readonly settings: LlmPolicySettings = DEFAULT_LLM_POLICY_SETTINGS,
     private readonly now: () => number = Date.now,
   ) {
-    this.needsMenu = client !== null
     if (client === null) this.tripped = 'disabled'
   }
+
+  // A getter, not a field set once at construction: once the policy trips
+  // (any failure reason, including the initial 'disabled'), the driver must
+  // stop asking for a verified menu — building one costs up to
+  // MENU_MAX_TRIALS clone-and-apply trials, and a tripped policy never reads
+  // it (candidates() returns the fallback's answer without touching view.menu).
+  get needsMenu(): boolean { return this.client !== null && this.tripped === null }
 
   get modelId(): string { return this.model }
 
@@ -126,7 +131,7 @@ export class LlmPolicy implements BotPolicy {
       text = res.text
       usage = res.usage
     } catch (e) {
-      reason = e instanceof LlmTimeoutError ? 'timeout' : 'http'
+      reason = ac.signal.aborted || e instanceof LlmTimeoutError ? 'timeout' : 'http'
     } finally {
       clearTimeout(timer)
     }
