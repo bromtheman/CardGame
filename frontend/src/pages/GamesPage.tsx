@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { FunctionsHttpError } from '@supabase/supabase-js'
+import { botSideOf } from '@shared/ai/botGame'
 import { type GameRow, isMyMove, useGamesQuery, useUsernames } from '../lib/games'
 import { useRealtimeInvalidate } from '../lib/realtime'
 import { useAuth } from '../lib/auth'
@@ -70,6 +71,9 @@ export function GamesPage() {
           >
             <span className="flex-1">
               vs <span className="font-bold">{opponentOf(g)}</span>
+              {botSideOf(g.settings) !== null && (
+                <span className="ml-2 rounded-full bg-brass-400/20 px-2 py-0.5 text-xs font-bold text-brass-400">AI</span>
+              )}
             </span>
             <span className="text-ocean-300">turn {String(g.turn_number)}</span>
             <span className="text-ocean-300">{timeAgo(g.updated_at)}</span>

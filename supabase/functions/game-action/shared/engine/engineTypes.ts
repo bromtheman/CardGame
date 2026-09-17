@@ -138,7 +138,15 @@ export interface EngineGame {
   activePlayer: string
   // Frozen copy of the lobby's settings. `materialsPerTurn` is optional —
   // games started before the setting existed have no key (materialsPerTurnOf).
-  settings: { zones: { biome: string; baseHp: number }[]; materialsPerTurn?: number }
+  // `bot` (2026-09-16 AI opponent spec §4.3) is stamped by lobby START alone
+  // and read only through shared/ai/botGame.ts's botSideOf. Absent means what
+  // every existing row means — a human game — so normalizeState needs no
+  // default for it.
+  settings: {
+    zones: { biome: string; baseHp: number }[]
+    materialsPerTurn?: number
+    bot?: { side: Side }
+  }
   state: PublicGameState
   privates: { a: PrivateState; b: PrivateState }
 }

@@ -512,3 +512,35 @@ Two of the three 2026-09-06 powers need to be known outside this file:
 - `state.destroyed` is a **live reservoir, not a log** — `drawCard` on an empty
   deck reshuffles the whole pile back into it, so anything reading the discard
   after a death trigger has run must re-check (`canRevive`).
+
+## Practice games — PracticeAI (`shared/ai/`)
+
+Spec: `docs/superpowers/specs/2026-09-16-ai-opponent-design.md`. The bot is
+one more caller of `applyAction`; nothing in the engine knows it exists.
+
+- `game.settings.bot = { side }` is stamped by lobby `START` alone and read
+  only through `botSideOf` / `botPlayerId` (`shared/ai/botGame.ts`). Absent
+  means a human game; `validateLobbySettings` drops the key, so a client
+  cannot set it.
+- `botOwes(game, side)` (`botDriver.ts`) reads the freeze order `applyAction`
+  applies: a bot-side `pendingEffect` → choice; `awaitingResponse` with the
+  bot defending → response; a human-submitted `pendingReport` → decision; a
+  locked battle → **nothing** (the human fights in FtD and reports; the bot
+  never submits); the bot's own unfrozen turn → turn.
+- `runBotUntilIdle` asks `basicPolicy` for candidates best-first and applies
+  the first the engine accepts, then re-asks; every owed kind has a fallback
+  (`FALLBACK`) the engine always accepts. 60 accepted policy actions per
+  request, then fallbacks only, then a throw — which `game-action` answers as
+  **500 `AI opponent failed`** with nothing committed.
+- **Hidden information by construction:** the policy receives a `BotView`
+  (own hand + public state), never an `EngineGame`; `botView.test.ts`
+  serialises one to prove it.
+- Where it runs: `game-action` after the human's action and before the one
+  `apply_action_tx` commit (bot games always load the catalog); `START` when
+  the bot is rolled first, before `start_game_tx` (which now reads
+  `turnNumber`/`status`/`winnerId` from `p_game`). `lobby-action` therefore
+  carries the full engine in the sync manifest.
+- The bot's decks are curated lists in `botDecks.ts`, pinned to the seed
+  source by `botDecks.test.ts`; `ADD_BOT` resolves them against the live
+  `cards` table. `selfPlay.test.ts` plays every deck over seeded games — the
+  first place a new card effect that wedges the bot shows up.

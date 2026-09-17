@@ -341,3 +341,31 @@ automatically" — is closed by `scripts/deploy-function.mjs` above.)
 `get_advisors` currently reports 3 known, accepted WARNs: `username_available`
 function search-path ×2, and leaked-password protection off (enabling it is a
 user-dashboard backlog item). New findings beyond these deserve attention.
+
+## PracticeAI bootstrap (once, by hand, after the first deploy of the AI opponent)
+
+The practice-game bot (spec `docs/superpowers/specs/2026-09-16-ai-opponent-design.md`)
+is a real auth user. Migration `20260916210000_ai_opponent` adds
+`profiles.is_bot`; nothing creates the row, because a migration cannot mint an
+auth user. Until step 2 lands, `lobby-action ADD_BOT` answers **503 "AI
+opponent is not provisioned"** and nothing else is affected.
+
+1. Dashboard → Authentication → Users → **Add user**: any email you control,
+   **Auto Confirm User** on, a long random password you do not keep. The
+   form takes no user metadata, so `handle_new_user` names the profile
+   `player_<8 hex>` — step 2 fixes that by id, never by username. Then **Ban
+   user** (Authentication → the user → Ban) so the account can never sign in.
+2. Find the row and name + flag it in one statement:
+   `update public.profiles p set username = 'PracticeAI', is_bot = true
+   from auth.users u where u.id = p.id and u.email = '<the email>'
+   returning p.id, p.username;` — one row back.
+3. `select id, username, is_bot from public.profiles where is_bot;` — exactly
+   one row.
+4. `node scripts/smoke-practice.mjs` — the end-to-end check (below).
+
+Done 2026-09-17: profile `4480604c-1934-4968-ba27-7012f07cc8d3` is PracticeAI
+(`lobby-action` v43, `game-action` v48; smoke green).
+
+The bot never holds a session: only `lobby-action` (`ADD_BOT`, `START`) and
+`game-action` ever act as it, with the service role. Its `decks` rows are
+created by `ADD_BOT` from `shared/ai/botDecks.ts` and are never deleted.

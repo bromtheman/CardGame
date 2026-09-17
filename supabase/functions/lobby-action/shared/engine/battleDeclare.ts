@@ -1,0 +1,405 @@
+import { KEYWORDS, SPAWN_DISTANCE_DEFAULT_M, VEHICLE_TYPES } from '../gameSettings.ts'
+import type { BattleContinuation, EngineContext, Side, ZoneCardEntry } from './engineTypes.ts'
+import type { EngineGame } from './engineTypes.ts'
+import type { PublicGameState } from './gameInit.ts'
+import { err, findVehicle, otherSide, registerHandler, zoneById } from './gameEngine.ts'
+import { dispatchBattleLock, lockRoster } from './battleTriggers.ts'
+
+// The one condition meta.defensiveOmission expresses (spec §4.8). A string
+// rather than a boolean so a second condition is expressible without a second
+// meta key.
+//
+// ⚠ NO SEEDED CARD CARRIES IT since the 2026-09-02 balance pass: Buzzsaw and
+// Veles, its only two carriers, both traded it for STEALTHY, whose opt-out is
+// unconditional and therefore strictly wider. The rule below is KEPT rather
+// than deleted, for the reason purifierEffect is kept registered — an
+// in-flight game dealt before that pass carries a frozen snapshot that still
+// prints the key, and the opt-out has to keep working for those hulls
+// (spec R-8, §5). battleDeclare.test.ts asserts the carrier set AT ZERO, so
+// the next card to take the key has to come back here.
+export const OMISSION_UNLESS_SHIP_OR_TANK = 'unlessShipOrTank'
+
+// The two directions meta.deployOrder expresses (2026-09-02 spec §4.3), read
+// on the side that CARRIES the key: 'first' — my side puts its fleet down
+// first; 'last' — my side puts its fleet down last. Strings rather than
+// booleans for the reason OMISSION_UNLESS_SHIP_OR_TANK is one: a third
+// direction becomes expressible without a second meta key.
+export const DEPLOY_ORDER_FIRST = 'first'
+export const DEPLOY_ORDER_LAST = 'last'
+
+export interface DeployOrderNote {
+  /** The side that must put its fleet down first — null when directives cancel. */
+  firstSide: Side | null
+  /** True when two carriers demand opposite orders. */
+  cancelled: boolean
+}
+
+// CONDUCT, NOT ENGINE. The players apply this in From The Depths; nothing here
+// gates, orders or validates anything, and this pass deliberately gives the
+// engine no deployment-order concept (spec §4.3). It exists so the spawn sheet
+// (BattleOverlay) and the game log can never say different things.
+//
+// Every carrier is NORMALISED to one statement — "which side spawns first" —
+// which is what makes Purifier's "the enemy forces must spawn in first" and
+// Anguish's "it must deploy first" one mechanic rather than two. That is the
+// spec's own reading of Purifier ("the same statement seen from the other
+// side"), and it is why cancellation below is about DISAGREEMENT rather than
+// about both sides merely holding a card (ruling W-1).
+export function deployOrderFor(
+  participants: Iterable<{ entry: { meta: Record<string, unknown> }; side: Side }>,
+): DeployOrderNote | null {
+  const demanded = new Set<Side>()
+  for (const { entry, side } of participants) {
+    // Strict equality on the VALUE, never truthiness: a mistyped 'fist' must
+    // leave the hull out of this entirely rather than in it — the same rule
+    // `matches()` applies to metaFlag, and the reason Task 3 pins the seeded
+    // values.
+    if (entry.meta.deployOrder === DEPLOY_ORDER_FIRST) demanded.add(side)
+    else if (entry.meta.deployOrder === DEPLOY_ORDER_LAST) demanded.add(otherSide(side))
+  }
+  if (demanded.size === 0) return null
+  if (demanded.size > 1) return { firstSide: null, cancelled: true }
+  return { firstSide: [...demanded][0], cancelled: false }
+}
+
+// The one line the ENGINE says about deployment order, and it is said only
+// when two carriers contradict. An active directive already has a permanent
+// home in the spawn sheet both captains read while staging the fight; a
+// cancelled one leaves that sheet saying "normal order", and the player whose
+// card was answered would otherwise never learn why.
+//
+// Called LAST — after dispatchBattleLock, never before it (ruling R-WF-6).
+// That ordering is load-bearing, not stylistic. A DP2 lock trigger may call
+// joinBattle, which pushes onto battle.attackerIds/defenderIds and therefore
+// onto lockRoster's output: The Onyx Throne's Parapet, Dryad, Obelisk's Mirth
+// Swarm and TG's factory escort (havocFactoryEffect/mirthFactoryEffect, the
+// joinBattle inside tgEffects.ts's factory()) all join INSIDE the dispatch —
+// NOT vengefulBattle, which gates on battle.phase === 'resolve' and never
+// calls joinBattle at all (RESOLVE_BYSTANDER_EFFECTS has it, per
+// factionEffects.test.ts). Derived before it, this note would read a roster
+// that no longer exists by the time the battle is staged — a hull joining
+// with an opposing directive would cancel the order on the spawn sheet, which
+// reads the final roster, while this stayed silent, and the one case the line
+// exists to explain would be the one case it missed.
+//
+// Four further joinBattle callers (two in dwgEffects, one in wfEffects, and LH
+// Terawatt) sit inside a choice()'s resolve, so they join in a LATER action and
+// no placement in this function can see them. Nothing on those paths carries
+// deployOrder today; if one ever does, the note has to be recomputed where the
+// roster changes, not here.
+//
+// The price is that the note now follows a trigger's own log lines instead of
+// preceding them. Reading order, traded for saying the true thing. Do not
+// "tidy" it back above the dispatch.
+function noteDeployOrder(game: EngineGame): void {
+  const note = deployOrderFor(lockRoster(game))
+  if (!note?.cancelled) return
+  game.state.log.push(
+    'The two fleets demand opposite deployment-order directives — they cancel; spawn in the normal order',
+  )
+}
+
+// WF Flanking Maneuver (hero power, spec §3.8). A plain data rule read off
+// state.zoneEffects — `data.flanking`, the way legalZonesFor reads
+// `blocksFaction` — rather than a registry effect, because a hero power has
+// no card for fireRider to mint a payload from.
+//
+// "The next time YOU START a fleet battle in that zone this turn": only the
+// aggressor's own rider in the battle's zone counts, and it is spent by the
+// battle. Both halves are applied without an offer (the player already chose
+// this when they spent the power): the deploy-after permission is CONDUCT the
+// players apply in From The Depths, so the log line is how the DEFENDER
+// learns of it and must be public; the Fragile half is the one the engine can
+// hold, as battle.fragileSide, which every repair rule reads through
+// fragileInBattle (battleResolve.ts). A defensive battle leaves the rider
+// standing, exactly as ambushSpring does.
+//
+// Called AFTER dispatchBattleLock for the same reason noteDeployOrder is: a
+// lock trigger's joinBattle may grow the roster, and "all enemy vehicles"
+// must cover the hulls that joined.
+function applyFlankingManeuver(game: EngineGame): void {
+  const battle = game.state.activeBattle
+  if (!battle) return
+  const index = game.state.zoneEffects.findIndex(
+    (e) => e.zoneId === battle.zoneId && e.side === battle.aggressor && e.data?.flanking === true,
+  )
+  if (index < 0) return
+  const [rider] = game.state.zoneEffects.splice(index, 1)
+  battle.fragileSide = otherSide(battle.aggressor)
+  game.state.log.push(
+    `${rider.cardName}: player ${battle.aggressor.toUpperCase()} may deploy after the defender, ` +
+    'and every enemy vehicle counts as Fragile for this battle',
+  )
+}
+
+// The only place the activeBattle object literal is constructed (spec §4.3,
+// departure 1) — so the next field added to it is one edit here rather than
+// three call sites. summons/continuation default to "none": only a forced
+// battle (declareForcedBattle) ever populates them.
+function setBattle(game: EngineGame, spec: {
+  zoneId: number
+  aggressor: Side
+  attackerIds: string[]
+  defenderIds: string[]
+  summons?: ZoneCardEntry[]
+  continuation?: BattleContinuation | null
+}): void {
+  game.state.activeBattle = {
+    zoneId: spec.zoneId, aggressor: spec.aggressor,
+    attackerIds: spec.attackerIds, defenderIds: spec.defenderIds,
+    distanceM: SPAWN_DISTANCE_DEFAULT_M, distanceModifiedBy: [],
+    summons: spec.summons ?? [],
+    continuation: spec.continuation ?? null,
+  }
+}
+
+// setBattle plus the zone-activation stamp plus the fleet log line — used
+// only by ATTACK_ENEMY_FLEET and RESPOND_TO_ATTACK, where declaring the
+// battle IS the zone's one activation for the turn. Kept byte-identical in
+// behaviour across the setBattle/lockBattle/declareForcedBattle split.
+function lockBattle(
+  game: EngineGame, ctx: EngineContext,
+  zoneId: number, aggressor: Side, attackerIds: string[], defenderIds: string[],
+): void {
+  setBattle(game, { zoneId, aggressor, attackerIds, defenderIds })
+  zoneById(game.state, zoneId)!.lastActivatedTurn = game.turnNumber
+  game.state.log.push(
+    `Fleet battle declared in zone ${zoneId} — ${attackerIds.length} vs ${defenderIds.length}. Fight it in From The Depths, then report results.`,
+  )
+  // DP2 at lock (spec §4.3). After the log line, so the order a player reads
+  // is declare-then-trigger; `forced: false` because this IS the ordinary
+  // fleet attack, which is what Terawatt's bystander rule excludes.
+  dispatchBattleLock(game, ctx, false)
+  // Last, so the note is derived from the roster a trigger's joinBattle may
+  // just have grown. Never above the dispatch — see its definition.
+  applyFlankingManeuver(game)
+  noteDeployOrder(game)
+}
+
+// The only function that appends to a battle already in progress. Every other
+// path builds ActiveBattle whole, at construction (setBattle) — but a DP2 lock
+// trigger runs when the battle already exists, so The Onyx Throne's Parapet
+// and Terawatt's join need a way in that declareForcedBattle cannot give them:
+// it refuses outright while state.activeBattle is non-null, which at lock it
+// always is.
+//
+// `entry` present  → a freshly minted hull: pushed onto summons AND onto the
+//                    joining side's id list, so it is a battle summon in the
+//                    ordinary sense (spec §4.4) and evaporates on approval.
+// `entry` absent   → an id already on the board: only the id list is touched.
+//
+// Membership decides a summon's side (decision 18), so pushing onto the right
+// list is the whole of "which side did it join".
+//
+// M-3 (2026-09-16 spec): "no more than one mirth swarm can participate in any
+// one battle on a single side, even if spawned in by card effect". A DATA key
+// (`battleCap: n`) on the card, so the next capped card needs no engine edit
+// — the slotDenial/uniquePerZone shape — read strictly: a non-number or
+// non-positive value leaves the hull uncapped rather than unjoinable.
+//
+// Counts what is ALREADY fighting on that side, board hulls and summons alike
+// ("however it got there"), keyed on cardId like uniquePerZone so a copy
+// minted from the catalog matches a copy Drones put on the board. Exported so
+// the two spawners (obeliskBattle, the Factory escort) can pre-check and log a
+// skip instead of failing their trigger; joinBattle below checks it again so
+// no future spawner can bypass the rule.
+export function battleCapReached(
+  game: EngineGame, side: Side, card: { cardId: string; meta: Record<string, unknown> },
+): boolean {
+  const cap = card.meta.battleCap
+  if (typeof cap !== 'number' || !Number.isFinite(cap) || cap <= 0) return false
+  if (!game.state.activeBattle) return false
+  const fielded = lockRoster(game).filter((p) => p.side === side && p.entry.cardId === card.cardId).length
+  return fielded >= Math.floor(cap)
+}
+
+export function joinBattle(
+  game: EngineGame, side: Side, instanceId: string, entry?: ZoneCardEntry,
+): boolean {
+  const battle = game.state.activeBattle
+  if (!battle) return false
+  if (battle.attackerIds.includes(instanceId) || battle.defenderIds.includes(instanceId)) return false
+  let joining: ZoneCardEntry | undefined = entry
+  if (!entry) {
+    const zone = zoneById(game.state, battle.zoneId)
+    joining = zone?.cards[side].find((c) => c.instanceId === instanceId) as ZoneCardEntry | undefined
+    if (!joining) return false
+  }
+  // M-3. Checked BEFORE the summon is pushed, so a refused join leaves the
+  // battle exactly as it was.
+  if (battleCapReached(game, side, joining!)) return false
+  if (entry) battle.summons.push(entry)
+  if (side === battle.aggressor) battle.attackerIds.push(instanceId)
+  else battle.defenderIds.push(instanceId)
+  return true
+}
+
+// DP3 (spec §4.3): a card-forced battle. Two rulings distinguish it from an
+// ordinary fleet attack, and both are load-bearing (departure 1) — reusing
+// lockBattle unchanged would violate both:
+//   - It is NOT a zone activation: lastActivatedTurn is left untouched unless
+//     the caller explicitly passes activatesZone (Eclipse alone does, per its
+//     own card text).
+//   - It skips the Stealthy opt-out entirely — the card *forces* the fight,
+//     so there is no awaitingResponse window; the battle locks immediately.
+// Sets no alert card (spec §4.3, departure 2): the BattleOverlay this raises
+// is already louder and already public, and the alert slot is single/shared
+// with the opponent's own alerts.
+//
+// Returns false — so the calling effect 400s and applyAction discards the
+// clone — without mutating `game` at all, on: no such zone, a battle already
+// active, an empty attacker or defender list, or an id that is neither an
+// on-field entry on its own side nor one of the listed summons. Membership in
+// `summons` (not a side field) decides which side a summon belongs to, so the
+// same check serves attacker- and defender-side summons alike (decision 18).
+export function declareForcedBattle(game: EngineGame, ctx: EngineContext, spec: {
+  zoneId: number
+  aggressor: Side
+  attackerIds: string[]
+  defenderIds: string[]
+  summons?: ZoneCardEntry[]
+  continuation?: BattleContinuation | null
+  cause: string            // card name, for the log line
+  activatesZone?: boolean  // stamps lastActivatedTurn; Eclipse alone passes true
+  // Wave 7 — TG Duel: "target a friendly and enemy vehicle. They can be in
+  // different zones." OPT-IN, mirroring activatesZone above, so every existing
+  // caller keeps the same-zone guard it has always had rather than having it
+  // quietly widened underneath. `zoneId` remains the battle's home zone (the
+  // aggressor's own hull's); the away hull is resolved by id.
+  crossZone?: boolean
+}): boolean {
+  const zone = zoneById(game.state, spec.zoneId)
+  if (!zone) return false
+  if (game.state.activeBattle) return false
+  if (spec.attackerIds.length === 0 || spec.defenderIds.length === 0) return false
+  const defenderSide = otherSide(spec.aggressor)
+  const summonIds = new Set((spec.summons ?? []).map((s) => s.instanceId))
+  // Find-by-ID rather than skip-the-check: a cross-zone declaration still
+  // refuses an unknown id and still refuses a hull listed on the wrong side.
+  const onField = (side: Side, id: string) => (
+    spec.crossZone
+      ? findVehicle(game.state, id)?.side === side
+      : zone.cards[side].some((c) => c.instanceId === id)
+  )
+  for (const id of spec.attackerIds) {
+    if (!onField(spec.aggressor, id) && !summonIds.has(id)) return false
+  }
+  for (const id of spec.defenderIds) {
+    if (!onField(defenderSide, id) && !summonIds.has(id)) return false
+  }
+  setBattle(game, spec)
+  if (spec.activatesZone) zone.lastActivatedTurn = game.turnNumber
+  // Never "Fleet battle" — these are usually 1v1, and that phrase is reserved
+  // for ATTACK_ENEMY_FLEET's own line. The tail sentence is kept verbatim:
+  // players rely on it to know the overlay wants a From The Depths result.
+  game.state.log.push(
+    `${spec.cause} forces a battle in zone ${spec.zoneId} — ${spec.attackerIds.length} vs ${spec.defenderIds.length}. Fight it in From The Depths, then report results.`,
+  )
+  // DP2 at lock, with forced: true — which is what admits the bystander pass
+  // (Terawatt, spec §4.3 DP2 departure 2). Fires only on the success path, so
+  // a refused declaration triggers nothing. A trigger here MAY leave
+  // state.pendingEffect set alongside the state.activeBattle just built
+  // (departure 3, decision 19); that is deliberate and safe — see
+  // gameEngine.ts's applyAction, and shared/engine/battleFreeze.test.ts.
+  dispatchBattleLock(game, ctx, true)
+  // Last, so the note is derived from the roster a trigger's joinBattle may
+  // just have grown. Never above the dispatch — see its definition.
+  applyFlankingManeuver(game)
+  noteDeployOrder(game)
+  return true
+}
+
+// Spec §3.4 option 2, amended 2026-09-16: a fleet attack has NO selection.
+// Every hull of the aggressor's in the zone attacks except Inoffensive ones,
+// and every enemy hull there is attacked. The aggressor's own Stealthy hulls
+// go in with the rest — withdrawal is the defender's right only, through the
+// response window below. A stale client may still send attackerIds/targetIds;
+// they are ignored rather than refused, so a tab served before this rule
+// neither 400s nor gets to honour a partial pick.
+export interface FleetAttackRosters {
+  force: ZoneCardEntry[]     // the aggressor's hulls in the zone bar Inoffensive ones — all of them attack
+  targets: ZoneCardEntry[]   // every enemy hull in the zone
+  stealthyIds: string[]      // targets the defender may withdraw unconditionally
+  omissibleIds: string[]     // targets whose printed omission condition is met against `force`
+}
+
+// What ATTACK_ENEMY_FLEET will commit for `side` in `zoneId`, before it does.
+// Exported because FleetAttackDialog shows the player exactly this — and a
+// second, hand-kept derivation is how BattleOverlay once came to build reports
+// the engine rejected (docs/claude/frontend.md, "Never mirror engine logic").
+// Null for an unknown zone; otherwise the lists may be empty, and the handler
+// decides what an empty list means.
+export function fleetAttackRosters(
+  state: PublicGameState, side: Side, zoneId: number,
+): FleetAttackRosters | null {
+  const zone = zoneById(state, zoneId)
+  if (!zone) return null
+  const force = (zone.cards[side] as ZoneCardEntry[]).filter((c) => !c.keywords.includes(KEYWORDS.INOFFENSIVE))
+  const targets = zone.cards[otherSide(side)] as ZoneCardEntry[]
+  // Spec §4.8: the omission condition reads the attacking FORCE — which since
+  // the 2026-09-16 amendment is everything the aggressor owns in the zone bar
+  // Inoffensive hulls, because nothing can be benched any more.
+  const forceHasShipOrTank = force.some(
+    (c) => c.vehicleType === VEHICLE_TYPES.SHIP || c.vehicleType === VEHICLE_TYPES.TANK,
+  )
+  const stealthyIds: string[] = []
+  const omissibleIds: string[] = []
+  for (const card of targets) {
+    if (card.keywords.includes(KEYWORDS.STEALTHY)) stealthyIds.push(card.instanceId)
+    // Plain card data, not a registry name (spec §4.8) — an effect returns a
+    // boolean meaning "resolved" and may mutate, so one cannot serve as a pure
+    // eligibility predicate.
+    if (card.meta.defensiveOmission === OMISSION_UNLESS_SHIP_OR_TANK && !forceHasShipOrTank) {
+      omissibleIds.push(card.instanceId)
+    }
+  }
+  return { force, targets, stealthyIds, omissibleIds }
+}
+
+registerHandler('ATTACK_ENEMY_FLEET', (game, actor, action, ctx) => {
+  if (action.type !== 'ATTACK_ENEMY_FLEET') return err(400, 'Bad action')
+  const zone = zoneById(game.state, action.zoneId)
+  if (!zone) return err(400, 'No such zone')
+  if (zone.lastActivatedTurn === game.turnNumber) return err(409, 'That zone was already activated this turn')
+  const rosters = fleetAttackRosters(game.state, actor, action.zoneId)!
+  if (rosters.force.length === 0) return err(400, 'You have no vehicle able to attack in that zone')
+  if (rosters.targets.length === 0) return err(400, 'There is no enemy vehicle in that zone')
+  const attackerIds = rosters.force.map((c) => c.instanceId)
+  const targetIds = rosters.targets.map((c) => c.instanceId)
+  const { stealthyIds, omissibleIds } = rosters
+  // The window opens on EITHER list. Before wave 4 only Stealthy could raise
+  // it, and an attack with no stealthy target locked immediately.
+  if (stealthyIds.length > 0 || omissibleIds.length > 0) {
+    game.state.awaitingResponse = {
+      zoneId: action.zoneId, aggressor: actor, attackerIds, targetIds, stealthyIds, omissibleIds,
+    }
+    game.state.log.push(`Fleet attack declared in zone ${action.zoneId} — some defenders may withdraw`)
+    return { ok: true, game }
+  }
+  lockBattle(game, ctx, action.zoneId, actor, attackerIds, targetIds)
+  return { ok: true, game }
+})
+
+registerHandler('RESPOND_TO_ATTACK', (game, actor, action, ctx) => {
+  if (action.type !== 'RESPOND_TO_ATTACK') return err(400, 'Bad action')
+  if (!Array.isArray(action.optOutIds)) return err(400, 'optOutIds must be an array')
+  const pending = game.state.awaitingResponse
+  if (!pending) return err(409, 'No attack awaits a response')
+  if (actor === pending.aggressor) return err(403, 'Only the defender responds')
+  // Either list is a valid source of an opt-out (spec §4.8): Stealthy's is
+  // unconditional, omissibleIds was computed against this attack's own
+  // attacking selection when the window opened.
+  for (const id of action.optOutIds) {
+    if (!pending.stealthyIds.includes(id) && !(pending.omissibleIds ?? []).includes(id)) {
+      return err(400, 'Only stealthy or omissible vehicles may withdraw')
+    }
+  }
+  const remaining = pending.targetIds.filter((id) => !action.optOutIds.includes(id))
+  game.state.awaitingResponse = null
+  if (remaining.length === 0) {
+    game.state.log.push('All defenders slipped away — the attack is called off')
+    return { ok: true, game }
+  }
+  lockBattle(game, ctx, pending.zoneId, pending.aggressor, pending.attackerIds, remaining)
+  return { ok: true, game }
+})
