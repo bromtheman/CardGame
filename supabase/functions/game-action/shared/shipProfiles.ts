@@ -1,4 +1,5 @@
 import { DWG_SHIP_PROFILES } from './shipProfiles/DWG.ts'
+import { SS_SHIP_PROFILES } from './shipProfiles/SS.ts'
 import { WF_SHIP_PROFILES } from './shipProfiles/WF.ts'
 
 // What each built-in hull is like in From The Depths — a glimpse for the
@@ -47,6 +48,7 @@ export interface ShipProfile {
 
 export const SHIP_PROFILES: Record<string, ShipProfile> = {
   ...DWG_SHIP_PROFILES,
+  ...SS_SHIP_PROFILES,
   ...WF_SHIP_PROFILES,
 }
 

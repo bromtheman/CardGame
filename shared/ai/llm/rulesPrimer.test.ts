@@ -67,6 +67,21 @@ describe('rules primer', () => {
     // The scale is explained in words, once, so the digits on each line read as scores.
     expect(fleet).toMatch(/one weakest to five strongest/)
   })
+  it('rosters every SS hull under YOUR FLEET, after the general tips and ahead of the answer shape', () => {
+    // SS has profiles but (as of this writing) no playstyle notes, so the
+    // fleet section follows the tips directly and must still space cleanly.
+    const text = renderPrimer('SS')
+    expect(text.indexOf('GENERAL TIPS')).toBeLessThan(text.indexOf('YOUR FLEET'))
+    expect(text.indexOf('YOUR FLEET')).toBeLessThan(text.indexOf('HOW YOU PLAY'))
+    const fleet = text.slice(text.indexOf('YOUR FLEET'), text.indexOf('HOW YOU PLAY'))
+    const profiles = shipProfilesForFaction('SS')
+    expect(profiles).toHaveLength(27)
+    for (const { name } of profiles) expect(fleet).toContain(`\n- ${name} (`)
+    expect(fleet).toContain(
+      '- Tyr (flagship battleship): fire 5, tough 5, speed 3, range 5; vs ships 5, aircraft 2, subs 1, missiles 5. Flagship tank. Nine 380 mm armour-piercing guns, 88 interceptors, the toughest hull on this list; nothing under water. Designers: 50 battle points, difficulty 3.',
+    )
+    expect(text).not.toMatch(/\n\n\n/)
+  })
   it('rosters the WF hulls the same way, summaries and all', () => {
     const text = renderPrimer('WF')
     const fleet = text.slice(text.indexOf('YOUR FLEET'), text.indexOf('HOW YOU PLAY'))
