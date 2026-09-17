@@ -47,6 +47,19 @@ export const isSummonOnly = (card: { meta: Record<string, unknown> }): boolean =
 export const isCapturedCopy = (card: { meta: Record<string, unknown> }): boolean =>
   card.meta.capturedCopy === true
 
+// The side whose DISCARD a hull returns to when that is not the side flying it
+// (2026-09-16 spec M-4, ruling Q2). Written by DWG Mutiny onto a stolen entry,
+// read by discardCard, stripped by discardSnapshotOf — a per-instance stamp
+// like factoryEscort, and named in that strip list for the same reason. Absent
+// means "the controller", which is what every hull dealt before this pass
+// means, so normalizeState needs no default. Read strictly: a value that is
+// not a side is ignored rather than indexed.
+export const HOME_SIDE_KEY = 'homeSide'
+export function homeSideOf(card: { meta: Record<string, unknown> }): Side | null {
+  const raw = card.meta[HOME_SIDE_KEY]
+  return raw === 'a' || raw === 'b' ? raw : null
+}
+
 export const battleFrozen = (state: PublicGameState): boolean =>
   state.awaitingResponse !== null || state.activeBattle !== null || state.pendingReport !== null
 
@@ -307,12 +320,13 @@ export function discardSnapshotOf(card: CardInstance): SnapshotCard {
   // later death. This is the strip list the comment above warns about; nothing
   // in TypeScript would have caught the omission.
   //
-  // `scrappyOnLoan` (2026-09-02) comes off for factoryEscort's exact reason: it
-  // is a per-INSTANCE marker for a keyword Sacrilego lends only for the
-  // duration of one battle. Left on, a hull that dies mid-battle would file it
-  // into state.destroyed and return through reshuffleDiscard permanently
-  // Scrappy — and would then be stripped by a LATER Sacrilego resolve that
-  // never lent it anything.
+  // `scrappyOnLoan` (2026-09-02, writer deleted 2026-09-16) comes off for
+  // factoryEscort's exact reason: it is a per-INSTANCE marker for a keyword
+  // Sacrilego lends only for the duration of one battle. Left on, a hull that
+  // dies mid-battle would file it into state.destroyed and return through
+  // reshuffleDiscard permanently Scrappy — and would then be stripped by a
+  // LATER Sacrilego resolve that never lent it anything. No effect writes it
+  // any more; it stays for hulls in games dealt before that deploy (spec R-8).
   //
   // ⚠ Fix round 1 (2026-09-02): the loan is TWO mutations, not one — the
   // marker above, AND the `scrappy` keyword itself, pushed onto entry.keywords
@@ -341,8 +355,11 @@ export function discardSnapshotOf(card: CardInstance): SnapshotCard {
   // would quietly rewrite those cards instead. Keyed on the marker, a printed
   // one carries none and survives untouched — the same pair of tests
   // scrappyOnLoan already had.
+  // `homeSide` (2026-09-16 M-4) comes off for factoryEscort's reason: it is a
+  // per-INSTANCE stamp for one theft, and the card it rode in on belongs to the
+  // deck it is about to reshuffle into.
   const {
-    costDelta: _costDelta, factoryEscort: _factoryEscort, scrappyOnLoan,
+    costDelta: _costDelta, factoryEscort: _factoryEscort, homeSide: _homeSide, scrappyOnLoan,
     grantedKeywords, grantedSpawns: _grantedSpawns, ...withoutCostDelta
   } = snapshot.meta
   snapshot.meta = withoutCostDelta
@@ -366,7 +383,12 @@ export function discardCard(game: EngineGame, controller: Side, card: CardInstan
   // so filing it anywhere would mint a card that did not exist. This is the
   // single exit out of play, so guarding both here covers every path at once.
   if (isSummonOnly(card) || isCapturedCopy(card)) return
-  game.state.destroyed[controller].push(discardSnapshotOf(card))
+  // A mutinied hull goes HOME rather than to the thief's discard (2026-09-16
+  // M-4, ruling Q2): the card belongs to its owner's deck, and reshuffleDiscard
+  // feeds this pile back into exactly that deck. Read BEFORE the snapshot
+  // strips the stamp. Covers the turn-start cull and a death in battle alike.
+  const home = homeSideOf(card) ?? controller
+  game.state.destroyed[home].push(discardSnapshotOf(card))
 }
 
 export function checkVictory(game: EngineGame): void {

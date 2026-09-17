@@ -59,6 +59,7 @@ npm --prefix frontend run lint      # oxlint
 npm run functions:check             # Deno type-check of the four edge functions (tsc never reads them)
 npm run functions:sync              # copy shared/ modules into edge functions (see rule below)
 npm run seed:verify                 # diff LIVE card rows against seed_data.sql (see rule below)
+npm run seed:apply                  # upsert seed_data.sql into the LIVE project; follow with seed:verify (see rule below)
 ```
 
 Dev server: `npm --prefix frontend run dev` (`.claude/launch.json` has a `frontend`
@@ -112,7 +113,7 @@ model, decides legality — see docs/claude/architecture.md.
 
 Details: docs/claude/supabase.md.
 
-## Seed data does NOT deploy — apply it by hand after every merge
+## Seed data does NOT deploy with the code — a workflow applies it after merge
 
 **Merging deploys CODE, never card data.** `supabase/seed/seed_data.sql` is
 applied out of band: `supabase/config.toml` deliberately carries no seed
@@ -128,20 +129,29 @@ DecksPage badge — and every bit of it was **inert**, because the five
 deployed new effect code against the old rows, so three cards lied to players:
 Marauder's text promised a 50k discount its rewritten effect no longer gave.
 
-So, after any merge touching `supabase/seed/source/**`:
+Since 2026-09-17 the GitHub Actions job `.github/workflows/seed-apply.yml`
+runs on every push to `main` that changes `seed_data.sql`: it runs
+`scripts/apply-seed.mjs` (the file's idempotent `on conflict (id) do update`
+upserts — nothing is ever deleted) and then `scripts/verify-seed.mjs`. It
+needs the repository secret `SUPABASE_ACCESS_TOKEN` (the same personal token
+`functions:deploy` uses); without it the job fails fast and production is
+untouched. **Check the Actions run after any merge touching
+`supabase/seed/source/**`**, and locally the same two commands close any gap:
 
 ```bash
 npm run seed:verify     # diffs LIVE cards against seed_data.sql, exit 1 on drift
+npm run seed:apply      # posts seed_data.sql through the Management API, batch by batch
 ```
 
-If it reports drift, apply the upserts in `seed_data.sql` against the project
-(they are idempotent `on conflict (id) do update`, so re-applying is safe and
-nothing is ever deleted), then re-run until it is clean. `seed:verify` needs
-`SUPABASE_ACCESS_TOKEN`, the same token `functions:deploy` uses.
+Never apply the file by retyping or pasting its SQL: a transcription slip in
+150 KB of card data is invisible to every test. Both scripts read
+`SUPABASE_ACCESS_TOKEN` from the environment or the gitignored root
+`./.env.local`.
 
 Spec §1 puts each faction's data and effects in one commit precisely so a card
-never ships ahead of its effect. **That guarantee holds in the repo and breaks
-at the deploy** — code ships automatically and data does not.
+never ships ahead of its effect. That guarantee holds in the repo; at the deploy
+the function deploy and the seed job run side by side, so the window in which
+code is ahead of data is the seconds between them — provided the job is green.
 
 ## Deploying edge functions
 

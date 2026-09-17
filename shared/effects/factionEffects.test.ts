@@ -1,14 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { CATALOG_EFFECTS, RESOLVE_BYSTANDER_EFFECTS, effectFor, registerEffect } from './registry.ts'
-import { choice } from './primitives.ts'
+import { CATALOG_EFFECTS, DATA_EFFECT_KEYS, RESOLVE_BYSTANDER_EFFECTS, effectFor, registerEffect } from './registry.ts'
+import { choice, summonHulls } from './primitives.ts'
 import {
   ARGONAUT_COST_DELTA, BASE_DAMAGE_DIVISOR, BULL_SHARK_BASE_DAMAGE, CASH_ADVANCE_MATERIALS,
-  EXCALIBUR_COST_DELTA, KEYWORDS, MATERIALS_PER_TURN, NOTHUNG_COST_DELTA, RESOLUTE_COST_DELTA,
-  SACRILEGO_COST_DELTA, TRONDHEIM_COST_DELTA, TYR_HAND_DISCOUNT, VICTORIA_COST_DELTA,
+  EXCALIBUR_COST_DELTA, FLYING_SQUIRREL_ATTACK_COUNT, KEYWORDS, MATERIALS_PER_TURN, NOTHUNG_COST_DELTA,
+  RESOLUTE_COST_DELTA, SACRILEGO_COST_DELTA, SLASHER_EARTH_RAKER_COUNT, TRONDHEIM_COST_DELTA,
+  TYR_HAND_DISCOUNT, TYR_MIN_COST, VICTORIA_COST_DELTA,
 } from '../gameSettings.ts'
 import { inst, makeCtx, makeGame, snap, zoneEntry } from '../engine/testFixtures.ts'
 import {
-  applyAction, declareForcedBattle, discardSnapshotOf, effectiveCostInGame, effectiveMaterialCostOf,
+  applyAction, battleCapReached, declareForcedBattle, discardSnapshotOf, effectiveCostInGame, effectiveMaterialCostOf,
   legalZonesFor,
   joinBattle,
   findVehicle,
@@ -44,6 +45,9 @@ const DRAW_ONE = [
   // 2026-09-02. Earth Raker: "When this is played, draw a card". It prints
   // STEALTHY and nothing else, so rule 10's SCRAPPY concern does not arise.
   'earthRakerOnPlay',
+  // 2026-09-16. TG Fear: "When this vehicle is played, draw a card" — it no
+  // longer spawns Horrors.
+  'fearOnPlay',
   // 2026-09-02. 'excruciatorOnPlay' LEFT this list: the pass rewrote the card to
   // "draw two AI vehicles from your deck and reduce their cost by 100k", so it
   // no longer takes exactly one card off the top. Its own describe block, at the
@@ -354,27 +358,27 @@ describe('excaliburEffect', () => {
     expect(r.game.state.log.some((l) => l.includes('deployed to zone 1'))).toBe(true)
   })
 
-  // R-5: the filter narrowed from "built-in" to faction SS. A built-in DWG ship
-  // used to qualify and now does not.
-  it('refuses a built-in ship of another faction', () => {
+  // M-1 (2026-09-16): "AI ship" is any BUILT-IN ship, whatever its faction —
+  // the reverse of 2026-09-02's R-5. A built-in DWG ship qualifies again…
+  it('accepts a built-in ship of another faction', () => {
     const game = makeGame()
     const target = inst({ faction: 'DWG', isBuiltIn: true, type: 'vehicle', vehicleType: 'ship' })
     game.privates.a.hand.push(target)
     expect(effectFor('excaliburEffect')!({
       game, actor: 'a', card: inst(), ctx: makeCtx(), targetInstanceId: target.instanceId,
-    })).toBe(false)
+    })).toBe(true)
+    expect(game.privates.a.hand[0].meta.costDelta).toBe(EXCALIBUR_COST_DELTA)
   })
 
-  // …and a PLAYER-MADE SS ship now does qualify, which the old isBuiltIn
-  // filter refused. This is the half of R-5 a "narrowing" summary hides.
-  it('accepts a player-made SS ship', () => {
+  // …and a PLAYER-MADE SS ship no longer does. Motivation: a DWG-stolen SS
+  // card must keep working in a hand holding no SS ships.
+  it('refuses a player-made SS ship', () => {
     const game = makeGame()
     const target = inst({ faction: 'SS', isBuiltIn: false, type: 'vehicle', vehicleType: 'ship' })
     game.privates.a.hand.push(target)
     expect(effectFor('excaliburEffect')!({
       game, actor: 'a', card: inst(), ctx: makeCtx(), targetInstanceId: target.instanceId,
-    })).toBe(true)
-    expect(game.privates.a.hand[0].meta.costDelta).toBe(EXCALIBUR_COST_DELTA)
+    })).toBe(false)
   })
 })
 
@@ -730,7 +734,7 @@ describe('wave 3 — forced battles', () => {
   })
 
   describe('flyingSquirrelAttackEffect', () => {
-    it('the target fights alone against 3 summoned Flying Squirrels', () => {
+    it('the target fights alone against 6 summoned Flying Squirrels — two 3x squadrons (2026-09-16 M-8)', () => {
       const game = makeGame()
       const target = zoneEntry({ name: 'Foe', instanceId: 'foe-1' })
       game.state.zones[0].cards.b.push(target)
@@ -743,8 +747,9 @@ describe('wave 3 — forced battles', () => {
       expect(battle?.zoneId).toBe(1)
       expect(battle?.aggressor).toBe('a')
       expect(battle?.defenderIds).toEqual(['foe-1']) // fights alone — no ally joins
-      expect(battle?.attackerIds).toHaveLength(3)
-      expect(battle?.summons).toHaveLength(3)
+      expect(battle?.attackerIds).toHaveLength(FLYING_SQUIRREL_ATTACK_COUNT)
+      expect(battle?.summons).toHaveLength(FLYING_SQUIRREL_ATTACK_COUNT)
+      expect(FLYING_SQUIRREL_ATTACK_COUNT).toBe(6)
       expect(battle?.summons.every((s) => s.name === 'Flying Squirrel')).toBe(true)
       expect(battle?.attackerIds).toEqual(battle?.summons.map((s) => s.instanceId))
       expect(game.state.zones[0].lastActivatedTurn).toBeNull() // not a zone activation
@@ -2072,53 +2077,33 @@ describe('wave 4 — battle triggers at resolve', () => {
       return { game, sac, mate, printed, sub, foe }
     }
 
-    it('grants SCRAPPY at lock to friendly SHIPS in the battle, and marks the loan', () => {
-      const { game, sac, mate, printed, sub, foe } = staged()
-      const ok = effectFor('sacrilegoBattle')!({ game, actor: 'a', card: sac, ctx: makeCtx(), battle: sacLock() })
-      expect(ok).toBe(true)
-      expect(mate.keywords).toContain('scrappy')
-      expect(mate.meta.scrappyOnLoan).toBe(true)
-      // A hull that already PRINTS scrappy is never marked, so it never loses it.
-      expect(printed.meta.scrappyOnLoan).toBeUndefined()
-      // Ships, not every vehicle — the text says "friendly ships".
-      expect(sub.keywords).not.toContain('scrappy')
-      // And never the enemy's.
-      expect(foe.keywords).not.toContain('scrappy')
-    })
-
-    it('takes the loan back at resolve, and leaves a printed or previously granted SCRAPPY alone', () => {
-      const { game, sac, mate, printed } = staged()
-      effectFor('sacrilegoBattle')!({ game, actor: 'a', card: sac, ctx: makeCtx(), battle: sacLock() })
-      game.state.activeBattle = null
-      effectFor('sacrilegoBattle')!({ game, actor: 'a', card: sac, ctx: makeCtx(), battle: sacResolve() })
+    // 2026-09-16: the fleet-wide SCRAPPY grant is GONE (spec §2, SS table).
+    // Only the survive-discount remains, so lock is a no-op on every hull.
+    it('grants nothing at lock', () => {
+      const { game, sac, mate, printed, sub } = staged()
+      expect(effectFor('sacrilegoBattle')!({ game, actor: 'a', card: sac, ctx: makeCtx(), battle: sacLock() })).toBe(true)
       expect(mate.keywords).not.toContain('scrappy')
       expect(mate.meta.scrappyOnLoan).toBeUndefined()
-      expect(printed.keywords).toContain('scrappy')
+      expect(printed.keywords).toEqual(['scrappy']) // printed, untouched
+      expect(sub.keywords).not.toContain('scrappy')
     })
 
-    // The loan is returned even when Sacrilego dies: `participants` still holds
-    // a destroyed hull's entry at resolve, so the trigger still fires for it.
-    it('takes the loan back even when Sacrilego did not survive', () => {
-      const { game, sac, mate } = staged()
-      effectFor('sacrilegoBattle')!({ game, actor: 'a', card: sac, ctx: makeCtx(), battle: sacLock() })
-      game.state.activeBattle = null
-      game.state.zones[0].cards.a = game.state.zones[0].cards.a.filter((c) => c.instanceId !== 'sac')
-      effectFor('sacrilegoBattle')!({
-        game, actor: 'a', card: sac, ctx: makeCtx(), battle: sacResolve({ survived: false }),
-      })
-      expect(mate.keywords).not.toContain('scrappy')
-    })
-
-    it('cuts 30k off every SS ship in hand on a survival', () => {
+    // M-1: every BUILT-IN ship in hand, of any faction — never a player-made one.
+    it('cuts 30k off every AI ship in hand on a survival', () => {
       const { game, sac } = staged()
       game.privates.a.hand.push(
         inst({ name: 'SS Ship', faction: 'SS', type: 'vehicle', vehicleType: 'ship' }),
+        inst({ name: 'DWG Ship', faction: 'DWG', type: 'vehicle', vehicleType: 'ship' }),
         inst({ name: 'SS Sub', faction: 'SS', type: 'vehicle', vehicleType: 'sub' }),
+        inst({ name: 'Custom', faction: 'SS', isBuiltIn: false, type: 'vehicle', vehicleType: 'ship' }),
       )
       game.state.activeBattle = null
       effectFor('sacrilegoBattle')!({ game, actor: 'a', card: sac, ctx: makeCtx(), battle: sacResolve() })
-      expect(game.privates.a.hand[0].meta.costDelta).toBe(SACRILEGO_COST_DELTA)
-      expect(game.privates.a.hand[1].meta.costDelta).toBeUndefined()
+      const byName = new Map(game.privates.a.hand.map((c) => [c.name, c.meta.costDelta]))
+      expect(byName.get('SS Ship')).toBe(SACRILEGO_COST_DELTA)
+      expect(byName.get('DWG Ship')).toBe(SACRILEGO_COST_DELTA)
+      expect(byName.get('SS Sub')).toBeUndefined()
+      expect(byName.get('Custom')).toBeUndefined()
     })
 
     it('cuts nothing when it did not survive', () => {
@@ -2149,6 +2134,9 @@ describe('wave 4 — battle triggers at resolve', () => {
       expect(mate.keywords).not.toContain('scrappy')
     })
 
+    // 2026-09-16: no effect WRITES scrappyOnLoan any more; the strip is kept for
+    // hulls in games dealt before the deploy.
+    //
     // ⚠ Fix round 1. The strip list (docs/claude/architecture.md) has to shed
     // the loan's TWO mutations, not one: `meta.scrappyOnLoan` AND the
     // `scrappy` keyword itself pushed onto `entry.keywords` at lock. A hull
@@ -2175,73 +2163,37 @@ describe('wave 4 — battle triggers at resolve', () => {
       expect(snapshot.keywords).toContain('scrappy')
     })
 
-    // End to end through the real engine (ATTACK_ENEMY_FLEET -> the Stealthy
-    // response window Sacrilego's own printed keyword opens ->
-    // SUBMIT_BATTLE_REPORT -> DECIDE_BATTLE_REPORT), so the lock/resolve
-    // dispatch, the repair math, and the discard snapshot all run for real
-    // rather than being driven one at a time through effectFor.
-    it('loans SCRAPPY for a real battle, frees a repair, and sheds the loan on both survivors and the dead', () => {
+    // End to end through the real engine. Escort A lands in the repair band;
+    // with no loan it is NOT auto-repaired and its owner pays for the repair.
+    it('lends no SCRAPPY in a real battle — a repair in the band is paid for', () => {
       const game = makeGame({ turnNumber: 3 })
       const sac = zoneEntry({
         instanceId: 'sac', name: 'Sacrilego', vehicleType: 'ship',
-        keywords: ['scrappy', 'stealthy', 'mobile'], meta: { onBattleEffect: 'sacrilegoBattle' },
+        keywords: ['scrappy', 'stealthy'], meta: { onBattleEffect: 'sacrilegoBattle' },
       })
-      const shipA = zoneEntry({ instanceId: 'shipA', name: 'Escort A', vehicleType: 'ship' })
-      const shipB = zoneEntry({ instanceId: 'shipB', name: 'Escort B', vehicleType: 'ship' })
+      const shipA = zoneEntry({ instanceId: 'shipA', name: 'Escort A', vehicleType: 'ship', materialCost: 100_000 })
       const foe = zoneEntry({ instanceId: 'foe', name: 'Foe', vehicleType: 'ship' })
-      game.state.zones[0].cards.a.push(sac, shipA, shipB)
+      game.state.zones[0].cards.a.push(sac, shipA)
       game.state.zones[0].cards.b.push(foe)
-
-      // Alice (side a, the default activePlayer — ATTACK_ENEMY_FLEET is an
-      // on-turn action) attacks with her whole fleet. The single target (foe)
-      // carries no Stealthy, so no response window opens and the battle locks
-      // immediately — which is where the loan is granted for real.
+      game.state.resources.a.materials = 500_000
       const locked = applyAction(game, 'alice', {
         type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
       }, makeCtx())
       if (!locked.ok) throw new Error(locked.error)
-
       const lockedA = locked.game.state.zones[0].cards.a.find((c) => c.instanceId === 'shipA')!
-      expect(lockedA.keywords).toContain('scrappy')
-      expect(lockedA.meta.scrappyOnLoan).toBe(true)
-
-      // Sacrilego and the foe both comfortably survive. Escort A lands in the
-      // repair band (REPAIR_WINDOW_MIN_PERCENT=80 <= 80 < SURVIVE_HP_PERCENT=
-      // 90) with the LOANED keyword, so autoRepairIds should pick it for a
-      // free repair. Escort B falls below the band and is destroyed, still
-      // carrying the loan at the moment it is snapshotted into the discard.
+      expect(lockedA.keywords).not.toContain('scrappy')
+      expect(lockedA.meta.scrappyOnLoan).toBeUndefined()
       const submitted = applyAction(locked.game, 'alice', {
         type: 'SUBMIT_BATTLE_REPORT',
-        results: {
-          [sac.instanceId]: 95, [shipA.instanceId]: 80, [shipB.instanceId]: 40, [foe.instanceId]: 95,
-        },
-        repairs: [],
+        results: { sac: 95, shipA: 85, foe: 95 },
+        repairs: ['shipA'],
       }, makeCtx())
       if (!submitted.ok) throw new Error(submitted.error)
-
-      const materialsBefore = submitted.game.state.resources.a.materials
+      const before = submitted.game.state.resources.a.materials
       const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, makeCtx())
       if (!decided.ok) throw new Error(decided.error)
-
-      // (a) Escort A's repair was FREE: repairCostOf returns 0 for a Scrappy
-      // hull, so player A's materials are unchanged, and the log shows it was
-      // repaired rather than destroyed.
-      expect(decided.game.state.resources.a.materials).toBe(materialsBefore)
+      expect(decided.game.state.resources.a.materials).toBeLessThan(before)
       expect(decided.game.state.log.join('\n')).toContain('Escort A was repaired')
-
-      // (b) Escort A survived on the board — Sacrilego's own resolve trigger
-      // (it also survived) strips the loan from every hull still carrying it.
-      const survivorA = decided.game.state.zones[0].cards.a.find((c) => c.instanceId === 'shipA')!
-      expect(survivorA.keywords).not.toContain('scrappy')
-      expect(survivorA.meta.scrappyOnLoan).toBeUndefined()
-
-      // (c) Escort B never reaches Sacrilego's board-walking strip — it left
-      // the board in the SAME handler, before that strip runs. Only
-      // discardSnapshotOf's own fix keeps its discard entry from carrying the
-      // keyword forever.
-      const buried = decided.game.state.destroyed.a.find((c) => c.name === 'Escort B')!
-      expect(buried.keywords).not.toContain('scrappy')
-      expect((buried.meta as Record<string, unknown>).scrappyOnLoan).toBeUndefined()
     })
   })
 
@@ -3439,19 +3391,23 @@ describe('SS Nothung — a discount across the whole hand', () => {
       inst({ name: 'SS Sub', faction: 'SS', type: 'vehicle', vehicleType: 'sub' }),
       inst({ name: 'SS Ability', faction: 'SS', type: 'ability', vehicleType: null }),
       inst({ name: 'DWG Ship', faction: 'DWG', type: 'vehicle', vehicleType: 'ship' }),
+      inst({ name: 'Custom SS Ship', faction: 'SS', isBuiltIn: false, type: 'vehicle', vehicleType: 'ship' }),
     )
   }
 
-  it('discounts every SS ship in hand and nothing else', () => {
+  // M-1 (2026-09-16): every BUILT-IN ship in hand, of any faction. A
+  // player-made SS ship is the one that no longer qualifies.
+  it('discounts every AI ship in hand and nothing else', () => {
     const game = makeGame()
     hand(game)
     expect(effectFor('nothungOnPlay')!({ game, actor: 'a', card: inst({ name: 'Nothung' }), ctx: makeCtx() })).toBe(true)
     const byName = new Map(game.privates.a.hand.map((c) => [c.name, c.meta.costDelta]))
     expect(byName.get('SS Ship')).toBe(NOTHUNG_COST_DELTA)
     expect(byName.get('SS Ship 2')).toBe(-10_000 + NOTHUNG_COST_DELTA)
+    expect(byName.get('DWG Ship')).toBe(NOTHUNG_COST_DELTA)
     expect(byName.get('SS Sub')).toBeUndefined()
     expect(byName.get('SS Ability')).toBeUndefined()
-    expect(byName.get('DWG Ship')).toBeUndefined()
+    expect(byName.get('Custom SS Ship')).toBeUndefined()
   })
 
   it('leaves the OPPONENT hand alone', () => {
@@ -3865,7 +3821,7 @@ describe('SS Victoria — a discount on an SS ship in hand', () => {
   })
 
   it.each([
-    ['a non-SS ship', { faction: 'DWG' }],
+    ['a player-made ship', { isBuiltIn: false }],
     ['an SS sub', { vehicleType: 'sub' }],
     ['an SS ability', { type: 'ability' }],
   ])('refuses %s', (_label, over) => {
@@ -3875,6 +3831,17 @@ describe('SS Victoria — a discount on an SS ship in hand', () => {
     expect(effectFor('victoriaOnPlay')!({
       game, actor: 'a', card: victoria(), ctx: makeCtx(), targetInstanceId: target.instanceId,
     })).toBe(false)
+  })
+
+  // M-1: a built-in ship of ANY faction is an AI ship.
+  it('accepts a built-in ship of another faction', () => {
+    const game = makeGame()
+    const target = ssShip({ faction: 'DWG' })
+    game.privates.a.hand.push(target)
+    expect(effectFor('victoriaOnPlay')!({
+      game, actor: 'a', card: victoria(), ctx: makeCtx(), targetInstanceId: target.instanceId,
+    })).toBe(true)
+    expect(game.privates.a.hand[0].meta.costDelta).toBe(VICTORIA_COST_DELTA)
   })
 
   // DP6, Excalibur's own path: a VEHICLE carrying playOnCardEffect deploys to
@@ -4697,95 +4664,22 @@ describe('wave 7 — the LH [TG] Robotics pool reads a marker, not the faction',
 
 // ---------------------------------------------------------------------------
 // Wave 7, group C — TG Fear.
-//
-// "When this vehicle is played, spawn a friendly horror into each zone."
-// sapphireScreenEffect's shape exactly.
-describe('TG Fear — a Horror into every zone (wave 7)', () => {
-  // Horror carries a battle trigger of its own in its printed meta. Wave 7
-  // seeds it in a later task; the fixture carries it now because the RULING
-  // this file pins is that spawning preserves it.
-  const horror = snap({
-    name: 'Horror', faction: 'TG', vehicleType: 'ship', materialCost: 70_000,
-    keywords: [KEYWORDS.ROBOTIC, KEYWORDS.UPKEEP_REQUIRED],
-    meta: { onBattleEffect: 't_horrorTrigger', onPlayEffect: 't_neverFires' },
-  })
-
-  const playFear = () => {
+describe('TG Fear - draws a card (2026-09-16; it used to spawn Horrors)', () => {
+  it('spawns nothing and needs no catalog', () => {
     const card = inst({
-      name: 'Fear', faction: 'TG', vehicleType: 'ship', materialCost: 800_000,
+      name: 'Fear', faction: 'TG', vehicleType: 'ship', materialCost: 500_000,
       keywords: [KEYWORDS.BLOCKER, KEYWORDS.ROBOTIC, KEYWORDS.UPKEEP_REQUIRED],
       meta: { onPlayEffect: 'fearOnPlay' },
     })
-    const game = makeGame({ privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [] } } })
+    const game = makeGame({ privates: { a: { hand: [card], deck: [inst({ name: 'Top' })] }, b: { hand: [], deck: [] } } })
     game.state.resources.a.materials = 900_000
-    // Zone 1 is water — Fear is a ship, so this is its own legal deploy.
-    const r = applyAction(
-      game, 'alice',
-      { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 },
-      makeCtx({ catalog: [horror] }),
-    )
+    const r = applyAction(game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx())
     if (!r.ok) throw new Error(r.error)
-    return r.game
-  }
-
-  it('puts one Horror in each of the three zones, on the actor’s side', () => {
-    const game = playFear()
-    for (const zone of game.state.zones) {
-      expect(zone.cards.a.filter((c) => c.name === 'Horror')).toHaveLength(1)
-      expect(zone.cards.b).toHaveLength(0)
-    }
-  })
-
-  // §7.4: spawns bypass placement legality — biome and screen rules gate
-  // PLAYS. Horror is a ship and zone 3 is land, so this is the rule visible.
-  it('reaches the land zone a ship could never be played into', () => {
-    const land = playFear().state.zones[2]
-    expect(land.biome).toBe('land')
-    expect(land.cards.a.map((c) => c.name)).toEqual(['Horror'])
-  })
-
-  // ⚠ Spawning is not playing (§7.4), and that rule skips onPlayEffect and
-  // NOTHING ELSE. So each spawned Horror keeps its own printed battle trigger
-  // — wave 6's Nothung/Sacrilego ruling again, and almost certainly intended:
-  // Fear names Horror rather than a vanilla hull for a reason.
-  it('each Horror keeps its own printed battle trigger', () => {
-    for (const zone of playFear().state.zones) {
-      // Found by NAME, not by index: PLAY_CARD_TO_ZONE places the played hull
-      // before effects fire, so zone 1's cards.a[0] is Fear itself.
-      const spawned = zone.cards.a.find((c) => c.name === 'Horror')!
-      expect(spawned.meta.onBattleEffect).toBe('t_horrorTrigger')
-    }
-  })
-
-  it('does NOT fire the spawned Horrors’ own onPlayEffect', () => {
-    // t_neverFires is registered nowhere, so had spawning fired it,
-    // noteUnimplemented-style logging would be the only trace — assert the
-    // absence of any note naming it, and that Fear itself resolved.
-    const game = playFear()
-    expect(game.state.log.join(' ')).not.toContain('t_neverFires')
-  })
-
-  it('spawns the Horrors at full strength, keeping their printed keywords', () => {
-    const spawned = playFear().state.zones[0].cards.a.find((c) => c.name === 'Horror')!
-    expect(spawned.keywords).toContain(KEYWORDS.ROBOTIC)
-    expect(spawned.keywords).toContain(KEYWORDS.UPKEEP_REQUIRED)
-  })
-
-  it('gives every Horror its own instanceId', () => {
-    const ids = playFear().state.zones.map((z) => z.cards.a.find((c) => c.name === 'Horror')!.instanceId)
-    expect(new Set(ids).size).toBe(3)
-  })
-
-  // ⚠ Verified at runtime rather than by reading the source: makeCtx hands
-  // every unit test a catalog, so a missing flag is invisible here and shows
-  // up only as a dead card in production.
-  it('is registered as needing the catalog', () => {
-    expect(CATALOG_EFFECTS.has('fearOnPlay')).toBe(true)
+    for (const zone of r.game.state.zones) expect(zone.cards.a.filter((c) => c.name === 'Horror')).toHaveLength(0)
+    expect(r.game.privates.a.hand.map((c) => c.name)).toEqual(['Top'])
+    expect(CATALOG_EFFECTS.has('fearOnPlay')).toBe(false)
   })
 })
-
-// ---------------------------------------------------------------------------
-// Wave 7, group C — TG Obelisk.
 //
 // "Whenever this vehicle participates in a fleet battle, spawn a temporary
 // Mirth swarm to fight on your side in the battlefield."
@@ -4882,6 +4776,118 @@ describe('TG Obelisk — a Mirth Swarm battle summon (wave 7)', () => {
 
   it('is registered as needing the catalog', () => {
     expect(CATALOG_EFFECTS.has('obeliskBattle')).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 2026-09-16 — M-3: "No more than one mirth swarm can participate in any one
+// battle on a single side, even if spawned in by card effect."
+//
+// A DATA key on Mirth Swarm (`battleCap: 1`), enforced at joinBattle — the one
+// function that appends to a live battle — and pre-checked by the two spawners
+// so a second summon is SKIPPED AND LOGGED rather than failing the trigger.
+describe('Mirth Swarm battle cap (2026-09-16 M-3)', () => {
+  const mirthSwarm = snap({
+    name: 'Mirth Swarm', faction: 'TG', vehicleType: 'plane', materialCost: 200_000,
+    keywords: [KEYWORDS.ROBOTIC, KEYWORDS.TEMPORARY, KEYWORDS.HALF_COST],
+    meta: { summonOnly: true, battleCap: 1 },
+  })
+  const havocSwarm = snap({
+    name: 'Havoc Swarm', faction: 'TG', vehicleType: 'plane', materialCost: 120_000,
+    keywords: [KEYWORDS.ROBOTIC, KEYWORDS.TEMPORARY, KEYWORDS.HALF_COST],
+    meta: { summonOnly: true },
+  })
+  const capCtx = () => makeCtx({ catalog: [mirthSwarm, havocSwarm] })
+  const obelisk = (instanceId: string, meta: Record<string, unknown> = {}) => zoneEntry({
+    instanceId, name: 'Obelisk', faction: 'TG', vehicleType: 'ship', materialCost: 60_000,
+    meta: { onBattleEffect: 'obeliskBattle', ...meta }, playedOnTurn: 1,
+  })
+  const fight = (game: EngineGame, attackerIds: string[], defenderIds: string[]) => {
+    if (!declareForcedBattle(game, capCtx(), { zoneId: 1, aggressor: 'a', attackerIds, defenderIds, cause: 'Test' })) {
+      throw new Error('battle not declared')
+    }
+    return game.state.activeBattle!
+  }
+  const swarmsOn = (battle: NonNullable<EngineGame['state']['activeBattle']>, ids: string[]) =>
+    battle.summons.filter((s) => s.name === 'Mirth Swarm' && ids.includes(s.instanceId)).length
+
+  it('two Obelisks on one side field ONE Mirth Swarm, and the second is logged as held back', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zones[0].cards.a.push(obelisk('ob1'), obelisk('ob2'))
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe', playedOnTurn: 1 }))
+    const battle = fight(game, ['ob1', 'ob2'], ['foe'])
+    expect(swarmsOn(battle, battle.attackerIds)).toBe(1)
+    expect(game.state.log.join('\n')).toContain('holds its Mirth Swarm back')
+    expect(game.state.log.join('\n')).not.toContain('could not resolve')
+  })
+
+  it('an Obelisk on EACH side fields one each — the cap is per side', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zones[0].cards.a.push(obelisk('ob1'))
+    game.state.zones[0].cards.b.push(obelisk('ob2'))
+    const battle = fight(game, ['ob1'], ['ob2'])
+    expect(swarmsOn(battle, battle.attackerIds)).toBe(1)
+    expect(swarmsOn(battle, battle.defenderIds)).toBe(1)
+  })
+
+  // The exact case M-2 makes reachable: Mirth Factory on an Obelisk.
+  it('an Obelisk escorted by a Mirth Factory still fields one Mirth Swarm', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zones[0].cards.a.push(obelisk('ob1', { factoryEscort: 'mirthFactoryEffect' }))
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe', playedOnTurn: 1 }))
+    const battle = fight(game, ['ob1'], ['foe'])
+    expect(battle.summons.map((s) => s.name)).toEqual(['Mirth Swarm'])
+  })
+
+  it('a Havoc Swarm escort is not capped — different card, different cardId', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zones[0].cards.a.push(obelisk('ob1', { factoryEscort: 'havocFactoryEffect' }))
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe', playedOnTurn: 1 }))
+    const battle = fight(game, ['ob1'], ['foe'])
+    expect(battle.summons.map((s) => s.name).sort()).toEqual(['Havoc Swarm', 'Mirth Swarm'])
+  })
+
+  // "However it got there": a BOARD Mirth Swarm (Drones) already in the
+  // battle counts, so the Obelisk's summon is held back.
+  it('counts a board Mirth Swarm already fighting on that side', () => {
+    const game = makeGame({ turnNumber: 3 })
+    const board = zoneEntry({ ...mirthSwarm, instanceId: 'drone1', playedOnTurn: 3 })
+    game.state.zones[0].cards.a.push(obelisk('ob1'), board)
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe', playedOnTurn: 1 }))
+    const battle = fight(game, ['ob1', 'drone1'], ['foe'])
+    expect(battle.summons).toHaveLength(0)
+  })
+
+  it('joinBattle itself refuses a capped hull, so no future spawner can bypass it', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'mine', playedOnTurn: 1 }))
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe', playedOnTurn: 1 }))
+    fight(game, ['mine'], ['foe'])
+    const [first, second] = summonHulls(game, capCtx(), 'Mirth Swarm', 2)!
+    expect(joinBattle(game, 'a', first.instanceId, first)).toBe(true)
+    expect(battleCapReached(game, 'a', second)).toBe(true)
+    expect(joinBattle(game, 'a', second.instanceId, second)).toBe(false)
+    expect(game.state.activeBattle!.summons).toHaveLength(1)
+  })
+
+  it('a hull without battleCap, or with a non-numeric one, is never capped', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'mine', playedOnTurn: 1 }))
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe', playedOnTurn: 1 }))
+    fight(game, ['mine'], ['foe'])
+    const havocs = summonHulls(game, capCtx(), 'Havoc Swarm', 2)!
+    for (const h of havocs) expect(joinBattle(game, 'a', h.instanceId, h)).toBe(true)
+    const typo = { ...havocs[0], instanceId: 'typo', meta: { battleCap: '1' } }
+    expect(battleCapReached(game, 'a', typo)).toBe(false)
+    // A cap in (0, 1) floors to 0, and 0 is "uncapped", not "unjoinable": the
+    // header's strict reading is about the FLOORED value, so 0.5 must not turn
+    // into a hull that nothing can ever field (2026-09-16 review, minor B).
+    const half = { ...havocs[0], instanceId: 'half', meta: { battleCap: 0.5 } }
+    expect(battleCapReached(game, 'a', half)).toBe(false)
+  })
+
+  it('battleCap is a recognised data key, so Mirth Swarm can carry text and no effect name', () => {
+    expect([...DATA_EFFECT_KEYS]).toContain('battleCap')
   })
 })
 
@@ -5769,6 +5775,39 @@ describe('TG Havoc/Mirth Factory — a rider on a hull (wave 7)', () => {
     expect(r).toMatchObject({ ok: false, status: 400 })
   })
 
+  // M-2 (2026-09-16): Mirth Factory targets a friendly AI SHIP — isAiShip,
+  // the M-1 predicate — while Havoc Factory still reads ROBOTIC.
+  it('M-2: Mirth Factory accepts a friendly built-in ship that is not ROBOTIC', () => {
+    const r = playOnto('plain1', 'Mirth', (g) => {
+      g.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'plain1', keywords: [], playedOnTurn: 1 }))
+    })
+    if (!r.ok) throw new Error(r.error)
+    expect(findVehicle(r.game.state, 'plain1')!.entry.meta.factoryEscort).toBe('mirthFactoryEffect')
+  })
+
+  it('M-2: Mirth Factory refuses a ROBOTIC hull that is not a ship', () => {
+    const r = playOnto('bot-plane', 'Mirth', (g) => {
+      g.state.zones[0].cards.a.push(zoneEntry({
+        instanceId: 'bot-plane', vehicleType: 'plane', keywords: [KEYWORDS.ROBOTIC], playedOnTurn: 1,
+      }))
+    })
+    expect(r).toMatchObject({ ok: false, status: 400 })
+  })
+
+  it('M-2: Mirth Factory refuses a player-made ship', () => {
+    const r = playOnto('custom1', 'Mirth', (g) => {
+      g.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'custom1', isBuiltIn: false, playedOnTurn: 1 }))
+    })
+    expect(r).toMatchObject({ ok: false, status: 400 })
+  })
+
+  it('M-2: Havoc Factory still refuses a plain built-in ship — its text says robotic', () => {
+    const r = playOnto('plain1', 'Havoc', (g) => {
+      g.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'plain1', keywords: [], playedOnTurn: 1 }))
+    })
+    expect(r).toMatchObject({ ok: false, status: 400 })
+  })
+
   // Fight the stamped hull and return the locked battle.
   const fightWith = (entry: ReturnType<typeof robotic>, aggressor: 'a' | 'b' = 'a') => {
     const game = makeGame({ turnNumber: 3, activePlayer: 'alice' })
@@ -6476,7 +6515,7 @@ describe('2026-09-02 — WF Buzzsaw', () => {
   })
 })
 
-describe('2026-09-02 — WF Slasher', () => {
+describe('WF Slasher — one free Earth Raker (2026-09-16; two before)', () => {
   const raker = snap({
     name: 'Earth Raker', faction: 'WF', type: 'vehicle', vehicleType: 'ship',
     materialCost: 50_000, blueprintCost: 51_000, keywords: ['stealthy'],
@@ -6487,18 +6526,11 @@ describe('2026-09-02 — WF Slasher', () => {
       game, actor: 'a', card: inst({ name: 'Slasher', faction: 'WF' }), ctx: makeCtx({ catalog }),
     })
 
-  it('puts exactly two Earth Rakers into hand and resyncs the count', () => {
+  it('puts exactly one Earth Raker into hand and resyncs the count', () => {
     const game = makeGame()
     expect(fire(game)).toBe(true)
-    expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Earth Raker', 'Earth Raker'])
-    expect(game.state.counts.a.hand).toBe(2)
-  })
-
-  it('gives the two copies distinct instanceIds', () => {
-    const game = makeGame()
-    fire(game)
-    const [one, two] = game.privates.a.hand
-    expect(one.instanceId).not.toBe(two.instanceId)
+    expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Earth Raker'])
+    expect(game.state.counts.a.hand).toBe(1)
   })
 
   // "They cost 0" is a PRICE, not a rewrite — balmungOnPlay's ruling. costDelta
@@ -6509,7 +6541,7 @@ describe('2026-09-02 — WF Slasher', () => {
   it('prices them at zero without making them worthless', () => {
     const game = makeGame()
     expect(fire(game)).toBe(true)
-    expect(game.privates.a.hand).toHaveLength(2)
+    expect(game.privates.a.hand).toHaveLength(SLASHER_EARTH_RAKER_COUNT)
     for (const c of game.privates.a.hand) {
       expect(c.materialCost).toBe(50_000)
       expect(effectiveCostInGame(game.state, 'a', c)).toBe(0)
@@ -6704,11 +6736,25 @@ describe('SS Tyr — a discount that grows in your hand', () => {
     expect(priceAt(5, 3)).toBe(950_000 - 2 * TYR_HAND_DISCOUNT)
   })
 
-  // The floor is effectiveCostInGame's existing Math.max(0, …). This asserts
-  // the PRICE, not a second clamp — one added here would be untested and
-  // unneeded (spec §4.2).
-  it('bottoms out at free rather than going negative', () => {
-    expect(priceAt(100, 1)).toBe(0)
+  // M-7 (2026-09-16): "Min 500k". The decay alone can never take the printed
+  // price below TYR_MIN_COST — 950k − 500k = 450k is seven and a half steps,
+  // so step 8 lands exactly on the floor and step 100 stays there.
+  it('never decays below TYR_MIN_COST', () => {
+    expect(priceAt(9, 1)).toBe(TYR_MIN_COST)
+    expect(priceAt(100, 1)).toBe(TYR_MIN_COST)
+  })
+
+  it('takes the last partial step down to the floor, not past it', () => {
+    expect(priceAt(8, 1)).toBe(950_000 - 7 * TYR_HAND_DISCOUNT) // 530k, above the floor
+    expect(priceAt(9, 1)).toBe(500_000)                          // 8 steps would be 470k — floored
+  })
+
+  // Q5: the floor is on Tyr's OWN decay. Another card's stamp still applies
+  // beneath it, so an Excalibur'd Tyr at the floor costs 300k.
+  it('lets other discounts apply beneath the floor', () => {
+    const card = tyr(1)
+    card.meta = { ...card.meta, costDelta: EXCALIBUR_COST_DELTA }
+    expect(effectiveCostInGame(makeGame().state, 'a', card, 100)).toBe(TYR_MIN_COST + EXCALIBUR_COST_DELTA)
   })
 
   // ⚠ THE PRODUCTION CASE. Hands live in game_players rows, which
@@ -6845,14 +6891,15 @@ describe('SS Cash advance — 150k and a card', () => {
 })
 
 describe('SS Trondheim and Resolute — a discounted SS ship out of the deck', () => {
-  // The SS ship is pushed LAST, with two non-matches ahead of it, so the
-  // draw can only be explained by the FILTER (faction + type + vehicleType)
-  // picking it out — not by fixture order. A "grab deck[0]" regression would
-  // return 'SS Sub' here and fail every assertion below.
+  // The AI ship is pushed LAST, with two non-matches ahead of it, so the draw
+  // can only be explained by the FILTER (isBuiltIn + type + vehicleType)
+  // picking it out — not by fixture order. Since M-1 the non-matches are an SS
+  // sub and a PLAYER-MADE SS ship; a "grab deck[0]" regression would return
+  // 'SS Sub' here and fail every assertion below.
   const deckOf = (game: EngineGame) => {
     game.privates.a.deck.push(
       inst({ name: 'SS Sub', faction: 'SS', type: 'vehicle', vehicleType: 'sub' }),
-      inst({ name: 'DWG Ship', faction: 'DWG', type: 'vehicle', vehicleType: 'ship' }),
+      inst({ name: 'Home-Brew', faction: 'SS', isBuiltIn: false, type: 'vehicle', vehicleType: 'ship' }),
       inst({ name: 'SS Ship A', faction: 'SS', type: 'vehicle', vehicleType: 'ship', materialCost: 300_000 }),
     )
   }
@@ -6860,14 +6907,25 @@ describe('SS Trondheim and Resolute — a discounted SS ship out of the deck', (
   it.each([
     ['trondheimOnDeath', TRONDHEIM_COST_DELTA],
     ['resoluteOnPlay', RESOLUTE_COST_DELTA],
-  ])('%s pulls an SS SHIP and stamps %i on it', (name, delta) => {
+  ])('%s pulls an AI SHIP and stamps %i on it', (name, delta) => {
     const game = makeGame()
     deckOf(game)
     expect(effectFor(name)!({ game, actor: 'a', card: inst(), ctx: makeCtx() })).toBe(true)
     expect(game.privates.a.hand.map((c) => c.name)).toEqual(['SS Ship A'])
     expect(game.privates.a.hand[0].meta.costDelta).toBe(delta)
-    expect(game.privates.a.deck.map((c) => c.name)).toEqual(['SS Sub', 'DWG Ship'])
+    expect(game.privates.a.deck.map((c) => c.name)).toEqual(['SS Sub', 'Home-Brew'])
     expect(game.state.counts.a).toEqual({ hand: 1, deck: 2 })
+  })
+
+  // M-1: a built-in ship of another faction is an AI ship too.
+  it.each(['trondheimOnDeath', 'resoluteOnPlay'])('%s draws a built-in ship of another faction', (name) => {
+    const game = makeGame()
+    game.privates.a.deck.push(
+      inst({ name: 'SS Sub', faction: 'SS', type: 'vehicle', vehicleType: 'sub' }),
+      inst({ name: 'DWG Ship', faction: 'DWG', type: 'vehicle', vehicleType: 'ship' }),
+    )
+    expect(effectFor(name)!({ game, actor: 'a', card: inst(), ctx: makeCtx() })).toBe(true)
+    expect(game.privates.a.hand.map((c) => c.name)).toEqual(['DWG Ship'])
   })
 
   // A deck pool is legitimately empty ("if you have one" is the shape of the
@@ -7028,15 +7086,23 @@ describe('SS Argonaut — a parting discount', () => {
     expect(cut).toHaveLength(1)
   })
 
-  it('ignores SS subs, SS abilities and other factions', () => {
+  it('ignores SS subs, SS abilities and player-made ships', () => {
     const game = makeGame()
     game.privates.a.hand.push(
       inst({ name: 'Sub', faction: 'SS', type: 'vehicle', vehicleType: 'sub' }),
       inst({ name: 'Ability', faction: 'SS', type: 'ability', vehicleType: null }),
-      inst({ name: 'DWG', faction: 'DWG', type: 'vehicle', vehicleType: 'ship' }),
+      inst({ name: 'Custom', faction: 'SS', isBuiltIn: false, type: 'vehicle', vehicleType: 'ship' }),
     )
     effectFor('argonautOnDeath')!({ game, actor: 'a', card: argonaut(), ctx: makeCtx() })
     expect(game.privates.a.hand.every((c) => c.meta.costDelta === undefined)).toBe(true)
+  })
+
+  // M-1: a built-in ship of another faction is in the pool.
+  it('discounts a built-in ship of another faction', () => {
+    const game = makeGame()
+    game.privates.a.hand.push(inst({ name: 'DWG', faction: 'DWG', type: 'vehicle', vehicleType: 'ship' }))
+    effectFor('argonautOnDeath')!({ game, actor: 'a', card: argonaut(), ctx: makeCtx() })
+    expect(game.privates.a.hand[0].meta.costDelta).toBe(ARGONAUT_COST_DELTA)
   })
 
   // A death effect that returns false logs a failed trigger without rejecting
@@ -8053,10 +8119,12 @@ describe('SS deck-search cards reshuffle an empty deck (wave 8)', () => {
   })
 
   // The discard is the deck's reservoir, not a second pool: a card that is not
-  // an SS ship comes back into the DECK and stays there.
+  // an AI ship comes back into the DECK and stays there. Since M-1 that is a
+  // PLAYER-MADE ship, not one of another faction — a built-in DWG ship would
+  // now match.
   it('leaves a non-matching card in the deck the reshuffle built', () => {
     const game = makeGame()
-    game.state.destroyed.a.push(snap({ name: 'Foreign', faction: 'DWG', vehicleType: 'ship' }))
+    game.state.destroyed.a.push(snap({ name: 'Foreign', faction: 'DWG', isBuiltIn: false, vehicleType: 'ship' }))
     const ok = effectFor('resoluteOnPlay')!({
       game, actor: 'a', card: inst({ name: 'Resolute' }), ctx: makeCtx(),
     })

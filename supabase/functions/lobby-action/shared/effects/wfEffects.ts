@@ -22,12 +22,14 @@ import type { EffectPayload } from './registry.ts'
 //
 // "AI vehicle" is isBuiltIn === true, NOT a faction (spec R-5) — this card's
 // own meaning, which the 2026-09-02 pass deliberately leaves unchanged. Air
-// Strafe and Martyr Attack still read "AI"/"player design" the same
-// built-in way. Repairmen Ready and Excalibur do NOT: that same pass moved
-// both of those from isBuiltIn to faction === 'SS', so their printed phrase
-// is no longer "AI vehicle" either ("SS vehicle" and "SS ship"). This card
-// staying on the built-in meaning is emphatically NOT a WF
-// filter, which is the plausible-looking wrong answer R-5 exists to forbid.
+// Strafe and Martyr Attack still read "AI"/"player design" the same built-in
+// way, and so — again, since the 2026-09-16 pass's M-1 reversed R-5 — does
+// Excalibur, through its own isAiShip predicate (built-in AND a ship, which
+// is narrower than this card's plain "vehicle"). Repairmen Ready is the one
+// that stayed on faction === 'SS' through both passes, so its printed phrase
+// is "SS vehicle", never "AI vehicle". This card staying on the built-in
+// meaning is emphatically NOT a WF filter, which is the plausible-looking
+// wrong answer R-5 exists to forbid.
 //
 // It reads the owner's OWN DECK, so it takes NO { needsCatalog: true }:
 // nothing here touches ctx.catalog, and "it draws cards" is not the test for
@@ -146,13 +148,14 @@ registerEffect('buzzsawOnPlay', ({ game, actor, card, ctx }) => {
   return true
 }, { needsCatalog: true })
 
-// "When this is played, add two earth rakers to your hand. they cost 0."
+// "When this is played, add an earth raker to your hand. it costs 0." (was
+// "add two earth rakers... they cost 0" before 2026-09-16.)
 //
-// balmungOnPlay's shape, twice, and with balmungOnPlay's ruling on what "cost
+// balmungOnPlay's shape, once, and with balmungOnPlay's ruling on what "cost
 // 0" means: a costDelta PRICE, never a rewritten materialCost. costDelta is
 // summed into effectiveCostInGame and never reaches effectiveMaterialCostOf, so
 // a free Earth Raker still deals its printed base damage and still costs its
-// printed repair — which is exactly what "they cost 0" says. loggerheadOnDeath
+// printed repair — which is exactly what "it costs 0" says. loggerheadOnDeath
 // DOES mint at materialCost: 0 and is not the precedent: its copy goes into a
 // DECK, where nothing but the price ever reads that number.
 //
@@ -170,7 +173,7 @@ registerEffect('slasherOnPlay', ({ game, actor, card, ctx }) => {
   }
   // Never named: state.log is public and these are entering a hidden hand.
   game.state.log.push(
-    `${card.name} slips ${SLASHER_EARTH_RAKER_COUNT} cards into player ${actor.toUpperCase()}'s hand, free of charge`,
+    `${card.name} slips ${SLASHER_EARTH_RAKER_COUNT} card(s) into player ${actor.toUpperCase()}'s hand, free of charge`,
   )
   return true
 }, { needsCatalog: true })
@@ -454,6 +457,10 @@ function judgementSelf(game: EngineGame, actor: Side, card: { instanceId: string
   return found && found.side === actor ? found : null
 }
 
+// Orphaned by the 2026-09-16 pass (M-10): the card lost its text and its key.
+// Kept registered for the frozen snapshots that still name it; the name must
+// never be reused (spec §9.2).
+//
 // "When played, gain 1cp" (Scourge) and "When played, gain 1 cp." (Disemboweler).
 // Identical bodies, two registry ids: a name two cards could carry is the
 // Kraken/Paddlegun collision, and the implementation behind it is redeployed

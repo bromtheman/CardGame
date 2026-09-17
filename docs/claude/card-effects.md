@@ -64,14 +64,24 @@ Some meta keys are **plain data, not effect names**: `additionalSpawns`,
 `resourceSurge`, `defensiveOmission`, `activateCpCost`, `costDelta`,
 `summonOnly`, `retired` (a balance pass took the card out of drafting and deck
 legality; its row stays seeded so in-flight games and unedited decks still
-resolve it — spec 2026-09-02 §2.1), and `uniquePerZone` (2026-09-07: at most
+resolve it — spec 2026-09-02 §2.1), `uniquePerZone` (2026-09-07: at most
 one copy of this card per zone PER SIDE — TG Obelisk. Read by `legalZonesFor`,
 by `deployVehicle` (which zeroes the card's own extra copies, since
 `legalZonesFor` only ever cleared the FIRST hull) and by `moveEntry`, the
 chokepoint `MOVE_VEHICLE` and [GT] Monsoon share. Keyed on `cardId`, so a
 DWG-captured copy counts against the captor's own side without a special
-case). None carries a registry name, so all eight sit outside `TRIGGERS` /
-`ALL_META_KEYS` and **G1 and G3 never look at them**.
+case. Since 2026-09-16 it is listed in `DATA_EFFECT_KEYS`
+(`shared/effects/registry.ts`) because DWG Albacore's whole text is that rule
+and names no effect (G2 + `noteUnimplemented`)), `battleCap` (2026-09-16: at
+most n hulls of this `cardId` may fight on one side of one battle — TG Mirth
+Swarm at 1. Read by `joinBattle` through `battleCapReached`, which the two
+spawners pre-check so a second summon is skipped and logged rather than
+failed), and `homeSide` (2026-09-16, ENGINE-written like `grantedKeywords`:
+DWG Mutiny stamps the side a stolen hull came from; `discardCard` files the
+hull there when it leaves play and `discardSnapshotOf` strips it).
+`aircraftLock` has had no seeded carrier since 2026-09-16 (M-6) and stays for
+frozen snapshots. None carries a registry name, so all ten sit outside
+`TRIGGERS` / `ALL_META_KEYS` and **G1 and G3 never look at them**.
 
 ⚠ **Two data keys are written by the ENGINE, never seeded**: `grantedKeywords`
 and `grantedSpawns`, the per-instance record of what an effect granted a card
@@ -486,6 +496,10 @@ below. `ownerSide` and `ownerSideOf` no longer exist. The loan model is still
 described in the 2026-08-27 effect-coverage design spec (§9.1 and the
 `discardSnapshotOf` notes) — that spec is a record of the wave that shipped it,
 not current behaviour.
+
+A MUTINIED hull (2026-09-16) is neither a loan nor a copy: it is the enemy's
+own entry moved to your side for one turn, stamped `homeSide` so it goes back
+to their discard.
 
 `takeFromEnemyDeck` (Marauder, Paddlegun, Plunderer clause 2) **copies** one
 card out of the opponent's deck and stamps the copy `meta.capturedCopy: true`.

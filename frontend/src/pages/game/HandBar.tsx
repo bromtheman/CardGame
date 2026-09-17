@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 're
 import type { CardInstance, PublicGameState } from '@shared/engine/gameInit'
 import type { GameAction, Side } from '@shared/engine/engineTypes'
 import { effectiveCostInGame, effectName, legalZonesFor } from '@shared/engine/index'
-import { isSsShip } from '@shared/effects/ssEffects'
+import { isAiShip } from '@shared/effects/primitives'
 import { TRIGGERS } from '@shared/gameSettings'
 import { shortHandNumber } from '@shared/format'
 import { cardInstanceToRow } from '../../lib/cards'
@@ -25,38 +25,36 @@ function hasAnyMetaEffect(card: CardInstance): boolean {
 }
 
 // Excalibur and Victoria are DP6's hand direction's customers (spec §4.3,
-// departure 4): vehicles carrying playOnCardEffect whose target must be an SS
-// ship — mirrors SS_SHIP_FILTER in shared/effects/ssEffects.ts (ruling R-5,
-// 2026-09-02: the filter moved AI/built-in -> SS faction for both
-// excaliburEffect and, as of Task 10, victoriaOnPlay). The set is explicit
-// rather than "any playOnCardEffect" because the target filter below is
-// specific to these two — a future playOnCardEffect card with a different
-// target shape would need its own entry, not silent inclusion here. Double Up
-// (DWG) and Garrison (OW) are playOnCardEffect too but are ABILITIES, not
-// vehicles, with their own unrelated target shapes (a DWG ship under 400k; a
-// built-in vehicle of any faction) — out of scope for this predicate, which
-// isHandTarget below only ever applies to a VEHICLE handTargeting, never an
-// ability one.
+// departure 4): vehicles carrying playOnCardEffect whose target must be an AI
+// ship — isAiShip in shared/effects/primitives.ts (2026-09-16 M-1: built-in,
+// any faction; reverses R-5). The set is explicit rather than "any
+// playOnCardEffect" because the target filter below is specific to these
+// two — a future playOnCardEffect card with a different target shape would
+// need its own entry, not silent inclusion here. Double Up (DWG) and Garrison
+// (OW) are playOnCardEffect too but are ABILITIES, not vehicles, with their
+// own unrelated target shapes (a DWG ship under 400k; a built-in vehicle of
+// any faction) — out of scope for this predicate, which isHandTarget below
+// only ever applies to a VEHICLE handTargeting, never an ability one.
 const HAND_TARGET_EFFECTS = new Set(['excaliburEffect', 'victoriaOnPlay'])
 // The two vehicles' shared target shape, factored out so isHandTarget's
 // render-time filter (below) can never drift from what actually gets offered.
-// isSsShip is shared/effects/ssEffects.ts's own "an SS ship" predicate — this
+// isAiShip is shared/effects/primitives.ts's own "an AI ship" predicate — this
 // adds only the self-exclusion a hand-target check needs and a real card
 // would never need against itself.
-function isSsShipTarget(c: CardInstance, card: CardInstance): boolean {
-  return c.instanceId !== card.instanceId && isSsShip(c)
+function isAiShipTarget(c: CardInstance, card: CardInstance): boolean {
+  return c.instanceId !== card.instanceId && isAiShip(c)
 }
 // Checked against the registry name, not the card name, so a rename doesn't
 // silently break it. Used only to decide whether to offer the two-step hand
 // pick at all; the server re-validates the real target when the action is
 // sent. With no legal target this returns false and the vehicle falls
 // through to a plain zone play — Excalibur and Victoria must stay playable
-// with an empty hand of SS ships, or a 550k blocker (or Victoria herself)
+// with an empty hand of AI ships, or a 550k blocker (or Victoria herself)
 // becomes unplayable.
 function hasLegalHandTarget(card: CardInstance, hand: CardInstance[]): boolean {
   const effect = effectName(card, TRIGGERS.PLAY_ON_CARD)
   if (effect === null || !HAND_TARGET_EFFECTS.has(effect)) return false
-  return hand.some((c) => isSsShipTarget(c, card))
+  return hand.some((c) => isAiShipTarget(c, card))
 }
 
 // Horizontal hand of full PhysicalCards.
@@ -294,14 +292,14 @@ export function HandBar({
             // zone click, but the vehicle itself is still sitting in this hand.
             (moveMode?.phase === 'pickZone' && moveMode.kind === 'handTarget' && moveMode.instanceId === c.instanceId)
           // A VEHICLE handTargeting (Excalibur/Victoria) narrows to the same
-          // SS-ship shape hasLegalHandTarget offered it for — otherwise every
-          // other hand card lit up as clickable and a click on, say, a DWG
-          // ship sent an action the server could only 400. An ABILITY
-          // handTargeting (Double Up, Garrison) keeps the looser "any other
-          // hand card" set: each has its own target shape the server
+          // AI-ship shape hasLegalHandTarget offered it for — otherwise every
+          // other hand card lit up as clickable and a click on, say, a
+          // player-made SS ship sent an action the server could only 400. An
+          // ABILITY handTargeting (Double Up, Garrison) keeps the looser "any
+          // other hand card" set: each has its own target shape the server
           // validates, and neither is this predicate's concern.
           const isHandTarget = handTargeting !== null && c.instanceId !== handTargeting.instanceId
-            && (handTargeting.type !== 'vehicle' || isSsShipTarget(c, handTargeting))
+            && (handTargeting.type !== 'vehicle' || isAiShipTarget(c, handTargeting))
           const lifted = liftedId === c.instanceId
           return (
             <div

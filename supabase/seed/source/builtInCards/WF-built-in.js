@@ -72,7 +72,7 @@ export const wfVehicles = [
         name: 'Purifier',
         isBuiltIn: true,
         cardText: 'This vehicle does no damage to the enemy base. Whenever it participates in a fleet battle, the enemy forces must spawn in first, even if they are defending.',
-        materialCost: 750000,
+        materialCost: 760000,
         blueprintCost: 765000,
         cpCost: 0,
         imageUrl: 'purifier.png',
@@ -100,7 +100,7 @@ export const wfVehicles = [
     {
         name: 'Scourge',
         isBuiltIn: true,
-        cardText: 'When played, gain 1cp',
+        cardText: '',
         materialCost: 225000,
         blueprintCost: 209000,
         cpCost: 0,
@@ -110,9 +110,11 @@ export const wfVehicles = [
         type: 'vehicle',
         faction: FACTIONS.WF,
         blueprintId: null,
-        keywords: [KEYWORDS.SCRAPPY],
+        keywords: [KEYWORDS.SCRAPPY, KEYWORDS.BLOCKER],
         meta: {
-            [TRIGGERS.ON_PLAY]: 'scourgeOnPlay',
+            // Orphaned 2026-09-16 (M-10): the CP grant is gone. scourgeOnPlay
+            // stays registered for in-flight snapshots (DELIBERATE_ORPHANS in
+            // supabase/seed/effectCoverage.test.ts) and must never be reused.
         }
     },
     {
@@ -152,7 +154,7 @@ export const wfVehicles = [
     {
         name: 'Disemboweler',
         isBuiltIn: true,
-        cardText: 'When played, gain 1 cp.',
+        cardText: '',
         materialCost: 300000,
         blueprintCost: 305000,
         cpCost: 0,
@@ -162,9 +164,11 @@ export const wfVehicles = [
         type: 'vehicle',
         faction: FACTIONS.WF,
         blueprintId: null,
-        keywords: [],
+        keywords: [KEYWORDS.STEALTHY],
         meta: {
-            [TRIGGERS.ON_PLAY]: 'disembowelerOnPlay',
+            // Orphaned 2026-09-16 (M-10): the CP grant is gone. disembowelerOnPlay
+            // stays registered for in-flight snapshots (DELIBERATE_ORPHANS in
+            // supabase/seed/effectCoverage.test.ts) and must never be reused.
         }
     },
     {
@@ -188,7 +192,7 @@ export const wfVehicles = [
     {
         name: 'Slasher',
         isBuiltIn: true,
-        cardText: 'When this is played, add two earth rakers to your hand. they cost 0.',
+        cardText: 'When this is played, add an earth raker to your hand. it costs 0.',
         materialCost: 300000,
         blueprintCost: 353000,
         cpCost: 0,
@@ -329,7 +333,7 @@ export const wfVehicles = [
     {
         name: 'Basher',
         isBuiltIn: true,
-        cardText: 'When this is destroyed, draw a card',
+        cardText: 'When this vehicle is destroyed, draw a card',
         materialCost: 210000,
         blueprintCost: 214000,
         cpCost: 0,

@@ -8,10 +8,20 @@ import { loadSeedData } from './transform'
 // Asserted in BOTH directions: a card missing from this list is not retired,
 // and a card in it is. A one-directional check would stay green if a later
 // pass retired a card by accident.
-const RETIRED = ['OW:Halberd', 'SS:Dryad', 'TG:Acceptance', 'TG:Amusement', 'WF:Harbringer']
+// TG:Horror joined on 2026-09-16 (spec M-9): Fear's rewrite removed its last spawner.
+// DWG:Land Marauder joined on 2026-09-17 by owner decision, outside any pass.
+const RETIRED = [
+  'DWG:Land Marauder',
+  'OW:Halberd',
+  'SS:Dryad',
+  'TG:Acceptance',
+  'TG:Amusement',
+  'TG:Horror',
+  'WF:Harbringer',
+]
 
-describe('2026-09-02 retirements', () => {
-  it('retires exactly the five cards the pass names', async () => {
+describe('card retirements (2026-09-02, 2026-09-16, 2026-09-17)', () => {
+  it('retires exactly the seven cards named above', async () => {
     const { cards } = await loadSeedData()
     const actual = cards
       .filter((c) => (c.meta as { retired?: unknown } | undefined)?.retired === true)
@@ -37,6 +47,7 @@ describe('2026-09-02 retirements', () => {
       (cards.find((c) => `${c.faction}:${c.name}` === key)!.meta ?? {}) as Record<string, unknown>
     expect(meta('OW:Halberd').onDeathEffect).toBe('halberdOnDeath')
     expect(meta('SS:Dryad').onBattleEffect).toBe('dryadBattle')
+    expect(meta('TG:Horror').onBattleEffect).toBe('horrorBattle')
     expect(meta('WF:Harbringer').onBattleEffect).toBe('harbringerBattle')
   })
 })

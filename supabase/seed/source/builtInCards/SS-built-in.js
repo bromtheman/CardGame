@@ -21,7 +21,7 @@ export const ssVehicles = [
     },{
         name: 'Victoria',
         isBuiltIn: true,
-        cardText: 'When this vehicle is played, pick one SS ship in hand and reduce its cost by 75k',
+        cardText: 'When played, pick one AI ship in hand and reduce its cost by 75k',
         materialCost: 250000,
         blueprintCost: 270185,
         cpCost: 0,
@@ -39,7 +39,7 @@ export const ssVehicles = [
     {
         name: 'Trondheim',
         isBuiltIn: true,
-        cardText: 'When this vehicle is destroyed, draw an SS ship from your deck and reduce its cost by 75k',
+        cardText: 'When this vehicle is destroyed, draw an AI ship and reduce its cost by 75k',
         materialCost: 375000,
         blueprintCost: 393000,
         cpCost: 0,
@@ -89,7 +89,7 @@ export const ssVehicles = [
     },{
         name: 'Excalibur',
         isBuiltIn: true,
-        cardText: 'Pick one SS ship in hand and reduce its cost by 200k',
+        cardText: 'Pick one AI ship in hand and reduce its cost by 200k',
         materialCost: 550000,
         blueprintCost: 553900,
         cpCost: 0,
@@ -141,7 +141,7 @@ export const ssVehicles = [
     ,{
         name: 'Tyr',
         isBuiltIn: true,
-        cardText: 'This card costs 60k less for every turn it spends in your hand',
+        cardText: 'This card costs 60k less for every turn it spends in your hand. Min 500k',
         materialCost: 950000,
         blueprintCost: 983000,
         cpCost: 0,
@@ -151,7 +151,7 @@ export const ssVehicles = [
         type: 'vehicle',
         faction: FACTIONS.SS,
         blueprintId: null,
-        keywords: [KEYWORDS.BLOCKER],
+        keywords: [KEYWORDS.BLOCKER, KEYWORDS.FRAGILE],
         meta: {
             costModifier: 'tyrCostModifier',
         }
@@ -177,7 +177,7 @@ export const ssVehicles = [
     }, {
         name: 'Sacrilego',
         isBuiltIn: true,
-        cardText: 'Whenever this vehicle participates in a fleet battle, friendly ships receive SCRAPPY keyword for that battle. Whenever this vehicle survives a fleet battle, reduce the cost of SS ships in hand by 30k.',
+        cardText: 'Whenever this vehicle survives a fleet battle, reduce the cost of AI ships in hand by 30k.',
         materialCost: 10000,
         blueprintCost: 86000,
         cpCost: 0,
@@ -187,14 +187,14 @@ export const ssVehicles = [
         type: 'vehicle',
         faction: FACTIONS.SS,
         blueprintId: null,
-        keywords: [KEYWORDS.SCRAPPY, KEYWORDS.STEALTHY, KEYWORDS.MOBILE],
+        keywords: [KEYWORDS.SCRAPPY, KEYWORDS.STEALTHY],
         meta: {
             [TRIGGERS.ON_BATTLE_EFFECT]: 'sacrilegoBattle',
         }
     }, {
         name: 'Resolute',
         isBuiltIn: true,
-        cardText: 'When this vehicle is played, draw an SS ship from your deck and reduce its cost by 40k',
+        cardText: 'When this vehicle is played, draw an AI ship from your deck. reduce its cost by 40k',
         materialCost: 60000,
         blueprintCost: 63300,
         cpCost: 0,
@@ -269,7 +269,7 @@ export const ssVehicles = [
      {
         name: 'Argonaut',
         isBuiltIn: true,
-        cardText: 'When this vehicle is destroyed, reduce the cost of a random SS ship in your hand by 50k',
+        cardText: 'When this is destroyed, reduce the cost of a random AI ship in your hand by 50k',
         materialCost: 90000,
         blueprintCost: 94000,
         cpCost: 0,
@@ -335,7 +335,7 @@ export const ssVehicles = [
      {
         name: 'Nothung',
         isBuiltIn: true,
-        cardText: 'When this vehicle is played, reduce the cost of every SS ship in your hand by 40k',
+        cardText: 'When played, reduce the cost of all AI ships in your hand by 40k',
         materialCost: 400000,
         blueprintCost: 478000,
         cpCost: 0,
@@ -372,7 +372,7 @@ export const ssVehicles = [
         name: 'Blockade',
         isBuiltIn: true,
         cardText: 'Choose a zone, whenever the opponent plays a vehicle into that zone while you have at least one vehicle there, a fleet battle immediately begins in that zone. If you lose with no surviving vehicles, the blockade goes away, otherwise it remains.',
-        materialCost: 100000,
+        materialCost: 120000,
         blueprintCost: 0,
         cpCost: 0,
         imageUrl: 'blockade.png',
@@ -405,7 +405,7 @@ export const ssVehicles = [
      {
         name: 'Spectre',
         isBuiltIn: true,
-        cardText: 'When this vehicle is played, reduce your opponent CP by 1',
+        cardText: '',
         materialCost: 200000,
         blueprintCost: 214000,
         cpCost: 0,
@@ -417,7 +417,9 @@ export const ssVehicles = [
         blueprintId: null,
         keywords: [KEYWORDS.STEALTHY],
         meta: {
-            [TRIGGERS.ON_PLAY]: 'spectreOnPlay',
+            // Orphaned 2026-09-16 (M-10): the CP drain is gone. spectreOnPlay
+            // stays registered for in-flight snapshots (DELIBERATE_ORPHANS in
+            // supabase/seed/effectCoverage.test.ts) and must never be reused.
         }
     },
     {

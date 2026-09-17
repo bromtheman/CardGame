@@ -87,14 +87,21 @@ export const BOT_DECKS: Record<BotFaction, Record<string, number>> = {
     'Excruciator': 1,
     'The Repentance': 1,
   },
+  // Horror (50k ship) left this list when the 2026-09-16 balance pass retired
+  // it (M-9). Its two slots went to a second Frustration and a second Vengeful
+  // rather than another cheap ship: Obelisk and Nostalgia, the only TG ships
+  // under 100k, were already at the two-copy cap, and every other non-retired
+  // TG ship not at cap is 330k+ or upkeepRequired. Both stand-ins were already
+  // in the deck, so the bot's behaviour with them is self-play-proven, and
+  // neither needs a choice — Frustration is a plain Stealthy hull and Vengeful's
+  // trigger is passive. Fliers land exactly on the six-copy cap.
   TG: {
     'Curiosity': 2,
     'Obelisk': 2,
-    'Horror': 2,
     'Nostalgia': 2,
-    'Frustration': 1,
+    'Frustration': 2,
     'Spite': 2,
-    'Vengeful': 1,
+    'Vengeful': 2,
     'Ecstasy': 2,
     'Loathing': 2,
     '[TG] Obsession': 1,

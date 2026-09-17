@@ -94,7 +94,7 @@ export const dwgVehicles = [
         name: 'Pilferer',
         isBuiltIn: true,
         cardText: 'When played, spawn another copy of this vehicle into the zone',
-        materialCost: 130000,
+        materialCost: 100000,
         blueprintCost: 132000,
         cpCost: 0,
         imageUrl: 'pilferer.png',
@@ -129,7 +129,7 @@ export const dwgVehicles = [
     {
         name: 'Tarpon',
         isBuiltIn: true,
-        cardText: 'While this vehicle is alive, you may not play any other aircraft into this zone',
+        cardText: '',
         materialCost: 510000,
         blueprintCost: 511605,
         cpCost: 0,
@@ -139,11 +139,8 @@ export const dwgVehicles = [
         type: 'vehicle',
         faction: FACTIONS.DWG,
         blueprintId: null,
-        keywords: [KEYWORDS.FRAGILE, KEYWORDS.SUB_SCREEN],
+        keywords: [KEYWORDS.AIR_SCREEN],
         meta: {
-            // Same rule as Albacore, same data key — which is the point of
-            // making it data: one engine predicate serves both cards.
-            aircraftLock: true,
         }
     },{
         name: 'Corsair',
@@ -178,6 +175,10 @@ export const dwgVehicles = [
         keywords: [KEYWORDS.SCRAPPY, KEYWORDS.AIR_SCREEN],
         meta: {
             additionalSpawns: 1,
+            // Retired 2026-09-17 by owner decision, outside any balance pass. The row
+            // stays and keeps being upserted for the same reason as OW:Halberd (see the
+            // comment there): snapshots in existing decks and games must still resolve.
+            retired: true,
         }
     },{
         name: 'Loggerhead',
@@ -192,7 +193,8 @@ export const dwgVehicles = [
         type: 'vehicle',
         faction: FACTIONS.DWG,
         blueprintId: null,
-        keywords: [],
+        // +HALF_COST (2026-09-16), undoing 09-02's removal. SCRAPPY is still not restored.
+        keywords: [KEYWORDS.HALF_COST],
         meta: {
             [TRIGGERS.ON_DEATH]: 'loggerheadOnDeath',
         }
@@ -216,7 +218,7 @@ export const dwgVehicles = [
         name: 'Buccaneer',
         isBuiltIn: true,
         cardText: '',
-        materialCost: 225000,
+        materialCost: 220000,
         blueprintCost: 296000,
         cpCost: 0,
         imageUrl: 'buccaneer.png',
@@ -225,13 +227,13 @@ export const dwgVehicles = [
         type: 'vehicle',
         faction: FACTIONS.DWG,
         blueprintId: null,
-        keywords: [KEYWORDS.FRAGILE],
+        keywords: [KEYWORDS.SCRAPPY],
         meta: {
         }
     },{
         name: 'Spawn Buccaneer',
         isBuiltIn: true,
-        cardText: 'Spawn a Buccaneer into a zone. It is not temporary. It gains the Scrappy keyword.',
+        cardText: 'Spawn a Buccaneer into a zone. It gains the Scrappy keyword.',
         materialCost: 225000,
         blueprintCost: 0,
         cpCost: 0,
@@ -328,7 +330,7 @@ export const dwgVehicles = [
     },{
         name: 'Albacore',
         isBuiltIn: true,
-        cardText: 'While this vehicle is alive, you may not play any other aircraft into this zone',
+        cardText: 'While this vehicle is alive, you may not play another Albacore into this zone',
         materialCost: 260000,
         blueprintCost: 261000,
         cpCost: 0,
@@ -340,11 +342,11 @@ export const dwgVehicles = [
         blueprintId: null,
         keywords: [KEYWORDS.FRAGILE],
         meta: {
-            // "While this vehicle is alive, YOU may not play any other
-            // aircraft into this zone" — the OWNER's own aircraft, which is
-            // the opposite of AIR_SCREEN (spec §7.3, wave 6). Read by
-            // legalZonesFor off this key, never off a card name.
-            aircraftLock: true,
+            // "You may not play ANOTHER Albacore into this zone" (2026-09-16
+            // M-6): the wave-8 Obelisk mechanic — one per zone PER SIDE, keyed
+            // on cardId. It replaced the wider aircraftLock, which no seeded
+            // card carries now; the engine rule is kept (spec R-8).
+            uniquePerZone: true,
         }
     },{
         name: 'Recurring Threat',
@@ -366,7 +368,7 @@ export const dwgVehicles = [
     {
         name: 'Flying Squirrel Attack',
         isBuiltIn: true,
-        cardText: 'Choose an enemy vehicle, that vehicle fights alone against a flying squirrel (3x squadron)',
+        cardText: 'Choose an enemy vehicle, that vehicle fights alone against two flying squirrel (3x squadron)',
         materialCost: 100000,
         blueprintCost: 0,
         cpCost: 0,
@@ -381,9 +383,47 @@ export const dwgVehicles = [
         }
     },
     {
+        name: 'Mutiny',
+        isBuiltIn: true,
+        cardText: 'Choose an enemy vehicle, gain control of it and give it temporary',
+        materialCost: 400000,
+        blueprintCost: 0,
+        cpCost: 0,
+        imageUrl: 'mutiny.png',
+        playerId: null,
+        vehicleType: null,
+        type: 'ability',
+        faction: FACTIONS.DWG,
+        blueprintId: null,
+        meta: {
+            [TRIGGERS.PLAY_ON_VEHICLE]: 'mutinyEffect',
+        }
+    },
+    {
+        name: 'Brigand',
+        isBuiltIn: true,
+        cardText: 'When this is destroyed, draw a copy of Mutiny',
+        materialCost: 350000,
+        blueprintCost: 356000,
+        cpCost: 0,
+        imageUrl: 'brigand.png',
+        playerId: null,
+        vehicleType: VEHICLE_TYPES.SHIP,
+        type: 'vehicle',
+        faction: FACTIONS.DWG,
+        blueprintId: null,
+        // SCRAPPY beside a death trigger is deliberate (rule 10 as corrected;
+        // Argonaut's precedent): the free repair narrows the window, it does
+        // not close it.
+        keywords: [KEYWORDS.SCRAPPY],
+        meta: {
+            [TRIGGERS.ON_DEATH]: 'brigandOnDeath',
+        }
+    },
+    {
         name: 'Sinners Luck',
         isBuiltIn: true,
-        cardText: '',
+        cardText: 'when played, you may swap a friendly airship with an enemy airship or plane. If airship you provide is worth less than what you get, the opponent draws a card and reduces that cards cost by the difference.',
         materialCost: 250000,
         blueprintCost: 267000,
         cpCost: 0,
@@ -393,8 +433,9 @@ export const dwgVehicles = [
         type: 'vehicle',
         faction: FACTIONS.DWG,
         blueprintId: null,
-        keywords: [KEYWORDS.SCRAPPY],
+        keywords: [],
         meta: {
+            [TRIGGERS.ON_PLAY]: 'sinnersLuckOnPlay',
         }
     },
     {

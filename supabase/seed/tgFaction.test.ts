@@ -151,7 +151,8 @@ describe('the TG faction cards, as the 2026-09-02 pass left them', () => {
     Fear: { materialCost: 500_000, blueprintCost: 800_000, vehicleType: 'ship', type: V, keywords: ['blocker', 'robotic', 'upkeepRequired'] },
     Hysteria: { materialCost: 730_000, blueprintCost: 733_000, vehicleType: 'ship', type: V, keywords: ['blocker', 'robotic', 'upkeepRequired'] },
     Acceptance: { materialCost: 150_000, blueprintCost: 159_000, vehicleType: 'plane', type: V, keywords: ['halfCost', 'temporary'] },
-    Audacious: { materialCost: 660_000, blueprintCost: 665_000, vehicleType: 'plane', type: V, keywords: ['halfCost', 'temporary'] },
+    // +FRAGILE moved 2026-09-16 — also pinned in balance/2026-09-16.balance.test.ts.
+    Audacious: { materialCost: 660_000, blueprintCost: 665_000, vehicleType: 'plane', type: V, keywords: ['fragile', 'halfCost', 'temporary'] },
     Spite: { materialCost: 120_000, blueprintCost: 128_000, vehicleType: 'sub', type: V, keywords: [] },
     Agony: { materialCost: 375_000, blueprintCost: 440_000, vehicleType: 'sub', type: V, keywords: ['blocker'] },
     Vengeful: { materialCost: 150_000, blueprintCost: 168_000, vehicleType: 'sub', type: V, keywords: [] },
@@ -160,11 +161,12 @@ describe('the TG faction cards, as the 2026-09-02 pass left them', () => {
     'Mirth Swarm': { materialCost: 200_000, blueprintCost: 200_000, vehicleType: 'plane', type: V, keywords: ['halfCost', 'robotic', 'temporary'] },
     'Havoc Factory': { materialCost: 25_000, blueprintCost: 0, vehicleType: null, type: A, keywords: [] },
     'Mirth Factory': { materialCost: 60_000, blueprintCost: 0, vehicleType: null, type: A, keywords: [] },
-    Obelisk: { materialCost: 40_000, blueprintCost: 32_000, vehicleType: 'ship', type: V, keywords: ['stealthy'] },
+    Obelisk: { materialCost: 60_000, blueprintCost: 32_000, vehicleType: 'ship', type: V, keywords: [] },
     Loathing: { materialCost: 225_000, blueprintCost: 268_000, vehicleType: 'ship', type: V, keywords: [] },
     Wonder: { materialCost: 700_000, blueprintCost: 865_000, vehicleType: 'ship', type: V, keywords: [] },
     Repurpose: { materialCost: 0, blueprintCost: 0, vehicleType: null, type: A, keywords: [] },
-    'Spawn Audacious': { materialCost: 40_000, blueprintCost: 0, vehicleType: null, type: A, keywords: [] },
+    // 40k -> 400k moved 2026-09-16 (ruling Q7) — also pinned in balance/2026-09-16.balance.test.ts.
+    'Spawn Audacious': { materialCost: 400_000, blueprintCost: 0, vehicleType: null, type: A, keywords: [] },
     Mania: { materialCost: 270_000, blueprintCost: 574_000, vehicleType: 'ship', type: V, keywords: ['robotic', 'upkeepRequired'] },
   }
 

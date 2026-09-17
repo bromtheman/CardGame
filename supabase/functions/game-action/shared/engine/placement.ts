@@ -37,20 +37,16 @@ function screenBlocks(state: PublicGameState, side: Side, zoneId: number, vehicl
   return false
 }
 
-// Albacore and Tarpon: "While this vehicle is alive, YOU may not play any
-// other aircraft into this zone" (spec §7.3, wave 6).
+// `aircraftLock`: "While this vehicle is alive, YOU may not play any other
+// aircraft into this zone" (wave 6). ⚠ NO SEEDED CARD CARRIES IT since the
+// 2026-09-16 pass (M-6): Albacore narrowed to uniquePerZone and Tarpon dropped
+// the rule. Kept, like defensiveOmission and deployRequiresBattleLoss, for the
+// frozen snapshots in games dealt before that deploy (2026-09-02 spec R-8) —
+// do not delete the key or this predicate.
 //
 // The pronoun is the whole ruling: this reads the ACTOR'S OWN side of the
-// zone, where screenBlocks above reads the enemy's. The two sit side by side
-// deliberately — AIR_SCREEN is the enemy-facing lock and already exists, so
-// these cards would be redundant seeding if they meant the same thing. Both
-// print FRAGILE, which is drawback-shaped.
-//
-// Read off `data`, like blocksFaction, so the next card wanting the rule needs
-// no engine edit. "Any OTHER aircraft" needs no mechanism: this prices a card
-// in HAND against a zone, so the locking hull can never be the card being
-// blocked — but a second Albacore into the same zone is, which is what the
-// word "other" asks for.
+// zone, where screenBlocks above reads the enemy's. Read off `data`, like
+// blocksFaction, so a card wanting the rule again needs no engine edit.
 function aircraftLocked(
   state: PublicGameState, side: Side, zoneId: number, vehicleType: string,
 ): boolean {
