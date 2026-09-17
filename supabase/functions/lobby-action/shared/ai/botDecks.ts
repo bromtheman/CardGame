@@ -26,8 +26,10 @@ export function isBotFaction(x: unknown): x is BotFaction {
 
 export const BOT_DECKS: Record<BotFaction, Record<string, number>> = {
   DWG: {
-    'Corsair': 2,
-    'Marauder': 2,
+    'Corsair': 1,
+    'Marauder': 1,
+    'Tarpon': 1,
+    'Albacore': 1,
     'Pilferer': 2,
     'Abactor': 2,
     'Ransack': 2,
