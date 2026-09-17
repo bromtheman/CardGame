@@ -8,7 +8,7 @@ export default defineConfig({
     alias: { '@shared': fileURLToPath(new URL('./shared', import.meta.url)) },
   },
   test: {
-    include: ['shared/**/*.test.ts', 'supabase/seed/**/*.test.ts', 'frontend/src/**/*.test.ts'],
+    include: ['shared/**/*.test.ts', 'supabase/seed/**/*.test.ts', 'frontend/src/**/*.test.ts', 'scripts/**/*.test.ts'],
     passWithNoTests: false,
   },
 })

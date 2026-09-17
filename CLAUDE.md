@@ -53,13 +53,14 @@ than as a wrong-port error.
 
 ```bash
 npx vitest run                      # all tests. NEVER pass --root — it silently runs 0 tests
-npx tsc -p tsconfig.json --noEmit   # typecheck shared/ + supabase/seed (frontend has its own)
+npx tsc -p tsconfig.json --noEmit   # typecheck shared/ + supabase/seed + scripts/*.ts (frontend has its own)
 npm --prefix frontend run build     # frontend typecheck + production build
 npm --prefix frontend run lint      # oxlint
 npm run functions:check             # Deno type-check of the four edge functions (tsc never reads them)
 npm run functions:sync              # copy shared/ modules into edge functions (see rule below)
 npm run seed:verify                 # diff LIVE card rows against seed_data.sql (see rule below)
 npm run seed:apply                  # upsert seed_data.sql into the LIVE project; follow with seed:verify (see rule below)
+npm run profiles:import -- <F>.cards.md   # regenerate shared/shipProfiles/<F>.ts from an FtDArmament ship report (docs/claude/architecture.md)
 ```
 
 Dev server: `npm --prefix frontend run dev` (`.claude/launch.json` has a `frontend`

@@ -8,6 +8,7 @@
     "seed:apply": "node scripts/apply-seed.mjs",
     "test": "vitest run",
     "bot:eval": "tsx scripts/eval-bot.ts",
+    "profiles:import": "tsx scripts/import-ship-profiles.ts",
     "functions:sync": "node scripts/sync-function-shared.mjs",
     "functions:deploy": "node scripts/deploy-function.mjs",
     "functions:check": "npx --yes deno check --node-modules-dir=none supabase/functions/game-action/index.ts supabase/functions/lobby-action/index.ts supabase/functions/create-card/index.ts supabase/functions/battle-report/index.ts"

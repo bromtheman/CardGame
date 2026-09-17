@@ -3,6 +3,7 @@ import {
   MAX_VEHICLES_PER_ZONE_SIDE, REPAIR_COST_RATE, REPAIR_WINDOW_MIN_PERCENT, STARTING_CP_AMOUNT,
   STARTING_HAND_SIZE, SURVIVE_HP_PERCENT, UPKEEP_RATE, ZONE_COUNT,
 } from '../../gameSettings.ts'
+import { shipProfilesForFaction } from '../../shipProfiles.ts'
 import { FACTION_NOTES, GENERAL_TIPS } from './factionNotes.ts'
 
 // The static prefix of every model call (2026-09-16 LLM PracticeAI spec
@@ -12,8 +13,10 @@ import { FACTION_NOTES, GENERAL_TIPS } from './factionNotes.ts'
 // gameSettings.ts. Rendered once per faction, so a provider cache keys on
 // five strings. After the keywords come the owner's strategy notes from
 // factionNotes.ts: GENERAL TIPS for everyone, then YOUR FACTION — the bot's
-// own playstyle — which is left out entirely for a faction with no notes yet.
-// The answer shape stays last.
+// own playstyle — then YOUR FLEET, one line per hull of the faction from
+// shipProfiles.ts (how it fights in From The Depths: the report's scores
+// and its one-line summary). Either section is left out entirely for a
+// faction without notes or profiles yet. The answer shape stays last.
 
 export const KEYWORD_GLOSSARY: Record<string, string> = {
   [KEYWORDS.BLOCKER]: 'Blocker — while it is in a zone, the opponent may not attack the base there.',
@@ -48,7 +51,7 @@ KEYWORDS
 
 GENERAL TIPS
 {{GENERAL_TIPS}}
-{{FACTION_SECTION}}
+{{FACTION_SECTION}}{{FLEET_SECTION}}
 HOW YOU PLAY
 - You receive the board, your hand, and a numbered MENU of moves the rules allow right now, each with what it would do (simulated once — an effect that rolls dice may roll differently for real). Only menu numbers are valid.
 - Answer with a plan: the menu numbers in the order you want them. A turn plan ends with the END TURN number. Later moves may become unavailable once earlier ones change the board; you will then be asked again with a fresh menu.
@@ -74,10 +77,26 @@ function factionSection(faction: string): string {
   return note ? `\nYOUR FACTION — ${faction}\n${note.text}\n` : ''
 }
 
+// One line per profiled hull: role, the four fighting scores, the four
+// matchups, then the report's one-line summary. The cost quintile is left
+// out — the model sees each hull's real material cost on every board and
+// hand line, and a second "cost" number beside it would only compete.
+function fleetSection(faction: string): string {
+  const fleet = shipProfilesForFaction(faction)
+  if (fleet.length === 0) return ''
+  const lines = fleet.map(({ name, profile: p }) =>
+    `- ${name} (${p.role}): fire ${p.scores.firepower.score}, tough ${p.scores.toughness.score}, ` +
+    `speed ${p.scores.speed.score}, range ${p.scores.range.score}; vs ships ${p.matchups.ships.score}, ` +
+    `aircraft ${p.matchups.aircraft.score}, subs ${p.matchups.submarines.score}, missiles ${p.matchups.missiles.score}. ` +
+    p.summary)
+  return `\nYOUR FLEET — how each of your hulls fights in From The Depths (each score is a fifth of the campaign's craft, one weakest to five strongest)\n${lines.join('\n')}\n`
+}
+
 export function renderPrimer(faction: string): string {
   return PRIMER_TEMPLATE.replace(/\{\{([A-Z_]+)\}\}/g, (match, key: string) => {
     if (key === 'FACTION') return faction
     if (key === 'FACTION_SECTION') return factionSection(faction)
+    if (key === 'FLEET_SECTION') return fleetSection(faction)
     const value = PRIMER_VALUES[key]
     if (value === undefined) throw new Error(`rules primer: no value for ${match}`)
     return String(value)
