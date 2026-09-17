@@ -101,6 +101,12 @@ CORS. `battle-report` is the exception to "auth" meaning a user JWT: its
 session, and authenticates with a single-use battle token instead. It stores a
 report PREFILL and changes no game state — a human still submits and the
 opponent still approves. Never extend it into either.
+
+**PracticeAI (the practice-game bot) is a real auth user that must be
+bootstrapped by hand** after the AI-opponent migration deploys — runbook in
+docs/claude/supabase.md. Until then `ADD_BOT` answers 503 and nothing else
+changes.
+
 Details: docs/claude/supabase.md.
 
 ## Seed data does NOT deploy — apply it by hand after every merge

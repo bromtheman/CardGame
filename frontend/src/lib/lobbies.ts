@@ -101,11 +101,12 @@ export function useLobbyQuery(id: string | undefined) {
 }
 
 export interface LobbyActionBody {
-  action: 'JOIN' | 'LEAVE' | 'START' | 'SET_DECK' | 'SET_READY' | 'UPDATE_SETTINGS' | 'KICK'
+  action: 'JOIN' | 'LEAVE' | 'START' | 'SET_DECK' | 'SET_READY' | 'UPDATE_SETTINGS' | 'KICK' | 'ADD_BOT'
   lobbyId: string
   deckId?: string
   ready?: boolean
   settings?: LobbySettings
+  faction?: string
 }
 
 export async function lobbyAction(body: LobbyActionBody) {

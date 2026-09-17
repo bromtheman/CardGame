@@ -5,6 +5,7 @@ import type { Side } from '@shared/engine/engineTypes'
 import type { LobbySettings } from '@shared/lobbySettings'
 import { battleFrozen, biomeAllows, effectiveCostInGame, effectName, findVehicle, legalZonesFor, zoneCapFor } from '@shared/engine/index'
 import { shortHandNumber } from '@shared/format'
+import { botSideOf } from '@shared/ai/botGame'
 import { useGameQuery, useMyGamePlayerQuery, useUsernames } from '../../lib/games'
 import { useRealtimeInvalidate } from '../../lib/realtime'
 import { useAuth } from '../../lib/auth'
@@ -305,6 +306,7 @@ export function GameBoardPage() {
           send={send}
           busy={busy}
           gameId={game.id}
+          practice={botSideOf(game.settings) !== null}
           onConcede={onConcede}
         />
       )}

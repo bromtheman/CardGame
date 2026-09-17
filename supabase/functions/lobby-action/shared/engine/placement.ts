@@ -1,0 +1,657 @@
+import {
+  ADDITIONAL_SPAWNS_CAP, KEYWORDS, PURIFIER_LOSS_WINDOW_TURNS,
+  VEHICLE_TYPES, ZONE_TYPES,
+} from '../gameSettings.ts'
+import type { CardInstance, PublicGameState } from './gameInit.ts'
+import type { ApplyResult, EngineContext, EngineGame, Side, ZoneCardEntry } from './engineTypes.ts'
+import {
+  additionalSpawnsOf, copyMeta, discardCard, err, findVehicle, grantKeywordsTo, otherSide,
+  registerHandler, zoneById,
+} from './gameEngine.ts'
+import { zoneCapFor } from './zoneCapacity.ts'
+import { costModifierFor, effectFor, effectName, noteUnimplemented } from '../effects/registry.ts'
+import { dispatchDeployWatchers } from './battleTriggers.ts'
+import { effectiveMaterialCostOf } from './costs.ts'
+
+const BIOMES_BY_TYPE: Record<string, string[]> = {
+  [VEHICLE_TYPES.SHIP]: [ZONE_TYPES.WATER, ZONE_TYPES.BEACH],
+  [VEHICLE_TYPES.SUB]: [ZONE_TYPES.WATER, ZONE_TYPES.BEACH],
+  [VEHICLE_TYPES.TANK]: [ZONE_TYPES.BEACH, ZONE_TYPES.LAND],
+  [VEHICLE_TYPES.PLANE]: [ZONE_TYPES.WATER, ZONE_TYPES.BEACH, ZONE_TYPES.LAND],
+  [VEHICLE_TYPES.AIRSHIP]: [ZONE_TYPES.WATER, ZONE_TYPES.BEACH, ZONE_TYPES.LAND],
+}
+
+export function biomeAllows(vehicleType: string | null, biome: string): boolean {
+  return vehicleType !== null && (BIOMES_BY_TYPE[vehicleType] ?? []).includes(biome)
+}
+
+const isAircraft = (vehicleType: string): boolean =>
+  vehicleType === VEHICLE_TYPES.PLANE || vehicleType === VEHICLE_TYPES.AIRSHIP
+
+function screenBlocks(state: PublicGameState, side: Side, zoneId: number, vehicleType: string): boolean {
+  const zone = state.zones.find((z) => z.id === zoneId)
+  if (!zone) return true
+  const enemy = zone.cards[otherSide(side)]
+  if (isAircraft(vehicleType) && enemy.some((c) => c.keywords.includes(KEYWORDS.AIR_SCREEN))) return true
+  if (vehicleType === VEHICLE_TYPES.SUB && enemy.some((c) => c.keywords.includes(KEYWORDS.SUB_SCREEN))) return true
+  return false
+}
+
+// Albacore and Tarpon: "While this vehicle is alive, YOU may not play any
+// other aircraft into this zone" (spec §7.3, wave 6).
+//
+// The pronoun is the whole ruling: this reads the ACTOR'S OWN side of the
+// zone, where screenBlocks above reads the enemy's. The two sit side by side
+// deliberately — AIR_SCREEN is the enemy-facing lock and already exists, so
+// these cards would be redundant seeding if they meant the same thing. Both
+// print FRAGILE, which is drawback-shaped.
+//
+// Read off `data`, like blocksFaction, so the next card wanting the rule needs
+// no engine edit. "Any OTHER aircraft" needs no mechanism: this prices a card
+// in HAND against a zone, so the locking hull can never be the card being
+// blocked — but a second Albacore into the same zone is, which is what the
+// word "other" asks for.
+function aircraftLocked(
+  state: PublicGameState, side: Side, zoneId: number, vehicleType: string,
+): boolean {
+  if (!isAircraft(vehicleType)) return false
+  const zone = state.zones.find((z) => z.id === zoneId)
+  if (!zone) return false
+  return zone.cards[side].some((c) => c.meta.aircraftLock === true)
+}
+
+// A zone rider that forbids this side from PLAYING a card of some faction
+// there (Sub Killer, spec §4.3 "DP5 as wave 5 built it"). Read off
+// `data.blocksFaction` rather than off the rider's effect name, so the rule
+// lives here and the next blocking card needs no engine edit — the same
+// reasoning that made `defensiveOmission` a data key (spec §4.8).
+//
+// Deliberately only a PLAY restriction: MOVE_VEHICLE and the hero-power
+// relocation go through biomeAllows directly, and a spawn bypasses placement
+// legality entirely (spec §7.4). Sub Killer's text says "play".
+function riderBlocks(state: PublicGameState, side: Side, zoneId: number, faction: string): boolean {
+  return state.zoneEffects.some(
+    (e) => e.zoneId === zoneId && e.side === side && e.data?.blocksFaction === faction,
+  )
+}
+
+// WF Purifier: "This ship can only be played into a zone in which you have
+// lost a fleet battle the previous turn" (spec §7.3, wave 6).
+//
+// ⚠ NO SEEDED CARD CARRIES `deployRequiresBattleLoss` since the 2026-09-02
+// balance pass, which rewrote Purifier's text. The rule is KEPT — and so is
+// the per-zone `lostBattleOnTurn` tracking battleResolve.ts writes for it —
+// for the reason `purifierEffect` is kept registered: an in-flight game dealt
+// before that pass carries a frozen Purifier snapshot that still prints the
+// key (spec R-8, §5).
+//
+// A PREREQUISITE rather than a block — it narrows the legal set to the zones
+// that satisfy it, where every other rule here removes zones from it. Read off
+// `deployRequiresBattleLoss`, another data key, so the rule outlives the card —
+// which is now literal rather than hypothetical: the next card wanting the
+// rule needs no engine edit.
+//
+// "The previous turn" is the last full ROUND, current turn included:
+// turnNumber moves in half steps, so the strictly-previous half-turn is the
+// opponent's, and reading it that way would admit only a defensive loss —
+// a restriction the card did not print. `turnNumber - 1` is the start of the
+// actor's own previous turn, which is what wave 5's "the turn is the actor's
+// own frame" ruling already points at.
+function battleLossMissing(
+  state: PublicGameState, side: Side, zoneId: number, card: CardInstance, turnNumber: number,
+): boolean {
+  if (card.meta.deployRequiresBattleLoss !== true) return false
+  const zone = state.zones.find((z) => z.id === zoneId)
+  const lost = zone?.lostBattleOnTurn?.[side]
+  return typeof lost !== 'number' || lost < turnNumber - PURIFIER_LOSS_WINDOW_TURNS
+}
+
+// TG Alarmed: "Can only play this into a zone in which you control a AI
+// vehicle" (spec §7.3, wave 7).
+//
+// A PREREQUISITE, like battleLossMissing above and unlike everything before
+// it: it narrows the legal set to the zones that satisfy it, where the other
+// rules remove zones from it. Read off `deployRequiresAiVehicle`, another data
+// key, so the rule outlives the card.
+//
+// ⚠ Ruling D-1: "an AI vehicle" is `isBuiltIn === true`. That is spec §7.3's
+// FIRST ruling, and OW:Garrison prints the identical phrase ("Target an AI
+// vehicle in hand") and reads it the same way, as do Air Strafe, Excalibur,
+// Repairmen Ready and Martyr Attack. Wave 7's handoff recommended the ROBOTIC
+// keyword on the grounds that the engine has no AI concept; it has had one
+// since wave 1, and two meanings for one printed phrase is what decision 1
+// forbids.
+//
+// "YOU control" is the actor's own side, so this reads zone.cards[side] —
+// the same pronoun distinction aircraftLocked draws against screenBlocks.
+function aiVehicleMissing(
+  state: PublicGameState, side: Side, zoneId: number, card: CardInstance,
+): boolean {
+  if (card.meta.deployRequiresAiVehicle !== true) return false
+  const zone = state.zones.find((z) => z.id === zoneId)
+  return !zone?.cards[side].some((c) => c.isBuiltIn)
+}
+
+// TG Obelisk: at most one copy of this card per zone, PER SIDE (wave 8).
+//
+// Obelisk is a 40k Stealthy ship that summons a free Mirth Swarm into every
+// battle it joins, so a stack of them in one zone multiplied a whole fleet
+// for nothing. The ruling is per SIDE rather than per zone: zone 1 may hold
+// one on each half of it, and neither player may hold two there.
+//
+// Keyed on `cardId`, not on the card’s NAME and not on its instanceId. The
+// name is display data; the cardId is what a DWG capture carries across
+// (takeFromEnemyDeck copies the row and re-ids the instance), which is what
+// makes "even if stolen by the DWG" fall out rather than need a special case.
+//
+// A data key like `blocksFaction`, `aircraftLock` and `deployRequiresAiVehicle`
+// — strict `=== true`, so a mistyped value leaves the card unrestricted
+// rather than silently unplayable — so the next unique card needs no engine
+// edit. Read at three sites: here (playing), deployVehicle (the card’s own
+// extra copies) and moveEntry (walking a second one in).
+export function uniquePerZoneBlocked(
+  state: PublicGameState, side: Side, zoneId: number, card: CardInstance,
+): boolean {
+  if (card.meta.uniquePerZone !== true) return false
+  const zone = state.zones.find((z) => z.id === zoneId)
+  if (!zone) return false
+  return zone.cards[side].some(
+    (c) => c.cardId === card.cardId && c.instanceId !== card.instanceId,
+  )
+}
+
+// The zone-side cap: at most `zoneCapFor(state, side, zoneId)` of your own
+// hulls on your own half of one zone, which is `MAX_VEHICLES_PER_ZONE_SIDE`
+// less whatever the enemy denies here. Reads the ACTOR'S OWN side — the same
+// pronoun distinction aircraftLocked draws against screenBlocks — so your
+// full zone never constrains the enemy's half of it, nor your other two zones.
+//
+// Requires ONE free slot, not room for the card's whole payload. A card with
+// additionalSpawns lands what fits (deployVehicle clamps) instead of becoming
+// unplayable, so "one slot free" is the entire condition a player has to
+// learn. Deciding it here would also mean re-deriving the resourceSurge spawn
+// count, which is only correct against materials as they stood BEFORE payment
+// — the ordering PLAY_CARD_TO_ZONE's own comment exists to protect.
+//
+// A missing zone reads as full, matching screenBlocks' fail-closed default.
+// Unreachable through legalZonesFor, which iterates state.zones.
+function zoneFull(state: PublicGameState, side: Side, zoneId: number): boolean {
+  const zone = state.zones.find((z) => z.id === zoneId)
+  if (!zone) return true
+  // The cap is now DERIVED (spec §4.1) — an enemy Tiger Shark in this zone
+  // shrinks it. `>=` is what makes a side already ABOVE the reduced cap keep
+  // every hull and simply stop adding: nothing is culled when a denier lands.
+  return zone.cards[side].length >= zoneCapFor(state, side, zoneId)
+}
+
+// `turnNumber` is REQUIRED rather than optional, for the reason
+// ZoneCardEntry's stamps are: tsc then finds every call site, including the
+// three in the frontend, instead of silently defaulting one of them.
+export function legalZonesFor(
+  state: PublicGameState, side: Side, card: CardInstance, turnNumber: number,
+): number[] {
+  if (card.type !== 'vehicle' || card.vehicleType === null) return []
+  return state.zones
+    .filter((z) => (
+      biomeAllows(card.vehicleType, z.biome) &&
+      !screenBlocks(state, side, z.id, card.vehicleType!) &&
+      !aircraftLocked(state, side, z.id, card.vehicleType!) &&
+      !riderBlocks(state, side, z.id, card.faction) &&
+      !battleLossMissing(state, side, z.id, card, turnNumber) &&
+      !aiVehicleMissing(state, side, z.id, card) &&
+      !uniquePerZoneBlocked(state, side, z.id, card) &&
+      !zoneFull(state, side, z.id)
+    ))
+    .map((z) => z.id)
+}
+
+// Spec §3.7 Half-Cost. The definition moved to the leaf module `costs.ts` in
+// wave 7 so endTurn could reach it without closing a gameEngine ↔ placement
+// import cycle; it is re-exported here so every existing importer is
+// unchanged and there is still exactly one definition.
+export { effectiveMaterialCostOf } from './costs.ts'
+
+export function canAfford(state: PublicGameState, side: Side, card: CardInstance): boolean {
+  return (
+    state.resources[side].materials >= effectiveMaterialCostOf(card) &&
+    state.resources[side].cp >= card.cpCost
+  )
+}
+
+// Spec §4.6 and its two wave-6 departures ("4.6 as wave 6 extended it").
+// Exactly ONE comparator is present per card, preserving each card's own
+// wording: "more than" (PredatorX, Chrysaor), "or more" (Orbit), "less than"
+// (Thresher Shark).
+interface ResourceSurge {
+  materialsOver?: number
+  materialsAtLeast?: number
+  materialsUnder?: number
+  extraSpawns?: number
+  // Departure 1 — Chrysaor: "this card costs 100k more". A purchase-price
+  // mechanic like every other, so it never reaches effectiveMaterialCostOf.
+  costDelta?: number
+  // Departure 2 — Thresher Shark: "may play it with HALFCOST and
+  // INOFFENSIVE". These land on the HULL, not only on the price:
+  // battleDeclare's attack-eligibility check reads INOFFENSIVE off the
+  // board, and costs.ts's repair math reads HALF_COST off the board too — a
+  // hull that only got them at price time would attack anyway and repair at
+  // full price forever.
+  grantKeywords?: string[]
+}
+
+const surgeOf = (card: CardInstance): ResourceSurge | null => {
+  const raw = card.meta.resourceSurge
+  return raw !== null && typeof raw === 'object' && !Array.isArray(raw) ? (raw as ResourceSurge) : null
+}
+
+// The shared condition §4.6 predicted by name. Read BEFORE payment at every
+// call site — pay() moves the materials the condition reads, and Chrysaor's
+// surged price is exactly its own threshold, so a post-payment re-read would
+// flip its condition off between pricing and spawning.
+export function resourceSurgeActive(state: PublicGameState, side: Side, card: CardInstance): boolean {
+  const surge = surgeOf(card)
+  if (!surge) return false
+  const materials = state.resources[side].materials
+  if (typeof surge.materialsOver === 'number') return materials > surge.materialsOver
+  if (typeof surge.materialsAtLeast === 'number') return materials >= surge.materialsAtLeast
+  if (typeof surge.materialsUnder === 'number') return materials < surge.materialsUnder
+  return false
+}
+
+// Plain card data, so it is safe to read once the boolean above has been
+// captured — which is what lets deployVehicle take the flag rather than
+// re-deriving the condition after payment.
+function grantedKeywordsOf(card: CardInstance): string[] {
+  const raw = surgeOf(card)?.grantKeywords
+  return Array.isArray(raw) ? raw.filter((k): k is string => typeof k === 'string') : []
+}
+
+// Merge, idempotently — a keyword the card already prints is not duplicated.
+function withGranted(keywords: string[], granted: string[]): string[] {
+  if (granted.length === 0) return keywords
+  return [...keywords, ...granted.filter((k) => !keywords.includes(k))]
+}
+
+// Ruling B-9: a surge with no keyword grant of its own is a Half-Cost
+// SUPPRESSION (§4.6's original shape — PredatorX and Orbit); one that grants
+// keywords adds them instead. One rule, two arms, which is what keeps the two
+// older cards byte-for-byte unchanged.
+export function halfCostSuppressed(state: PublicGameState, side: Side, card: CardInstance): boolean {
+  if (!resourceSurgeActive(state, side, card)) return false
+  return grantedKeywordsOf(card).length === 0
+}
+
+export function surgeSpawnsFor(card: CardInstance): number {
+  return Math.max(0, Math.floor(Number(surgeOf(card)?.extraSpawns) || 0))
+}
+
+function surgeCostDeltaFor(state: PublicGameState, side: Side, card: CardInstance): number {
+  if (!resourceSurgeActive(state, side, card)) return 0
+  const delta = surgeOf(card)?.costDelta
+  return typeof delta === 'number' && Number.isFinite(delta) ? delta : 0
+}
+
+// Play-time cost: (base + registered modifier + stored costDelta), Half-Cost
+// halving, clamp ≥ 0. Base damage, repairs, and in-battle resources keep
+// using effectiveMaterialCostOf — these are play-time-only mechanics.
+export function effectiveCostInGame(
+  state: PublicGameState, side: Side, card: CardInstance, turnNumber: number,
+): number {
+  const name = effectName(card, 'costModifier')
+  const fn = name !== null ? costModifierFor(name) : null
+  const stored = typeof card.meta.costDelta === 'number' ? card.meta.costDelta : 0
+  const delta = stored + surgeCostDeltaFor(state, side, card)
+  const modified = card.materialCost + (fn ? fn(state, side, card, turnNumber) : 0) + delta
+  // The two arms of ruling B-9: a suppressing surge strips Half-Cost, a
+  // granting one adds whatever it grants (which for Thresher Shark includes
+  // Half-Cost). The granted list is the SAME one deployVehicle stamps onto
+  // the hull, so the price and the board never disagree.
+  const keywords = halfCostSuppressed(state, side, card)
+    ? card.keywords.filter((k) => k !== KEYWORDS.HALF_COST)
+    : withGranted(card.keywords, resourceSurgeActive(state, side, card) ? grantedKeywordsOf(card) : [])
+  return Math.max(0, effectiveMaterialCostOf({ materialCost: modified, keywords }))
+}
+
+function canAffordInGame(game: EngineGame, side: Side, card: CardInstance): boolean {
+  return (
+    game.state.resources[side].materials >= effectiveCostInGame(game.state, side, card, game.turnNumber) &&
+    game.state.resources[side].cp >= card.cpCost
+  )
+}
+
+function takeFromHand(game: EngineGame, side: Side, instanceId: string): CardInstance | null {
+  const hand = game.privates[side].hand
+  const index = hand.findIndex((c) => c.instanceId === instanceId)
+  if (index < 0) return null
+  const [card] = hand.splice(index, 1)
+  game.state.counts[side].hand = hand.length
+  return card
+}
+
+// An ability card is spent once it resolves: it leaves play into its owner's
+// discard (state.destroyed), which drawCard reshuffles when the deck runs
+// out. Call this AFTER effects resolve — a card that draws from an empty deck
+// must not be able to shuffle itself back in mid-resolution.
+export function spendCard(game: EngineGame, side: Side, card: CardInstance): void {
+  discardCard(game, side, card)
+}
+
+function pay(game: EngineGame, side: Side, card: CardInstance): void {
+  game.state.resources[side].materials -= effectiveCostInGame(game.state, side, card, game.turnNumber)
+  game.state.resources[side].cp -= card.cpCost
+}
+
+// Runs a played card's triggers (in the order given by `keys`), then notes
+// any unimplemented meta effects. Returns an error result if an implemented
+// effect reports failure (the caller returns this immediately — since
+// applyAction works on a structuredClone of the input, nothing taken/paid
+// up to this point sticks), or null on success. Reused by every play-style
+// handler — each passes the trigger keys relevant to its own target shape
+// (spawnBuccaneerEffect/onPlayEffect for zone plays, playOnVehicleEffect/
+// playOnCardEffect for Task 5's targeting actions, doubleUpEffect, …).
+function resolvePlayEffects(
+  game: EngineGame, actor: Side, card: CardInstance, ctx: EngineContext,
+  targets: { targetZoneId?: number; targetInstanceId?: string; placedInstanceIds?: string[] },
+  keys: string[],
+): ApplyResult | null {
+  for (const key of keys) {
+    const name = effectName(card, key)
+    if (name === null) continue
+    const fn = effectFor(name)
+    if (fn && !fn({ game, actor, card, ctx, ...targets })) {
+      return err(400, `${card.name}'s effect could not resolve — check its target`)
+    }
+  }
+  noteUnimplemented(game, card)
+  return null
+}
+
+// Extracted from PLAY_CARD_TO_ZONE's vehicle branch so PLAY_CARD_TARGETING_
+// CARD_IN_HAND can deploy a vehicle too (spec §4.3 DP6). Places the card
+// itself, then additionalSpawns (spec §3.9) + resourceSurge (spec §4.6)
+// copies on top, capped at ADDITIONAL_SPAWNS_CAP. Callers must read `surged`
+// BEFORE pay() reduces materials — see their own comments for why. Returns
+// every instanceId placed (card + copies), for placedInstanceIds.
+function deployVehicle(
+  game: EngineGame, ctx: EngineContext, actor: Side,
+  card: CardInstance, zoneId: number, surged: boolean,
+): string[] {
+  const placedInstanceIds: string[] = []
+  const zone = game.state.zones.find((z) => z.id === zoneId)!
+  // handEnteredTurn (spec §4.2) is a private HAND stamp — ZoneCardEntry
+  // inherits the field structurally (it extends CardInstance) but nothing on
+  // the board is meant to carry it, so it comes off the hull ONCE, here,
+  // before either spread below can carry it onto the board and into
+  // PublicGameState. Both the placed entry and its additionalSpawns copies
+  // are built from `hull`, never from `card`, for exactly that reason.
+  const { handEnteredTurn: _handEnteredTurn, ...hull } = card
+  // A granting surge stamps its keywords onto the hull that lands, not only
+  // onto the price (spec §4.6, departure 2 — Thresher Shark). Derived from
+  // `surged`, which the caller captured BEFORE pay(), rather than re-read here.
+  //
+  // Applied through grantKeywordsTo (wave 8) rather than merged into the
+  // literal: the surge’s keywords are a per-INSTANCE grant like every other,
+  // so they have to be RECORDED, or a surged hull dies, reshuffles, and is
+  // drawn again permanently Half-Cost. The helper carries withGranted’s
+  // idempotence, so a card that PRINTS one of them records nothing.
+  const granted = surged ? grantedKeywordsOf(card) : []
+  const entry: ZoneCardEntry = {
+    ...hull, keywords: [...card.keywords],
+    playedOnTurn: game.turnNumber, movedOnTurn: null, activatedOnTurn: null,
+  }
+  grantKeywordsTo(entry, granted)
+  zone.cards[actor].push(entry)
+  placedInstanceIds.push(entry.instanceId)
+  // additionalSpawns: one payment lands N+1 hulls (spec §3.9). resourceSurge
+  // (spec §4.6) adds more on top, but only when the surge condition held.
+  //
+  // `additionalSpawnsOf` sums the PRINTED count with Double Up's granted one
+  // (wave 8). The grant needs its own key because discardSnapshotOf has to
+  // strip it without touching the nine cards that print the other, so this is
+  // the one place the two are added back together.
+  //
+  // A `uniquePerZone` card lands exactly ONE hull however many copies it is
+  // owed (wave 8): legalZonesFor only ever cleared the FIRST, and the copies
+  // are the same cardId in the same zone on the same side. Zeroed rather than
+  // refused, matching the zone-cap clamp below — the play is never rejected
+  // for its own payload.
+  const printed = additionalSpawnsOf(card)
+  const wanted = card.meta.uniquePerZone === true
+    ? 0
+    : Math.min(printed + (surged ? surgeSpawnsFor(card) : 0), ADDITIONAL_SPAWNS_CAP)
+  // The zone-side cap binds AFTER ADDITIONAL_SPAWNS_CAP and is the tighter of
+  // the two on a side with hulls already on it. legalZonesFor only guaranteed
+  // one free slot, so a multi-hull payload lands what fits and drops the rest
+  // — the card is never refused for its own copies (see zoneFull's comment).
+  // The hull itself is already pushed above, so the remainder is measured
+  // against the side's length as it now stands. And since spec §4.1 the
+  // zone-side cap is itself the tighter of the flat cap and whatever the
+  // enemy denies in THIS zone.
+  const room = Math.max(0, zoneCapFor(game.state, actor, zoneId) - zone.cards[actor].length)
+  const extra = Math.min(wanted, room)
+  for (let i = 0; i < extra; i++) {
+    const copy: ZoneCardEntry = {
+      ...hull, instanceId: ctx.newId(), meta: copyMeta(card.meta), keywords: [...card.keywords],
+      playedOnTurn: game.turnNumber, movedOnTurn: null, activatedOnTurn: null,
+    }
+    // Each copy records its OWN grant. Sharing the entry’s would not do —
+    // they are separate instances that die separately, and copyMeta hands
+    // each one the CARD’s meta, which carries no marker.
+    grantKeywordsTo(copy, granted)
+    zone.cards[actor].push(copy)
+    placedInstanceIds.push(copy.instanceId)
+  }
+  // Say so rather than dropping them silently — a player who paid for four
+  // hulls and got two is owed the reason. Logged here, which puts it just
+  // AHEAD of the caller's "<card> deployed to zone N" line; that ordering is
+  // cosmetic and deliberate, since moving it would mean threading a count
+  // back through both call sites for a line each reads fine on its own.
+  if (extra < wanted) {
+    game.state.log.push(
+      `Zone ${zoneId} is full — ${wanted - extra} further ${card.name} could not deploy`,
+    )
+  }
+  return placedInstanceIds
+}
+
+registerHandler('PLAY_CARD_TO_ZONE', (game, actor, action, ctx) => {
+  if (action.type !== 'PLAY_CARD_TO_ZONE') return err(400, 'Bad action')
+  const card = game.privates[actor].hand.find((c) => c.instanceId === action.instanceId)
+  if (!card) return err(400, 'That card is not in your hand')
+
+  // Vehicles deploy to a zone as usual. Abilities may only target a zone
+  // when they carry a playOnZoneEffect trigger (e.g. Ambush, Spawn Buccaneer)
+  // — anything else without a zone effect has no business here.
+  const zoneEffectName = effectName(card, 'playOnZoneEffect')
+  if (card.type !== 'vehicle' && zoneEffectName === null) {
+    return err(400, 'Ability cards are played without a zone')
+  }
+  if (!canAffordInGame(game, actor, card)) return err(400, 'You cannot afford that card')
+  if (card.type === 'vehicle' && !legalZonesFor(game.state, actor, card, game.turnNumber).includes(action.zoneId)) {
+    return err(400, 'That vehicle cannot deploy to that zone')
+  }
+  if (card.type !== 'vehicle' && !zoneById(game.state, action.zoneId)) {
+    return err(400, 'No such zone')
+  }
+
+  if (game.state.alertCard?.instanceId === action.instanceId) game.state.alertCard = null
+
+  // Read the surge before paying — pay() reduces materials, which would flip
+  // the condition off before the spawn count is decided. Chrysaor is the card
+  // that would expose a regression: its surged price is exactly its own
+  // threshold, so paying for itself turns its own condition off.
+  //
+  // resourceSurgeActive, not halfCostSuppressed: a GRANTING surge (Thresher
+  // Shark) suppresses nothing, so the narrower flag would silently skip both
+  // its keyword stamp and its extra hulls.
+  const surged = resourceSurgeActive(game.state, actor, card)
+
+  takeFromHand(game, actor, action.instanceId)
+  pay(game, actor, card)
+
+  const placedInstanceIds = card.type === 'vehicle'
+    ? deployVehicle(game, ctx, actor, card, action.zoneId, surged)
+    : []
+
+  const failure = resolvePlayEffects(
+    game, actor, card, ctx,
+    { targetZoneId: action.zoneId, placedInstanceIds },
+    ['playOnZoneEffect', 'onPlayEffect'],
+  )
+  if (failure) return failure
+  if (card.type !== 'vehicle') spendCard(game, actor, card)
+
+  game.state.log.push(
+    card.type === 'vehicle' ? `${card.name} deployed to zone ${action.zoneId}` : `${card.name} resolved`,
+  )
+  // DP7 (spec §4.3). After the deploy line, so the log reads deploy-then-trap,
+  // and after resolvePlayEffects' failure check, so a refused play springs
+  // nothing. Vehicles only: the card says "plays a vehicle into that zone".
+  //
+  // ⚠ That second ordering is defence in depth and NOTHING MORE — a surviving
+  // mutation proved it. applyAction works on a structuredClone, so a failing
+  // effect discards everything this dispatch would have done anyway. Keep the
+  // order (it is free and it is the honest one), but do not go looking for the
+  // test that pins it: there cannot be one.
+  if (card.type === 'vehicle') dispatchDeployWatchers(game, ctx, action.zoneId, actor)
+  return { ok: true, game }
+})
+
+registerHandler('PLAY_ABILITY_CARD', (game, actor, action, ctx) => {
+  if (action.type !== 'PLAY_ABILITY_CARD') return err(400, 'Bad action')
+  const card = game.privates[actor].hand.find((c) => c.instanceId === action.instanceId)
+  if (!card) return err(400, 'That card is not in your hand')
+  if (card.type !== 'ability') return err(400, 'Vehicles must target a zone')
+
+  // Any card needing a zone/vehicle/card target — implemented or not — must
+  // go through its own targeting action instead (two of three arrive in Task 5).
+  const needsTarget = (['playOnZoneEffect', 'playOnVehicleEffect', 'playOnCardEffect'] as const)
+    .some((key) => effectName(card, key) !== null)
+  if (needsTarget) return err(400, `${card.name} needs a target`)
+
+  if (!canAffordInGame(game, actor, card)) return err(400, 'You cannot afford that card')
+
+  if (game.state.alertCard?.instanceId === action.instanceId) game.state.alertCard = null
+
+  takeFromHand(game, actor, action.instanceId)
+  pay(game, actor, card)
+
+  // 'playOnZoneEffect' is deliberately excluded: needsTarget above already
+  // rejects any card carrying that key, so only onPlayEffect can ever fire here.
+  const failure = resolvePlayEffects(game, actor, card, ctx, {}, ['onPlayEffect'])
+  if (failure) return failure
+  spendCard(game, actor, card)
+
+  game.state.log.push(`${card.name} resolved`)
+  return { ok: true, game }
+})
+
+registerHandler('PLAY_CARD_TARGETING_CARD_ON_FIELD', (game, actor, action, ctx) => {
+  if (action.type !== 'PLAY_CARD_TARGETING_CARD_ON_FIELD') return err(400, 'Bad action')
+  if (typeof action.targetInstanceId !== 'string') return err(400, 'A target is required')
+  const card = game.privates[actor].hand.find((c) => c.instanceId === action.instanceId)
+  if (!card) return err(400, 'That card is not in your hand')
+  if (card.type !== 'ability') return err(400, 'Vehicles must target a zone')
+
+  const effectMeta = effectName(card, 'playOnVehicleEffect')
+  if (effectMeta === null) return err(400, `${card.name} does not target a vehicle`)
+  if (!findVehicle(game.state, action.targetInstanceId)) return err(400, 'That target is not on the field')
+
+  if (!canAffordInGame(game, actor, card)) return err(400, 'You cannot afford that card')
+
+  if (game.state.alertCard?.instanceId === action.instanceId) game.state.alertCard = null
+
+  takeFromHand(game, actor, action.instanceId)
+  pay(game, actor, card)
+
+  const failure = resolvePlayEffects(
+    game, actor, card, ctx, { targetInstanceId: action.targetInstanceId }, ['playOnVehicleEffect', 'onPlayEffect'],
+  )
+  if (failure) return failure
+  spendCard(game, actor, card)
+
+  game.state.log.push(`${card.name} resolved`)
+  return { ok: true, game }
+})
+
+registerHandler('SET_ALERT_CARD', (game, actor, action) => {
+  if (action.type !== 'SET_ALERT_CARD') return err(400, 'Bad action')
+  const card = game.privates[actor].hand.find((c) => c.instanceId === action.instanceId)
+  if (!card) return err(400, 'That card is not in your hand')
+  if (card.type !== 'ability') return err(400, 'Only ability cards can be revealed as an alert')
+
+  // Single global slot: your own alert may be re-revealed (replacing it),
+  // but the opponent's live alert blocks a new reveal until it resolves.
+  const existing = game.state.alertCard
+  if (existing && existing.side !== actor) return err(409, 'An alert card is already revealed')
+
+  game.state.alertCard = {
+    side: actor, instanceId: action.instanceId, name: card.name, setOnTurn: game.turnNumber,
+  }
+  game.state.log.push(`Player ${actor.toUpperCase()} reveals ${card.name} — effect in progress`)
+  return { ok: true, game }
+})
+
+registerHandler('PLAY_CARD_TARGETING_CARD_IN_HAND', (game, actor, action, ctx) => {
+  if (action.type !== 'PLAY_CARD_TARGETING_CARD_IN_HAND') return err(400, 'Bad action')
+  if (typeof action.targetInstanceId !== 'string') return err(400, 'A target is required')
+  const card = game.privates[actor].hand.find((c) => c.instanceId === action.instanceId)
+  if (!card) return err(400, 'That card is not in your hand')
+
+  const effectMeta = effectName(card, 'playOnCardEffect')
+  if (effectMeta === null) return err(400, `${card.name} does not target a card in hand`)
+  // Handler-level check covers shape (own hand, not self) — the effect
+  // itself re-validates the specifics it cares about (type, faction, cost).
+  if (action.targetInstanceId === action.instanceId) return err(400, 'That card cannot target itself')
+  if (!game.privates[actor].hand.some((c) => c.instanceId === action.targetInstanceId)) {
+    return err(400, 'That target is not in your hand')
+  }
+
+  // A vehicle also needs a legal zone to deploy into (spec §4.3 DP6) — same
+  // gate PLAY_CARD_TO_ZONE uses. An ability ignores zoneId entirely, stray
+  // or not, exactly as before.
+  if (
+    card.type === 'vehicle'
+    && (typeof action.zoneId !== 'number' || !legalZonesFor(game.state, actor, card, game.turnNumber).includes(action.zoneId))
+  ) {
+    return err(400, 'That vehicle cannot deploy to that zone')
+  }
+
+  if (!canAffordInGame(game, actor, card)) return err(400, 'You cannot afford that card')
+
+  if (game.state.alertCard?.instanceId === action.instanceId) game.state.alertCard = null
+
+  // Read the surge before paying — same ordering PLAY_CARD_TO_ZONE relies on,
+  // and the same broader flag: see its comment for why halfCostSuppressed is
+  // the wrong one to capture here.
+  const surged = resourceSurgeActive(game.state, actor, card)
+
+  takeFromHand(game, actor, action.instanceId)
+  pay(game, actor, card)
+
+  // A vehicle deploys like any other hull; an ability places nothing on the
+  // board.
+  const placedInstanceIds = card.type === 'vehicle'
+    ? deployVehicle(game, ctx, actor, card, action.zoneId as number, surged)
+    : []
+
+  const failure = resolvePlayEffects(
+    game, actor, card, ctx,
+    { targetInstanceId: action.targetInstanceId, placedInstanceIds },
+    ['playOnCardEffect', 'onPlayEffect'],
+  )
+  if (failure) return failure
+  // A vehicle is a hull that stays on the board — not spendCard'd. Only
+  // abilities are spent on resolution (spec §4.3 DP6).
+  if (card.type !== 'vehicle') spendCard(game, actor, card)
+
+  // Never log the hand target's name — state.log is public to both players.
+  game.state.log.push(
+    card.type === 'vehicle' ? `${card.name} deployed to zone ${action.zoneId}` : `${card.name} resolved`,
+  )
+  // DP7's SECOND seam (spec §4.3). This handler deploys vehicles too, through
+  // the same deployVehicle — a dispatch added only to PLAY_CARD_TO_ZONE is a
+  // card that works until someone plays Excalibur.
+  if (card.type === 'vehicle') dispatchDeployWatchers(game, ctx, action.zoneId as number, actor)
+  return { ok: true, game }
+})
