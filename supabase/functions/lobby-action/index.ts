@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import type { SupabaseClient } from 'npm:@supabase/supabase-js@2'
 import { DEFAULT_DECK_RULES, validateDeck } from './shared/engine/deckValidation.ts'
 import type { DeckCardInfo } from './shared/engine/deckValidation.ts'
 import { buildInitialGame, secureRng, snapshotCard } from './shared/engine/gameInit.ts'
@@ -6,7 +7,9 @@ import type { SnapshotCard } from './shared/engine/gameInit.ts'
 import { validateLobbySettings } from './shared/lobbySettings.ts'
 import { STARTING_TURN_NUMBER } from './shared/gameSettings.ts'
 import type { EngineGame } from './shared/engine/engineTypes.ts'
-import { basicPolicy } from './shared/ai/basicPolicy.ts'
+import { makeBotPolicy } from './shared/ai/llm/makePolicy.ts'
+import { toBotDecisionRow } from './shared/ai/llm/telemetry.ts'
+import type { TelemetryRow } from './shared/ai/llm/telemetry.ts'
 import { BOT_DECKS, isBotFaction } from './shared/ai/botDecks.ts'
 import { runBotUntilIdle } from './shared/ai/botDriver.ts'
 
@@ -24,6 +27,26 @@ function json(status: number, body: unknown): Response {
     status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   })
+}
+
+// Supabase's runtime keeps the isolate alive for a promise handed to
+// EdgeRuntime.waitUntil after the response is sent; `deno check` does not
+// know the global, so it is declared here. Absent (local tooling), the
+// promise simply runs detached.
+declare const EdgeRuntime: { waitUntil(promise: Promise<unknown>): void } | undefined
+function afterResponse(work: Promise<unknown>): void {
+  if (typeof EdgeRuntime !== 'undefined' && EdgeRuntime) EdgeRuntime.waitUntil(work)
+  else void work
+}
+
+// Telemetry for the model-backed PracticeAI (LLM spec §7.2): best effort,
+// after the commit, never on the player's path. Same function in lobby-action.
+async function recordBotDecisions(
+  admin: SupabaseClient, gameId: string, version: number, rows: TelemetryRow[],
+): Promise<void> {
+  if (rows.length === 0) return
+  const { error } = await admin.from('bot_decisions').insert(rows.map((r) => toBotDecisionRow(r, gameId, version)))
+  if (error) console.error('bot_decisions insert failed:', error.message)
 }
 
 // --- caller identity, verified locally --------------------------------------
@@ -532,11 +555,16 @@ Deno.serve(async (req) => {
         ...built.game, status: 'active', winnerId: null, turnNumber: STARTING_TURN_NUMBER,
         privates: { a: built.aPrivate, b: built.bPrivate },
       }
-      if (guestIsBot && game.activePlayer === locked.guest_id) {
+      const policy = guestIsBot ? makeBotPolicy({
+        OPENROUTER_API_KEY: Deno.env.get('OPENROUTER_API_KEY'),
+        BOT_MODEL: Deno.env.get('BOT_MODEL'),
+        BOT_LLM_DISABLED: Deno.env.get('BOT_LLM_DISABLED'),
+      }) : null
+      if (policy && game.activePlayer === locked.guest_id) {
         try {
-          game = runBotUntilIdle(
-            game, locked.guest_id, { rng: secureRng, newId: () => crypto.randomUUID(), catalog }, basicPolicy,
-          ).game
+          game = (await runBotUntilIdle(
+            game, locked.guest_id, { rng: secureRng, newId: () => crypto.randomUUID(), catalog }, policy,
+          )).game
         } catch (err) {
           return fail(500, [`AI opponent failed on its opening turn: ${err instanceof Error ? err.message : String(err)}`])
         }
@@ -553,6 +581,8 @@ Deno.serve(async (req) => {
         p_player_b_state: game.privates.b,
       })
       if (txError) return fail(500, [txError.message])
+      // A game row starts at version 1 (games.version default).
+      if (policy && gameId) afterResponse(recordBotDecisions(admin, gameId as string, 1, policy.rows))
       return json(200, { gameId })
     } catch (err) {
       // Any unexpected failure after the lock must revert the lobby, or a

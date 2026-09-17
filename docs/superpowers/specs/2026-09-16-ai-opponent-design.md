@@ -23,7 +23,7 @@ before the migration or a deploy, and
 | Battles | The human spawns both fleets, runs the fight, and submits the report. The bot **never submits** a report and **always approves** one. Results are on the honour system. |
 | First player | Still rolled randomly (spec §3.1). Practising going second is half the point. |
 | Commit granularity | One version per human request, bot turn included. The public log narrates the bot's moves; animating them is a later UX pass, not an architectural change. |
-| Strength | One policy, no difficulty levels. Greedy, stateless, legality delegated to the engine. |
+| Strength | One policy, no difficulty levels. Greedy, stateless, legality delegated to the engine. **Amended by the [2026-09-16 LLM PracticeAI spec](2026-09-16-llm-practice-ai-design.md):** the primary policy becomes a language model choosing from an engine-verified menu; §6 below is its silent fallback. Still no difficulty levels. |
 | Hidden information | The policy is handed a `BotView` holding only the bot's own hand; it never sees an `EngineGame`. |
 
 ## 2. How a practice game plays

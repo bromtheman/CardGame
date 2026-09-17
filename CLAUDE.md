@@ -105,7 +105,10 @@ opponent still approves. Never extend it into either.
 **PracticeAI (the practice-game bot) is a real auth user that must be
 bootstrapped by hand** after the AI-opponent migration deploys — runbook in
 docs/claude/supabase.md. Until then `ADD_BOT` answers 503 and nothing else
-changes.
+changes. **It plays through a model only when `OPENROUTER_API_KEY` is set as a
+function secret** (`BOT_LLM_DISABLED=1` is the kill switch); without it the
+heuristic plays and `bot_decisions` says `disabled`. The move menu, not the
+model, decides legality — see docs/claude/architecture.md.
 
 Details: docs/claude/supabase.md.
 
