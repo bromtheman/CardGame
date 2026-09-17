@@ -211,9 +211,10 @@ frontend (supabase-js) ──invoke──> edge function ──applyAction──
 - `destroyed` — the per-side discard, and the deck's reservoir: `drawCard`
   reshuffles a side's pile back into that side's deck the moment a draw would
   otherwise fail. Every card leaving play goes through `discardCard(game,
-  controller, card)`, which files it under its **owner** rather than whoever
-  was holding it — a card captured out of the enemy deck goes home. See
-  "Captured cards" in docs/claude/card-effects.md.
+  controller, card)`, which files it under the controller unless the entry
+  carries a `homeSide` stamp (DWG Mutiny, 2026-09-16), in which case it goes
+  home to that side's pile; a captured COPY is destroyed rather than filed.
+  See "Captured cards" in docs/claude/card-effects.md.
 - `factions: {a, b}` — stamped from deck factions at game start; drives hero
   powers. Legacy rows normalize to `'NEUTRAL'`.
 - `alertCard` — single shared slot `{side, instanceId, name, setOnTurn} | null`.
@@ -363,11 +364,12 @@ test driving a card through a real exit is the only net.
 **HAND** stamp riding along on a board entry, not a board stamp, and
 `putInHand` (`gameEngine.ts`) is its single writer — see "Engine shape" above.
 The destructure strips more things beyond the named fields, all from
-`snapshot.meta` rather than the entry itself: `costDelta` and `factoryEscort`
-(per-instance grants that must not survive a reshuffle back into a deck, for
-the same reason as the four stamps), and `scrappyOnLoan`, whose removal also
-filters the loaned `SCRAPPY` keyword itself out of `snapshot.keywords` — a
-Sacrilego-lent keyword that must not outlive the battle it was lent for.
+`snapshot.meta` rather than the entry itself: `costDelta`, `factoryEscort`
+and `homeSide` (per-instance grants that must not survive a reshuffle back
+into a deck, for the same reason as the four stamps), and `scrappyOnLoan`,
+whose removal also filters the loaned `SCRAPPY` keyword itself out of
+`snapshot.keywords` — a Sacrilego-lent keyword that must not outlive the
+battle it was lent for.
 
 **`grantedKeywords` and `grantedSpawns` (2026-09-07) generalise that last
 one.** Every grant made to a card that ALREADY EXISTS — a hull on the board

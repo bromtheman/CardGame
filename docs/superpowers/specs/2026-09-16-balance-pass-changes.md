@@ -244,3 +244,21 @@ nearest precedent:
 - Report the before→after passing count; deploy with
   `npm run functions:deploy -- game-action` and verify the version bumped;
   `seed:verify` after merge; then list any effect here still unimplemented.
+- Close-out (2026-09-16): implemented by `docs/superpowers/plans/2026-09-16-balance-pass.md`.
+  Not built by design: gating `ATTACK_ENEMY_FLEET`'s declared roster on
+  `battleCap` (ruling D-2); a `uniquePerZone` check on Sinners Luck's swap
+  (Q3). `scripts/smoke-wave6.mjs` still asserts `aircraftLock` on Albacore
+  and Tarpon and is stale as of this pass.
+- Sacrilego (M-1, spec R-8): a hull loaned SCRAPPY by the OLD lock-phase code
+  in a battle still open at deploy keeps the loan after resolve until it
+  dies (only `discardSnapshotOf` strips it now).
+- Mutiny (M-4): `discardIndexOf` (`shared/engine/battleTriggers.ts`) searches
+  the controller's discard, but a stolen hull is filed under its owner, so
+  revive-on-death triggers (TG Nostalgia `returnToHand`, OW Iron Cordon
+  `reviveEntry`) miss for a hull stolen by Mutiny and log "could not
+  resolve" — fails safe.
+- Sinners Luck (M-5, Q3): the swap also bypasses `aircraftLock` (no seeded
+  carrier since M-6), a third unrecorded edge beside the cap and
+  `uniquePerZone`.
+- `uniquePerZone` joined `DATA_EFFECT_KEYS` (registry) on 2026-09-16 because
+  Albacore's whole text is that rule and names no effect.
