@@ -1,0 +1,169 @@
+import type { GameAction } from '../../engine/engineTypes.ts'
+import type { BotPolicy, OwedKind } from '../basicPolicy.ts'
+import type { BotView } from '../botView.ts'
+import { EMPTY_USAGE, LlmTimeoutError } from './llmClient.ts'
+import type { LlmClient, LlmUsage } from './llmClient.ts'
+import {
+  LLM_CALL_TIMEOUT_MS, LLM_MAX_CALLS_PER_REQUEST, LLM_MAX_OUTPUT_TOKENS, LLM_REQUEST_BUDGET_MS, LLM_TEMPERATURE,
+} from './llmSettings.ts'
+import { sameAction } from './moveMenu.ts'
+import type { MenuItem } from './moveMenu.ts'
+import { parsePlanAnswer, PLAN_SCHEMA } from './planSchema.ts'
+import { buildSystemPrompt, buildUserPrompt } from './prompt.ts'
+import type { FallbackReason, TelemetryRow } from './telemetry.ts'
+
+export interface LlmPolicySettings { callTimeoutMs: number; requestBudgetMs: number; maxCalls: number }
+export const DEFAULT_LLM_POLICY_SETTINGS: LlmPolicySettings = {
+  callTimeoutMs: LLM_CALL_TIMEOUT_MS, requestBudgetMs: LLM_REQUEST_BUDGET_MS, maxCalls: LLM_MAX_CALLS_PER_REQUEST,
+}
+
+// The model-backed policy (spec §3.3). One instance per request: it holds
+// the plan the model gave, a cursor over it, the line it wants to say, and
+// the telemetry rows the function writes after the commit.
+//
+// The model only ever suggests. Every planned move is re-verified against
+// the CURRENT menu before it is offered (the menu is the legality oracle, so
+// this policy never touches an EngineGame), the heuristic's candidates trail
+// every answer, and any failure — timeout, HTTP, malformed, budget — trips
+// the policy for the rest of the request so failures cannot stack timeouts
+// on the human's click.
+export class LlmPolicy implements BotPolicy {
+  readonly rows: TelemetryRow[] = []
+  private plan: MenuItem[] = []
+  private planKind: OwedKind | null = null
+  private planned = false            // has the model been asked at all this request
+  private appliedItems: MenuItem[] = []
+  private pendingTalk: string | null = null
+  private tripped: FallbackReason | null = null
+  private currentRow: TelemetryRow | null = null
+  private calls = 0
+  private spentMs = 0
+
+  constructor(
+    private readonly client: LlmClient | null,
+    private readonly fallback: BotPolicy,
+    private readonly model: string,
+    private readonly settings: LlmPolicySettings = DEFAULT_LLM_POLICY_SETTINGS,
+    private readonly now: () => number = Date.now,
+  ) {
+    if (client === null) this.tripped = 'disabled'
+  }
+
+  // A getter, not a field set once at construction: once the policy trips
+  // (any failure reason, including the initial 'disabled'), the driver must
+  // stop asking for a verified menu — building one costs up to
+  // MENU_MAX_TRIALS clone-and-apply trials, and a tripped policy never reads
+  // it (candidates() returns the fallback's answer without touching view.menu).
+  get needsMenu(): boolean { return this.client !== null && this.tripped === null }
+
+  get modelId(): string { return this.model }
+
+  async candidates(view: BotView, kind: OwedKind): Promise<GameAction[]> {
+    if (this.tripped) {
+      if (this.tripped === 'disabled' && this.rows.length === 0) this.rows.push(this.row(view, kind, 0, 0, 'disabled'))
+      return this.fallback.candidates(view, kind)
+    }
+    const menu = view.menu ?? []
+    const next = this.plan[0]
+    if (next && this.planKind === kind && menu.some((m) => sameAction(m.action, next.action))) {
+      return [next.action, ...(await this.fallback.candidates(view, kind))]
+    }
+    const situation = this.situationFor(kind, next)
+    this.plan = []
+    if (this.calls >= this.settings.maxCalls || this.spentMs >= this.settings.requestBudgetMs) {
+      this.tripped = 'budget'
+      this.rows.push(this.row(view, kind, menu.length, 0, 'budget'))
+      return this.fallback.candidates(view, kind)
+    }
+    const items = await this.ask(view, kind, menu, situation)
+    if (items === null) return this.fallback.candidates(view, kind)
+    this.plan = items
+    this.planKind = kind
+    return [items[0].action, ...(await this.fallback.candidates(view, kind))]
+  }
+
+  onAccepted(action: GameAction, _kind: OwedKind): string | null {
+    const next = this.plan[0]
+    if (next && sameAction(next.action, action)) {
+      this.plan.shift()
+      this.appliedItems.push(next)
+      this.currentRow?.applied.push(action)
+      const talk = this.pendingTalk
+      this.pendingTalk = null
+      return talk
+    }
+    // The engine took something else — a heuristic tail candidate or the
+    // driver's fallback. A verified move was refused: file it, drop the plan.
+    if (next && this.currentRow && this.currentRow.fallbackReason === null) this.currentRow.fallbackReason = 'plan_rejected'
+    this.plan = []
+    this.pendingTalk = null
+    return null
+  }
+
+  private situationFor(kind: OwedKind, next: MenuItem | undefined): string | null {
+    if (!this.planned) return null
+    if (next && this.planKind === kind) return `Your planned move #${next.id} (${next.text}) is no longer available — the board changed. Choose again from the new menu.`
+    if (next) return `The board changed before your plan finished: you now owe a ${kind} decision.`
+    if (this.planKind === kind && kind === 'turn') return 'Your plan is complete and it is still your turn — usually the answer is to end it.'
+    return `Your previous plan finished; you now owe a ${kind} decision.`
+  }
+
+  // One model call. Returns the plan as menu items, or null after filing the
+  // failure and tripping. Latency is measured on the policy's clock so the
+  // budget and the row agree.
+  private async ask(view: BotView, kind: OwedKind, menu: MenuItem[], situation: string | null): Promise<MenuItem[] | null> {
+    const started = this.now()
+    const ac = new AbortController()
+    const timer = setTimeout(() => ac.abort(), this.settings.callTimeoutMs)
+    this.calls++
+    this.planned = true
+    let text: string | null = null
+    let usage: LlmUsage = EMPTY_USAGE
+    let reason: FallbackReason | null = null
+    try {
+      const res = await this.client!.complete({
+        system: buildSystemPrompt(view.state.factions[view.side]),
+        user: buildUserPrompt({ view, kind, menu, situation, planSoFar: this.appliedItems }),
+        schema: PLAN_SCHEMA as unknown as Record<string, unknown>,
+        maxTokens: LLM_MAX_OUTPUT_TOKENS,
+        temperature: LLM_TEMPERATURE,
+      }, ac.signal)
+      text = res.text
+      usage = res.usage
+    } catch (e) {
+      reason = ac.signal.aborted || e instanceof LlmTimeoutError ? 'timeout' : 'http'
+    } finally {
+      clearTimeout(timer)
+    }
+    const latencyMs = Math.max(0, this.now() - started)
+    this.spentMs += latencyMs
+    const answer = reason === null && text !== null ? parsePlanAnswer(text) : null
+    const items = answer ? answer.plan.map((id) => menu.find((m) => m.id === id)).filter((m): m is MenuItem => m !== undefined) : []
+    if (reason === null && items.length === 0) reason = 'malformed'
+    const row = this.row(view, kind, menu.length, latencyMs, reason, usage)
+    if (answer && reason === null) {
+      row.plan = items.map((m) => ({ id: m.id, text: m.text, action: m.action }))
+      row.expectation = answer.expectation
+      row.tableTalk = answer.tableTalk
+    }
+    this.rows.push(row)
+    if (reason !== null) {
+      this.tripped = reason
+      return null
+    }
+    this.currentRow = row
+    this.pendingTalk = answer!.tableTalk
+    return items
+  }
+
+  private row(view: BotView, kind: OwedKind, menuSize: number, latencyMs: number, reason: FallbackReason | null, usage: LlmUsage = EMPTY_USAGE): TelemetryRow {
+    const report = view.state.pendingReport
+    return {
+      turnNumber: view.turnNumber, kind, model: this.model, latencyMs,
+      promptTokens: usage.promptTokens, completionTokens: usage.completionTokens, cachedTokens: usage.cachedTokens, costUsd: usage.costUsd,
+      menuSize, plan: [], applied: [], expectation: null,
+      report: kind === 'decision' && report ? { results: report.results, repairs: report.repairs } : null,
+      tableTalk: null, fallbackReason: reason,
+    }
+  }
+}

@@ -40,7 +40,14 @@
     "ai/llm/tableTalk.ts",
     "ai/llm/logDelta.ts",
     "ai/llm/describe.ts",
-    "ai/llm/moveMenu.ts"
+    "ai/llm/moveMenu.ts",
+    "ai/llm/llmClient.ts",
+    "ai/llm/openRouterClient.ts",
+    "ai/llm/rulesPrimer.ts",
+    "ai/llm/planSchema.ts",
+    "ai/llm/prompt.ts",
+    "ai/llm/llmPolicy.ts",
+    "ai/llm/makePolicy.ts"
   ],
   "game-action": [
     "gameSettings.ts",
@@ -82,7 +89,14 @@
     "ai/llm/tableTalk.ts",
     "ai/llm/logDelta.ts",
     "ai/llm/describe.ts",
-    "ai/llm/moveMenu.ts"
+    "ai/llm/moveMenu.ts",
+    "ai/llm/llmClient.ts",
+    "ai/llm/openRouterClient.ts",
+    "ai/llm/rulesPrimer.ts",
+    "ai/llm/planSchema.ts",
+    "ai/llm/prompt.ts",
+    "ai/llm/llmPolicy.ts",
+    "ai/llm/makePolicy.ts"
   ],
   "battle-report": ["battleReport.ts"]
 }

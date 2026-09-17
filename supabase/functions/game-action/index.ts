@@ -1,9 +1,12 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import type { SupabaseClient } from 'npm:@supabase/supabase-js@2'
 import { applyAction, CATALOG_EFFECTS, CATALOG_HERO_POWERS, normalizeState } from './shared/engine/index.ts'
 import { secureRng, snapshotCard } from './shared/engine/gameInit.ts'
 import type { SnapshotCard } from './shared/engine/gameInit.ts'
 import type { EngineGame, GameAction, PrivateState, Side } from './shared/engine/engineTypes.ts'
-import { basicPolicy } from './shared/ai/basicPolicy.ts'
+import { makeBotPolicy } from './shared/ai/llm/makePolicy.ts'
+import { toBotDecisionRow } from './shared/ai/llm/telemetry.ts'
+import type { TelemetryRow } from './shared/ai/llm/telemetry.ts'
 import { runBotUntilIdle } from './shared/ai/botDriver.ts'
 import { botPlayerId, botSideOf } from './shared/ai/botGame.ts'
 
@@ -21,6 +24,26 @@ function json(status: number, body: unknown): Response {
     status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   })
+}
+
+// Supabase's runtime keeps the isolate alive for a promise handed to
+// EdgeRuntime.waitUntil after the response is sent; `deno check` does not
+// know the global, so it is declared here. Absent (local tooling), the
+// promise simply runs detached.
+declare const EdgeRuntime: { waitUntil(promise: Promise<unknown>): void } | undefined
+function afterResponse(work: Promise<unknown>): void {
+  if (typeof EdgeRuntime !== 'undefined' && EdgeRuntime) EdgeRuntime.waitUntil(work)
+  else void work
+}
+
+// Telemetry for the model-backed PracticeAI (LLM spec §7.2): best effort,
+// after the commit, never on the player's path. Same function in lobby-action.
+async function recordBotDecisions(
+  admin: SupabaseClient, gameId: string, version: number, rows: TelemetryRow[],
+): Promise<void> {
+  if (rows.length === 0) return
+  const { error } = await admin.from('bot_decisions').insert(rows.map((r) => toBotDecisionRow(r, gameId, version)))
+  if (error) console.error('bot_decisions insert failed:', error.message)
 }
 
 // --- caller identity, verified locally --------------------------------------
@@ -200,14 +223,21 @@ Deno.serve(async (req) => {
 
   // A practice game: the bot acts until it owes nothing, in memory, and the
   // single apply_action_tx below commits the human's action and the bot's
-  // reply together (spec §5.4). A throw here is an engine bug surfacing —
-  // answered as its own 500 with nothing committed, so the game stays
-  // consistent and the message is visible. CONCEDE/ABANDON end the game
-  // first, so botOwes is null for them.
+  // reply together (spec §5.4). The policy is the model-backed one when
+  // OPENROUTER_API_KEY is set (LLM spec §3.4), the heuristic otherwise; a
+  // model failure never surfaces here — the policy falls back and files a
+  // telemetry row. A throw is an engine bug surfacing — answered as its own
+  // 500 with nothing committed. CONCEDE/ABANDON end the game first, so
+  // botOwes is null for them.
   const botId = botPlayerId(next)
-  if (botId) {
+  const policy = botId ? makeBotPolicy({
+    OPENROUTER_API_KEY: Deno.env.get('OPENROUTER_API_KEY'),
+    BOT_MODEL: Deno.env.get('BOT_MODEL'),
+    BOT_LLM_DISABLED: Deno.env.get('BOT_LLM_DISABLED'),
+  }) : null
+  if (botId && policy) {
     try {
-      next = (await runBotUntilIdle(next, botId, ctx, basicPolicy)).game
+      next = (await runBotUntilIdle(next, botId, ctx, policy)).game
     } catch (err) {
       return json(500, { errors: [`AI opponent failed: ${err instanceof Error ? err.message : String(err)}`] })
     }
@@ -234,5 +264,6 @@ Deno.serve(async (req) => {
   if (newVersion === null || newVersion === undefined) {
     return json(409, { errors: ['Version conflict — refresh'] })
   }
+  if (policy) afterResponse(recordBotDecisions(admin, gameId, newVersion as number, policy.rows))
   return json(200, { version: newVersion })
 })
