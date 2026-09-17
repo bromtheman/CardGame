@@ -534,9 +534,9 @@ Deno.serve(async (req) => {
       }
       if (guestIsBot && game.activePlayer === locked.guest_id) {
         try {
-          game = runBotUntilIdle(
+          game = (await runBotUntilIdle(
             game, locked.guest_id, { rng: secureRng, newId: () => crypto.randomUUID(), catalog }, basicPolicy,
-          ).game
+          )).game
         } catch (err) {
           return fail(500, [`AI opponent failed on its opening turn: ${err instanceof Error ? err.message : String(err)}`])
         }

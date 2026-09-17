@@ -207,7 +207,7 @@ Deno.serve(async (req) => {
   const botId = botPlayerId(next)
   if (botId) {
     try {
-      next = runBotUntilIdle(next, botId, ctx, basicPolicy).game
+      next = (await runBotUntilIdle(next, botId, ctx, basicPolicy)).game
     } catch (err) {
       return json(500, { errors: [`AI opponent failed: ${err instanceof Error ? err.message : String(err)}`] })
     }

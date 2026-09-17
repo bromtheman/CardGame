@@ -32,7 +32,15 @@
     "ai/botView.ts",
     "ai/basicPolicy.ts",
     "ai/botDriver.ts",
-    "ai/fallbacks.ts"
+    "ai/fallbacks.ts",
+    "format.ts",
+    "ai/seededRng.ts",
+    "ai/llm/llmSettings.ts",
+    "ai/llm/telemetry.ts",
+    "ai/llm/tableTalk.ts",
+    "ai/llm/logDelta.ts",
+    "ai/llm/describe.ts",
+    "ai/llm/moveMenu.ts"
   ],
   "game-action": [
     "gameSettings.ts",
@@ -62,10 +70,19 @@
     "effects/wfEffects.ts",
     "effects/tgEffects.ts",
     "ai/botGame.ts",
+    "ai/botDecks.ts",
     "ai/botView.ts",
     "ai/basicPolicy.ts",
     "ai/botDriver.ts",
-    "ai/fallbacks.ts"
+    "ai/fallbacks.ts",
+    "format.ts",
+    "ai/seededRng.ts",
+    "ai/llm/llmSettings.ts",
+    "ai/llm/telemetry.ts",
+    "ai/llm/tableTalk.ts",
+    "ai/llm/logDelta.ts",
+    "ai/llm/describe.ts",
+    "ai/llm/moveMenu.ts"
   ],
   "battle-report": ["battleReport.ts"]
 }

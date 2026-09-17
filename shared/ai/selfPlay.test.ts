@@ -132,7 +132,7 @@ describe('self-play', () => {
         const where = () => `(seed ${seed}, ${botFaction} vs ${humanFaction}, turn ${game.turnNumber})`
         for (let step = 0; step < STEP_CAP; step++) {
           try {
-            game = runBotUntilIdle(game, 'bot', ctx, basicPolicy).game
+            game = (await runBotUntilIdle(game, 'bot', ctx, basicPolicy)).game
           } catch (e) {
             throw new Error(`bot threw ${where()}: ${e instanceof Error ? e.message : String(e)}`)
           }

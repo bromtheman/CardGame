@@ -12,9 +12,15 @@ export type OwedKind = 'turn' | 'response' | 'decision' | 'choice'
 
 // A policy proposes; the engine disposes. Candidates are best-first, and the
 // driver applies the first one applyAction accepts — so a candidate may be
-// illegal and nothing here has to know every rule.
+// illegal and nothing here has to know every rule. A policy may be async
+// (the model-backed one is), may ask for the verified move menu on its view
+// (needsMenu), and is told which candidate the engine accepted so it can
+// advance a plan — returning, if it likes, one public line for the log,
+// which the driver guards before writing (2026-09-16 LLM PracticeAI spec §3.1).
 export interface BotPolicy {
-  candidates(view: BotView, kind: OwedKind): GameAction[]
+  readonly needsMenu?: boolean
+  candidates(view: BotView, kind: OwedKind): GameAction[] | Promise<GameAction[]>
+  onAccepted?(action: GameAction, kind: OwedKind): string | null | void
 }
 
 // Fisher–Yates on a copy, driven by the view's rng so tests are deterministic.
@@ -186,7 +192,7 @@ function choiceCandidates(view: BotView): GameAction[] {
   }))
 }
 
-export const basicPolicy: BotPolicy = {
+export const basicPolicy: BotPolicy & { candidates(view: BotView, kind: OwedKind): GameAction[] } = {
   candidates(view, kind) {
     switch (kind) {
       case 'turn': {

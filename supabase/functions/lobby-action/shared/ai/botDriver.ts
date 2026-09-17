@@ -1,8 +1,11 @@
 import type { EngineContext, EngineGame, GameAction, Side } from '../engine/engineTypes.ts'
 import { applyAction, otherSide, sideOf } from '../engine/index.ts'
+import { LOG_MAX_ENTRIES } from '../gameSettings.ts'
 import type { BotPolicy, OwedKind } from './basicPolicy.ts'
 import { viewFor } from './botView.ts'
 import { FALLBACK } from './fallbacks.ts'
+import { buildMenu } from './llm/moveMenu.ts'
+import { formatTableTalk, guardTableTalk } from './llm/tableTalk.ts'
 export { FALLBACK } from './fallbacks.ts'
 
 // Accepted policy actions per request before the driver stops listening to
@@ -27,25 +30,38 @@ export function botOwes(game: EngineGame, botSide: Side): OwedKind | null {
   return game.activePlayer === botId ? 'turn' : null
 }
 
+// The one place a table-talk line enters the public log: after the engine's
+// own lines for the move that carried it, under the prefix, past the guard,
+// and under the same cap applyAction's finish() applies (LLM spec §3.2, §6.2).
+function appendLog(game: EngineGame, line: string): EngineGame {
+  return { ...game, state: { ...game.state, log: [...game.state.log, line].slice(-LOG_MAX_ENTRIES) } }
+}
+
 // Act as the bot until it owes nothing. Pure: applyAction clones, so the
 // input is never touched and a refused candidate costs one clone. The policy
 // only ever suggests; the engine is the sole legality authority. A fallback
 // that is itself refused, or a bot that still owes after the caps, means an
 // engine bug — it throws, and game-action answers 500 with nothing committed.
-export function runBotUntilIdle(
+// Async since the LLM spec: a policy may await a model; the menu is built
+// only for a policy that declares needsMenu, so the heuristic costs what it
+// always did.
+export async function runBotUntilIdle(
   input: EngineGame, botId: string, ctx: EngineContext, policy: BotPolicy,
-): { game: EngineGame; applied: GameAction[] } {
+): Promise<{ game: EngineGame; applied: GameAction[]; talk: string[] }> {
   const side = sideOf(input, botId)
   if (!side) throw new Error(`PracticeAI (${botId}) is not in this game`)
   let game = input
   const applied: GameAction[] = []
+  const talk: string[] = []
   let fallbacks = 0
   for (;;) {
     const kind = botOwes(game, side)
-    if (!kind) return { game, applied }
+    if (!kind) return { game, applied, talk }
     let accepted: GameAction | null = null
     if (applied.length < BOT_ACTION_CAP) {
-      for (const action of policy.candidates(viewFor(game, side, ctx.rng), kind)) {
+      const menu = policy.needsMenu ? buildMenu(game, botId, ctx, kind) : undefined
+      const candidates = await policy.candidates(viewFor(game, side, ctx.rng, menu), kind)
+      for (const action of candidates) {
         const r = applyAction(game, botId, action, ctx)
         if (r.ok) {
           game = r.game
@@ -63,6 +79,14 @@ export function runBotUntilIdle(
       if (!r.ok) throw new Error(`PracticeAI fallback ${fallback.type} was refused: ${r.error}`)
       game = r.game
       accepted = fallback
+    }
+    // Told for fallbacks too, so a plan-holding policy learns its plan is
+    // stale; the line it returns is guarded against the POST-move state, so
+    // a card just played may be named and a card still in hand may not.
+    const line = guardTableTalk(policy.onAccepted?.(accepted, kind) ?? null, game, side)
+    if (line !== null) {
+      game = appendLog(game, formatTableTalk(line))
+      talk.push(line)
     }
     applied.push(accepted)
   }

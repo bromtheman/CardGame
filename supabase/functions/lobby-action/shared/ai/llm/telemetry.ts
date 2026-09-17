@@ -1,0 +1,40 @@
+import type { GameAction } from '../../engine/engineTypes.ts'
+import type { OwedKind } from '../basicPolicy.ts'
+
+// Why the model did not answer a call (spec §7.1). `disabled` = no key or the
+// kill switch; `plan_rejected` = the engine refused a move the menu had
+// verified (an engine bug, or an rng-dependent legality).
+export type FallbackReason = 'timeout' | 'http' | 'malformed' | 'budget' | 'disabled' | 'plan_rejected'
+
+export interface BattleExpectation { zoneId: number; outcome: 'win' | 'lose' | 'even'; confidence: number }
+export interface Expectation { summary: string; battle: BattleExpectation | null }
+
+// One row per model call, including failed ones (spec §7.2). Field names are
+// camelCase here and snake_case in the table; toBotDecisionRow is the one map.
+export interface TelemetryRow {
+  turnNumber: number
+  kind: OwedKind
+  model: string
+  latencyMs: number
+  promptTokens: number | null
+  completionTokens: number | null
+  cachedTokens: number | null
+  costUsd: number | null
+  menuSize: number
+  plan: { id: number; text: string; action: GameAction }[]
+  applied: GameAction[]
+  expectation: Expectation | null
+  report: { results: Record<string, number>; repairs: string[] } | null
+  tableTalk: string | null
+  fallbackReason: FallbackReason | null
+}
+
+export function toBotDecisionRow(row: TelemetryRow, gameId: string, version: number) {
+  return {
+    game_id: gameId, version, turn_number: row.turnNumber, kind: row.kind, model: row.model,
+    latency_ms: row.latencyMs, prompt_tokens: row.promptTokens, completion_tokens: row.completionTokens,
+    cached_tokens: row.cachedTokens, cost_usd: row.costUsd, menu_size: row.menuSize,
+    plan: row.plan, applied: row.applied, expectation: row.expectation, report: row.report,
+    table_talk: row.tableTalk, fallback_reason: row.fallbackReason,
+  }
+}
