@@ -52,12 +52,14 @@ interface FleetRow {
   role: string
   strength: number
   rank: number
+  rankTied: boolean
   scores: number[]
   matchups: number[]
 }
 
-// The "Fleet at a glance" table: name → role, strength, rank, and the two
-// dotted score strings, which the per-ship sections are checked against.
+// The "Fleet at a glance" table: name → role, strength, rank ("#44=" is a
+// tie), and the two dotted score strings, which the per-ship sections are
+// checked against.
 function parseFleetTable(lines: string[]): Map<string, FleetRow> {
   const start = lines.findIndex((l) => l.trim() === '## Fleet at a glance')
   if (start < 0) throw new Error('report has no "## Fleet at a glance" section')
@@ -72,13 +74,14 @@ function parseFleetTable(lines: string[]): Map<string, FleetRow> {
     if (c[0] === 'Craft') { inTable = true; continue }
     if (!inTable) continue
     const [name, role, , strengthCell, scoreCell, matchupCell] = c
-    const strength = strengthCell.match(/^([\d,]+)\s+\(#(\d+)\)$/)
+    const strength = strengthCell.match(/^([\d,]+)\s+\(#(\d+)(=?)\)$/)
     if (!strength) throw new Error(`fleet table: cannot read strength/rank for ${name}: "${strengthCell}"`)
     const dotted = (s: string): number[] => s.split('·').map((n) => Number(n))
     rows.set(name, {
       role,
       strength: Number(strength[1].replace(/,/g, '')),
       rank: Number(strength[2]),
+      rankTied: strength[3] === '=',
       scores: dotted(scoreCell),
       matchups: dotted(matchupCell),
     })
@@ -171,6 +174,7 @@ function parseSection(name: string, lines: string[], fleet: FleetRow): ShipProfi
     role: fleet.role,
     strength: fleet.strength,
     rank: fleet.rank,
+    ...(fleet.rankTied ? { rankTied: true as const } : {}),
     type: fields.type!,
     speed: fields.speed!,
     fightsAt: fields.fightsAt!,

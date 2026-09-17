@@ -13,6 +13,7 @@ import { SHIP_PROFILES, shipProfileOf, shipProfilesForFaction } from './shipProf
 describe('ship profiles', () => {
   it('looks a built-in card up by faction and name, and misses otherwise', () => {
     expect(shipProfileOf('DWG', 'Crossbones')?.role).toBe('CRAM battleship, flagship')
+    expect(shipProfileOf('WF', 'Martyr')?.role).toBe('kamikaze nuke drone')
     expect(shipProfileOf('DWG', 'No Such Ship')).toBeNull()
     expect(shipProfileOf('OW', 'Crossbones')).toBeNull()
   })
@@ -21,7 +22,16 @@ describe('ship profiles', () => {
     const dwg = shipProfilesForFaction('DWG')
     expect(dwg.map((p) => p.name).slice(0, 3)).toEqual(['Corsair', 'Marauder', 'Loggerhead'])
     expect(dwg.at(-1)?.name).toBe('Tarpon')
+    const wf = shipProfilesForFaction('WF')
+    expect(wf.map((p) => p.name).slice(0, 3)).toEqual(['Martyr', 'Earth Raker', 'Buzzsaw'])
+    expect(wf.at(-1)?.name).toBe('Purifier')
     expect(shipProfilesForFaction('OW')).toEqual([])
+  })
+
+  it('flags the WF craft FtD scores 0 as sharing their rank, and no other', () => {
+    const tied = Object.entries(SHIP_PROFILES).filter(([, p]) => p.rankTied).map(([key]) => key)
+    expect(tied).toEqual(['WF:Martyr', 'WF:Earth Raker', 'WF:Pontus', 'WF:Pulverizer'])
+    for (const key of tied) expect(SHIP_PROFILES[key].strength, key).toBe(0)
   })
 
   it('carries whole-number scores from one to five and non-empty prose', () => {

@@ -58,6 +58,14 @@ describe('rules primer', () => {
     // The scale is explained in words, once, so the digits on each line read as scores.
     expect(fleet).toMatch(/one weakest to five strongest/)
   })
+  it('rosters the WF hulls the same way, summaries and all', () => {
+    const text = renderPrimer('WF')
+    const fleet = text.slice(text.indexOf('YOUR FLEET'), text.indexOf('HOW YOU PLAY'))
+    for (const { name } of shipProfilesForFaction('WF')) expect(fleet).toContain(`\n- ${name} (`)
+    expect(fleet).toContain(
+      '- Martyr (kamikaze nuke drone): fire 1, tough 1, speed 5, range 1; vs ships 3, aircraft 1, subs 1, missiles 1. Suicide glass cannon.',
+    )
+  })
   it('leaves the fleet section out entirely for a faction with no profiles yet', () => {
     const text = renderPrimer('OW')
     expect(text).not.toContain('YOUR FLEET')
