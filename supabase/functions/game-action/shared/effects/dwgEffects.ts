@@ -6,10 +6,11 @@ import {
 import type { EngineContext, EngineGame, Side, ZoneCardEntry } from '../engine/engineTypes.ts'
 import type { SnapshotCard } from '../engine/gameInit.ts'
 import {
-  checkVictory, copyMeta, discardCard, discardSnapshotOf, drawCard, findVehicle, grantSpawnsTo, otherSide,
-  putInHand, zoneById,
+  checkVictory, copyMeta, discardCard, discardSnapshotOf, drawCard, findVehicle, grantKeywordsTo, grantSpawnsTo,
+  HOME_SIDE_KEY, otherSide, putInHand, zoneById,
 } from '../engine/gameEngine.ts'
-import { effectiveMaterialCostOf } from '../engine/placement.ts'
+import { effectiveMaterialCostOf, uniquePerZoneBlocked } from '../engine/placement.ts'
+import { zoneCapFor } from '../engine/zoneCapacity.ts'
 import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
 import { baseDamageFrom, baseStrikersIn } from '../engine/baseAttack.ts'
 import { fireDeathEffect } from '../engine/battleTriggers.ts'
@@ -611,4 +612,49 @@ registerEffect('gangUpEffect', ({ game, actor, ctx, targetInstanceId, card }) =>
     defenderIds: [targetInstanceId],
     cause: card.name,
   })
+})
+
+// "Choose an enemy vehicle, gain control of it and give it temporary." (M-4,
+// 2026-09-16.) The engine's first CONTROL CHANGE: the entry is moved between
+// the two side lists of its own zone. No new primitive — it is one splice and
+// one push, and nothing else needs to move a hull between sides.
+//
+// PLAY_CARD_TARGETING_CARD_ON_FIELD checks only that the target is on the
+// field, not whose it is (ruling E-5), so the enemy-side test is here —
+// flyingSquirrelAttackEffect's shape.
+//
+// Q1: a full zone REFUSES the play rather than exceeding the cap, and so does
+// a uniquePerZone clash (a second Albacore/Obelisk into a zone you already
+// hold one in) — the two gates moveEntry applies to walking a hull in. A
+// refusal 400s the handler and the 400k is never spent.
+//
+// Q2: the stolen entry is stamped HOME_SIDE_KEY with the side it came from, so
+// discardCard files it under its owner when the turn-start cull (or a death in
+// battle) sends it out of play; discardSnapshotOf strips the stamp on the way.
+//
+// D-1: re-stamped as freshly deployed, as Boarding Party re-stamps both hulls
+// it swaps — so it can fight a fleet battle this turn but cannot bombard.
+// TEMPORARY is granted through grantKeywordsTo so the grant is recorded and
+// shed with the rest; a hull that already prints it records nothing and is
+// culled just the same.
+registerEffect('mutinyEffect', ({ game, actor, card, targetInstanceId }) => {
+  if (typeof targetInstanceId !== 'string') return false
+  const found = findVehicle(game.state, targetInstanceId)
+  if (!found || found.side !== otherSide(actor)) return false
+  const { zone, entry, side: owner } = found
+  if (zone.cards[actor].length >= zoneCapFor(game.state, actor, zone.id)) return false
+  if (uniquePerZoneBlocked(game.state, actor, zone.id, entry)) return false
+  zone.cards[owner] = zone.cards[owner].filter((c) => c.instanceId !== entry.instanceId)
+  const stolen: ZoneCardEntry = {
+    ...entry,
+    meta: { ...entry.meta, [HOME_SIDE_KEY]: entry.meta[HOME_SIDE_KEY] ?? owner },
+    playedOnTurn: game.turnNumber, movedOnTurn: null, activatedOnTurn: null,
+  }
+  grantKeywordsTo(stolen, [KEYWORDS.TEMPORARY])
+  zone.cards[actor].push(stolen)
+  // The hull was public on the board a moment ago, so naming it leaks nothing.
+  game.state.log.push(
+    `${card.name}: ${entry.name} mutinies and joins player ${actor.toUpperCase()} in zone ${zone.id} for this turn`,
+  )
+  return true
 })

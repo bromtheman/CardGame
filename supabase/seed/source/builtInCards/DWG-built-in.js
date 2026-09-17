@@ -381,6 +381,23 @@ export const dwgVehicles = [
         }
     },
     {
+        name: 'Mutiny',
+        isBuiltIn: true,
+        cardText: 'Choose an enemy vehicle, gain control of it and give it temporary',
+        materialCost: 400000,
+        blueprintCost: 0,
+        cpCost: 0,
+        imageUrl: 'mutiny.png',
+        playerId: null,
+        vehicleType: null,
+        type: 'ability',
+        faction: FACTIONS.DWG,
+        blueprintId: null,
+        meta: {
+            [TRIGGERS.PLAY_ON_VEHICLE]: 'mutinyEffect',
+        }
+    },
+    {
         name: 'Sinners Luck',
         isBuiltIn: true,
         cardText: '',

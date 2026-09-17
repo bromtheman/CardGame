@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { costModifierFor, effectFor } from './registry.ts'
-import { DOUBLE_UP_MAX_COST, KEYWORDS, RESERVES_CARD_COUNT } from '../gameSettings.ts'
+import { CATALOG_EFFECTS, costModifierFor, effectFor } from './registry.ts'
+import { DOUBLE_UP_MAX_COST, KEYWORDS, MAX_VEHICLES_PER_ZONE_SIDE, RESERVES_CARD_COUNT } from '../gameSettings.ts'
 import { inst, makeCtx, makeGame, snap, zoneEntry } from '../engine/testFixtures.ts'
-import { applyAction, autoRepairIds, declareForcedBattle } from '../engine/index.ts'
+import {
+  HOME_SIDE_KEY, applyAction, autoRepairIds, baseStrikersIn, declareForcedBattle, findVehicle,
+} from '../engine/index.ts'
+import type { EngineGame } from '../engine/engineTypes.ts'
+import type { CardInstance } from '../engine/gameInit.ts'
 
 describe('marauderOnPlay', () => {
   it('skips past a non-vehicle to the first vehicle, without naming it in the log', () => {
@@ -1324,5 +1328,140 @@ describe('enemy-deck capture is a copy, for all three cards', () => {
     expect(game.privates.a.hand.map((c) => c.meta.costDelta)).toEqual([undefined, 20_000, 20_000])
     expect(game.privates.b.deck.map((c) => c.name).sort()).toEqual(['Ship One', 'Ship Three', 'Ship Two'])
     expect(game.state.counts.b.deck).toBe(3)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 2026-09-16 M-4 — DWG Mutiny: "Choose an enemy vehicle, gain control of it and
+// give it temporary." A CONTROL CHANGE, new engine ground: the entry moves from
+// zone.cards[enemy] to zone.cards[actor] in the same zone, carries a homeSide
+// stamp so it is discarded to its owner (Q2), gains TEMPORARY through
+// grantKeywordsTo so the turn-start cull removes it, and is re-stamped as
+// freshly deployed (D-1, Boarding Party's precedent).
+describe('mutinyEffect (2026-09-16 M-4)', () => {
+  const mutiny = () => inst({
+    name: 'Mutiny', faction: 'DWG', type: 'ability', vehicleType: null, materialCost: 400_000,
+    meta: { playOnVehicleEffect: 'mutinyEffect' },
+  })
+  // Bob keeps one card in his deck: END_TURN draws for the incoming side, and
+  // an EMPTY deck would reshuffle his discard — the buried Foe included —
+  // straight back into it, hiding exactly what the Q2 test below looks for.
+  const board = () => {
+    const game = makeGame({ turnNumber: 3 })
+    const foe = zoneEntry({ instanceId: 'foe1', name: 'Foe', cardId: 'card:foe', keywords: ['blocker'], playedOnTurn: 1 })
+    game.state.zones[0].cards.b.push(foe)
+    game.privates.b.deck.push(inst({ name: 'B Top' }))
+    game.state.counts.b.deck = 1
+    return { game, foe }
+  }
+  const steal = (game: EngineGame, targetInstanceId: string) => effectFor('mutinyEffect')!({
+    game, actor: 'a', card: mutiny(), ctx: makeCtx(), targetInstanceId,
+  })
+
+  it('moves the hull to the actor\'s side of the same zone, Temporary, stamped home, freshly deployed', () => {
+    const { game } = board()
+    expect(steal(game, 'foe1')).toBe(true)
+    expect(game.state.zones[0].cards.b).toHaveLength(0)
+    const found = findVehicle(game.state, 'foe1')!
+    expect(found.side).toBe('a')
+    expect(found.zone.id).toBe(1)
+    expect(found.entry.keywords).toEqual(['blocker', KEYWORDS.TEMPORARY])
+    expect(found.entry.meta.grantedKeywords).toEqual([KEYWORDS.TEMPORARY])
+    expect(found.entry.meta[HOME_SIDE_KEY]).toBe('b')
+    expect(found.entry).toMatchObject({ playedOnTurn: 3, movedOnTurn: null, activatedOnTurn: null })
+    expect(game.state.log.at(-1)).toContain('Foe')
+  })
+
+  it('refuses a friendly hull, and a missing one', () => {
+    const { game } = board()
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'mine1', playedOnTurn: 1 }))
+    expect(steal(game, 'mine1')).toBe(false)
+    expect(steal(game, 'nope')).toBe(false)
+    expect(effectFor('mutinyEffect')!({ game, actor: 'a', card: mutiny(), ctx: makeCtx() })).toBe(false)
+  })
+
+  // Q1: refuse, do not exceed the cap.
+  it('refuses when the actor\'s side of the zone is at its cap', () => {
+    const { game } = board()
+    for (let i = 0; i < MAX_VEHICLES_PER_ZONE_SIDE; i++) {
+      game.state.zones[0].cards.a.push(zoneEntry({ instanceId: `full-${i}`, playedOnTurn: 1 }))
+    }
+    expect(steal(game, 'foe1')).toBe(false)
+    expect(game.state.zones[0].cards.b.map((c) => c.instanceId)).toEqual(['foe1'])
+  })
+
+  // Q1's second gate: the same uniquePerZone rule moveEntry applies.
+  it('refuses to steal a second copy of a uniquePerZone card into a zone holding one', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'myOb', cardId: 'card:ob', meta: { uniquePerZone: true }, playedOnTurn: 1 }))
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'theirOb', cardId: 'card:ob', meta: { uniquePerZone: true }, playedOnTurn: 1 }))
+    expect(steal(game, 'theirOb')).toBe(false)
+    expect(findVehicle(game.state, 'theirOb')!.side).toBe('b')
+  })
+
+  it('leaves an already-Temporary hull Temporary without recording a grant', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'tmp', keywords: [KEYWORDS.TEMPORARY], playedOnTurn: 1 }))
+    expect(steal(game, 'tmp')).toBe(true)
+    const entry = findVehicle(game.state, 'tmp')!.entry
+    expect(entry.keywords).toEqual([KEYWORDS.TEMPORARY])
+    expect(entry.meta.grantedKeywords).toBeUndefined()
+  })
+
+  // Q2 end to end: played for real, then the thief ends the turn. The cull
+  // discards the hull to its OWNER's pile, clean of the stamp and the grant.
+  it('is culled at the thief\'s END_TURN into the owner\'s discard, clean', () => {
+    const { game } = board()
+    const card = mutiny()
+    game.privates.a.hand.push(card)
+    game.state.counts.a.hand = 1
+    game.state.resources.a.materials = 400_000
+    const played = applyAction(game, 'alice', {
+      type: 'PLAY_CARD_TARGETING_CARD_ON_FIELD', instanceId: card.instanceId, targetInstanceId: 'foe1',
+    }, makeCtx())
+    if (!played.ok) throw new Error(played.error)
+    expect(played.game.state.resources.a.materials).toBe(0)
+    expect(findVehicle(played.game.state, 'foe1')!.side).toBe('a')
+    const ended = applyAction(played.game, 'alice', { type: 'END_TURN' }, makeCtx())
+    if (!ended.ok) throw new Error(ended.error)
+    expect(findVehicle(ended.game.state, 'foe1')).toBeNull()
+    // Alice's pile holds only the SPENT Mutiny card — never the hull it stole.
+    expect(ended.game.state.destroyed.a.map((c) => c.name)).toEqual(['Mutiny'])
+    const buried = ended.game.state.destroyed.b
+    expect(buried.map((c) => c.name)).toEqual(['Foe'])
+    expect(buried[0].keywords).toEqual(['blocker'])
+    expect((buried[0].meta as Record<string, unknown>)[HOME_SIDE_KEY]).toBeUndefined()
+    expect(buried[0].meta.grantedKeywords).toBeUndefined()
+  })
+
+  // A refused play spends nothing (Q1): the handler 400s and the clone is dropped.
+  it('a refused play through the handler leaves the hand and materials untouched', () => {
+    const { game } = board()
+    for (let i = 0; i < MAX_VEHICLES_PER_ZONE_SIDE; i++) {
+      game.state.zones[0].cards.a.push(zoneEntry({ instanceId: `full-${i}`, playedOnTurn: 1 }))
+    }
+    const card = mutiny()
+    game.privates.a.hand.push(card)
+    game.state.counts.a.hand = 1
+    game.state.resources.a.materials = 400_000
+    const r = applyAction(game, 'alice', {
+      type: 'PLAY_CARD_TARGETING_CARD_ON_FIELD', instanceId: card.instanceId, targetInstanceId: 'foe1',
+    }, makeCtx())
+    expect(r).toMatchObject({ ok: false, status: 400 })
+    expect(game.privates.a.hand).toHaveLength(1)
+    expect(game.state.resources.a.materials).toBe(400_000)
+  })
+
+  // D-1: a stolen hull cannot bombard this turn (fresh deployment), which is
+  // Boarding Party's rule for a hull that changed sides.
+  it('re-stamps playedOnTurn so the stolen hull cannot bombard this turn', () => {
+    const { game } = board()
+    steal(game, 'foe1')
+    const entry = findVehicle(game.state, 'foe1')!.entry
+    expect(baseStrikersIn([entry], game.turnNumber)).toEqual([])
+  })
+
+  it('needs no catalog', () => {
+    expect(CATALOG_EFFECTS.has('mutinyEffect')).toBe(false)
   })
 })
