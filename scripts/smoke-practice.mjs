@@ -13,7 +13,10 @@ const cards = await builtIns(p1.token)
 
 const deckRes = await rest('/decks', {
   method: 'POST', token: p1.token, prefer: 'return=representation',
-  body: { owner_id: p1.userId, name: `practice-${Date.now()}`, faction: 'DWG', cards: buildDeck(cards, 'DWG', []) },
+  // Corsair and Marauder (30k/55k) are required so the deck holds turn-one
+  // ships; the first live run drew a hand without one and the deploy below
+  // had nothing to play.
+  body: { owner_id: p1.userId, name: `practice-${Date.now()}`, faction: 'DWG', cards: buildDeck(cards, 'DWG', ['Corsair', 'Marauder']) },
 })
 const deckId = deckRes.body?.[0]?.id
 step('P1 deck created', !!deckId, `HTTP ${deckRes.status}`)
@@ -61,8 +64,15 @@ const mySide = game.player_a === p1.userId ? 'a' : 'b'
 const ship = hand
   .filter((c) => c.type === 'vehicle' && c.vehicleType === 'ship' && c.materialCost <= game.state.resources[mySide].materials)
   .sort((x, y) => x.materialCost - y.materialCost)[0]
-const deployed = ship ? await act({ type: 'PLAY_CARD_TO_ZONE', instanceId: ship.instanceId, zoneId: 1 }) : null
-step('P1 deploys a ship into zone 1', deployed?.status === 200, ship ? `${ship.name} (HTTP ${deployed?.status})` : 'no affordable ship in the opening hand')
+// The deploy is a nudge, not a requirement: the rounds below prove the bot's
+// reply either way, so a five-card hand that holds no cheap ship (still
+// possible with four in the deck) is reported and skipped rather than failed.
+if (ship) {
+  const deployed = await act({ type: 'PLAY_CARD_TO_ZONE', instanceId: ship.instanceId, zoneId: 1 })
+  step('P1 deploys a ship into zone 1', deployed.status === 200, `${ship.name} (HTTP ${deployed.status})`)
+} else {
+  console.log('  SKIP  P1 deploys a ship into zone 1 — no affordable ship in the opening hand')
+}
 
 for (let round = 1; round <= 3; round++) {
   const before = await load()
