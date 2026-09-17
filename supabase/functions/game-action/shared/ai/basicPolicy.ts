@@ -1,6 +1,6 @@
 import { KEYWORDS, REPAIR_WINDOW_MIN_PERCENT, SURVIVE_HP_PERCENT, TRIGGERS } from '../gameSettings.ts'
-import type { GameAction } from '../engine/engineTypes.ts'
-import type { CardInstance, ZoneState } from '../engine/gameInit.ts'
+import type { GameAction, Side, ZoneCardEntry } from '../engine/engineTypes.ts'
+import type { CardInstance, PublicGameState, ZoneState } from '../engine/gameInit.ts'
 import {
   battleParticipants, canAfford, effectiveMaterialCostOf, effectName, fleetAttackRosters, fragileInBattle,
   legalZonesFor, otherSide, repairCostOf,
@@ -12,9 +12,15 @@ export type OwedKind = 'turn' | 'response' | 'decision' | 'choice'
 
 // A policy proposes; the engine disposes. Candidates are best-first, and the
 // driver applies the first one applyAction accepts — so a candidate may be
-// illegal and nothing here has to know every rule.
+// illegal and nothing here has to know every rule. A policy may be async
+// (the model-backed one is), may ask for the verified move menu on its view
+// (needsMenu), and is told which candidate the engine accepted so it can
+// advance a plan — returning, if it likes, one public line for the log,
+// which the driver guards before writing (2026-09-16 LLM PracticeAI spec §3.1).
 export interface BotPolicy {
-  candidates(view: BotView, kind: OwedKind): GameAction[]
+  readonly needsMenu?: boolean
+  candidates(view: BotView, kind: OwedKind): GameAction[] | Promise<GameAction[]>
+  onAccepted?(action: GameAction, kind: OwedKind): string | null | void
 }
 
 // Fisher–Yates on a copy, driven by the view's rng so tests are deterministic.
@@ -136,31 +142,37 @@ function attackCandidates(view: BotView, zones: ZoneState[]): GameAction[] {
   return out
 }
 
-// Approve, repairing what is worth it (spec §6.2): own participants reported
-// in the repair band, not summons, not Fragile in this battle, not Scrappy
-// (the engine repairs those for free by itself — autoRepairIds), dearest hull
-// first, skipping any whose repair no longer fits the materials left. The
-// bare approval follows as the second candidate, so a mismatch with the
-// engine's own affordability check still resolves the report.
-function decisionCandidates(view: BotView): GameAction[] {
-  const bare: GameAction = { type: 'DECIDE_BATTLE_REPORT', approve: true, repairs: [] }
-  const battle = view.state.activeBattle
-  const report = view.state.pendingReport
-  if (!battle || !report) return [bare]
+// The bot's own participants worth offering a repair for (spec §6.2): in the
+// repair band, not summons, not Fragile in this battle, not Scrappy (the
+// engine repairs those free by itself — autoRepairIds). Dearest first.
+// Exported: moveMenu.ts enumerates repair sets from exactly this list.
+export function repairableParticipants(state: PublicGameState, side: Side): ZoneCardEntry[] {
+  const battle = state.activeBattle
+  const report = state.pendingReport
+  if (!battle || !report) return []
   const summonIds = new Set(battle.summons.map((s) => s.instanceId))
-  const mine = [...battleParticipants(view.state).values()]
-    .filter(({ entry, side }) => side === view.side && !summonIds.has(entry.instanceId))
+  return [...battleParticipants(state).values()]
+    .filter(({ entry, side: s }) => s === side && !summonIds.has(entry.instanceId))
     .filter(({ entry }) => {
       const hp = report.results[entry.instanceId]
       return hp !== undefined && hp >= REPAIR_WINDOW_MIN_PERCENT && hp < SURVIVE_HP_PERCENT
     })
-    .filter(({ entry, side }) => !fragileInBattle(battle, entry, side))
+    .filter(({ entry, side: s }) => !fragileInBattle(battle, entry, s))
     .filter(({ entry }) => !entry.keywords.includes(KEYWORDS.SCRAPPY))
     .map(({ entry }) => entry)
     .sort(byCostDesc)
+}
+
+// Approve, repairing what is worth it (spec §6.2): dearest hull first from
+// repairableParticipants, skipping any whose repair no longer fits the
+// materials left. The bare approval follows as the second candidate, so a
+// mismatch with the engine's own affordability check still resolves the
+// report.
+function decisionCandidates(view: BotView): GameAction[] {
+  const bare: GameAction = { type: 'DECIDE_BATTLE_REPORT', approve: true, repairs: [] }
   const repairs: string[] = []
   let budget = view.state.resources[view.side].materials
-  for (const entry of mine) {
+  for (const entry of repairableParticipants(view.state, view.side)) {
     const cost = repairCostOf(entry)
     if (cost > budget) continue
     budget -= cost
@@ -180,7 +192,7 @@ function choiceCandidates(view: BotView): GameAction[] {
   }))
 }
 
-export const basicPolicy: BotPolicy = {
+export const basicPolicy: BotPolicy & { candidates(view: BotView, kind: OwedKind): GameAction[] } = {
   candidates(view, kind) {
     switch (kind) {
       case 'turn': {

@@ -542,3 +542,15 @@ one more caller of `applyAction`; nothing in the engine knows it exists.
   source by `botDecks.test.ts`; `ADD_BOT` resolves them against the live
   `cards` table. `selfPlay.test.ts` plays every deck over seeded games — the
   first place a new card effect that wedges the bot shows up.
+- **The model policy (`shared/ai/llm/`, LLM spec 2026-09-16):** the driver
+  builds a verified, annotated move menu (`moveMenu.ts` — every action shape
+  enumerated, each applied on a clone, survivors described by public diff)
+  for a policy that declares `needsMenu`; `LlmPolicy` asks the model for a
+  plan of menu ids, re-verifies every planned move against the *current*
+  menu before offering it, and trips to `basicPolicy` on any failure. The
+  menu's `MENU_ACTION_TYPES` is pinned to `knownActionTypes()` — a new engine
+  action fails `moveMenu.test.ts` until the menu offers it. Table-talk enters
+  `state.log` only through the driver, after `guardTableTalk`, under
+  `TABLE_TALK_PREFIX`. The prompt is built from the `BotView` and the menu
+  alone; `prompt.test.ts` serialises the whole request body against known
+  opponent secrets.

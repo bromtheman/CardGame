@@ -1,11 +1,12 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import type { CardInstance, PublicGameState } from '@shared/engine/gameInit'
-import type { Side } from '@shared/engine/engineTypes'
+import type { GameAction, Side } from '@shared/engine/engineTypes'
 import type { LobbySettings } from '@shared/lobbySettings'
 import { battleFrozen, biomeAllows, effectiveCostInGame, effectName, findVehicle, legalZonesFor, zoneCapFor } from '@shared/engine/index'
 import { shortHandNumber } from '@shared/format'
 import { botSideOf } from '@shared/ai/botGame'
+import { isTableTalk } from '@shared/ai/llm/tableTalk'
 import { useGameQuery, useMyGamePlayerQuery, useUsernames } from '../../lib/games'
 import { useRealtimeInvalidate } from '../../lib/realtime'
 import { useAuth } from '../../lib/auth'
@@ -20,8 +21,17 @@ import { StealthyResponseBar } from './StealthyResponseBar'
 import { BattleOverlay } from './BattleOverlay'
 import { PendingChoiceDialog } from './PendingChoiceDialog'
 import { HeroPowerBar, type MoveMode, type SwapMode } from './HeroPowerBar'
+import { BotSpeechBubble } from './BotSpeechBubble'
+import { latestTableTalk, tableTalkText } from './tableTalkDelta'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
 import ironIcon from '../../assets/icons/ironSVG.svg'
+
+// Actions whose request carries the bot's whole reply (LLM spec §6.3):
+// ATTACK_ENEMY_FLEET is included because the bot's response to a fleet
+// attack — a model call — resolves inside that same request.
+const THINKING_ACTIONS: ReadonlyArray<GameAction['type']> = [
+  'END_TURN', 'SUBMIT_BATTLE_REPORT', 'RESOLVE_PENDING_EFFECT', 'RESPOND_TO_ATTACK', 'ATTACK_ENEMY_FLEET',
+]
 
 export function GameBoardPage() {
   const { id } = useParams<{ id: string }>()
@@ -31,7 +41,7 @@ export function GameBoardPage() {
   const { data: names } = useUsernames([game?.player_a, game?.player_b, game?.winner_id])
   useRealtimeInvalidate(`game-${id}`, 'games', [['game', id]], `id=eq.${id}`)
   useRealtimeInvalidate(`gp-${id}`, 'game_players', [['gamePlayer', id]], `game_id=eq.${id}`)
-  const { send, busy, error } = useGameActions(game?.id, game?.version)
+  const { send, busy, pendingType, error } = useGameActions(game?.id, game?.version)
   const [placingCard, setPlacingCard] = useState<CardInstance | null>(null)
   const [moveMode, setMoveMode] = useState<MoveMode | null>(null)
   const [fieldTargeting, setFieldTargeting] = useState<CardInstance | null>(null)
@@ -42,6 +52,11 @@ export function GameBoardPage() {
   const [confirmingConcede, setConfirmingConcede] = useState(false)
   const [logOpen, setLogOpen] = useState(false)
   const logRef = useRef<HTMLDivElement>(null)
+  const [bubble, setBubble] = useState<string | null>(null)
+  const dismissBubble = useCallback(() => setBubble(null), [])
+  // The log seen on the previous render of THIS game; null until the first
+  // load, so a reopened game never replays an old line as a new bubble.
+  const prevLogRef = useRef<{ id: string; log: readonly string[] } | null>(null)
 
   const state = game?.state as unknown as PublicGameState | undefined
   // `logOpen` is a dependency, not just log length: the drawer is unmounted
@@ -51,6 +66,15 @@ export function GameBoardPage() {
   useEffect(() => {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight
   }, [state?.log.length, logOpen])
+
+  useEffect(() => {
+    if (!game || !state) return
+    const prev = prevLogRef.current
+    prevLogRef.current = { id: game.id, log: state.log }
+    if (!prev || prev.id !== game.id || botSideOf(game.settings) === null) return
+    const line = latestTableTalk(prev.log, state.log)
+    if (line !== null) setBubble(line)
+  }, [game, state])
 
   if (isLoading) return <main className="p-8 text-center">Loading game…</main>
   if (!game || !state) {
@@ -65,6 +89,8 @@ export function GameBoardPage() {
   const hand = (mine?.hand ?? []) as unknown as CardInstance[]
   const isMyTurn = game.active_player === me
   const isActive = game.status === 'active'
+  const botSide = botSideOf(game.settings)
+  const thinking = botSide !== null && pendingType !== null && THINKING_ACTIONS.includes(pendingType)
   // Vehicles only deploy where legalZonesFor says; a zone-targeted ability
   // (playOnZoneEffect) may target any zone, so every zone highlights for it.
   const legalForPlacing = placingCard
@@ -357,6 +383,8 @@ export function GameBoardPage() {
         </div>
       </header>
 
+      <BotSpeechBubble text={bubble} onDismiss={dismissBubble} />
+
       {state.alertCard && (
         <div className="mx-auto mt-1 w-full max-w-6xl shrink-0 rounded border border-brass-400 bg-ocean-900/60 px-2 py-1 text-center text-sm font-bold text-brass-400">
           ⚠ {state.alertCard.name} revealed by {state.alertCard.side === mySide ? 'you' : 'your opponent'} — effect in
@@ -481,7 +509,7 @@ export function GameBoardPage() {
               onClick={onEndTurn}
               className="rounded bg-brass-400 px-4 py-2 font-bold text-ocean-950 disabled:opacity-50"
             >
-              End turn
+              {thinking ? 'PracticeAI is thinking…' : 'End turn'}
             </button>
           </div>
         }
@@ -498,7 +526,11 @@ export function GameBoardPage() {
         >
           <p className="mb-1 font-display text-sm text-ocean-300">Battle log</p>
           <div ref={logRef} className="max-h-56 overflow-y-auto text-sm text-ocean-300">
-            {state.log.slice(-30).map((entry, i) => <p key={i}>{entry}</p>)}
+            {state.log.slice(-30).map((entry, i) =>
+              isTableTalk(entry)
+                ? <p key={i} className="italic text-brass-400">💬 {tableTalkText(entry)}</p>
+                : <p key={i}>{entry}</p>,
+            )}
           </div>
         </div>
       )}

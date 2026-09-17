@@ -369,3 +369,31 @@ Done 2026-09-17: profile `4480604c-1934-4968-ba27-7012f07cc8d3` is PracticeAI
 The bot never holds a session: only `lobby-action` (`ADD_BOT`, `START`) and
 `game-action` ever act as it, with the service role. Its `decks` rows are
 created by `ADD_BOT` from `shared/ai/botDecks.ts` and are never deleted.
+
+## LLM PracticeAI — the OpenRouter secret, the kill switch, and `bot_decisions`
+
+Spec: `docs/superpowers/specs/2026-09-16-llm-practice-ai-design.md`. The bot
+plays through a model (OpenRouter, `inception/mercury-2.5` by default) when
+`OPENROUTER_API_KEY` is set as an **Edge Function secret**; otherwise the
+heuristic plays and every request files one `disabled` telemetry row.
+
+1. Create an OpenRouter API key **with a credit limit** (a few dollars covers
+   hundreds of games at ~3¢ each). Exhausted key → HTTP errors → the heuristic
+   plays and telemetry says `http`; no game breaks.
+2. Dashboard → Edge Functions → Secrets (or `supabase secrets set
+   OPENROUTER_API_KEY=sk-or-…`). Optional: `BOT_MODEL=<openrouter model id>`
+   to switch models without a deploy; `BOT_LLM_DISABLED=1` is the kill switch.
+   Secrets are read per request, so a change needs no redeploy.
+3. `node scripts/smoke-practice.mjs` with `SUPABASE_ACCESS_TOKEN` set — it
+   reads the game's `bot_decisions` rows through the Management API.
+4. Spend and health, by SQL: `select date_trunc('day', created_at) d,
+   count(*), sum(cost_usd), avg(latency_ms), count(*) filter (where
+   fallback_reason is not null) fallbacks from public.bot_decisions group by 1
+   order by 1 desc;`. `cached_tokens` shows whether the provider caches the
+   primer; when a row fell back, `fallback_reason` and `error` say why.
+   `table_talk` is the line the model proposed — the driver's guard may have
+   dropped it, so compare with the game's log.
+
+`public.bot_decisions` has RLS on and **no policies** (the `battle_tokens`
+pattern): the service role writes after the commit under
+`EdgeRuntime.waitUntil`, the owner reads by SQL, the frontend never sees it.
