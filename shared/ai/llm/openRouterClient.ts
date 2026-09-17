@@ -10,12 +10,17 @@ import { OPENROUTER_URL } from './llmSettings.ts'
 const num = (x: unknown): number | null => (typeof x === 'number' && Number.isFinite(x) ? x : null)
 
 export class OpenRouterClient implements LlmClient {
-  constructor(
-    private readonly apiKey: string,
-    readonly model: string,
-    private readonly fetchImpl: typeof fetch = fetch,
-    private readonly url: string = OPENROUTER_URL,
-  ) {}
+  private readonly apiKey: string
+  readonly model: string
+  private readonly fetchImpl: typeof fetch
+  private readonly url: string
+
+  constructor(apiKey: string, model: string, fetchImpl: typeof fetch = fetch, url: string = OPENROUTER_URL) {
+    this.apiKey = apiKey
+    this.model = model
+    this.fetchImpl = fetchImpl
+    this.url = url
+  }
 
   async complete(req: LlmRequest, signal: AbortSignal): Promise<LlmResponse> {
     const started = Date.now()

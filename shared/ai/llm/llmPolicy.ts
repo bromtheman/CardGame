@@ -29,6 +29,11 @@ export const DEFAULT_LLM_POLICY_SETTINGS: LlmPolicySettings = {
 // on the human's click.
 export class LlmPolicy implements BotPolicy {
   readonly rows: TelemetryRow[] = []
+  private readonly client: LlmClient | null
+  private readonly fallback: BotPolicy
+  private readonly model: string
+  private readonly settings: LlmPolicySettings
+  private readonly now: () => number
   private plan: MenuItem[] = []
   private planKind: OwedKind | null = null
   private planned = false            // has the model been asked at all this request
@@ -40,12 +45,17 @@ export class LlmPolicy implements BotPolicy {
   private spentMs = 0
 
   constructor(
-    private readonly client: LlmClient | null,
-    private readonly fallback: BotPolicy,
-    private readonly model: string,
-    private readonly settings: LlmPolicySettings = DEFAULT_LLM_POLICY_SETTINGS,
-    private readonly now: () => number = Date.now,
+    client: LlmClient | null,
+    fallback: BotPolicy,
+    model: string,
+    settings: LlmPolicySettings = DEFAULT_LLM_POLICY_SETTINGS,
+    now: () => number = Date.now,
   ) {
+    this.client = client
+    this.fallback = fallback
+    this.model = model
+    this.settings = settings
+    this.now = now
     if (client === null) this.tripped = 'disabled'
   }
 

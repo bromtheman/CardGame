@@ -22,7 +22,12 @@ export interface LlmClient {
 export const EMPTY_USAGE: LlmUsage = { promptTokens: null, completionTokens: null, cachedTokens: null, costUsd: null }
 
 export class LlmHttpError extends Error {
-  constructor(readonly status: number, message: string) { super(message); this.name = 'LlmHttpError' }
+  readonly status: number
+  constructor(status: number, message: string) {
+    super(message)
+    this.name = 'LlmHttpError'
+    this.status = status
+  }
 }
 export class LlmTimeoutError extends Error {
   constructor(message = 'model call timed out') { super(message); this.name = 'LlmTimeoutError' }
