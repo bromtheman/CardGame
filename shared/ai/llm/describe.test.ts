@@ -52,4 +52,18 @@ describe('describeOutcome', () => {
     expect(text.startsWith('END TURN → ')).toBe(true)
     expect(text).toContain('ends your turn')
   })
+  it('counts only vehicle losses — a scrapped ability card is not a lost hull, a destroyed vehicle still is', () => {
+    // state.destroyed is the general discard pile: spendCard files every
+    // resolved ability card there too, so a raw pile-length delta would
+    // misreport this ordinary ability play as losing a hull.
+    const g = makeGame({ activePlayer: BOT, turnNumber: 3, privates: { a: { hand: [], deck: [] }, b: { hand: [inst({ instanceId: 'a1', type: 'ability', vehicleType: null, name: 'Ransack', materialCost: 10000 })], deck: [] } } })
+    const after = applied(g, { type: 'PLAY_ABILITY_CARD', instanceId: 'a1' })
+    expect(describeOutcome(g, after, 'b')).not.toContain('lose')
+
+    // A genuine vehicle landing in the destroyed pile must still be reported.
+    const before2 = makeGame({ activePlayer: BOT, turnNumber: 3 })
+    const after2 = makeGame({ activePlayer: BOT, turnNumber: 3 })
+    after2.state.destroyed.a.push(zoneEntry({ instanceId: 'v1', name: 'Rook', materialCost: 50000 }))
+    expect(describeOutcome(before2, after2, 'b')).toContain('enemy loses 1 hull')
+  })
 })

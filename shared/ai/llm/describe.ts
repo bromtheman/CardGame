@@ -1,4 +1,4 @@
-import { KEYWORDS } from '../../gameSettings.ts'
+import { HERO_POWER_LABELS, KEYWORDS } from '../../gameSettings.ts'
 import type { EngineGame, GameAction, Side } from '../../engine/engineTypes.ts'
 import { effectiveMaterialCostOf, repairCostOf } from '../../engine/index.ts'
 import { shortHandNumber } from '../../format.ts'
@@ -9,12 +9,6 @@ import { newLogLines } from './logDelta.ts'
 // did with it on a clone. Names come from the bot's OWN hand, the field
 // (both sides) and a battle's summons — never the opponent's hand, which no
 // enumerated action can reference anyway.
-
-const HERO_POWER_LABELS: Record<string, string> = {
-  salvage: 'Salvage', tacticalPositioning: 'Tactical Positioning', draw: 'Draw', rapidRedeployment: 'Rapid Redeployment',
-  boardingParty: 'Boarding Party', changeOrder: 'Change Order', flyby: 'Flyby', counterIntelligence: 'Counter Intelligence',
-  drones: 'Drones', flankingManeuver: 'Flanking Maneuver',
-}
 
 const money = (n: number): string => shortHandNumber(n)
 
@@ -95,6 +89,14 @@ export function describeAction(game: EngineGame, side: Side, action: GameAction)
 const sumCost = (cards: readonly { materialCost: number; keywords: string[] }[]): number =>
   cards.reduce((sum, c) => sum + effectiveMaterialCostOf(c), 0)
 
+// state.destroyed is the general discard pile, not a casualty list: spendCard
+// (placement.ts) files every resolved ABILITY card there too (PLAY_ABILITY_CARD,
+// a played-to-zone/targeting ability, Change Order's scrapped hand vehicle), so
+// a raw pile-length delta would describe a spent ability card as a lost hull.
+// Count only vehicles.
+const vehiclesIn = (pile: readonly { type: string }[]): number =>
+  pile.filter((c) => c.type === 'vehicle').length
+
 // Public-state diff only, plus own hand SIZE — never own hand contents: the
 // drawn card is as unknown to the model at planning time as to a human.
 export function describeOutcome(before: EngineGame, after: EngineGame, side: Side): string {
@@ -125,8 +127,8 @@ export function describeOutcome(before: EngineGame, after: EngineGame, side: Sid
     }
     if (zoneParts.length) parts.push(`zone ${zb.id}: ${zoneParts.join(', ')}`)
   }
-  const lost = a.destroyed[side].length - b.destroyed[side].length
-  const killed = a.destroyed[enemy].length - b.destroyed[enemy].length
+  const lost = vehiclesIn(a.destroyed[side]) - vehiclesIn(b.destroyed[side])
+  const killed = vehiclesIn(a.destroyed[enemy]) - vehiclesIn(b.destroyed[enemy])
   if (lost > 0) parts.push(`you lose ${lost} hull${lost === 1 ? '' : 's'}`)
   if (killed > 0) parts.push(`enemy loses ${killed} hull${killed === 1 ? '' : 's'}`)
   if (a.pendingEffect && !b.pendingEffect) parts.push('asks you to choose')
