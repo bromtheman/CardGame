@@ -791,6 +791,10 @@ registerEffect('bullSharkVictory', ({ game, actor, card, battle }) => {
 // this grants materials, not CP, and R-6 forbids sharing a name regardless.
 registerEffect('cashAdvanceEffect', grant({ materials: CASH_ADVANCE_MATERIALS, draw: 1 }))
 
+// Orphaned by the 2026-09-16 pass (M-10): the card lost its text and its key.
+// Kept registered for the frozen snapshots that still name it; the name must
+// never be reused (spec §9.2).
+//
 // "When this vehicle is played, reduce your opponent CP by 1."
 //
 // grant() cannot serve this: it only ADDS, and only to the actor. The 1 is

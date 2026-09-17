@@ -264,18 +264,20 @@ describe('spawnBuccaneerEffect', () => {
   })
 })
 
-// Buccaneer prints FRAGILE from the 2026-09-02 pass, and Spawn Buccaneer's text
-// grants SCRAPPY. Spec §6.1 asks for the combination to be asserted because it
-// reads like a contradiction. On a spawned hull it never actually arises:
-// spawnBuccaneerEffect REPLACES the printed keyword array rather than merging
-// into it (unlike mintHull), so a spawned Buccaneer is Scrappy-only while a
-// played one is Fragile-only. Both shapes are pinned here with the repair
-// verdict each earns — and so is the verdict for a combined hull, so the answer
-// is on record if the two ever are merged.
+// Buccaneer printed FRAGILE from the 2026-09-02 pass through 2026-09-16, when
+// M-6 moved it to SCRAPPY instead (the seeded row now prints the same keyword
+// Spawn Buccaneer's text grants). This fixture keeps FRAGILE anyway: it is not
+// mirroring the live row but pinning the ENGINE's ordering — spawnBuccaneerEffect
+// REPLACES the printed keyword array rather than merging into it (unlike
+// mintHull), so a spawned Buccaneer is Scrappy-only while a played one keeps
+// whatever it is printed with, Fragile included. That ordering rule is worth
+// pinning independent of which keyword the seed currently prints. Both shapes
+// are pinned here with the repair verdict each earns — and so is the verdict
+// for a combined hull, so the answer is on record if the two ever are merged.
 //
-// The seeded value these fixtures mirror is pinned in
-// supabase/seed/balance/dwg.balance.test.ts; nothing under shared/ may read the
-// seed, so the two files close the loop between them.
+// The seeded value itself is pinned in supabase/seed/balance/dwg.balance.test.ts
+// and supabase/seed/balance/2026-09-16.balance.test.ts; nothing under shared/
+// may read the seed, so those files close the loop between them.
 describe('Buccaneer: FRAGILE printed, SCRAPPY granted', () => {
   const seededBuccaneer = () =>
     snap({ name: 'Buccaneer', vehicleType: 'airship', keywords: [KEYWORDS.FRAGILE] })

@@ -3,8 +3,9 @@ import { CATALOG_EFFECTS, DATA_EFFECT_KEYS, RESOLVE_BYSTANDER_EFFECTS, effectFor
 import { choice, summonHulls } from './primitives.ts'
 import {
   ARGONAUT_COST_DELTA, BASE_DAMAGE_DIVISOR, BULL_SHARK_BASE_DAMAGE, CASH_ADVANCE_MATERIALS,
-  EXCALIBUR_COST_DELTA, KEYWORDS, MATERIALS_PER_TURN, NOTHUNG_COST_DELTA, RESOLUTE_COST_DELTA,
-  SACRILEGO_COST_DELTA, TRONDHEIM_COST_DELTA, TYR_HAND_DISCOUNT, TYR_MIN_COST, VICTORIA_COST_DELTA,
+  EXCALIBUR_COST_DELTA, FLYING_SQUIRREL_ATTACK_COUNT, KEYWORDS, MATERIALS_PER_TURN, NOTHUNG_COST_DELTA,
+  RESOLUTE_COST_DELTA, SACRILEGO_COST_DELTA, SLASHER_EARTH_RAKER_COUNT, TRONDHEIM_COST_DELTA,
+  TYR_HAND_DISCOUNT, TYR_MIN_COST, VICTORIA_COST_DELTA,
 } from '../gameSettings.ts'
 import { inst, makeCtx, makeGame, snap, zoneEntry } from '../engine/testFixtures.ts'
 import {
@@ -733,7 +734,7 @@ describe('wave 3 — forced battles', () => {
   })
 
   describe('flyingSquirrelAttackEffect', () => {
-    it('the target fights alone against 3 summoned Flying Squirrels', () => {
+    it('the target fights alone against 6 summoned Flying Squirrels — two 3x squadrons (2026-09-16 M-8)', () => {
       const game = makeGame()
       const target = zoneEntry({ name: 'Foe', instanceId: 'foe-1' })
       game.state.zones[0].cards.b.push(target)
@@ -746,8 +747,9 @@ describe('wave 3 — forced battles', () => {
       expect(battle?.zoneId).toBe(1)
       expect(battle?.aggressor).toBe('a')
       expect(battle?.defenderIds).toEqual(['foe-1']) // fights alone — no ally joins
-      expect(battle?.attackerIds).toHaveLength(3)
-      expect(battle?.summons).toHaveLength(3)
+      expect(battle?.attackerIds).toHaveLength(FLYING_SQUIRREL_ATTACK_COUNT)
+      expect(battle?.summons).toHaveLength(FLYING_SQUIRREL_ATTACK_COUNT)
+      expect(FLYING_SQUIRREL_ATTACK_COUNT).toBe(6)
       expect(battle?.summons.every((s) => s.name === 'Flying Squirrel')).toBe(true)
       expect(battle?.attackerIds).toEqual(battle?.summons.map((s) => s.instanceId))
       expect(game.state.zones[0].lastActivatedTurn).toBeNull() // not a zone activation
@@ -6508,7 +6510,7 @@ describe('2026-09-02 — WF Buzzsaw', () => {
   })
 })
 
-describe('2026-09-02 — WF Slasher', () => {
+describe('WF Slasher — one free Earth Raker (2026-09-16; two before)', () => {
   const raker = snap({
     name: 'Earth Raker', faction: 'WF', type: 'vehicle', vehicleType: 'ship',
     materialCost: 50_000, blueprintCost: 51_000, keywords: ['stealthy'],
@@ -6519,18 +6521,11 @@ describe('2026-09-02 — WF Slasher', () => {
       game, actor: 'a', card: inst({ name: 'Slasher', faction: 'WF' }), ctx: makeCtx({ catalog }),
     })
 
-  it('puts exactly two Earth Rakers into hand and resyncs the count', () => {
+  it('puts exactly one Earth Raker into hand and resyncs the count', () => {
     const game = makeGame()
     expect(fire(game)).toBe(true)
-    expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Earth Raker', 'Earth Raker'])
-    expect(game.state.counts.a.hand).toBe(2)
-  })
-
-  it('gives the two copies distinct instanceIds', () => {
-    const game = makeGame()
-    fire(game)
-    const [one, two] = game.privates.a.hand
-    expect(one.instanceId).not.toBe(two.instanceId)
+    expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Earth Raker'])
+    expect(game.state.counts.a.hand).toBe(1)
   })
 
   // "They cost 0" is a PRICE, not a rewrite — balmungOnPlay's ruling. costDelta
@@ -6541,7 +6536,7 @@ describe('2026-09-02 — WF Slasher', () => {
   it('prices them at zero without making them worthless', () => {
     const game = makeGame()
     expect(fire(game)).toBe(true)
-    expect(game.privates.a.hand).toHaveLength(2)
+    expect(game.privates.a.hand).toHaveLength(SLASHER_EARTH_RAKER_COUNT)
     for (const c of game.privates.a.hand) {
       expect(c.materialCost).toBe(50_000)
       expect(effectiveCostInGame(game.state, 'a', c)).toBe(0)

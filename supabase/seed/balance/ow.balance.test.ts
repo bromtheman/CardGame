@@ -37,8 +37,9 @@ const CARDS: Record<string, Expected> = {
     vehicleType: 'ship',
     cardText: 'When this card is destroyed, draw a random GT Airship',
   },
+  // moved 2026-09-16: 450k -> 600k. Also pinned in balance/2026-09-16.balance.test.ts.
   'OW:Bulwark': {
-    materialCost: 450_000, blueprintCost: 848_000, keywords: ['blocker'],
+    materialCost: 600_000, blueprintCost: 848_000, keywords: ['blocker'],
     vehicleType: 'ship', cardText: '',
   },
   'OW:The Onyx Throne': {
@@ -52,8 +53,10 @@ const CARDS: Record<string, Expected> = {
   // (half of 780k) to 575k while its sticker price falls. FRAGILE then blocks
   // repair outright. Recorded here because a reader checking only materialCost
   // would score this as a buff.
+  // moved again 2026-09-16: 575k -> 650k (keywords unchanged). Also pinned in
+  // balance/2026-09-16.balance.test.ts.
   'OW:Eyrie': {
-    materialCost: 575_000, blueprintCost: 809_000,
+    materialCost: 650_000, blueprintCost: 809_000,
     keywords: ['blocker', 'fragile'], vehicleType: 'airship', cardText: '',
   },
   // Rook's vehicleType is the only thing moving, and it moves from

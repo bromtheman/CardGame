@@ -372,7 +372,7 @@ export const ssVehicles = [
         name: 'Blockade',
         isBuiltIn: true,
         cardText: 'Choose a zone, whenever the opponent plays a vehicle into that zone while you have at least one vehicle there, a fleet battle immediately begins in that zone. If you lose with no surviving vehicles, the blockade goes away, otherwise it remains.',
-        materialCost: 100000,
+        materialCost: 120000,
         blueprintCost: 0,
         cpCost: 0,
         imageUrl: 'blockade.png',
@@ -405,7 +405,7 @@ export const ssVehicles = [
      {
         name: 'Spectre',
         isBuiltIn: true,
-        cardText: 'When this vehicle is played, reduce your opponent CP by 1',
+        cardText: '',
         materialCost: 200000,
         blueprintCost: 214000,
         cpCost: 0,
@@ -417,7 +417,9 @@ export const ssVehicles = [
         blueprintId: null,
         keywords: [KEYWORDS.STEALTHY],
         meta: {
-            [TRIGGERS.ON_PLAY]: 'spectreOnPlay',
+            // Orphaned 2026-09-16 (M-10): the CP drain is gone. spectreOnPlay
+            // stays registered for in-flight snapshots (DELIBERATE_ORPHANS in
+            // supabase/seed/effectCoverage.test.ts) and must never be reused.
         }
     },
     {

@@ -45,8 +45,11 @@ describe('2026-09-02 balance pass — TG, the five new cards', () => {
       vehicleType: 'ship', type: 'vehicle',
       keywords: ['robotic', 'upkeepRequired'], effect: null,
     },
+    // 40k -> 400k, moved 2026-09-16 (ruling Q7): closes the 40k spawn ->
+    // Repurpose for 330k loop recorded in tgEffects.ts. Also pinned in
+    // balance/2026-09-16.balance.test.ts.
     'Spawn Audacious': {
-      materialCost: 40_000, blueprintCost: 0, cpCost: 0,
+      materialCost: 400_000, blueprintCost: 0, cpCost: 0,
       vehicleType: null, type: 'ability',
       keywords: [], effect: ['playOnZoneEffect', 'spawnAudaciousEffect'],
     },
@@ -272,12 +275,13 @@ describe('TG Obelisk is unique per zone (2026-09-07)', () => {
     expect((await bySeedKey()).get('TG:Obelisk')!.cardText).toContain('one Obelisk per zone')
   })
 
-  // No OTHER seeded card carries the key. It is enforced at three sites and
-  // changes a card's legal zones; a second carrier should be a deliberate
-  // decision, not something that arrives by copy-paste.
-  it('is the only card carrying the key', async () => {
+  // It is enforced at three sites and changes a card's legal zones; a new
+  // carrier should be a deliberate decision, not something that arrives by
+  // copy-paste. DWG:Albacore joined 2026-09-16 (M-6), narrowed from the wider
+  // aircraftLock it used to carry — also pinned in balance/2026-09-16.balance.test.ts.
+  it('is carried by exactly Obelisk and, since 2026-09-16, Albacore', async () => {
     const { cards } = await loadSeedData()
     expect(cards.filter((c) => (c.meta as Record<string, unknown> | null)?.uniquePerZone === true)
-      .map((c) => `${c.faction}:${c.name}`)).toEqual(['TG:Obelisk'])
+      .map((c) => `${c.faction}:${c.name}`)).toEqual(['DWG:Albacore', 'TG:Obelisk'])
   })
 })

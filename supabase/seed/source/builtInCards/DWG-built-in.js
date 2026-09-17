@@ -94,7 +94,7 @@ export const dwgVehicles = [
         name: 'Pilferer',
         isBuiltIn: true,
         cardText: 'When played, spawn another copy of this vehicle into the zone',
-        materialCost: 130000,
+        materialCost: 100000,
         blueprintCost: 132000,
         cpCost: 0,
         imageUrl: 'pilferer.png',
@@ -129,7 +129,7 @@ export const dwgVehicles = [
     {
         name: 'Tarpon',
         isBuiltIn: true,
-        cardText: 'While this vehicle is alive, you may not play any other aircraft into this zone',
+        cardText: '',
         materialCost: 510000,
         blueprintCost: 511605,
         cpCost: 0,
@@ -139,11 +139,8 @@ export const dwgVehicles = [
         type: 'vehicle',
         faction: FACTIONS.DWG,
         blueprintId: null,
-        keywords: [KEYWORDS.FRAGILE, KEYWORDS.SUB_SCREEN],
+        keywords: [KEYWORDS.AIR_SCREEN],
         meta: {
-            // Same rule as Albacore, same data key — which is the point of
-            // making it data: one engine predicate serves both cards.
-            aircraftLock: true,
         }
     },{
         name: 'Corsair',
@@ -192,7 +189,8 @@ export const dwgVehicles = [
         type: 'vehicle',
         faction: FACTIONS.DWG,
         blueprintId: null,
-        keywords: [],
+        // +HALF_COST (2026-09-16), undoing 09-02's removal. SCRAPPY is still not restored.
+        keywords: [KEYWORDS.HALF_COST],
         meta: {
             [TRIGGERS.ON_DEATH]: 'loggerheadOnDeath',
         }
@@ -216,7 +214,7 @@ export const dwgVehicles = [
         name: 'Buccaneer',
         isBuiltIn: true,
         cardText: '',
-        materialCost: 225000,
+        materialCost: 220000,
         blueprintCost: 296000,
         cpCost: 0,
         imageUrl: 'buccaneer.png',
@@ -225,13 +223,13 @@ export const dwgVehicles = [
         type: 'vehicle',
         faction: FACTIONS.DWG,
         blueprintId: null,
-        keywords: [KEYWORDS.FRAGILE],
+        keywords: [KEYWORDS.SCRAPPY],
         meta: {
         }
     },{
         name: 'Spawn Buccaneer',
         isBuiltIn: true,
-        cardText: 'Spawn a Buccaneer into a zone. It is not temporary. It gains the Scrappy keyword.',
+        cardText: 'Spawn a Buccaneer into a zone. It gains the Scrappy keyword.',
         materialCost: 225000,
         blueprintCost: 0,
         cpCost: 0,
@@ -328,7 +326,7 @@ export const dwgVehicles = [
     },{
         name: 'Albacore',
         isBuiltIn: true,
-        cardText: 'While this vehicle is alive, you may not play any other aircraft into this zone',
+        cardText: 'While this vehicle is alive, you may not play another Albacore into this zone',
         materialCost: 260000,
         blueprintCost: 261000,
         cpCost: 0,
@@ -340,11 +338,11 @@ export const dwgVehicles = [
         blueprintId: null,
         keywords: [KEYWORDS.FRAGILE],
         meta: {
-            // "While this vehicle is alive, YOU may not play any other
-            // aircraft into this zone" — the OWNER's own aircraft, which is
-            // the opposite of AIR_SCREEN (spec §7.3, wave 6). Read by
-            // legalZonesFor off this key, never off a card name.
-            aircraftLock: true,
+            // "You may not play ANOTHER Albacore into this zone" (2026-09-16
+            // M-6): the wave-8 Obelisk mechanic — one per zone PER SIDE, keyed
+            // on cardId. It replaced the wider aircraftLock, which no seeded
+            // card carries now; the engine rule is kept (spec R-8).
+            uniquePerZone: true,
         }
     },{
         name: 'Recurring Threat',
@@ -366,7 +364,7 @@ export const dwgVehicles = [
     {
         name: 'Flying Squirrel Attack',
         isBuiltIn: true,
-        cardText: 'Choose an enemy vehicle, that vehicle fights alone against a flying squirrel (3x squadron)',
+        cardText: 'Choose an enemy vehicle, that vehicle fights alone against two flying squirrel (3x squadron)',
         materialCost: 100000,
         blueprintCost: 0,
         cpCost: 0,

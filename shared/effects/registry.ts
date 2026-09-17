@@ -153,10 +153,16 @@ const ALL_META_KEYS = [...Object.values(TRIGGERS), 'costModifier']
 // `battleCap` (2026-09-16 spec M-3) joins them for slotDenial's reason: TG
 // Mirth Swarm prints one sentence, that sentence IS a rule read by joinBattle
 // (shared/engine/battleDeclare.ts), and the card names no effect at all.
+// `uniquePerZone` existed since wave 8 (TG Obelisk) but never needed to be
+// here: Obelisk always paired it with onBattleEffect, which alone satisfied
+// G2. The 2026-09-16 pass (M-6) gives DWG Albacore the key with NO effect name
+// at all — its whole rewritten text ("you may not play another Albacore into
+// this zone") IS uniquePerZoneBlocked's rule (shared/engine/placement.ts) —
+// so it joins the list for the same reason aircraftLock did.
 export const DATA_EFFECT_KEYS = [
   'additionalSpawns', 'resourceSurge', 'defensiveOmission', 'aircraftLock',
   'deployRequiresBattleLoss', 'noBaseDamage', 'deployRequiresAiVehicle',
-  'deployOrder', 'slotDenial', 'battleCap',
+  'deployOrder', 'slotDenial', 'battleCap', 'uniquePerZone',
 ] as const
 
 // Spec §3.9: cards referencing unimplemented effects play as vanilla, with a

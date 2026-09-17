@@ -574,11 +574,12 @@ registerEffect(KRAKEN, choice({
   },
 }))
 
-// "Choose an enemy vehicle, that vehicle fights alone against a flying
+// "Choose an enemy vehicle, that vehicle fights alone against two flying
 // squirrel (3x squadron)." DP3 (spec §4.3): the target is the sole defender
 // (§7.3 "fights alone") against FLYING_SQUIRREL_ATTACK_COUNT freshly minted
 // Flying Squirrel summons, which exist only for this battle (spec §4.4) — the
-// aggressor is the player who played the card, not the target's owner.
+// aggressor is the player who played the card, not the target's owner. Two
+// 3x squadrons, six summons total, since 2026-09-16 (M-8; it was one squadron).
 registerEffect('flyingSquirrelAttackEffect', ({ game, actor, ctx, targetInstanceId, card }) => {
   if (typeof targetInstanceId !== 'string') return false
   const found = findVehicle(game.state, targetInstanceId)

@@ -18,12 +18,12 @@ const PLUNDERER_TEXT =
   'Costs 20k less for each friendly vehicle in play. When this vehicle survives a victorious ' +
   'fleet battle or inflicts damage to the enemy base, draw one card from the enemy deck, but ' +
   'increase its cost by 20k'
-const AIRCRAFT_LOCK =
-  'While this vehicle is alive, you may not play any other aircraft into this zone'
 const LOGGERHEAD_TEXT =
   'When this vehicle is destroyed, shuffle another copt of it into your deck. It costs 0.'
+// moved 2026-09-16: dropped "It is not temporary." (also pinned, with the
+// rest of this pass's rows, in balance/2026-09-16.balance.test.ts).
 const SPAWN_BUCCANEER_TEXT =
-  'Spawn a Buccaneer into a zone. It is not temporary. It gains the Scrappy keyword.'
+  'Spawn a Buccaneer into a zone. It gains the Scrappy keyword.'
 
 interface Expected {
   materialCost: number
@@ -47,18 +47,22 @@ const CARDS: Record<string, Expected> = {
     materialCost: 180_000, blueprintCost: 187_000, keywords: ['blocker', 'scrappy'],
     vehicleType: 'ship', cardText: PLUNDERER_TEXT,
   },
+  // moved 2026-09-16 (M-6): AIR_SCREEN in, FRAGILE and SUB_SCREEN out, and the
+  // aircraft lock dropped outright. Also pinned in balance/2026-09-16.balance.test.ts.
   'DWG:Tarpon': {
-    materialCost: 510_000, blueprintCost: 511_605, keywords: ['fragile', 'subScreen'],
-    vehicleType: 'airship', cardText: AIRCRAFT_LOCK,
+    materialCost: 510_000, blueprintCost: 511_605, keywords: ['airScreen'],
+    vehicleType: 'airship', cardText: '',
   },
-  // -halfCost. Its SCRAPPY is NOT restored, despite Wave 0 correcting the rule
-  // that took it: that is a balance decision this pass does not make (spec §8).
+  // +HALF_COST restored 2026-09-16 (moved), undoing 09-02's removal. SCRAPPY is
+  // still NOT restored, despite Wave 0 correcting the rule that took it: that
+  // is a balance decision this pass does not make (spec §8).
   'DWG:Loggerhead': {
-    materialCost: 70_000, blueprintCost: 74_000, keywords: [],
+    materialCost: 70_000, blueprintCost: 74_000, keywords: ['halfCost'],
     vehicleType: 'airship', cardText: LOGGERHEAD_TEXT,
   },
+  // moved 2026-09-16: 225k -> 220k, FRAGILE -> SCRAPPY.
   'DWG:Buccaneer': {
-    materialCost: 225_000, blueprintCost: 296_000, keywords: ['fragile'],
+    materialCost: 220_000, blueprintCost: 296_000, keywords: ['scrappy'],
     vehicleType: 'airship', cardText: '',
   },
   // Matches the hull it mints: 150k -> 225k. An ability, so vehicleType null.
@@ -103,7 +107,10 @@ describe('2026-09-02 balance pass — DWG', () => {
     expect(cards.get('DWG:Plunderer')!.meta).toEqual({
       costModifier: 'plundererCostModifier', onBattleVictory: 'plundererRaid',
     })
-    expect(cards.get('DWG:Tarpon')!.meta).toEqual({ aircraftLock: true })
+    // moved 2026-09-16 (M-6): the aircraft lock is gone outright, and this file
+    // is updated in place rather than frozen — see the comment on the CARDS
+    // entry above.
+    expect(cards.get('DWG:Tarpon')!.meta).toEqual({})
     expect(cards.get('DWG:Loggerhead')!.meta).toEqual({ onDeathEffect: 'loggerheadOnDeath' })
     expect(cards.get('DWG:Spawn Buccaneer')!.meta).toEqual({
       playOnZoneEffect: 'spawnBuccaneerEffect',

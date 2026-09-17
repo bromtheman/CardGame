@@ -112,9 +112,11 @@ const CARDS: Record<string, Expected> = {
     materialCost: 280_000, blueprintCost: 281_000, keywords: [], vehicleType: 'sub',
     cardText: 'When this vehicle is played into a zone, grant every enemy vehicle in that zone FRAGILE',
   },
+  // Orphaned 2026-09-16 (M-10): cardText cleared, onPlayEffect removed. Also
+  // pinned in balance/2026-09-16.balance.test.ts.
   'SS:Spectre': {
     materialCost: 200_000, blueprintCost: 214_000, keywords: ['stealthy'], vehicleType: 'ship',
-    cardText: 'When this vehicle is played, reduce your opponent CP by 1',
+    cardText: '',
   },
   'SS:Hydra': {
     materialCost: 220_000, blueprintCost: 238_000, keywords: ['mobile'], vehicleType: 'airship',
@@ -273,7 +275,7 @@ describe('2026-09-02 balance pass — SS, the checks a unit test cannot make', (
   // second hull is additionalSpawns which placement.ts resolves, and Nothung no
   // longer spawns anything. None of the four touches ctx.catalog.
   it.each(['trondheimOnDeath', 'resoluteOnPlay', 'nothungOnPlay', 'cycloneOnPlay',
-    'spectreOnPlay', 'argonautOnDeath', 'bullSharkVictory', 'sacrilegoBattle',
+    'argonautOnDeath', 'bullSharkVictory', 'sacrilegoBattle',
     'victoriaOnPlay', 'paladinOnPlay', 'cashAdvanceEffect'])(
     '%s does NOT need the catalog', (name) => {
       expect(CATALOG_EFFECTS.has(name)).toBe(false)

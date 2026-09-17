@@ -32,8 +32,9 @@ const CARDS: Record<string, Expected> = {
     vehicleType: 'ship',
     cardText: 'This card may be spawned into battle after all enemies are already spawned in',
   },
+  // moved 2026-09-16: 750k -> 760k. Also pinned in balance/2026-09-16.balance.test.ts.
   'WF:Purifier': {
-    materialCost: 750_000, blueprintCost: 765_000, keywords: ['halfCost', 'fragile'],
+    materialCost: 760_000, blueprintCost: 765_000, keywords: ['halfCost', 'fragile'],
     vehicleType: 'ship',
     cardText: 'This vehicle does no damage to the enemy base. Whenever it participates in a fleet battle, the enemy forces must spawn in first, even if they are defending.',
   },
@@ -45,9 +46,11 @@ const CARDS: Record<string, Expected> = {
     materialCost: 75_000, blueprintCost: 88_000, keywords: ['stealthy', 'scrappy'],
     vehicleType: 'ship', cardText: 'When played, put an ambush card into your hand',
   },
+  // moved 2026-09-16 (M-8): one Earth Raker, not two. Also pinned in
+  // balance/2026-09-16.balance.test.ts.
   'WF:Slasher': {
     materialCost: 300_000, blueprintCost: 353_000, keywords: [], vehicleType: 'ship',
-    cardText: 'When this is played, add two earth rakers to your hand. they cost 0.',
+    cardText: 'When this is played, add an earth raker to your hand. it costs 0.',
   },
   'WF:Earth Raker': {
     materialCost: 50_000, blueprintCost: 51_000, keywords: ['stealthy'], vehicleType: 'ship',
@@ -58,13 +61,17 @@ const CARDS: Record<string, Expected> = {
     vehicleType: 'ship',
     cardText: 'When played, draw two AI vehicles from your deck and reduce their cost by 100k.',
   },
+  // Orphaned 2026-09-16 (M-10): +BLOCKER, cardText cleared, onPlayEffect
+  // removed. Also pinned in balance/2026-09-16.balance.test.ts.
   'WF:Scourge': {
-    materialCost: 225_000, blueprintCost: 209_000, keywords: ['scrappy'],
-    vehicleType: 'ship', cardText: 'When played, gain 1cp',
+    materialCost: 225_000, blueprintCost: 209_000, keywords: ['blocker', 'scrappy'],
+    vehicleType: 'ship', cardText: '',
   },
+  // Orphaned 2026-09-16 (M-10): +STEALTHY, cardText cleared, onPlayEffect
+  // removed. Also pinned in balance/2026-09-16.balance.test.ts.
   'WF:Disemboweler': {
-    materialCost: 300_000, blueprintCost: 305_000, keywords: [],
-    vehicleType: 'sub', cardText: 'When played, gain 1 cp.',
+    materialCost: 300_000, blueprintCost: 305_000, keywords: ['stealthy'],
+    vehicleType: 'sub', cardText: '',
   },
   'WF:Pandemonium': {
     materialCost: 225_000, blueprintCost: 244_000, keywords: ['stealthy', 'subScreen'],

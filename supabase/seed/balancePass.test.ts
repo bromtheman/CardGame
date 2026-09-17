@@ -15,8 +15,11 @@ import type { SeedCard } from '../../shared/types'
 // that recomputes its expectation from the same source it is checking proves
 // nothing.
 
-const AIRCRAFT_LOCK =
-  'While this vehicle is alive, you may not play any other aircraft into this zone'
+// moved 2026-09-16: Albacore's lock narrowed from "any other aircraft" to
+// "another Albacore" (M-6, uniquePerZone). The old AIRCRAFT_LOCK text this
+// const replaced is gone from the seed — see the M-6 test below.
+const ALBACORE_TEXT =
+  'While this vehicle is alive, you may not play another Albacore into this zone'
 
 const SINNERS_LUCK_TEXT =
   'when played, you may swap a friendly airship with an enemy airship or plane. If airship you ' +
@@ -48,18 +51,19 @@ const CARDS: Record<string, Expected> = {
   },
   'DWG:Albacore': {
     materialCost: 260_000, blueprintCost: 261_000, keywords: ['fragile'],
-    vehicleType: 'airship', cardText: AIRCRAFT_LOCK,
+    vehicleType: 'airship', cardText: ALBACORE_TEXT,
   },
-  // Tarpon and Buccaneer were moved again by the 2026-09-02 pass (§6.1) and are
-  // updated in place, per §2.3 — this file stays the record of what 2026-08-30
-  // moved, not a frozen snapshot of what it moved them to. The current values
-  // are also pinned, with their card text, in balance/dwg.balance.test.ts.
+  // Tarpon and Buccaneer were moved again by the 2026-09-02 and 2026-09-16
+  // passes and are updated in place, per §2.3 — this file stays the record of
+  // what 2026-08-30 moved, not a frozen snapshot of what it moved them to. The
+  // current values are also pinned, with their card text, in
+  // balance/dwg.balance.test.ts and balance/2026-09-16.balance.test.ts.
   'DWG:Tarpon': {
-    materialCost: 510_000, blueprintCost: 511_605, keywords: ['fragile', 'subScreen'],
-    vehicleType: 'airship', cardText: AIRCRAFT_LOCK,
+    materialCost: 510_000, blueprintCost: 511_605, keywords: ['airScreen'],
+    vehicleType: 'airship', cardText: '',
   },
   'DWG:Buccaneer': {
-    materialCost: 225_000, blueprintCost: 296_000, keywords: ['fragile'],
+    materialCost: 220_000, blueprintCost: 296_000, keywords: ['scrappy'],
     vehicleType: 'airship', cardText: '',
   },
   // ----------------------------------------------------------------- SS
@@ -95,7 +99,7 @@ const CARDS: Record<string, Expected> = {
     materialCost: 350_000, blueprintCost: 371_000, keywords: [], vehicleType: 'ship',
   },
   'SS:Blockade': {
-    materialCost: 100_000, blueprintCost: 0, keywords: [], vehicleType: null,
+    materialCost: 120_000, blueprintCost: 0, keywords: [], vehicleType: null, // moved 2026-09-16
   },
   // ----------------------------------------------------------------- WF
   'WF:Harbringer': {
@@ -111,7 +115,7 @@ const CARDS: Record<string, Expected> = {
     materialCost: 540_000, blueprintCost: 546_000, keywords: [], vehicleType: 'ship',
   },
   'WF:Purifier': {
-    materialCost: 750_000, blueprintCost: 765_000, keywords: ['halfCost', 'fragile'],
+    materialCost: 760_000, blueprintCost: 765_000, keywords: ['halfCost', 'fragile'], // moved 2026-09-16
     vehicleType: 'ship',
   },
 }
@@ -188,11 +192,13 @@ describe('2026-08-30 balance pass', () => {
     })
   })
 
-  // Albacore and Tarpon carry NO registry name at all — their one sentence is
-  // a placement rule read straight off this key, so this assertion is the only
-  // thing standing between a typo and two inert cards that no guard notices.
-  it.each(['DWG:Albacore', 'DWG:Tarpon'])('%s locks its zone against its owner aircraft', async (k) => {
-    expect((await bySeedKey()).get(k)!.meta?.aircraftLock).toBe(true)
+  // 2026-09-16 M-6: Albacore's lock narrowed to "another Albacore" (uniquePerZone)
+  // and Tarpon dropped its lock outright. The engine rule aircraftLock reads is
+  // kept for frozen snapshots (R-8); no seeded card carries the key any more.
+  it('Albacore is uniquePerZone; neither airship carries aircraftLock', async () => {
+    const cards = await bySeedKey()
+    expect(cards.get('DWG:Albacore')!.meta).toEqual({ uniquePerZone: true })
+    expect(cards.get('DWG:Tarpon')!.meta).toEqual({})
   })
 
   // Both surges are compared FIELD BY FIELD rather than for mere presence:

@@ -201,7 +201,7 @@ export const EXCALIBUR_COST_DELTA = -200_000 // Excalibur: AI ship in hand costs
 export const PLUNDERER_CAPTURE_SURCHARGE = 20_000
 export const REPAIRMEN_READY_DRAW_MAX_COST = 400_000 // Repairmen Ready draws below this
 
-export const FLYING_SQUIRREL_ATTACK_COUNT = 3 // Flying Squirrel Attack: target fights this many summons
+export const FLYING_SQUIRREL_ATTACK_COUNT = 6 // Flying Squirrel Attack: "two flying squirrel (3x squadron)" — two squadrons of three (2026-09-16 M-8)
 export const MARTYR_ATTACK_COUNT = 4          // Martyr Attack: base summon count
 export const MARTYR_ATTACK_BOOSTED_COUNT = 6  // Martyr Attack: target is an airship, or a 400k+ player design
 export const MARTYR_ATTACK_BOOST_MIN_COST = 400_000
@@ -230,10 +230,11 @@ export const DWG_WATERS_GUEST_MAX_COST = 60_000
 // filter is what excludes it rather than the cost.
 export const HARBRINGER_GUEST_MAX_COST = 100_000
 
-// Slasher: "add two earth rakers to your hand". Its own constant rather than a
-// bare literal, matching MARTYR_ATTACK_COUNT and RESERVES_CARD_COUNT — the
-// card text is then the only other place the number appears.
-export const SLASHER_EARTH_RAKER_COUNT = 2
+// Slasher: "add an earth raker to your hand" (2026-09-16; it was two). Its own
+// constant rather than a bare literal, matching MARTYR_ATTACK_COUNT and
+// RESERVES_CARD_COUNT — the card text is then the only other place the number
+// appears.
+export const SLASHER_EARTH_RAKER_COUNT = 1
 
 // Excruciator: "draw two AI vehicles from your deck and reduce their cost by
 // 100k". A costDelta, so the sign lives with the number here rather than at the

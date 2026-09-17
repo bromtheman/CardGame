@@ -325,7 +325,7 @@ export const tgVehicles = [
         type: 'vehicle',
         faction: FACTIONS.TG,
         blueprintId: null,
-        keywords: [KEYWORDS.HALF_COST, KEYWORDS.TEMPORARY],
+        keywords: [KEYWORDS.HALF_COST, KEYWORDS.TEMPORARY, KEYWORDS.FRAGILE],
         meta: {
         }
     },
@@ -538,7 +538,9 @@ export const tgVehicles = [
         name: 'Spawn Audacious',
         isBuiltIn: true,
         cardText: 'Spawn an audacious into target zone. It is not temporary.',
-        materialCost: 40000,
+        // 40k -> 400k (2026-09-16, ruling Q7): closes the 40k spawn -> Repurpose
+        // for 330k loop recorded in tgEffects.ts.
+        materialCost: 400000,
         blueprintCost: 0,
         cpCost: 0,
         imageUrl: 'spawnAudacious.png',
