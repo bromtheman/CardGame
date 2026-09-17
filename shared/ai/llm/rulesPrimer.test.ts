@@ -11,6 +11,13 @@ describe('rules primer', () => {
   it('has a glossary line for every keyword the engine knows', () => {
     for (const keyword of Object.values(KEYWORDS)) expect(KEYWORD_GLOSSARY[keyword], keyword).toBeTruthy()
   })
+  it('shows the exact JSON object the model must answer with', () => {
+    const shape = PRIMER_TEMPLATE.slice(PRIMER_TEMPLATE.indexOf('HOW YOU PLAY'))
+    for (const key of ['"plan"', '"expectation"', '"summary"', '"battle"', '"zoneId"', '"outcome"', '"confidence"', '"tableTalk"']) {
+      expect(shape, key).toContain(key)
+    }
+    expect(shape).toContain('ONE JSON object')
+  })
   it('renders every placeholder, the faction, and the glossary', () => {
     const text = renderPrimer('DWG')
     expect(text).not.toContain('{{')
