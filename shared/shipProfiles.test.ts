@@ -13,19 +13,34 @@ import { SHIP_PROFILES, shipProfileOf, shipProfilesForFaction } from './shipProf
 describe('ship profiles', () => {
   it('looks a built-in card up by faction and name, and misses otherwise', () => {
     expect(shipProfileOf('DWG', 'Crossbones')?.role).toBe('CRAM battleship, flagship')
+    expect(shipProfileOf('SS', 'Tyr')?.role).toBe('flagship battleship')
     expect(shipProfileOf('WF', 'Martyr')?.role).toBe('kamikaze nuke drone')
     expect(shipProfileOf('DWG', 'No Such Ship')).toBeNull()
     expect(shipProfileOf('OW', 'Crossbones')).toBeNull()
+    expect(shipProfileOf('DWG', 'Tyr')).toBeNull()
   })
 
   it('lists one faction’s profiles in report order (cheapest first), by card name', () => {
     const dwg = shipProfilesForFaction('DWG')
     expect(dwg.map((p) => p.name).slice(0, 3)).toEqual(['Corsair', 'Marauder', 'Loggerhead'])
     expect(dwg.at(-1)?.name).toBe('Tarpon')
+    const ss = shipProfilesForFaction('SS')
+    expect(ss.map((p) => p.name).slice(0, 3)).toEqual(['Sacrilego', 'Resolute', 'Chrysaor'])
+    expect(ss.at(-1)?.name).toBe('Tyr')
+    expect(ss).toHaveLength(27)
     const wf = shipProfilesForFaction('WF')
     expect(wf.map((p) => p.name).slice(0, 3)).toEqual(['Martyr', 'Earth Raker', 'Buzzsaw'])
     expect(wf.at(-1)?.name).toBe('Purifier')
     expect(shipProfilesForFaction('OW')).toEqual([])
+  })
+
+  it('keeps the report’s optional fields only where the report has them', () => {
+    // Falcon Squadron is the one SS section with prose between its card table
+    // and its ratings; three SS capital ships list an escort.
+    expect(shipProfileOf('SS', 'Falcon Squadron')?.note).toBeTruthy()
+    expect(shipProfileOf('SS', 'Tyr')?.note).toBeUndefined()
+    expect(shipProfileOf('SS', 'Asphodel')?.escort).toBeTruthy()
+    expect(shipProfileOf('SS', 'Sacrilego')?.escort).toBeUndefined()
   })
 
   it('flags the WF craft FtD scores 0 as sharing their rank, and no other', () => {
