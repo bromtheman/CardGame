@@ -560,3 +560,12 @@ one more caller of `applyAction`; nothing in the engine knows it exists.
   `TABLE_TALK_PREFIX`. The prompt is built from the `BotView` and the menu
   alone; `prompt.test.ts` serialises the whole request body against known
   opponent secrets.
+  The system prefix is `rulesPrimer.ts` (rules templated from
+  `gameSettings.ts`, no digit outside a placeholder) plus the owner's strategy
+  prose in `factionNotes.ts` — `GENERAL_TIPS` for every faction, then a
+  `YOUR FACTION` section only for factions with a `FACTION_NOTES` entry.
+  `factionNotes.test.ts` holds the prose to the no-digit rule and pins every
+  `mentions` name against the seed source and the bot's own deck, so a rename,
+  a retirement or a deck edit fails there. Adding a faction's notes is one
+  entry in `FACTION_NOTES`; the file is in `shared-manifest.json`, so
+  `functions:sync` after editing it.

@@ -3,13 +3,17 @@ import {
   MAX_VEHICLES_PER_ZONE_SIDE, REPAIR_COST_RATE, REPAIR_WINDOW_MIN_PERCENT, STARTING_CP_AMOUNT,
   STARTING_HAND_SIZE, SURVIVE_HP_PERCENT, UPKEEP_RATE, ZONE_COUNT,
 } from '../../gameSettings.ts'
+import { FACTION_NOTES, GENERAL_TIPS } from './factionNotes.ts'
 
 // The static prefix of every model call (2026-09-16 LLM PracticeAI spec
 // §5.1): a condensed reading of the binding 2026-08-24 spec's §3 rules. It
 // is a TEMPLATE — no digit appears outside a {{PLACEHOLDER}}, and
 // rulesPrimer.test.ts fails on one — so the primer can never disagree with
 // gameSettings.ts. Rendered once per faction, so a provider cache keys on
-// five strings.
+// five strings. After the keywords come the owner's strategy notes from
+// factionNotes.ts: GENERAL TIPS for everyone, then YOUR FACTION — the bot's
+// own playstyle — which is left out entirely for a faction with no notes yet.
+// The answer shape stays last.
 
 export const KEYWORD_GLOSSARY: Record<string, string> = {
   [KEYWORDS.BLOCKER]: 'Blocker — while it is in a zone, the opponent may not attack the base there.',
@@ -42,6 +46,9 @@ RULES
 KEYWORDS
 {{KEYWORDS}}
 
+GENERAL TIPS
+{{GENERAL_TIPS}}
+{{FACTION_SECTION}}
 HOW YOU PLAY
 - You receive the board, your hand, and a numbered MENU of moves the rules allow right now, each with what it would do (simulated once — an effect that rolls dice may roll differently for real). Only menu numbers are valid.
 - Answer with a plan: the menu numbers in the order you want them. A turn plan ends with the END TURN number. Later moves may become unavailable once earlier ones change the board; you will then be asked again with a fresh menu.
@@ -58,11 +65,19 @@ export const PRIMER_VALUES: Record<string, string | number> = {
   UPKEEP_RATE_PERCENT: Math.round(UPKEEP_RATE * 100),
   HERO_POWER_DISTANCE_MOD_M,
   KEYWORDS: Object.values(KEYWORD_GLOSSARY).map((line) => `- ${line}`).join('\n'),
+  GENERAL_TIPS,
+}
+
+// '' when the faction has no notes, so the template's blank lines close up.
+function factionSection(faction: string): string {
+  const note = FACTION_NOTES[faction as keyof typeof FACTION_NOTES]
+  return note ? `\nYOUR FACTION — ${faction}\n${note.text}\n` : ''
 }
 
 export function renderPrimer(faction: string): string {
   return PRIMER_TEMPLATE.replace(/\{\{([A-Z_]+)\}\}/g, (match, key: string) => {
     if (key === 'FACTION') return faction
+    if (key === 'FACTION_SECTION') return factionSection(faction)
     const value = PRIMER_VALUES[key]
     if (value === undefined) throw new Error(`rules primer: no value for ${match}`)
     return String(value)

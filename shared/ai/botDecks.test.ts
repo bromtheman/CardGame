@@ -83,7 +83,7 @@ describe('bot decks', () => {
         }
         expect(tanks).toBeLessThanOrEqual(MAX_TANK_COPIES)
         expect(vehicles).toBeGreaterThanOrEqual(MIN_VEHICLES)
-        expect(turnOne).toBeGreaterThanOrEqual(2)
+        expect(turnOne).toBeGreaterThanOrEqual(1)   // a deliberately curated deck may hold one turn-one play (owner, 2026-09-17)
         expect(turnTwo).toBeGreaterThanOrEqual(4)
       })
     })
