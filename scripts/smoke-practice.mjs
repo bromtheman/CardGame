@@ -99,6 +99,34 @@ for (let round = 1; round <= 3; round++) {
   }
 }
 
+// LLM PracticeAI (spec §10.3): the bot's table-talk is a public log line, and
+// each model call is a bot_decisions row. The rows are service-role only, so
+// they are read through the Management API with SUPABASE_ACCESS_TOKEN, the
+// way scripts/verify-seed.mjs reads live cards; without the token the step is
+// reported as skipped, never as passed.
+const finalGame = await load()
+const talkLines = (finalGame.state.log ?? []).filter((l) => l.startsWith('PracticeAI: '))
+const accessToken = process.env.SUPABASE_ACCESS_TOKEN
+if (!accessToken) {
+  console.log(`  SKIP  bot_decisions rows — SUPABASE_ACCESS_TOKEN not set (table-talk lines seen: ${talkLines.length})`)
+} else {
+  const ref = process.env.SUPABASE_PROJECT_REF || 'wpgsjnjnvykxavaxibld'
+  const res = await fetch(`https://api.supabase.com/v1/projects/${ref}/database/query`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query: `select kind, model, fallback_reason, latency_ms, table_talk from public.bot_decisions where game_id = '${gameId}' order by id` }),
+  })
+  const rows = res.ok ? await res.json() : []
+  step('bot_decisions rows exist for the game', res.ok && rows.length > 0, `HTTP ${res.status}, ${rows.length} rows`)
+  const live = rows.filter((r) => r.fallback_reason === null)
+  if (rows.length > 0 && rows.every((r) => r.fallback_reason === 'disabled')) {
+    step('model disabled on the deployed function — heuristic played, no table-talk', talkLines.length === 0, `${talkLines.length} table-talk lines`)
+  } else {
+    step('at least one model call succeeded', live.length > 0, rows.map((r) => `${r.kind}:${r.fallback_reason ?? 'ok'}/${r.latency_ms}ms`).join(' '))
+    step('PracticeAI spoke at least once', talkLines.length > 0, talkLines[0] ?? '')
+  }
+}
+
 const conceded = await act({ type: 'CONCEDE' })
 step('P1 concedes to close the practice game', conceded.status === 200, `HTTP ${conceded.status}`)
 game = await load()
