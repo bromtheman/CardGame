@@ -14,9 +14,12 @@ import { zoneCapFor } from '../engine/zoneCapacity.ts'
 import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
 import { baseDamageFrom, baseStrikersIn } from '../engine/baseAttack.ts'
 import { fireDeathEffect } from '../engine/battleTriggers.ts'
-import { catalogCard, choice, grant, mintHull, poolEligible, summonHulls, takeFromEnemyDeck } from './primitives.ts'
+import {
+  catalogCard, choice, enemyVehicleOptions, friendlyVehicleOptions, grant, mintHull, poolEligible, summonHulls,
+  takeFromEnemyDeck,
+} from './primitives.ts'
 import { registerCostModifier, registerEffect } from './registry.ts'
-import type { EffectPayload } from './registry.ts'
+import type { EffectFn, EffectPayload } from './registry.ts'
 
 // draw a card and gain 1 CP (Crossbones)
 const drawPlusCp = ({ game, actor, ctx }: EffectPayload): boolean => {
@@ -677,3 +680,106 @@ registerEffect('brigandOnDeath', ({ game, actor, card, ctx }) => {
   game.state.log.push(`${card.name} goes down — its crew slips a card into player ${actor.toUpperCase()}'s hand`)
   return true
 }, { needsCatalog: true })
+
+const SINNERS_LUCK = 'sinnersLuckOnPlay'
+
+// "when played, you may swap a friendly airship with an enemy airship or
+// plane. If airship you provide is worth less than what you get, the opponent
+// draws a card and reduces that cards cost by the difference." (M-5,
+// 2026-09-16.)
+//
+// TWO HOPS, both routed through choice() — Braveheart's shape, never Orbit
+// Flank's hand-written second pendingEffect. Hop 1 picks the friendly airship
+// (any zone — the text names none), hop 2 the enemy airship-or-plane (any
+// zone). "You may": an empty pool at either hop resolves straight through with
+// null (Kraken's shape) and the ship still deploys; the dialog's Decline is
+// RESOLVE_PENDING_EFFECT { cancel: true }, which clears the slot untouched.
+//
+// Q3: side AND zone are exchanged — a swap, not a side flip. Airships and
+// planes fly in every biome, so no biome check. The zone cap is bypassed (this
+// is not a play and is net-zero per side — Boarding Party's latitude) and
+// uniquePerZone is not consulted (recorded edge).
+// Q4: "worth" is the PRINTED materialCost, the authority every pool and
+// threshold filter reads. The difference lands as a costDelta stamp on the
+// card the opponent draws — a PRICE, never a rewrite. The log names neither.
+// D-1: both hulls re-stamp as freshly deployed, as Boarding Party's do.
+const isAirship = (e: ZoneCardEntry) => e.vehicleType === VEHICLE_TYPES.AIRSHIP
+const isFlier = (e: ZoneCardEntry) =>
+  e.vehicleType === VEHICLE_TYPES.AIRSHIP || e.vehicleType === VEHICLE_TYPES.PLANE
+
+const sinnersLuckHop2 = (givenId: string): EffectFn => choice({
+  effect: SINNERS_LUCK,
+  prompt: 'Choose an enemy airship or plane to take in exchange',
+  options: ({ game, actor }) => enemyVehicleOptions(game, actor, null, isFlier),
+  data: () => ({ givenId }),
+  resolve: (payload, receivedId) => {
+    const { game, actor, ctx, card } = payload
+    if (receivedId === null) {
+      game.state.log.push(`${card.name} finds no enemy airship or plane to swap for`)
+      return true
+    }
+    // Both halves re-checked against the CURRENT board: either hull may have
+    // left while the dialog sat open.
+    const given = findVehicle(game.state, givenId)
+    if (!given || given.side !== actor || !isAirship(given.entry)) return false
+    const enemy = otherSide(actor)
+    const received = findVehicle(game.state, receivedId)
+    if (!received || received.side !== enemy || !isFlier(received.entry)) return false
+    given.zone.cards[actor] = given.zone.cards[actor].filter((c) => c.instanceId !== givenId)
+    received.zone.cards[enemy] = received.zone.cards[enemy].filter((c) => c.instanceId !== receivedId)
+    const toEnemy: ZoneCardEntry = {
+      ...given.entry, playedOnTurn: game.turnNumber, movedOnTurn: null, activatedOnTurn: null,
+    }
+    const toActor: ZoneCardEntry = {
+      ...received.entry, playedOnTurn: game.turnNumber, movedOnTurn: null, activatedOnTurn: null,
+    }
+    received.zone.cards[enemy].push(toEnemy)
+    given.zone.cards[actor].push(toActor)
+    game.state.log.push(
+      `${card.name}: ${given.entry.name} is traded to player ${enemy.toUpperCase()} for ${received.entry.name}`,
+    )
+    const difference = received.entry.materialCost - given.entry.materialCost
+    if (difference > 0) {
+      // plundererRaid's stamp: the card drawCard just pushed is hand[before].
+      // ACCUMULATES onto whatever it already carried, like every costDelta.
+      const before = game.privates[enemy].hand.length
+      drawCard(game, enemy, ctx)
+      const drawn = game.privates[enemy].hand[before]
+      if (drawn) {
+        const current = typeof drawn.meta.costDelta === 'number' ? drawn.meta.costDelta : 0
+        drawn.meta = { ...drawn.meta, costDelta: current - difference }
+        game.state.log.push(`Player ${enemy.toUpperCase()} draws a card, discounted by the difference`)
+      }
+    }
+    return true
+  },
+})
+
+const sinnersLuckHop1: EffectFn = choice({
+  effect: SINNERS_LUCK,
+  prompt: 'Choose one of your airships to swap away',
+  // placedInstanceIds excluded as Alarmed's offer excludes them: PLAY_CARD_TO_ZONE
+  // deploys the hull BEFORE effects run. Sinners Luck is a ship, so today this
+  // never bites — it is what keeps the card honest if that ever changes.
+  options: ({ game, actor, placedInstanceIds }) => {
+    const placed = new Set(placedInstanceIds ?? [])
+    return friendlyVehicleOptions(game, actor, null, (e) => isAirship(e) && !placed.has(e.instanceId))
+  },
+  resolve: (payload, givenId) => {
+    if (givenId === null) {
+      payload.game.state.log.push(`${payload.card.name} has no airship to offer`)
+      return true
+    }
+    // Hop 2's first entry: `resolution` cleared so choice() takes the slot
+    // again, `pending` cleared so it cannot be mistaken for hop 2's own.
+    return sinnersLuckHop2(givenId)({ ...payload, resolution: undefined, pending: undefined })
+  },
+})
+
+// The router. Hop 2 is told apart by the givenId hop 1 stashed — never by
+// anything the client sent.
+registerEffect(SINNERS_LUCK, (payload) => {
+  const stashed = payload.pending?.data?.givenId
+  if (typeof stashed === 'string') return sinnersLuckHop2(stashed)(payload)
+  return sinnersLuckHop1(payload)
+})

@@ -421,7 +421,7 @@ export const dwgVehicles = [
     {
         name: 'Sinners Luck',
         isBuiltIn: true,
-        cardText: '',
+        cardText: 'when played, you may swap a friendly airship with an enemy airship or plane. If airship you provide is worth less than what you get, the opponent draws a card and reduces that cards cost by the difference.',
         materialCost: 250000,
         blueprintCost: 267000,
         cpCost: 0,
@@ -431,8 +431,9 @@ export const dwgVehicles = [
         type: 'vehicle',
         faction: FACTIONS.DWG,
         blueprintId: null,
-        keywords: [KEYWORDS.SCRAPPY],
+        keywords: [],
         meta: {
+            [TRIGGERS.ON_PLAY]: 'sinnersLuckOnPlay',
         }
     },
     {

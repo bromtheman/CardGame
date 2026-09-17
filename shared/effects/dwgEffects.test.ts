@@ -1504,3 +1504,154 @@ describe('brigandOnDeath (2026-09-16)', () => {
     expect(CATALOG_EFFECTS.has('brigandOnDeath')).toBe(true)
   })
 })
+
+// ---------------------------------------------------------------------------
+// 2026-09-16 M-5 — DWG Sinners Luck: "when played, you may swap a friendly
+// airship with an enemy airship or plane. If airship you provide is worth less
+// than what you get, the opponent draws a card and reduces that cards cost by
+// the difference."
+//
+// Two hops through choice() (Braveheart's shape). Q3: side AND zone are
+// exchanged; Q4: "worth" is printed materialCost; D-1: both hulls re-stamp as
+// freshly deployed; D-3: an empty pool at either hop resolves without a swap.
+describe('sinnersLuckOnPlay (2026-09-16 M-5)', () => {
+  const sinners = () => inst({
+    instanceId: 'sl1', name: 'Sinners Luck', faction: 'DWG', vehicleType: 'ship', materialCost: 250_000,
+    meta: { onPlayEffect: 'sinnersLuckOnPlay' },
+  })
+  // My airships in zones 1 and 2, a ship and a plane of mine that must never
+  // be offered; enemy airship in zone 2, enemy plane in zone 3, enemy ship.
+  const armed = () => {
+    const card = sinners()
+    const game = makeGame({
+      turnNumber: 3, activePlayer: 'alice',
+      privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [inst({ name: 'Enemy Top' })] } },
+    })
+    game.state.resources.a.materials = 300_000
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'myAir1', name: 'My Airship', vehicleType: 'airship', materialCost: 100_000, playedOnTurn: 1 }))
+    game.state.zones[1].cards.a.push(
+      zoneEntry({ instanceId: 'myAir2', name: 'My Other Airship', vehicleType: 'airship', materialCost: 100_000, playedOnTurn: 1 }),
+      zoneEntry({ instanceId: 'myPlane', name: 'My Plane', vehicleType: 'plane', playedOnTurn: 1 }),
+    )
+    game.state.zones[1].cards.b.push(zoneEntry({ instanceId: 'theirAir', name: 'Their Airship', vehicleType: 'airship', materialCost: 300_000, playedOnTurn: 1 }))
+    game.state.zones[2].cards.b.push(
+      zoneEntry({ instanceId: 'theirPlane', name: 'Their Plane', vehicleType: 'plane', materialCost: 50_000, playedOnTurn: 1 }),
+      zoneEntry({ instanceId: 'theirTank', name: 'Their Tank', vehicleType: 'tank', playedOnTurn: 1 }),
+    )
+    return { game, card }
+  }
+  const play = (game: EngineGame, card: CardInstance) => {
+    const r = applyAction(game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    return r.game
+  }
+  const answer = (game: EngineGame, choiceId: string) => {
+    const r = applyAction(game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    return r.game
+  }
+
+  it('hop 1 offers only the actor\'s AIRSHIPS, from every zone', () => {
+    const { game, card } = armed()
+    const after = play(game, card)
+    expect(after.state.pendingEffect?.effect).toBe('sinnersLuckOnPlay')
+    expect(after.state.pendingEffect?.options.map((o) => o.id).sort()).toEqual(['myAir1', 'myAir2'])
+  })
+
+  it('hop 2 offers enemy airships AND planes from every zone, never ships or tanks', () => {
+    const { game, card } = armed()
+    const hop2 = answer(play(game, card), 'myAir1')
+    expect(hop2.state.pendingEffect?.effect).toBe('sinnersLuckOnPlay')
+    expect(hop2.state.pendingEffect?.options.map((o) => o.id).sort()).toEqual(['theirAir', 'theirPlane'])
+  })
+
+  // Q3 + D-1: side AND zone are exchanged, both hulls freshly deployed.
+  it('swaps the two hulls across sides and zones, re-stamping both', () => {
+    const { game, card } = armed()
+    const done = answer(answer(play(game, card), 'myAir1'), 'theirAir')
+    expect(done.state.pendingEffect).toBeNull()
+    const given = findVehicle(done.state, 'myAir1')!
+    const received = findVehicle(done.state, 'theirAir')!
+    expect({ side: given.side, zone: given.zone.id }).toEqual({ side: 'b', zone: 2 })
+    expect({ side: received.side, zone: received.zone.id }).toEqual({ side: 'a', zone: 1 })
+    expect(given.entry).toMatchObject({ playedOnTurn: 3, movedOnTurn: null, activatedOnTurn: null })
+    expect(received.entry).toMatchObject({ playedOnTurn: 3, movedOnTurn: null, activatedOnTurn: null })
+    expect(done.state.zones[0].cards.a.map((c) => c.name).sort()).toEqual(['Sinners Luck', 'Their Airship'])
+  })
+
+  // Q4: 100k given for 300k received — the opponent draws, discounted by 200k.
+  it('makes the opponent draw a card discounted by the difference when the given airship is worth less', () => {
+    const { game, card } = armed()
+    const done = answer(answer(play(game, card), 'myAir1'), 'theirAir')
+    expect(done.privates.b.hand.map((c) => c.name)).toEqual(['Enemy Top'])
+    expect(done.privates.b.hand[0].meta.costDelta).toBe(-200_000)
+    expect(done.state.counts.b).toEqual({ hand: 1, deck: 0 })
+    expect(done.state.log.join('\n')).not.toContain('Enemy Top')
+  })
+
+  it('draws nothing when the given airship is worth as much or more', () => {
+    const { game, card } = armed()
+    const done = answer(answer(play(game, card), 'myAir1'), 'theirPlane') // 100k for 50k
+    expect(done.privates.b.hand).toHaveLength(0)
+    expect(findVehicle(done.state, 'theirPlane')!.side).toBe('a')
+  })
+
+  it('survives an opponent with nothing to draw', () => {
+    const { game, card } = armed()
+    game.privates.b.deck = []
+    game.state.counts.b.deck = 0
+    const done = answer(answer(play(game, card), 'myAir1'), 'theirAir')
+    expect(done.privates.b.hand).toHaveLength(0)
+    expect(findVehicle(done.state, 'theirAir')!.side).toBe('a')
+  })
+
+  // D-3: "you may" — no friendly airship means no suspension and no failure.
+  it('deploys without suspending when the actor has no airship', () => {
+    const { game, card } = armed()
+    game.state.zones[0].cards.a = []
+    game.state.zones[1].cards.a = game.state.zones[1].cards.a.filter((c) => c.instanceId !== 'myAir2')
+    const after = play(game, card)
+    expect(after.state.pendingEffect).toBeNull()
+    expect(after.state.zones[0].cards.a.map((c) => c.name)).toEqual(['Sinners Luck'])
+  })
+
+  it('resolves with no swap when the enemy has no airship or plane', () => {
+    const { game, card } = armed()
+    game.state.zones[1].cards.b = []
+    game.state.zones[2].cards.b = game.state.zones[2].cards.b.filter((c) => c.instanceId === 'theirTank')
+    const hop2 = answer(play(game, card), 'myAir1')
+    expect(hop2.state.pendingEffect).toBeNull()
+    expect(findVehicle(hop2.state, 'myAir1')!.side).toBe('a')
+  })
+
+  it('can be declined at either hop through cancel, leaving the board untouched', () => {
+    const { game, card } = armed()
+    const declined = applyAction(play(game, card), 'alice', { type: 'RESOLVE_PENDING_EFFECT', cancel: true }, makeCtx())
+    if (!declined.ok) throw new Error(declined.error)
+    expect(declined.game.state.pendingEffect).toBeNull()
+    expect(findVehicle(declined.game.state, 'myAir1')!.side).toBe('a')
+    expect(findVehicle(declined.game.state, 'theirAir')!.side).toBe('b')
+  })
+
+  it('refuses cleanly when the chosen enemy hull has left the board', () => {
+    const { game, card } = armed()
+    const hop2 = answer(play(game, card), 'myAir1')
+    hop2.state.zones[1].cards.b = []
+    const r = applyAction(hop2, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'theirAir' }, makeCtx())
+    expect(r).toMatchObject({ ok: false, status: 400 })
+  })
+
+  it('never offers the hull this play just placed, even if it were an airship', () => {
+    const game = makeGame({ turnNumber: 3, activePlayer: 'alice' })
+    const card = inst({ instanceId: 'sl-air', name: 'Sinners Luck', faction: 'DWG', vehicleType: 'airship', materialCost: 0, meta: { onPlayEffect: 'sinnersLuckOnPlay' } })
+    game.privates.a.hand.push(card)
+    game.state.counts.a.hand = 1
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'theirAir', vehicleType: 'airship', playedOnTurn: 1 }))
+    const after = play(game, card)
+    expect(after.state.pendingEffect).toBeNull()
+  })
+
+  it('needs no catalog', () => {
+    expect(CATALOG_EFFECTS.has('sinnersLuckOnPlay')).toBe(false)
+  })
+})

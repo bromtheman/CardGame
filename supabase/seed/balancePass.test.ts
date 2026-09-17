@@ -18,6 +18,10 @@ import type { SeedCard } from '../../shared/types'
 const AIRCRAFT_LOCK =
   'While this vehicle is alive, you may not play any other aircraft into this zone'
 
+const SINNERS_LUCK_TEXT =
+  'when played, you may swap a friendly airship with an enemy airship or plane. If airship you ' +
+  'provide is worth less than what you get, the opponent draws a card and reduces that cards cost by the difference.'
+
 async function bySeedKey(): Promise<Map<string, SeedCard>> {
   const { cards } = await loadSeedData()
   return new Map(cards.map((c) => [`${c.faction}:${c.name}`, c]))
@@ -36,9 +40,11 @@ interface Expected {
 // not meaningful.
 const CARDS: Record<string, Expected> = {
   // ---------------------------------------------------------------- DWG
+  // Reworked by the 2026-09-16 pass (M-5): text, −SCRAPPY, onPlayEffect. Updated
+  // in place per the 2026-09-02 spec §2.3; the pass pins it in balance/2026-09-16.balance.test.ts.
   'DWG:Sinners Luck': {
-    materialCost: 250_000, blueprintCost: 267_000, keywords: ['scrappy'],
-    vehicleType: 'ship', cardText: '',
+    materialCost: 250_000, blueprintCost: 267_000, keywords: [],
+    vehicleType: 'ship', cardText: SINNERS_LUCK_TEXT,
   },
   'DWG:Albacore': {
     materialCost: 260_000, blueprintCost: 261_000, keywords: ['fragile'],
