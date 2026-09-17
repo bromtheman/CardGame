@@ -1,5 +1,6 @@
 import { DWG_SHIP_PROFILES } from './shipProfiles/DWG.ts'
 import { SS_SHIP_PROFILES } from './shipProfiles/SS.ts'
+import { WF_SHIP_PROFILES } from './shipProfiles/WF.ts'
 
 // What each built-in hull is like in From The Depths — a glimpse for the
 // deck builder's card details and a roster for PracticeAI's rules primer.
@@ -26,6 +27,9 @@ export interface ShipProfile {
   // FtD's own overall power number, and the craft's rank among its faction's designs.
   strength: number
   rank: number
+  // Set when the report writes the rank "#44=": other designs of the faction
+  // share it (WF has four at strength 0, which FtD gives drills and rams).
+  rankTied?: true
   type: string
   speed: string
   fightsAt: string
@@ -45,6 +49,7 @@ export interface ShipProfile {
 export const SHIP_PROFILES: Record<string, ShipProfile> = {
   ...DWG_SHIP_PROFILES,
   ...SS_SHIP_PROFILES,
+  ...WF_SHIP_PROFILES,
 }
 
 export function shipProfileOf(faction: string, name: string): ShipProfile | null {

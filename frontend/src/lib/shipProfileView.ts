@@ -34,3 +34,10 @@ export function shipProfileRows(profile: ShipProfile): { scores: ProfileRow[]; m
     matchups: MATCHUP_LABELS.map(([key, label]) => row(key, label, profile.matchups[key])),
   }
 }
+
+// The panel's header line: what it is, FtD's strength number, and where it
+// ranks among its faction's designs — "joint" when the report ties it.
+export function shipProfileHeadline(profile: ShipProfile, faction: string): string {
+  const rank = `${profile.rankTied ? 'joint ' : ''}#${profile.rank}`
+  return `${profile.role} · FtD strength ${profile.strength.toLocaleString('en-US')} · ${rank} among ${faction} designs`
+}

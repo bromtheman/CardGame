@@ -263,6 +263,17 @@ describe('parseShipReport', () => {
     expect(profiles['DWG:Brigand'].rank).toBe(3)
   })
 
+  it('reads a tied rank ("#44=", craft the game scores 0) as the rank plus a tie flag', () => {
+    // WF.cards.md: four craft share rank 44 because FtD gives drills and rams no strength.
+    const tied = REPORT.replace('| Corsair | escort boat | 31 k | 415 (#69) |', '| Corsair | escort boat | 31 k | 0 (#44=) |')
+    const corsair = parseShipReport(tied, 'DWG')['DWG:Corsair']
+    expect(corsair.strength).toBe(0)
+    expect(corsair.rank).toBe(44)
+    expect(corsair.rankTied).toBe(true)
+    // An untied rank carries no flag at all, so the generated JSON stays as it was.
+    expect(profiles['DWG:Brigand']).not.toHaveProperty('rankTied')
+  })
+
   it('fails when the fleet table and a ship section disagree on a score', () => {
     const tampered = REPORT.replace('| Corsair | escort boat | 31 k | 415 (#69) | 1·1·2·2·1 |', '| Corsair | escort boat | 31 k | 415 (#69) | 1·1·3·2·1 |')
     expect(() => parseShipReport(tampered, 'DWG')).toThrow(/Corsair.*speed/)

@@ -575,7 +575,9 @@ one more caller of `applyAction`; nothing in the engine knows it exists.
   profiles. The profiles are GENERATED, per faction, from FtDArmament's
   `<Faction>.cards.md` reports by `npm run profiles:import -- <report>`
   into `shared/shipProfiles/<FACTION>.ts`; never hand-edit those
-  files. They are keyed `FACTION:Name` like the seed's card ids, and
+  files (a rank the report writes `#44=` — designs sharing a strength, WF
+  has four at 0 — is kept as `rankTied`). They are keyed `FACTION:Name`
+  like the seed's card ids, and
   `shipProfiles.test.ts` pins every key to a seeded, non-retired vehicle AND
   requires every such vehicle of a profiled faction to have one. Unlike the
   notes, this prose may carry digits — quintiles and FtD facts, never a

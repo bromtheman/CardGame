@@ -40,7 +40,8 @@ Stack: Vite + React 19 + TypeScript strict + Tailwind v4 (CSS-first tokens in
   For a **built-in** card with a ship profile (`shared/shipProfiles.ts`,
   generated from the FtDArmament reports — see architecture.md) the modal's
   right column opens with "How it fights in From The Depths": the report's
-  one-liner, nine pip meters with their reasons (`src/lib/shipProfileView.ts`,
+  one-liner, nine pip meters with their reasons and the headline (role, FtD
+  strength, "#12" or "joint #44" for a tied rank — `src/lib/shipProfileView.ts`,
   tested), the verdict and the craft facts, above the attributes glossary. The
   lookup is by `faction` + `name` and skipped for custom cards, which may
   borrow a seeded name. The two meter lists are stacked on purpose: the
