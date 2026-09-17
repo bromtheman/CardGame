@@ -206,18 +206,26 @@ Two consequences worth knowing before you touch anything here:
   The DWG/OW/WF waves then deployed rewritten effects against the old rows, so
   Marauder's printed text promised a 50k discount its code no longer gave.
 
-  After any merge touching `supabase/seed/source/**`:
+  Since 2026-09-17 `.github/workflows/seed-apply.yml` does this on every push
+  to `main` that changes `seed_data.sql` (repository secret
+  `SUPABASE_ACCESS_TOKEN` required; `workflow_dispatch` re-runs it by hand).
+  Check that run after any merge touching `supabase/seed/source/**`; the same
+  two commands work locally:
 
   ```bash
-  npm run seed:verify
+  npm run seed:apply      # scripts/apply-seed.mjs — posts the file in 40-statement batches
+  npm run seed:verify     # scripts/verify-seed.mjs — exit 1 on any drift
   ```
 
-  It fetches every `is_built_in` row through the Management API and deep-compares
-  all nine data columns against `seed_data.sql`, exiting non-zero on drift. On
-  drift, apply that file's upserts against the project and re-run. They are
-  idempotent (`on conflict (id) do update`) and contain no `delete`/`truncate`,
-  so re-applying is safe and never removes a row — which matters, because
-  `gameInit.ts`'s `expandDeck` **throws** on a dangling card id.
+  `seed:verify` fetches every `is_built_in` row through the Management API and
+  deep-compares all nine data columns against `seed_data.sql`. `seed:apply`
+  posts the file's own statements through the same endpoint, byte-exact — never
+  retype or paste the SQL, a slip in 150 KB of card data is invisible to every
+  test. The upserts are idempotent (`on conflict (id) do update`) and contain no
+  `delete`/`truncate`, so re-applying is safe and never removes a row — which
+  matters, because `gameInit.ts`'s `expandDeck` **throws** on a dangling card id.
+  The script refuses any statement that is not an upsert into `cards` or
+  `hero_powers`.
 
   ⚠ When comparing card `meta`, canonicalise **deeply**. `JSON.stringify(v,
   Object.keys(v).sort())` looks like a canonicaliser but the key array is a
