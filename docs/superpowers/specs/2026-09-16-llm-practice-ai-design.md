@@ -201,8 +201,10 @@ response. The human's board refreshes once, as today.
 Budget arithmetic: the Supabase runtime allows **2 s of CPU per request**
 and 150 s of wall clock; awaiting `fetch` costs no CPU. The model calls are
 wall clock (bounded by `LLM_REQUEST_BUDGET_MS`); the menu is CPU (bounded by
-`MENU_MAX_TRIALS`, §4.4). Today's bot turn is ~400 ms end to end; the target
-is 2–6 s with the model.
+`MENU_MAX_TRIALS`, §4.4). Today's bot turn is ~400 ms end to end; the typical
+turn is 2–6 s with the model (a reasoning call measures ~2 s), and the caps in
+§8 let a slow provider moment run to 30 s per call / 60 s per request rather
+than hand the turn to the heuristic — well inside the 150 s wall clock.
 
 ## 4. The move menu — `shared/ai/llm/moveMenu.ts`
 
@@ -498,8 +500,8 @@ switch, heuristic only, no deploy needed.
 
 | Name | Default | |
 |---|---|---|
-| `LLM_CALL_TIMEOUT_MS` | 4 000 | per call, via `AbortController` |
-| `LLM_REQUEST_BUDGET_MS` | 8 000 | total model time per request |
+| `LLM_CALL_TIMEOUT_MS` | 30 000 | per call, via `AbortController` — raised from 4 000 on 2026-09-17: a slow provider moment should not hand the turn to the heuristic; the thinking label covers the wait |
+| `LLM_REQUEST_BUDGET_MS` | 60 000 | total model time per request (two slow calls) |
 | `LLM_MAX_CALLS_PER_REQUEST` | 4 | plan + reactions |
 | `LLM_MAX_PLAN_LENGTH` | 12 | menu ids per answer; the schema's `maxItems` |
 | `LLM_MAX_OUTPUT_TOKENS` | 65 536 | the provider's `max_completion_tokens`; Mercury reasons inside this budget (~1k tokens, ~2 s per call) — 600 truncated every answer (2026-09-17) |

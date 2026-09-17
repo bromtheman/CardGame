@@ -4,8 +4,13 @@
 // by makePolicy.ts; DEFAULT_BOT_MODEL is the one default that lives here.
 export const DEFAULT_BOT_MODEL = 'inception/mercury-2.5'
 export const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions'
-export const LLM_CALL_TIMEOUT_MS = 4_000        // per call, via AbortController
-export const LLM_REQUEST_BUDGET_MS = 8_000      // total model time per request
+// A reasoning call is ~2 s; the caps are for a slow provider moment, and
+// the owner would rather wait than hand the turn to the heuristic (2026-09-17).
+// The frontend's "PracticeAI is thinking…" label covers the wait; the request
+// cap keeps two slow calls inside one click, and LLM_MAX_CALLS_PER_REQUEST
+// still bounds the count.
+export const LLM_CALL_TIMEOUT_MS = 30_000       // per call, via AbortController
+export const LLM_REQUEST_BUDGET_MS = 60_000     // total model time per request
 export const LLM_MAX_CALLS_PER_REQUEST = 4      // one plan + reactions
 export const LLM_MAX_PLAN_LENGTH = 12           // menu ids per answer; the schema's maxItems
 // Mercury 2.5 REASONS before it answers, and the reasoning is spent inside
