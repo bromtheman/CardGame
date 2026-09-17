@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { KEYWORDS, LOG_MAX_ENTRIES } from '../gameSettings'
 import {
   applyAction, copyMeta, discardCard, discardSnapshotOf, effectiveCostInGame, grantKeywordsTo,
-  grantSpawnsTo, normalizeState,
+  grantSpawnsTo, HOME_SIDE_KEY, homeSideOf, normalizeState,
 } from './index'
 import { takeFromEnemyDeck } from '../effects/primitives.ts'
 import type { PublicGameState } from './gameInit.ts'
@@ -1014,5 +1014,40 @@ describe('grantKeywordsTo / grantSpawnsTo record what they granted (wave 8)', ()
     const snapshot = discardSnapshotOf(entry)
     expect(snapshot.keywords).toEqual(['blocker'])
     expect(snapshot.meta).toEqual({ additionalSpawns: 1 })
+  })
+})
+
+// 2026-09-16 M-4 (ruling Q2): a mutinied hull goes HOME when it leaves play —
+// the discard of the side it was stolen from, not of the side flying it.
+describe('discardCard files a hull under its homeSide (2026-09-16 M-4)', () => {
+  it('a hull stamped homeSide b, discarded by its controller a, lands in b\'s pile', () => {
+    const g = makeGame()
+    const stolen = zoneEntry({ name: 'Stolen', meta: { [HOME_SIDE_KEY]: 'b' } })
+    discardCard(g, 'a', stolen)
+    expect(g.state.destroyed.a).toHaveLength(0)
+    expect(g.state.destroyed.b.map((c) => c.name)).toEqual(['Stolen'])
+  })
+
+  it('an unstamped hull still files under its controller', () => {
+    const g = makeGame()
+    discardCard(g, 'a', zoneEntry({ name: 'Mine' }))
+    expect(g.state.destroyed.a.map((c) => c.name)).toEqual(['Mine'])
+  })
+
+  it('a mistyped stamp is ignored, never thrown on', () => {
+    const g = makeGame()
+    discardCard(g, 'a', zoneEntry({ name: 'Odd', meta: { [HOME_SIDE_KEY]: 'c' } }))
+    expect(g.state.destroyed.a.map((c) => c.name)).toEqual(['Odd'])
+    expect(homeSideOf({ meta: { [HOME_SIDE_KEY]: 'c' } })).toBeNull()
+    expect(homeSideOf({ meta: { [HOME_SIDE_KEY]: 'b' } })).toBe('b')
+  })
+
+  // The snapshot-destructure trap (docs/claude/architecture.md): a
+  // per-instance stamp that is not named in the strip rides into the discard
+  // and back out of the deck.
+  it('discardSnapshotOf strips the stamp', () => {
+    const snapshot = discardSnapshotOf(zoneEntry({ meta: { [HOME_SIDE_KEY]: 'b', additionalSpawns: 1 } }))
+    expect((snapshot.meta as Record<string, unknown>)[HOME_SIDE_KEY]).toBeUndefined()
+    expect(snapshot.meta.additionalSpawns).toBe(1) // printed data stays
   })
 })

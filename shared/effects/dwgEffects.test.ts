@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { costModifierFor, effectFor } from './registry.ts'
-import { DOUBLE_UP_MAX_COST, KEYWORDS, RESERVES_CARD_COUNT } from '../gameSettings.ts'
+import { CATALOG_EFFECTS, costModifierFor, effectFor } from './registry.ts'
+import { DOUBLE_UP_MAX_COST, KEYWORDS, MAX_VEHICLES_PER_ZONE_SIDE, RESERVES_CARD_COUNT } from '../gameSettings.ts'
 import { inst, makeCtx, makeGame, snap, zoneEntry } from '../engine/testFixtures.ts'
-import { applyAction, autoRepairIds, declareForcedBattle } from '../engine/index.ts'
+import {
+  HOME_SIDE_KEY, applyAction, autoRepairIds, baseStrikersIn, declareForcedBattle, findVehicle,
+} from '../engine/index.ts'
+import type { EngineGame } from '../engine/engineTypes.ts'
+import type { CardInstance } from '../engine/gameInit.ts'
 
 describe('marauderOnPlay', () => {
   it('skips past a non-vehicle to the first vehicle, without naming it in the log', () => {
@@ -126,6 +130,35 @@ describe('loggerheadOnDeath', () => {
     const copy = game.privates.a.deck[0]
     expect(copy.materialCost).toBe(0)
     expect(copy.meta).not.toHaveProperty('costDelta')
+  })
+
+  // Fix round (2026-09-16 review, minor A): the deck copy used to be built with
+  // copyMeta plus a two-field destructure, so every OTHER per-instance stamp
+  // rode into the deck. A Mutiny-stolen Loggerhead that dies in the thief's
+  // turn arrives stamped `homeSide` and carrying a granted TEMPORARY (with its
+  // `grantedKeywords` marker); left on, the thief's deck would hand out a
+  // Loggerhead that files itself into the ENEMY's discard and is permanently
+  // Temporary — and a Hysteria'd one would come back permanently Inoffensive.
+  // discardSnapshotOf already owns that strip list; the copy must go through it.
+  it('builds the free copy as a clean discard snapshot — no homeSide, no granted keyword', () => {
+    const game = makeGame()
+    const dying = zoneEntry({
+      name: 'Loggerhead', materialCost: 80_000,
+      keywords: [KEYWORDS.TEMPORARY],
+      meta: { homeSide: 'b', grantedKeywords: [KEYWORDS.TEMPORARY] },
+      activatedOnTurn: 2,
+    })
+    const ok = effectFor('loggerheadOnDeath')!({
+      game, actor: 'a', card: dying, ctx: makeCtx(),
+    })
+    expect(ok).toBe(true)
+    expect(game.privates.a.deck).toHaveLength(1)
+    const copy = game.privates.a.deck[0]
+    expect(copy.materialCost).toBe(0)
+    expect(copy.meta).not.toHaveProperty('homeSide')
+    expect(copy.meta).not.toHaveProperty('grantedKeywords')
+    expect(copy.keywords).not.toContain(KEYWORDS.TEMPORARY)
+    expect(copy).not.toHaveProperty('activatedOnTurn')
   })
 })
 
@@ -260,18 +293,20 @@ describe('spawnBuccaneerEffect', () => {
   })
 })
 
-// Buccaneer prints FRAGILE from the 2026-09-02 pass, and Spawn Buccaneer's text
-// grants SCRAPPY. Spec §6.1 asks for the combination to be asserted because it
-// reads like a contradiction. On a spawned hull it never actually arises:
-// spawnBuccaneerEffect REPLACES the printed keyword array rather than merging
-// into it (unlike mintHull), so a spawned Buccaneer is Scrappy-only while a
-// played one is Fragile-only. Both shapes are pinned here with the repair
-// verdict each earns — and so is the verdict for a combined hull, so the answer
-// is on record if the two ever are merged.
+// Buccaneer printed FRAGILE from the 2026-09-02 pass through 2026-09-16, when
+// M-6 moved it to SCRAPPY instead (the seeded row now prints the same keyword
+// Spawn Buccaneer's text grants). This fixture keeps FRAGILE anyway: it is not
+// mirroring the live row but pinning the ENGINE's ordering — spawnBuccaneerEffect
+// REPLACES the printed keyword array rather than merging into it (unlike
+// mintHull), so a spawned Buccaneer is Scrappy-only while a played one keeps
+// whatever it is printed with, Fragile included. That ordering rule is worth
+// pinning independent of which keyword the seed currently prints. Both shapes
+// are pinned here with the repair verdict each earns — and so is the verdict
+// for a combined hull, so the answer is on record if the two ever are merged.
 //
-// The seeded value these fixtures mirror is pinned in
-// supabase/seed/balance/dwg.balance.test.ts; nothing under shared/ may read the
-// seed, so the two files close the loop between them.
+// The seeded value itself is pinned in supabase/seed/balance/dwg.balance.test.ts
+// and supabase/seed/balance/2026-09-16.balance.test.ts; nothing under shared/
+// may read the seed, so those files close the loop between them.
 describe('Buccaneer: FRAGILE printed, SCRAPPY granted', () => {
   const seededBuccaneer = () =>
     snap({ name: 'Buccaneer', vehicleType: 'airship', keywords: [KEYWORDS.FRAGILE] })
@@ -1324,5 +1359,330 @@ describe('enemy-deck capture is a copy, for all three cards', () => {
     expect(game.privates.a.hand.map((c) => c.meta.costDelta)).toEqual([undefined, 20_000, 20_000])
     expect(game.privates.b.deck.map((c) => c.name).sort()).toEqual(['Ship One', 'Ship Three', 'Ship Two'])
     expect(game.state.counts.b.deck).toBe(3)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 2026-09-16 M-4 — DWG Mutiny: "Choose an enemy vehicle, gain control of it and
+// give it temporary." A CONTROL CHANGE, new engine ground: the entry moves from
+// zone.cards[enemy] to zone.cards[actor] in the same zone, carries a homeSide
+// stamp so it is discarded to its owner (Q2), gains TEMPORARY through
+// grantKeywordsTo so the turn-start cull removes it, and is re-stamped as
+// freshly deployed (D-1, Boarding Party's precedent).
+describe('mutinyEffect (2026-09-16 M-4)', () => {
+  const mutiny = () => inst({
+    name: 'Mutiny', faction: 'DWG', type: 'ability', vehicleType: null, materialCost: 400_000,
+    meta: { playOnVehicleEffect: 'mutinyEffect' },
+  })
+  // Bob keeps one card in his deck: END_TURN draws for the incoming side, and
+  // an EMPTY deck would reshuffle his discard — the buried Foe included —
+  // straight back into it, hiding exactly what the Q2 test below looks for.
+  const board = () => {
+    const game = makeGame({ turnNumber: 3 })
+    const foe = zoneEntry({ instanceId: 'foe1', name: 'Foe', cardId: 'card:foe', keywords: ['blocker'], playedOnTurn: 1 })
+    game.state.zones[0].cards.b.push(foe)
+    game.privates.b.deck.push(inst({ name: 'B Top' }))
+    game.state.counts.b.deck = 1
+    return { game, foe }
+  }
+  const steal = (game: EngineGame, targetInstanceId: string) => effectFor('mutinyEffect')!({
+    game, actor: 'a', card: mutiny(), ctx: makeCtx(), targetInstanceId,
+  })
+
+  it('moves the hull to the actor\'s side of the same zone, Temporary, stamped home, freshly deployed', () => {
+    const { game } = board()
+    expect(steal(game, 'foe1')).toBe(true)
+    expect(game.state.zones[0].cards.b).toHaveLength(0)
+    const found = findVehicle(game.state, 'foe1')!
+    expect(found.side).toBe('a')
+    expect(found.zone.id).toBe(1)
+    expect(found.entry.keywords).toEqual(['blocker', KEYWORDS.TEMPORARY])
+    expect(found.entry.meta.grantedKeywords).toEqual([KEYWORDS.TEMPORARY])
+    expect(found.entry.meta[HOME_SIDE_KEY]).toBe('b')
+    expect(found.entry).toMatchObject({ playedOnTurn: 3, movedOnTurn: null, activatedOnTurn: null })
+    expect(game.state.log.at(-1)).toContain('Foe')
+  })
+
+  it('refuses a friendly hull, and a missing one', () => {
+    const { game } = board()
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'mine1', playedOnTurn: 1 }))
+    expect(steal(game, 'mine1')).toBe(false)
+    expect(steal(game, 'nope')).toBe(false)
+    expect(effectFor('mutinyEffect')!({ game, actor: 'a', card: mutiny(), ctx: makeCtx() })).toBe(false)
+  })
+
+  // Q1: refuse, do not exceed the cap.
+  it('refuses when the actor\'s side of the zone is at its cap', () => {
+    const { game } = board()
+    for (let i = 0; i < MAX_VEHICLES_PER_ZONE_SIDE; i++) {
+      game.state.zones[0].cards.a.push(zoneEntry({ instanceId: `full-${i}`, playedOnTurn: 1 }))
+    }
+    expect(steal(game, 'foe1')).toBe(false)
+    expect(game.state.zones[0].cards.b.map((c) => c.instanceId)).toEqual(['foe1'])
+  })
+
+  // Q1's second gate: the same uniquePerZone rule moveEntry applies.
+  it('refuses to steal a second copy of a uniquePerZone card into a zone holding one', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'myOb', cardId: 'card:ob', meta: { uniquePerZone: true }, playedOnTurn: 1 }))
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'theirOb', cardId: 'card:ob', meta: { uniquePerZone: true }, playedOnTurn: 1 }))
+    expect(steal(game, 'theirOb')).toBe(false)
+    expect(findVehicle(game.state, 'theirOb')!.side).toBe('b')
+  })
+
+  it('leaves an already-Temporary hull Temporary without recording a grant', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'tmp', keywords: [KEYWORDS.TEMPORARY], playedOnTurn: 1 }))
+    expect(steal(game, 'tmp')).toBe(true)
+    const entry = findVehicle(game.state, 'tmp')!.entry
+    expect(entry.keywords).toEqual([KEYWORDS.TEMPORARY])
+    expect(entry.meta.grantedKeywords).toBeUndefined()
+  })
+
+  // Q2 end to end: played for real, then the thief ends the turn. The cull
+  // discards the hull to its OWNER's pile, clean of the stamp and the grant.
+  it('is culled at the thief\'s END_TURN into the owner\'s discard, clean', () => {
+    const { game } = board()
+    const card = mutiny()
+    game.privates.a.hand.push(card)
+    game.state.counts.a.hand = 1
+    game.state.resources.a.materials = 400_000
+    const played = applyAction(game, 'alice', {
+      type: 'PLAY_CARD_TARGETING_CARD_ON_FIELD', instanceId: card.instanceId, targetInstanceId: 'foe1',
+    }, makeCtx())
+    if (!played.ok) throw new Error(played.error)
+    expect(played.game.state.resources.a.materials).toBe(0)
+    expect(findVehicle(played.game.state, 'foe1')!.side).toBe('a')
+    const ended = applyAction(played.game, 'alice', { type: 'END_TURN' }, makeCtx())
+    if (!ended.ok) throw new Error(ended.error)
+    expect(findVehicle(ended.game.state, 'foe1')).toBeNull()
+    // Alice's pile holds only the SPENT Mutiny card — never the hull it stole.
+    expect(ended.game.state.destroyed.a.map((c) => c.name)).toEqual(['Mutiny'])
+    const buried = ended.game.state.destroyed.b
+    expect(buried.map((c) => c.name)).toEqual(['Foe'])
+    expect(buried[0].keywords).toEqual(['blocker'])
+    expect((buried[0].meta as Record<string, unknown>)[HOME_SIDE_KEY]).toBeUndefined()
+    expect(buried[0].meta.grantedKeywords).toBeUndefined()
+  })
+
+  // A refused play spends nothing (Q1): the handler 400s and the clone is dropped.
+  it('a refused play through the handler leaves the hand and materials untouched', () => {
+    const { game } = board()
+    for (let i = 0; i < MAX_VEHICLES_PER_ZONE_SIDE; i++) {
+      game.state.zones[0].cards.a.push(zoneEntry({ instanceId: `full-${i}`, playedOnTurn: 1 }))
+    }
+    const card = mutiny()
+    game.privates.a.hand.push(card)
+    game.state.counts.a.hand = 1
+    game.state.resources.a.materials = 400_000
+    const r = applyAction(game, 'alice', {
+      type: 'PLAY_CARD_TARGETING_CARD_ON_FIELD', instanceId: card.instanceId, targetInstanceId: 'foe1',
+    }, makeCtx())
+    expect(r).toMatchObject({ ok: false, status: 400 })
+    expect(game.privates.a.hand).toHaveLength(1)
+    expect(game.state.resources.a.materials).toBe(400_000)
+  })
+
+  // D-1: a stolen hull cannot bombard this turn (fresh deployment), which is
+  // Boarding Party's rule for a hull that changed sides.
+  it('re-stamps playedOnTurn so the stolen hull cannot bombard this turn', () => {
+    const { game } = board()
+    steal(game, 'foe1')
+    const entry = findVehicle(game.state, 'foe1')!.entry
+    expect(baseStrikersIn([entry], game.turnNumber)).toEqual([])
+  })
+
+  it('needs no catalog', () => {
+    expect(CATALOG_EFFECTS.has('mutinyEffect')).toBe(false)
+  })
+})
+
+// 2026-09-16 — DWG Brigand (new to the repo): "When this is destroyed, draw a
+// copy of Mutiny". SCRAPPY plus a death trigger is allowed (card-effects.md
+// rule 10 as corrected; Argonaut's precedent). slasherOnPlay's shape: mint from
+// the catalog by name, through poolEligible, into the hand via putInHand.
+describe('brigandOnDeath (2026-09-16)', () => {
+  const mutinyRow = snap({
+    name: 'Mutiny', faction: 'DWG', type: 'ability', vehicleType: null, materialCost: 400_000,
+    meta: { playOnVehicleEffect: 'mutinyEffect' },
+  })
+  const brigand = () => zoneEntry({ name: 'Brigand', faction: 'DWG', vehicleType: 'ship', keywords: ['scrappy'] })
+
+  it('puts one Mutiny into the owner\'s hand and resyncs the count', () => {
+    const game = makeGame()
+    const ok = effectFor('brigandOnDeath')!({ game, actor: 'a', card: brigand(), ctx: makeCtx({ catalog: [mutinyRow] }) })
+    expect(ok).toBe(true)
+    expect(game.privates.a.hand.map((c) => c.name)).toEqual(['Mutiny'])
+    expect(game.privates.a.hand[0].meta.playOnVehicleEffect).toBe('mutinyEffect')
+    expect(game.privates.a.hand[0].handEnteredTurn).toBe(game.turnNumber)
+    expect(game.state.counts.a.hand).toBe(1)
+  })
+
+  it('never names the card in the public log', () => {
+    const game = makeGame()
+    effectFor('brigandOnDeath')!({ game, actor: 'a', card: brigand(), ctx: makeCtx({ catalog: [mutinyRow] }) })
+    expect(game.state.log.join(' ')).not.toContain('Mutiny')
+  })
+
+  // A death effect must return false on failure, never throw (architecture.md).
+  it('returns false when the catalog has no Mutiny', () => {
+    const game = makeGame()
+    expect(effectFor('brigandOnDeath')!({ game, actor: 'a', card: brigand(), ctx: makeCtx({ catalog: [] }) })).toBe(false)
+  })
+
+  // ⚠ Unit tests cannot catch a missing flag — makeCtx hands them a catalog.
+  it('is registered as needing the catalog', () => {
+    expect(CATALOG_EFFECTS.has('brigandOnDeath')).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 2026-09-16 M-5 — DWG Sinners Luck: "when played, you may swap a friendly
+// airship with an enemy airship or plane. If airship you provide is worth less
+// than what you get, the opponent draws a card and reduces that cards cost by
+// the difference."
+//
+// Two hops through choice() (Braveheart's shape). Q3: side AND zone are
+// exchanged; Q4: "worth" is printed materialCost; D-1: both hulls re-stamp as
+// freshly deployed; D-3: an empty pool at either hop resolves without a swap.
+describe('sinnersLuckOnPlay (2026-09-16 M-5)', () => {
+  const sinners = () => inst({
+    instanceId: 'sl1', name: 'Sinners Luck', faction: 'DWG', vehicleType: 'ship', materialCost: 250_000,
+    meta: { onPlayEffect: 'sinnersLuckOnPlay' },
+  })
+  // My airships in zones 1 and 2, a ship and a plane of mine that must never
+  // be offered; enemy airship in zone 2, enemy plane in zone 3, enemy ship.
+  const armed = () => {
+    const card = sinners()
+    const game = makeGame({
+      turnNumber: 3, activePlayer: 'alice',
+      privates: { a: { hand: [card], deck: [] }, b: { hand: [], deck: [inst({ name: 'Enemy Top' })] } },
+    })
+    game.state.resources.a.materials = 300_000
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'myAir1', name: 'My Airship', vehicleType: 'airship', materialCost: 100_000, playedOnTurn: 1 }))
+    game.state.zones[1].cards.a.push(
+      zoneEntry({ instanceId: 'myAir2', name: 'My Other Airship', vehicleType: 'airship', materialCost: 100_000, playedOnTurn: 1 }),
+      zoneEntry({ instanceId: 'myPlane', name: 'My Plane', vehicleType: 'plane', playedOnTurn: 1 }),
+    )
+    game.state.zones[1].cards.b.push(zoneEntry({ instanceId: 'theirAir', name: 'Their Airship', vehicleType: 'airship', materialCost: 300_000, playedOnTurn: 1 }))
+    game.state.zones[2].cards.b.push(
+      zoneEntry({ instanceId: 'theirPlane', name: 'Their Plane', vehicleType: 'plane', materialCost: 50_000, playedOnTurn: 1 }),
+      zoneEntry({ instanceId: 'theirTank', name: 'Their Tank', vehicleType: 'tank', playedOnTurn: 1 }),
+    )
+    return { game, card }
+  }
+  const play = (game: EngineGame, card: CardInstance) => {
+    const r = applyAction(game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: 1 }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    return r.game
+  }
+  const answer = (game: EngineGame, choiceId: string) => {
+    const r = applyAction(game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId }, makeCtx())
+    if (!r.ok) throw new Error(r.error)
+    return r.game
+  }
+
+  it('hop 1 offers only the actor\'s AIRSHIPS, from every zone', () => {
+    const { game, card } = armed()
+    const after = play(game, card)
+    expect(after.state.pendingEffect?.effect).toBe('sinnersLuckOnPlay')
+    expect(after.state.pendingEffect?.options.map((o) => o.id).sort()).toEqual(['myAir1', 'myAir2'])
+  })
+
+  it('hop 2 offers enemy airships AND planes from every zone, never ships or tanks', () => {
+    const { game, card } = armed()
+    const hop2 = answer(play(game, card), 'myAir1')
+    expect(hop2.state.pendingEffect?.effect).toBe('sinnersLuckOnPlay')
+    expect(hop2.state.pendingEffect?.options.map((o) => o.id).sort()).toEqual(['theirAir', 'theirPlane'])
+  })
+
+  // Q3 + D-1: side AND zone are exchanged, both hulls freshly deployed.
+  it('swaps the two hulls across sides and zones, re-stamping both', () => {
+    const { game, card } = armed()
+    const done = answer(answer(play(game, card), 'myAir1'), 'theirAir')
+    expect(done.state.pendingEffect).toBeNull()
+    const given = findVehicle(done.state, 'myAir1')!
+    const received = findVehicle(done.state, 'theirAir')!
+    expect({ side: given.side, zone: given.zone.id }).toEqual({ side: 'b', zone: 2 })
+    expect({ side: received.side, zone: received.zone.id }).toEqual({ side: 'a', zone: 1 })
+    expect(given.entry).toMatchObject({ playedOnTurn: 3, movedOnTurn: null, activatedOnTurn: null })
+    expect(received.entry).toMatchObject({ playedOnTurn: 3, movedOnTurn: null, activatedOnTurn: null })
+    expect(done.state.zones[0].cards.a.map((c) => c.name).sort()).toEqual(['Sinners Luck', 'Their Airship'])
+  })
+
+  // Q4: 100k given for 300k received — the opponent draws, discounted by 200k.
+  it('makes the opponent draw a card discounted by the difference when the given airship is worth less', () => {
+    const { game, card } = armed()
+    const done = answer(answer(play(game, card), 'myAir1'), 'theirAir')
+    expect(done.privates.b.hand.map((c) => c.name)).toEqual(['Enemy Top'])
+    expect(done.privates.b.hand[0].meta.costDelta).toBe(-200_000)
+    expect(done.state.counts.b).toEqual({ hand: 1, deck: 0 })
+    expect(done.state.log.join('\n')).not.toContain('Enemy Top')
+  })
+
+  it('draws nothing when the given airship is worth as much or more', () => {
+    const { game, card } = armed()
+    const done = answer(answer(play(game, card), 'myAir1'), 'theirPlane') // 100k for 50k
+    expect(done.privates.b.hand).toHaveLength(0)
+    expect(findVehicle(done.state, 'theirPlane')!.side).toBe('a')
+  })
+
+  it('survives an opponent with nothing to draw', () => {
+    const { game, card } = armed()
+    game.privates.b.deck = []
+    game.state.counts.b.deck = 0
+    const done = answer(answer(play(game, card), 'myAir1'), 'theirAir')
+    expect(done.privates.b.hand).toHaveLength(0)
+    expect(findVehicle(done.state, 'theirAir')!.side).toBe('a')
+  })
+
+  // D-3: "you may" — no friendly airship means no suspension and no failure.
+  it('deploys without suspending when the actor has no airship', () => {
+    const { game, card } = armed()
+    game.state.zones[0].cards.a = []
+    game.state.zones[1].cards.a = game.state.zones[1].cards.a.filter((c) => c.instanceId !== 'myAir2')
+    const after = play(game, card)
+    expect(after.state.pendingEffect).toBeNull()
+    expect(after.state.zones[0].cards.a.map((c) => c.name)).toEqual(['Sinners Luck'])
+  })
+
+  it('resolves with no swap when the enemy has no airship or plane', () => {
+    const { game, card } = armed()
+    game.state.zones[1].cards.b = []
+    game.state.zones[2].cards.b = game.state.zones[2].cards.b.filter((c) => c.instanceId === 'theirTank')
+    const hop2 = answer(play(game, card), 'myAir1')
+    expect(hop2.state.pendingEffect).toBeNull()
+    expect(findVehicle(hop2.state, 'myAir1')!.side).toBe('a')
+  })
+
+  it('can be declined at either hop through cancel, leaving the board untouched', () => {
+    const { game, card } = armed()
+    const declined = applyAction(play(game, card), 'alice', { type: 'RESOLVE_PENDING_EFFECT', cancel: true }, makeCtx())
+    if (!declined.ok) throw new Error(declined.error)
+    expect(declined.game.state.pendingEffect).toBeNull()
+    expect(findVehicle(declined.game.state, 'myAir1')!.side).toBe('a')
+    expect(findVehicle(declined.game.state, 'theirAir')!.side).toBe('b')
+  })
+
+  it('refuses cleanly when the chosen enemy hull has left the board', () => {
+    const { game, card } = armed()
+    const hop2 = answer(play(game, card), 'myAir1')
+    hop2.state.zones[1].cards.b = []
+    const r = applyAction(hop2, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'theirAir' }, makeCtx())
+    expect(r).toMatchObject({ ok: false, status: 400 })
+  })
+
+  it('never offers the hull this play just placed, even if it were an airship', () => {
+    const game = makeGame({ turnNumber: 3, activePlayer: 'alice' })
+    const card = inst({ instanceId: 'sl-air', name: 'Sinners Luck', faction: 'DWG', vehicleType: 'airship', materialCost: 0, meta: { onPlayEffect: 'sinnersLuckOnPlay' } })
+    game.privates.a.hand.push(card)
+    game.state.counts.a.hand = 1
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'theirAir', vehicleType: 'airship', playedOnTurn: 1 }))
+    const after = play(game, card)
+    expect(after.state.pendingEffect).toBeNull()
+  })
+
+  it('needs no catalog', () => {
+    expect(CATALOG_EFFECTS.has('sinnersLuckOnPlay')).toBe(false)
   })
 })

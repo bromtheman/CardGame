@@ -6,16 +6,20 @@ import {
 import type { EngineContext, EngineGame, Side, ZoneCardEntry } from '../engine/engineTypes.ts'
 import type { SnapshotCard } from '../engine/gameInit.ts'
 import {
-  checkVictory, copyMeta, discardCard, discardSnapshotOf, drawCard, findVehicle, grantSpawnsTo, otherSide,
-  putInHand, zoneById,
+  checkVictory, copyMeta, discardCard, discardSnapshotOf, drawCard, findVehicle, grantKeywordsTo, grantSpawnsTo,
+  HOME_SIDE_KEY, otherSide, putInHand, zoneById,
 } from '../engine/gameEngine.ts'
-import { effectiveMaterialCostOf } from '../engine/placement.ts'
+import { effectiveMaterialCostOf, uniquePerZoneBlocked } from '../engine/placement.ts'
+import { zoneCapFor } from '../engine/zoneCapacity.ts'
 import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
 import { baseDamageFrom, baseStrikersIn } from '../engine/baseAttack.ts'
 import { fireDeathEffect } from '../engine/battleTriggers.ts'
-import { choice, grant, mintHull, poolEligible, summonHulls, takeFromEnemyDeck } from './primitives.ts'
+import {
+  catalogCard, choice, enemyVehicleOptions, friendlyVehicleOptions, grant, mintHull, poolEligible, summonHulls,
+  takeFromEnemyDeck,
+} from './primitives.ts'
 import { registerCostModifier, registerEffect } from './registry.ts'
-import type { EffectPayload } from './registry.ts'
+import type { EffectFn, EffectPayload } from './registry.ts'
 
 // draw a card and gain 1 CP (Crossbones)
 const drawPlusCp = ({ game, actor, ctx }: EffectPayload): boolean => {
@@ -84,15 +88,19 @@ registerCostModifier('plundererCostModifier', (state, side) => {
 // shuffle a 0-cost copy into its owner's deck (Loggerhead, on death)
 registerEffect('loggerheadOnDeath', ({ game, actor, card, ctx }) => {
   const deck = game.privates[actor].deck
-  // card arrives as a ZoneCardEntry at death — strip the zone stamps so the
-  // deck copy is a clean CardInstance
-  const { playedOnTurn: _p, movedOnTurn: _m, ...snapshot } = card as ZoneCardEntry
-  // A per-instance price stamp (e.g. a Plunderer raid's +20k surcharge, spec
-  // §6.1) must not ride into the deck on a card whose own text promises it
-  // costs 0. copyMeta strips only the phantom capturedCopy stamp, so strip
-  // costDelta here too — the same shape as the tgEffects.ts:238 precedent
-  // (horrorBattle strips factoryEscort on top of copyMeta the same way).
-  const meta = (({ costDelta: _costDelta, ...rest }) => rest)(copyMeta(snapshot.meta))
+  // card arrives as a ZoneCardEntry at death. The deck copy is built from
+  // discardSnapshotOf — the ONE strip list for everything per-instance (the
+  // zone/hand stamps, costDelta, factoryEscort, homeSide, grantedSpawns, and
+  // grantedKeywords together with the keywords they granted) — rather than
+  // from a hand-rolled destructure, which is how this copy used to carry a
+  // Mutiny theft's `homeSide` and a granted TEMPORARY into the thief's deck
+  // (2026-09-16 review), and a Hysteria'd hull's INOFFENSIVE before that. The
+  // strip also covers a Plunderer raid's +20k costDelta (spec §6.1), which the
+  // card's own "It costs 0." must not inherit. copyMeta then drops the phantom
+  // capturedCopy stamp that discardSnapshotOf deliberately leaves alone — a
+  // hull minted off a captured copy is a card of the minter's own.
+  const snapshot = discardSnapshotOf(card)
+  const meta = copyMeta(snapshot.meta)
   deck.push({ ...snapshot, instanceId: ctx.newId(), materialCost: 0, meta })
   for (let i = deck.length - 1; i > 0; i--) {
     const j = Math.floor(ctx.rng() * (i + 1))
@@ -570,11 +578,12 @@ registerEffect(KRAKEN, choice({
   },
 }))
 
-// "Choose an enemy vehicle, that vehicle fights alone against a flying
+// "Choose an enemy vehicle, that vehicle fights alone against two flying
 // squirrel (3x squadron)." DP3 (spec §4.3): the target is the sole defender
 // (§7.3 "fights alone") against FLYING_SQUIRREL_ATTACK_COUNT freshly minted
 // Flying Squirrel summons, which exist only for this battle (spec §4.4) — the
-// aggressor is the player who played the card, not the target's owner.
+// aggressor is the player who played the card, not the target's owner. Two
+// 3x squadrons, six summons total, since 2026-09-16 (M-8; it was one squadron).
 registerEffect('flyingSquirrelAttackEffect', ({ game, actor, ctx, targetInstanceId, card }) => {
   if (typeof targetInstanceId !== 'string') return false
   const found = findVehicle(game.state, targetInstanceId)
@@ -611,4 +620,171 @@ registerEffect('gangUpEffect', ({ game, actor, ctx, targetInstanceId, card }) =>
     defenderIds: [targetInstanceId],
     cause: card.name,
   })
+})
+
+// "Choose an enemy vehicle, gain control of it and give it temporary." (M-4,
+// 2026-09-16.) The engine's first CONTROL CHANGE: the entry is moved between
+// the two side lists of its own zone. No new primitive — it is one splice and
+// one push, and nothing else needs to move a hull between sides.
+//
+// PLAY_CARD_TARGETING_CARD_ON_FIELD checks only that the target is on the
+// field, not whose it is (ruling E-5), so the enemy-side test is here —
+// flyingSquirrelAttackEffect's shape.
+//
+// Q1: a full zone REFUSES the play rather than exceeding the cap, and so does
+// a uniquePerZone clash (a second Albacore/Obelisk into a zone you already
+// hold one in) — the two gates moveEntry applies to walking a hull in. A
+// refusal 400s the handler and the 400k is never spent.
+//
+// Q2: the stolen entry is stamped HOME_SIDE_KEY with the side it came from, so
+// discardCard files it under its owner when the turn-start cull (or a death in
+// battle) sends it out of play; discardSnapshotOf strips the stamp on the way.
+//
+// D-1: re-stamped as freshly deployed, as Boarding Party re-stamps both hulls
+// it swaps — so it can fight a fleet battle this turn but cannot bombard.
+// TEMPORARY is granted through grantKeywordsTo so the grant is recorded and
+// shed with the rest; a hull that already prints it records nothing and is
+// culled just the same.
+registerEffect('mutinyEffect', ({ game, actor, card, targetInstanceId }) => {
+  if (typeof targetInstanceId !== 'string') return false
+  const found = findVehicle(game.state, targetInstanceId)
+  if (!found || found.side !== otherSide(actor)) return false
+  const { zone, entry, side: owner } = found
+  if (zone.cards[actor].length >= zoneCapFor(game.state, actor, zone.id)) return false
+  if (uniquePerZoneBlocked(game.state, actor, zone.id, entry)) return false
+  zone.cards[owner] = zone.cards[owner].filter((c) => c.instanceId !== entry.instanceId)
+  const stolen: ZoneCardEntry = {
+    ...entry,
+    meta: { ...entry.meta, [HOME_SIDE_KEY]: entry.meta[HOME_SIDE_KEY] ?? owner },
+    playedOnTurn: game.turnNumber, movedOnTurn: null, activatedOnTurn: null,
+  }
+  grantKeywordsTo(stolen, [KEYWORDS.TEMPORARY])
+  zone.cards[actor].push(stolen)
+  // The hull was public on the board a moment ago, so naming it leaks nothing.
+  game.state.log.push(
+    `${card.name}: ${entry.name} mutinies and joins player ${actor.toUpperCase()} in zone ${zone.id} for this turn`,
+  )
+  return true
+})
+
+// "When this is destroyed, draw a copy of Mutiny." (2026-09-16.) slasherOnPlay's
+// shape: a named catalog mint through poolEligible into the hand via putInHand.
+// Its own registry id (R-6). SCRAPPY sits beside this trigger deliberately —
+// rule 10 as corrected narrows the death window to below 80%, it does not
+// close it (Argonaut's precedent).
+//
+// { needsCatalog: true } is load-bearing: game-action's probe scans on-field
+// hulls' metas at DECIDE_BATTLE_REPORT, so the flag is what loads the catalog
+// for a death trigger. Never named in the log — the card is entering a hidden
+// hand, however public its printed text makes the guess.
+registerEffect('brigandOnDeath', ({ game, actor, card, ctx }) => {
+  const mutiny = catalogCard(ctx, 'Mutiny')
+  // A named card the catalog cannot supply is a data bug, not an empty pool.
+  if (!mutiny || !poolEligible(mutiny)) return false
+  putInHand(game, actor, { ...mutiny, instanceId: ctx.newId() })
+  game.state.log.push(`${card.name} goes down — its crew slips a card into player ${actor.toUpperCase()}'s hand`)
+  return true
+}, { needsCatalog: true })
+
+const SINNERS_LUCK = 'sinnersLuckOnPlay'
+
+// "when played, you may swap a friendly airship with an enemy airship or
+// plane. If airship you provide is worth less than what you get, the opponent
+// draws a card and reduces that cards cost by the difference." (M-5,
+// 2026-09-16.)
+//
+// TWO HOPS, both routed through choice() — Braveheart's shape, never Orbit
+// Flank's hand-written second pendingEffect. Hop 1 picks the friendly airship
+// (any zone — the text names none), hop 2 the enemy airship-or-plane (any
+// zone). "You may": an empty pool at either hop resolves straight through with
+// null (Kraken's shape) and the ship still deploys; the dialog's Decline is
+// RESOLVE_PENDING_EFFECT { cancel: true }, which clears the slot untouched.
+//
+// Q3: side AND zone are exchanged — a swap, not a side flip. Airships and
+// planes fly in every biome, so no biome check. The zone cap is bypassed (this
+// is not a play and is net-zero per side — Boarding Party's latitude) and
+// uniquePerZone is not consulted (recorded edge).
+// Q4: "worth" is the PRINTED materialCost, the authority every pool and
+// threshold filter reads. The difference lands as a costDelta stamp on the
+// card the opponent draws — a PRICE, never a rewrite. The log names neither.
+// D-1: both hulls re-stamp as freshly deployed, as Boarding Party's do.
+const isAirship = (e: ZoneCardEntry) => e.vehicleType === VEHICLE_TYPES.AIRSHIP
+const isFlier = (e: ZoneCardEntry) =>
+  e.vehicleType === VEHICLE_TYPES.AIRSHIP || e.vehicleType === VEHICLE_TYPES.PLANE
+
+const sinnersLuckHop2 = (givenId: string): EffectFn => choice({
+  effect: SINNERS_LUCK,
+  prompt: 'Choose an enemy airship or plane to take in exchange',
+  options: ({ game, actor }) => enemyVehicleOptions(game, actor, null, isFlier),
+  data: () => ({ givenId }),
+  resolve: (payload, receivedId) => {
+    const { game, actor, ctx, card } = payload
+    if (receivedId === null) {
+      game.state.log.push(`${card.name} finds no enemy airship or plane to swap for`)
+      return true
+    }
+    // Both halves re-checked against the CURRENT board: either hull may have
+    // left while the dialog sat open.
+    const given = findVehicle(game.state, givenId)
+    if (!given || given.side !== actor || !isAirship(given.entry)) return false
+    const enemy = otherSide(actor)
+    const received = findVehicle(game.state, receivedId)
+    if (!received || received.side !== enemy || !isFlier(received.entry)) return false
+    given.zone.cards[actor] = given.zone.cards[actor].filter((c) => c.instanceId !== givenId)
+    received.zone.cards[enemy] = received.zone.cards[enemy].filter((c) => c.instanceId !== receivedId)
+    const toEnemy: ZoneCardEntry = {
+      ...given.entry, playedOnTurn: game.turnNumber, movedOnTurn: null, activatedOnTurn: null,
+    }
+    const toActor: ZoneCardEntry = {
+      ...received.entry, playedOnTurn: game.turnNumber, movedOnTurn: null, activatedOnTurn: null,
+    }
+    received.zone.cards[enemy].push(toEnemy)
+    given.zone.cards[actor].push(toActor)
+    game.state.log.push(
+      `${card.name}: ${given.entry.name} is traded to player ${enemy.toUpperCase()} for ${received.entry.name}`,
+    )
+    const difference = received.entry.materialCost - given.entry.materialCost
+    if (difference > 0) {
+      // plundererRaid's stamp: the card drawCard just pushed is hand[before].
+      // ACCUMULATES onto whatever it already carried, like every costDelta.
+      const before = game.privates[enemy].hand.length
+      drawCard(game, enemy, ctx)
+      const drawn = game.privates[enemy].hand[before]
+      if (drawn) {
+        const current = typeof drawn.meta.costDelta === 'number' ? drawn.meta.costDelta : 0
+        drawn.meta = { ...drawn.meta, costDelta: current - difference }
+        game.state.log.push(`Player ${enemy.toUpperCase()} draws a card, discounted by the difference`)
+      }
+    }
+    return true
+  },
+})
+
+const sinnersLuckHop1: EffectFn = choice({
+  effect: SINNERS_LUCK,
+  prompt: 'Choose one of your airships to swap away',
+  // placedInstanceIds excluded as Alarmed's offer excludes them: PLAY_CARD_TO_ZONE
+  // deploys the hull BEFORE effects run. Sinners Luck is a ship, so today this
+  // never bites — it is what keeps the card honest if that ever changes.
+  options: ({ game, actor, placedInstanceIds }) => {
+    const placed = new Set(placedInstanceIds ?? [])
+    return friendlyVehicleOptions(game, actor, null, (e) => isAirship(e) && !placed.has(e.instanceId))
+  },
+  resolve: (payload, givenId) => {
+    if (givenId === null) {
+      payload.game.state.log.push(`${payload.card.name} has no airship to offer`)
+      return true
+    }
+    // Hop 2's first entry: `resolution` cleared so choice() takes the slot
+    // again, `pending` cleared so it cannot be mistaken for hop 2's own.
+    return sinnersLuckHop2(givenId)({ ...payload, resolution: undefined, pending: undefined })
+  },
+})
+
+// The router. Hop 2 is told apart by the givenId hop 1 stashed — never by
+// anything the client sent.
+registerEffect(SINNERS_LUCK, (payload) => {
+  const stashed = payload.pending?.data?.givenId
+  if (typeof stashed === 'string') return sinnersLuckHop2(stashed)(payload)
+  return sinnersLuckHop1(payload)
 })

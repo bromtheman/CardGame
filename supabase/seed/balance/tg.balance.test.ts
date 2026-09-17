@@ -45,8 +45,11 @@ describe('2026-09-02 balance pass — TG, the five new cards', () => {
       vehicleType: 'ship', type: 'vehicle',
       keywords: ['robotic', 'upkeepRequired'], effect: null,
     },
+    // 40k -> 400k, moved 2026-09-16 (ruling Q7): closes the 40k spawn ->
+    // Repurpose for 330k loop recorded in tgEffects.ts. Also pinned in
+    // balance/2026-09-16.balance.test.ts.
     'Spawn Audacious': {
-      materialCost: 40_000, blueprintCost: 0, cpCost: 0,
+      materialCost: 400_000, blueprintCost: 0, cpCost: 0,
       vehicleType: null, type: 'ability',
       keywords: [], effect: ['playOnZoneEffect', 'spawnAudaciousEffect'],
     },
@@ -114,6 +117,8 @@ describe('2026-09-02 balance pass — TG, the sixteen updated cards', () => {
     vehicleType: string | null
   }
 
+  // ⚠ Obelisk moved again on 2026-09-16 (60k, −STEALTHY) — updated in place
+  // per §2.3.
   // Every card the pass moved, at its NEW value. blueprintCost is absent on
   // purpose: this pass names material costs only, and tgFaction.test.ts still
   // pins the blueprints wave 7 set.
@@ -133,7 +138,7 @@ describe('2026-09-02 balance pass — TG, the sixteen updated cards', () => {
     Fear: { materialCost: 500_000, keywords: ['blocker', 'robotic', 'upkeepRequired'], vehicleType: 'ship' },
     Nostalgia: { materialCost: 75_000, keywords: ['robotic'], vehicleType: 'ship' },
     Alarmed: { materialCost: 0, keywords: ['robotic'], vehicleType: 'airship' },
-    Obelisk: { materialCost: 40_000, keywords: ['stealthy'], vehicleType: 'ship' },
+    Obelisk: { materialCost: 60_000, keywords: [], vehicleType: 'ship' },
   }
 
   it('moves exactly sixteen cards', () => {
@@ -186,10 +191,12 @@ describe('2026-09-02 balance pass — TG, the text and the ids', () => {
     )
   })
 
-  // The casing fix, and only the casing fix — "along side" is the card's.
-  it('Mirth Factory names a Mirth swarm rather than a mIRTH one', async () => {
+  // 2026-09-16 M-2: Mirth Factory now targets a friendly AI ship, not a
+  // robotic vehicle — the casing fix from the 2026-09-02 pass survives
+  // ("along side" is the card's).
+  it('Mirth Factory names a Mirth swarm rather than a mIRTH one, and targets an AI ship', async () => {
     expect(await textOf('Mirth Factory')).toBe(
-      'Target friendly robotic vehicle. Whenever that vehicle is engaged in a fleet combat, spawn a Mirth swarm to fight along side it',
+      'Target friendly AI ship. Whenever that vehicle is engaged in a fleet combat, spawn a Mirth swarm to fight along side it',
     )
   })
 
@@ -268,12 +275,13 @@ describe('TG Obelisk is unique per zone (2026-09-07)', () => {
     expect((await bySeedKey()).get('TG:Obelisk')!.cardText).toContain('one Obelisk per zone')
   })
 
-  // No OTHER seeded card carries the key. It is enforced at three sites and
-  // changes a card's legal zones; a second carrier should be a deliberate
-  // decision, not something that arrives by copy-paste.
-  it('is the only card carrying the key', async () => {
+  // It is enforced at three sites and changes a card's legal zones; a new
+  // carrier should be a deliberate decision, not something that arrives by
+  // copy-paste. DWG:Albacore joined 2026-09-16 (M-6), narrowed from the wider
+  // aircraftLock it used to carry — also pinned in balance/2026-09-16.balance.test.ts.
+  it('is carried by exactly Obelisk and, since 2026-09-16, Albacore', async () => {
     const { cards } = await loadSeedData()
     expect(cards.filter((c) => (c.meta as Record<string, unknown> | null)?.uniquePerZone === true)
-      .map((c) => `${c.faction}:${c.name}`)).toEqual(['TG:Obelisk'])
+      .map((c) => `${c.faction}:${c.name}`)).toEqual(['DWG:Albacore', 'TG:Obelisk'])
   })
 })

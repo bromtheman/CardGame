@@ -15,8 +15,15 @@ import type { SeedCard } from '../../shared/types'
 // that recomputes its expectation from the same source it is checking proves
 // nothing.
 
-const AIRCRAFT_LOCK =
-  'While this vehicle is alive, you may not play any other aircraft into this zone'
+// moved 2026-09-16: Albacore's lock narrowed from "any other aircraft" to
+// "another Albacore" (M-6, uniquePerZone). The old AIRCRAFT_LOCK text this
+// const replaced is gone from the seed — see the M-6 test below.
+const ALBACORE_TEXT =
+  'While this vehicle is alive, you may not play another Albacore into this zone'
+
+const SINNERS_LUCK_TEXT =
+  'when played, you may swap a friendly airship with an enemy airship or plane. If airship you ' +
+  'provide is worth less than what you get, the opponent draws a card and reduces that cards cost by the difference.'
 
 async function bySeedKey(): Promise<Map<string, SeedCard>> {
   const { cards } = await loadSeedData()
@@ -36,24 +43,27 @@ interface Expected {
 // not meaningful.
 const CARDS: Record<string, Expected> = {
   // ---------------------------------------------------------------- DWG
+  // Reworked by the 2026-09-16 pass (M-5): text, −SCRAPPY, onPlayEffect. Updated
+  // in place per the 2026-09-02 spec §2.3; the pass pins it in balance/2026-09-16.balance.test.ts.
   'DWG:Sinners Luck': {
-    materialCost: 250_000, blueprintCost: 267_000, keywords: ['scrappy'],
-    vehicleType: 'ship', cardText: '',
+    materialCost: 250_000, blueprintCost: 267_000, keywords: [],
+    vehicleType: 'ship', cardText: SINNERS_LUCK_TEXT,
   },
   'DWG:Albacore': {
     materialCost: 260_000, blueprintCost: 261_000, keywords: ['fragile'],
-    vehicleType: 'airship', cardText: AIRCRAFT_LOCK,
+    vehicleType: 'airship', cardText: ALBACORE_TEXT,
   },
-  // Tarpon and Buccaneer were moved again by the 2026-09-02 pass (§6.1) and are
-  // updated in place, per §2.3 — this file stays the record of what 2026-08-30
-  // moved, not a frozen snapshot of what it moved them to. The current values
-  // are also pinned, with their card text, in balance/dwg.balance.test.ts.
+  // Tarpon and Buccaneer were moved again by the 2026-09-02 and 2026-09-16
+  // passes and are updated in place, per §2.3 — this file stays the record of
+  // what 2026-08-30 moved, not a frozen snapshot of what it moved them to. The
+  // current values are also pinned, with their card text, in
+  // balance/dwg.balance.test.ts and balance/2026-09-16.balance.test.ts.
   'DWG:Tarpon': {
-    materialCost: 510_000, blueprintCost: 511_605, keywords: ['fragile', 'subScreen'],
-    vehicleType: 'airship', cardText: AIRCRAFT_LOCK,
+    materialCost: 510_000, blueprintCost: 511_605, keywords: ['airScreen'],
+    vehicleType: 'airship', cardText: '',
   },
   'DWG:Buccaneer': {
-    materialCost: 225_000, blueprintCost: 296_000, keywords: ['fragile'],
+    materialCost: 220_000, blueprintCost: 296_000, keywords: ['scrappy'],
     vehicleType: 'airship', cardText: '',
   },
   // ----------------------------------------------------------------- SS
@@ -67,7 +77,10 @@ const CARDS: Record<string, Expected> = {
     materialCost: 90_000, blueprintCost: 94_000, keywords: ['scrappy'],
     vehicleType: 'ship',
     // Death trigger added by the 2026-09-02 pass (ruling R-4); costs unchanged.
-    cardText: 'When this vehicle is destroyed, reduce the cost of a random SS ship in your hand by 50k',
+    // Text moved SS ship -> AI ship in the 2026-09-16 pass (M-1) and is
+    // updated in place here, per §2.3; the current wording is also pinned in
+    // balance/ss.balance.test.ts.
+    cardText: 'When this is destroyed, reduce the cost of a random AI ship in your hand by 50k',
   },
   'SS:Nothung': {
     materialCost: 400_000, blueprintCost: 478_000, keywords: ['blocker'], vehicleType: 'ship', // 2026-09-02 pass
@@ -86,7 +99,7 @@ const CARDS: Record<string, Expected> = {
     materialCost: 350_000, blueprintCost: 371_000, keywords: [], vehicleType: 'ship',
   },
   'SS:Blockade': {
-    materialCost: 100_000, blueprintCost: 0, keywords: [], vehicleType: null,
+    materialCost: 120_000, blueprintCost: 0, keywords: [], vehicleType: null, // moved 2026-09-16
   },
   // ----------------------------------------------------------------- WF
   'WF:Harbringer': {
@@ -102,7 +115,7 @@ const CARDS: Record<string, Expected> = {
     materialCost: 540_000, blueprintCost: 546_000, keywords: [], vehicleType: 'ship',
   },
   'WF:Purifier': {
-    materialCost: 750_000, blueprintCost: 765_000, keywords: ['halfCost', 'fragile'],
+    materialCost: 760_000, blueprintCost: 765_000, keywords: ['halfCost', 'fragile'], // moved 2026-09-16
     vehicleType: 'ship',
   },
 }
@@ -179,11 +192,13 @@ describe('2026-08-30 balance pass', () => {
     })
   })
 
-  // Albacore and Tarpon carry NO registry name at all — their one sentence is
-  // a placement rule read straight off this key, so this assertion is the only
-  // thing standing between a typo and two inert cards that no guard notices.
-  it.each(['DWG:Albacore', 'DWG:Tarpon'])('%s locks its zone against its owner aircraft', async (k) => {
-    expect((await bySeedKey()).get(k)!.meta?.aircraftLock).toBe(true)
+  // 2026-09-16 M-6: Albacore's lock narrowed to "another Albacore" (uniquePerZone)
+  // and Tarpon dropped its lock outright. The engine rule aircraftLock reads is
+  // kept for frozen snapshots (R-8); no seeded card carries the key any more.
+  it('Albacore is uniquePerZone; neither airship carries aircraftLock', async () => {
+    const cards = await bySeedKey()
+    expect(cards.get('DWG:Albacore')!.meta).toEqual({ uniquePerZone: true })
+    expect(cards.get('DWG:Tarpon')!.meta).toEqual({})
   })
 
   // Both surges are compared FIELD BY FIELD rather than for mere presence:

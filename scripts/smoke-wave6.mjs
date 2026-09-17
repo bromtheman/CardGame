@@ -12,16 +12,18 @@
 //   * DP7 END TO END — a battle declared for the player who is NOT acting, out
 //     of a play handler, with the blockader as aggressor. A shape production
 //     has never executed.
-//   * SEEDED DATA DRIVING BEHAVIOUR — aircraftLock, both resourceSurge
-//     variants, activateMaterialCost, activateCpCost and Purifier's two keys
-//     are values in the cards table, not code. A unit test asserts the code
-//     reads them; only this asserts the seed actually carries them.
+//   * SEEDED DATA DRIVING BEHAVIOUR — Albacore's uniquePerZone, both
+//     resourceSurge variants, activateMaterialCost, activateCpCost and
+//     Purifier's two keys are values in the cards table, not code. A unit
+//     test asserts the code reads them; only this asserts the seed actually
+//     carries them.
 //   * NEW STATE THROUGH JSONB — ZoneState.lostBattleOnTurn, the Blockade
 //     rider, and its ActiveBattle.continuation all have to survive a round
 //     trip through Postgres.
-//   * RULING C-1 IN PRODUCTION — that Albacore restricts its OWNER's aircraft
-//     and not the enemy's. That is the ruling most likely to be wrong, and
-//     this is the assertion that would say so.
+//   * M-6 IN PRODUCTION (2026-09-16 balance pass) — that Albacore now refuses
+//     only a SECOND Albacore on its OWNER's half of the zone, and neither the
+//     owner's other aircraft (the aircraftLock it used to carry, ruling C-1)
+//     nor the enemy's. Tarpon carries no restriction at all any more.
 //
 // Usage:  node scripts/smoke-wave6.mjs [--keep]
 //   --keep   leave the games and lobbies behind for browser inspection
@@ -46,8 +48,10 @@ step('fetched the built-in catalog', cards.length > 100, `${cards.length} cards`
 {
   const byName = new Map(cards.map((c) => [`${c.faction}:${c.name}`, c]))
   const want = {
-    'DWG:Albacore': (m) => m?.aircraftLock === true,
-    'DWG:Tarpon': (m) => m?.aircraftLock === true,
+    // M-6 (2026-09-16): Albacore narrowed from aircraftLock to uniquePerZone;
+    // Tarpon dropped the lock and carries no meta at all.
+    'DWG:Albacore': (m) => m?.uniquePerZone === true && m?.aircraftLock === undefined,
+    'DWG:Tarpon': (m) => m != null && typeof m === 'object' && Object.keys(m).length === 0,
     'SS:Chrysaor': (m) => m?.resourceSurge?.materialsOver === 200000 &&
       m?.resourceSurge?.costDelta === 100000 && m?.resourceSurge?.extraSpawns === 1,
     'SS:Paladin': (m) => m?.resourceSurge?.materialsUnder === 240000 &&
@@ -314,11 +318,14 @@ const games = []
 {
   const g = await startGame(p1, p2, {
     label: 'wave6-smoke-b',
+    // buildDeck puts TWO copies of every required card in, which is what the
+    // M-6 assertion below leans on: the refusal is proven on a second Albacore.
     p1Faction: 'DWG', p1Required: ['Albacore', 'Tarpon'],
     // Falcon Squadron is the cheapest SS aircraft (80k, halfCost -> 40k) and
     // is REQUIRED rather than hoped for: the pronoun assertion below is the
-    // one that would catch ruling C-1 being wrong, and on the first run it
-    // could not run at all because no SS aircraft happened to be in hand.
+    // one that would catch the rule reaching the enemy's half, and on the
+    // first run it could not run at all because no SS aircraft happened to
+    // be in hand.
     p2Faction: 'SS', p2Required: ['Chrysaor', 'Paladin', 'Falcon Squadron'],
   }, cards)
   games.push(g)
@@ -327,7 +334,13 @@ const games = []
   const aSide = await g.sideOf(p1)
   const bSide = await g.sideOf(p2)
 
-  // ---- Albacore: the aircraft lock, and WHOSE aircraft it stops -----------
+  // ---- Albacore: one per zone PER SIDE (M-6), and WHOSE plays it stops -----
+  //
+  // The 2026-09-16 balance pass (M-6) narrowed Albacore from `aircraftLock`
+  // ("no other own aircraft in this zone", ruling C-1) to `uniquePerZone`
+  // ("no SECOND Albacore in this zone", keyed on cardId, per side — the
+  // wave-8 Obelisk mechanic). So the refusal now lands on the second copy,
+  // the owner's other aircraft is free again, and the enemy was never touched.
   {
     const albacore = await g.drawUntil(p1, 'Albacore')
     const res = await g.attempt(p1, {
@@ -335,32 +348,28 @@ const games = []
     }, 12)
     step('Albacore deployed to zone 1', res.status === 200, `HTTP ${res.status}`)
 
-    // The owner's own aircraft is now refused THERE and allowed ELSEWHERE.
-    const ownAir = (await g.hand(p1)).find(
-      (c) => c.type === 'vehicle' && (c.vehicleType === 'plane' || c.vehicleType === 'airship') &&
-        c.name !== 'Albacore')
-    if (!ownAir) {
-      step('DWG had a second aircraft in hand to test the lock', false, 'none in hand')
-    } else {
-      const blocked = await g.attempt(p1, {
-        type: 'PLAY_CARD_TO_ZONE', instanceId: ownAir.instanceId, zoneId: 1,
-      }, 12)
-      step('the OWNER may not play another aircraft into that zone (ruling C-1)',
-        blocked.status === 400, `${ownAir.name} -> HTTP ${blocked.status} ` +
-        `${JSON.stringify(blocked.body ?? '').slice(0, 110)}`)
-      const elsewhere = await g.attempt(p1, {
-        type: 'PLAY_CARD_TO_ZONE', instanceId: ownAir.instanceId, zoneId: 2,
-      }, 12)
-      step('the same aircraft still deploys to an unlocked zone',
-        elsewhere.status === 200, `zone 2 -> HTTP ${elsewhere.status}`)
-    }
+    // A SECOND Albacore is refused THERE and allowed ELSEWHERE.
+    const second = await g.drawUntil(p1, 'Albacore')
+    const blocked = await g.attempt(p1, {
+      type: 'PLAY_CARD_TO_ZONE', instanceId: second.instanceId, zoneId: 1,
+    }, 12)
+    step('a SECOND Albacore may not be played into that zone (M-6 uniquePerZone)',
+      blocked.status === 400, `HTTP ${blocked.status} ` +
+      `${JSON.stringify(blocked.body ?? '').slice(0, 110)}`)
+    const elsewhere = await g.attempt(p1, {
+      type: 'PLAY_CARD_TO_ZONE', instanceId: second.instanceId, zoneId: 2,
+    }, 12)
+    step('the second Albacore still deploys to another zone',
+      elsewhere.status === 200, `zone 2 -> HTTP ${elsewhere.status}`)
 
-    // ⚠ The assertion that pins the ruling. If Albacore were meant as an
-    // enemy lockout, THIS is the step that would fail.
+    // ⚠ The assertion that pins the pronoun. If uniquePerZone were read
+    // across BOTH halves of the zone, THIS is the step that would fail.
     //
     // AIR_SCREEN is checked first so a failure is attributable: it blocks
     // enemy aircraft from the same zone for an entirely different reason, and
-    // the refusal message is identical.
+    // the refusal message is identical. Runs BEFORE the owner's own second
+    // aircraft goes into zone 1 below, because that one may be a Tarpon,
+    // whose air screen would confound it.
     const dwgZone1 = (await g.load(p1)).state.zones[0].cards[aSide]
     step('setup: no DWG air screen in zone 1 to confound the next step',
       !dwgZone1.some((c) => c.keywords.includes('airScreen')),
@@ -370,9 +379,26 @@ const games = []
     const allowed = await g.attempt(p2, {
       type: 'PLAY_CARD_TO_ZONE', instanceId: enemyAir.instanceId, zoneId: 1,
     }, 12)
-    step('the ENEMY may still fly into that zone — the lock is a drawback, not a weapon',
+    step('the ENEMY may still fly into that zone — the rule is per side',
       allowed.status === 200,
       `Falcon Squadron -> HTTP ${allowed.status} ${allowed.status === 200 ? '' : JSON.stringify(allowed.body ?? '').slice(0, 110)}`)
+
+    // The owner's OTHER aircraft is no longer locked out of Albacore's zone —
+    // that was the aircraftLock M-6 removed, and this is the step that would
+    // catch the old rule surviving in the deployed function.
+    const ownAir = (await g.hand(p1)).find(
+      (c) => c.type === 'vehicle' && (c.vehicleType === 'plane' || c.vehicleType === 'airship') &&
+        c.name !== 'Albacore')
+    if (!ownAir) {
+      step('DWG had another aircraft in hand to prove the lock is gone', false, 'none in hand')
+    } else {
+      const free = await g.attempt(p1, {
+        type: 'PLAY_CARD_TO_ZONE', instanceId: ownAir.instanceId, zoneId: 1,
+      }, 12)
+      step('the OWNER may play another aircraft into that zone — no aircraftLock since M-6',
+        free.status === 200, `${ownAir.name} -> HTTP ${free.status} ` +
+        `${free.status === 200 ? '' : JSON.stringify(free.body ?? '').slice(0, 110)}`)
+    }
   }
 }
 

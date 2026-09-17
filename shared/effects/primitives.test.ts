@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  catalogCard, choice, drawFromPool, enemyVehicleOptions, grant, mintHull, poolEligible, sequence,
+  catalogCard, choice, drawFromPool, enemyVehicleOptions, grant, isAiShip, mintHull, poolEligible, sequence,
   spawnVehicles, summonHulls, takeFromEnemyDeck, whenPlayed, zoneOccupants,
 } from './primitives.ts'
 import { inst, makeCtx, makeGame, snap, zoneEntry } from '../engine/testFixtures.ts'
@@ -547,5 +547,15 @@ describe('drawFromPool — deck source reshuffles an empty deck (wave 8)', () =>
     const fn = drawFromPool({ source: 'deck', filter: { vehicleType: 'sub' }, count: 1 })
     expect(fn({ game, actor: 'a', card: inst(), ctx: makeCtx() })).toBe(true)
     expect(game.privates.a.hand).toHaveLength(0)
+  })
+})
+
+describe('isAiShip (2026-09-16 M-1)', () => {
+  it('is a built-in SHIP of any faction, and nothing else', () => {
+    expect(isAiShip(inst({ faction: 'DWG', isBuiltIn: true, type: 'vehicle', vehicleType: 'ship' }))).toBe(true)
+    expect(isAiShip(inst({ faction: 'SS', isBuiltIn: true, type: 'vehicle', vehicleType: 'ship' }))).toBe(true)
+    expect(isAiShip(inst({ faction: 'SS', isBuiltIn: false, type: 'vehicle', vehicleType: 'ship' }))).toBe(false)
+    expect(isAiShip(inst({ isBuiltIn: true, type: 'vehicle', vehicleType: 'airship' }))).toBe(false)
+    expect(isAiShip(inst({ isBuiltIn: true, type: 'ability', vehicleType: null }))).toBe(false)
   })
 })

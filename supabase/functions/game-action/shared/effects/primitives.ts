@@ -1,4 +1,5 @@
 import type { CardInstance, SnapshotCard } from '../engine/gameInit.ts'
+import { CARD_TYPES, VEHICLE_TYPES } from '../gameSettings.ts'
 import type {
   BattleCasualty, BattleContext, EngineContext, EngineGame, Side, ZoneCardEntry,
 } from '../engine/engineTypes.ts'
@@ -152,6 +153,22 @@ export function shuffled<T>(items: T[], ctx: EngineContext): T[] {
  */
 export function poolEligible(c: { meta: Record<string, unknown> }): boolean {
   return c.meta.summonOnly !== true && c.meta.retired !== true
+}
+
+/**
+ * "An AI ship" (2026-09-16 spec M-1): a BUILT-IN ship of any faction. It was an
+ * SS-faction test between the 2026-09-02 pass (ruling R-5) and this one; the
+ * reversal exists so a DWG-stolen SS card keeps working in a hand holding no SS
+ * ships. Written once — ssEffects.ts's seven "AI ship" cards, tgEffects.ts's
+ * Mirth Factory and frontend/src/pages/game/HandBar.tsx all read this one
+ * predicate, so no two of them can disagree about what the phrase means.
+ *
+ * ⚠ Read the L-1 note on PoolFilter.metaFlag before widening this into a
+ * catalog pool: "built-in ship" is a query over the whole cards table, and it
+ * grows with every faction seeded.
+ */
+export function isAiShip(c: Pick<SnapshotCard, 'isBuiltIn' | 'type' | 'vehicleType'>): boolean {
+  return c.isBuiltIn === true && c.type === CARD_TYPES.VEHICLE && c.vehicleType === VEHICLE_TYPES.SHIP
 }
 
 // Put `count` cards matching `filter` into the actor's hand, either minted

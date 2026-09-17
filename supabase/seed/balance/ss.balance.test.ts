@@ -35,13 +35,17 @@ interface Expected {
 // ⚠ Ruling R-3 — Sacrilego is **10,000**, not a dropped zero. Pinned here so
 // it cannot drift back to 80k or 100k silently.
 //
+// ⚠ Six texts here moved "SS ship" → "AI ship" in the 2026-09-16 pass (M-1)
+// and are updated in place per the 2026-09-02 spec §2.3; the pass's own pins
+// live in balance/2026-09-16.balance.test.ts.
+//
 // Every SS card the 2026-09-02 pass touched, spelled out. Keywords compare as
 // SETS — order in the seed literal is not meaningful.
 const CARDS: Record<string, Expected> = {
   'SS:Tyr': {
-    materialCost: 950_000, blueprintCost: 983_000, keywords: ['blocker'],
+    materialCost: 950_000, blueprintCost: 983_000, keywords: ['blocker', 'fragile'],
     vehicleType: 'ship',
-    cardText: 'This card costs 60k less for every turn it spends in your hand',
+    cardText: 'This card costs 60k less for every turn it spends in your hand. Min 500k',
   },
   'SS:Tiger Shark': {
     materialCost: 690_000, blueprintCost: 914_000, keywords: [], vehicleType: 'ship',
@@ -65,15 +69,15 @@ const CARDS: Record<string, Expected> = {
   },
   'SS:Victoria': {
     materialCost: 250_000, blueprintCost: 270_185, keywords: [], vehicleType: 'ship',
-    cardText: 'When this vehicle is played, pick one SS ship in hand and reduce its cost by 75k',
+    cardText: 'When played, pick one AI ship in hand and reduce its cost by 75k',
   },
   'SS:Trondheim': {
     materialCost: 375_000, blueprintCost: 393_000, keywords: ['blocker'], vehicleType: 'ship',
-    cardText: 'When this vehicle is destroyed, draw an SS ship from your deck and reduce its cost by 75k',
+    cardText: 'When this vehicle is destroyed, draw an AI ship and reduce its cost by 75k',
   },
   'SS:Resolute': {
     materialCost: 60_000, blueprintCost: 63_300, keywords: [], vehicleType: 'ship',
-    cardText: 'When this vehicle is played, draw an SS ship from your deck and reduce its cost by 40k',
+    cardText: 'When this vehicle is played, draw an AI ship from your deck. reduce its cost by 40k',
   },
   'SS:Air Strafe': {
     materialCost: 150_000, blueprintCost: 0, keywords: [], vehicleType: null,
@@ -85,7 +89,7 @@ const CARDS: Record<string, Expected> = {
   },
   'SS:Excalibur': {
     materialCost: 550_000, blueprintCost: 553_900, keywords: ['blocker'], vehicleType: 'ship',
-    cardText: 'Pick one SS ship in hand and reduce its cost by 200k',
+    cardText: 'Pick one AI ship in hand and reduce its cost by 200k',
   },
   'SS:Braveheart': {
     materialCost: 350_000, blueprintCost: 371_000, keywords: [], vehicleType: 'ship',
@@ -93,12 +97,12 @@ const CARDS: Record<string, Expected> = {
   },
   'SS:Nothung': {
     materialCost: 400_000, blueprintCost: 478_000, keywords: ['blocker'], vehicleType: 'ship',
-    cardText: 'When this vehicle is played, reduce the cost of every SS ship in your hand by 40k',
+    cardText: 'When played, reduce the cost of all AI ships in your hand by 40k',
   },
   'SS:Sacrilego': {
     materialCost: 10_000, blueprintCost: 86_000,
-    keywords: ['scrappy', 'stealthy', 'mobile'], vehicleType: 'ship',
-    cardText: 'Whenever this vehicle participates in a fleet battle, friendly ships receive SCRAPPY keyword for that battle. Whenever this vehicle survives a fleet battle, reduce the cost of SS ships in hand by 30k.',
+    keywords: ['scrappy', 'stealthy'], vehicleType: 'ship',
+    cardText: 'Whenever this vehicle survives a fleet battle, reduce the cost of AI ships in hand by 30k.',
   },
   'SS:Typhoon': {
     materialCost: 130_000, blueprintCost: 135_323, keywords: [], vehicleType: 'sub',
@@ -108,9 +112,11 @@ const CARDS: Record<string, Expected> = {
     materialCost: 280_000, blueprintCost: 281_000, keywords: [], vehicleType: 'sub',
     cardText: 'When this vehicle is played into a zone, grant every enemy vehicle in that zone FRAGILE',
   },
+  // Orphaned 2026-09-16 (M-10): cardText cleared, onPlayEffect removed. Also
+  // pinned in balance/2026-09-16.balance.test.ts.
   'SS:Spectre': {
     materialCost: 200_000, blueprintCost: 214_000, keywords: ['stealthy'], vehicleType: 'ship',
-    cardText: 'When this vehicle is played, reduce your opponent CP by 1',
+    cardText: '',
   },
   'SS:Hydra': {
     materialCost: 220_000, blueprintCost: 238_000, keywords: ['mobile'], vehicleType: 'airship',
@@ -118,7 +124,7 @@ const CARDS: Record<string, Expected> = {
   },
   'SS:Argonaut': {
     materialCost: 90_000, blueprintCost: 94_000, keywords: ['scrappy'], vehicleType: 'ship',
-    cardText: 'When this vehicle is destroyed, reduce the cost of a random SS ship in your hand by 50k',
+    cardText: 'When this is destroyed, reduce the cost of a random AI ship in your hand by 50k',
   },
   'SS:Paladin': {
     materialCost: 240_000, blueprintCost: 240_000, keywords: [], vehicleType: 'ship',
@@ -269,7 +275,7 @@ describe('2026-09-02 balance pass — SS, the checks a unit test cannot make', (
   // second hull is additionalSpawns which placement.ts resolves, and Nothung no
   // longer spawns anything. None of the four touches ctx.catalog.
   it.each(['trondheimOnDeath', 'resoluteOnPlay', 'nothungOnPlay', 'cycloneOnPlay',
-    'spectreOnPlay', 'argonautOnDeath', 'bullSharkVictory', 'sacrilegoBattle',
+    'argonautOnDeath', 'bullSharkVictory', 'sacrilegoBattle',
     'victoriaOnPlay', 'paladinOnPlay', 'cashAdvanceEffect'])(
     '%s does NOT need the catalog', (name) => {
       expect(CATALOG_EFFECTS.has(name)).toBe(false)
