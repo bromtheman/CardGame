@@ -42,10 +42,15 @@ export class OpenRouterClient implements LlmClient {
       if (signal.aborted) throw new LlmTimeoutError()
       throw new LlmHttpError(0, e instanceof Error ? e.message : String(e))
     }
-    if (!res.ok) throw new LlmHttpError(res.status, `OpenRouter ${res.status}: ${(await res.text()).slice(0, 200)}`)
-    const body = (await res.json()) as {
+    if (!res.ok) throw new LlmHttpError(res.status, `OpenRouter ${res.status}: ${(await res.text().catch(() => '')).slice(0, 200)}`)
+    let body: {
       choices?: { message?: { content?: unknown } }[]
       usage?: { prompt_tokens?: unknown; completion_tokens?: unknown; cost?: unknown; prompt_tokens_details?: { cached_tokens?: unknown } }
+    }
+    try {
+      body = (await res.json()) as typeof body
+    } catch {
+      throw new LlmHttpError(res.status, 'OpenRouter answer was not JSON')
     }
     const text = body.choices?.[0]?.message?.content
     if (typeof text !== 'string') throw new LlmHttpError(res.status, 'OpenRouter answer carried no message content')

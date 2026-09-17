@@ -54,4 +54,20 @@ describe('OpenRouterClient', () => {
     ac.abort()
     await expect(pending).rejects.toBeInstanceOf(LlmTimeoutError)
   })
+  it('throws LlmHttpError with status 0 when fetch rejects without abort', async () => {
+    const failing = ((_url: unknown, _init?: RequestInit) => {
+      throw new TypeError('network down')
+    }) as typeof fetch
+    try {
+      await new OpenRouterClient('k', 'm', failing).complete(req, new AbortController().signal)
+      expect.unreachable()
+    } catch (e) {
+      expect(e).toBeInstanceOf(LlmHttpError)
+      expect((e as LlmHttpError).status).toBe(0)
+    }
+  })
+  it('throws LlmHttpError for non-JSON 2xx response', async () => {
+    const client = new OpenRouterClient('k', 'm', fetchReturning(200, 'not json'))
+    await expect(client.complete(req, new AbortController().signal)).rejects.toBeInstanceOf(LlmHttpError)
+  })
 })
