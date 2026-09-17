@@ -175,6 +175,10 @@ export const dwgVehicles = [
         keywords: [KEYWORDS.SCRAPPY, KEYWORDS.AIR_SCREEN],
         meta: {
             additionalSpawns: 1,
+            // Retired 2026-09-17 by owner decision, outside any balance pass. The row
+            // stays and keeps being upserted for the same reason as OW:Halberd (see the
+            // comment there): snapshots in existing decks and games must still resolve.
+            retired: true,
         }
     },{
         name: 'Loggerhead',

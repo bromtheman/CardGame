@@ -9,10 +9,19 @@ import { loadSeedData } from './transform'
 // and a card in it is. A one-directional check would stay green if a later
 // pass retired a card by accident.
 // TG:Horror joined on 2026-09-16 (spec M-9): Fear's rewrite removed its last spawner.
-const RETIRED = ['OW:Halberd', 'SS:Dryad', 'TG:Acceptance', 'TG:Amusement', 'TG:Horror', 'WF:Harbringer']
+// DWG:Land Marauder joined on 2026-09-17 by owner decision, outside any pass.
+const RETIRED = [
+  'DWG:Land Marauder',
+  'OW:Halberd',
+  'SS:Dryad',
+  'TG:Acceptance',
+  'TG:Amusement',
+  'TG:Horror',
+  'WF:Harbringer',
+]
 
-describe('balance-pass retirements (2026-09-02, 2026-09-16)', () => {
-  it('retires exactly the six cards the two passes name', async () => {
+describe('card retirements (2026-09-02, 2026-09-16, 2026-09-17)', () => {
+  it('retires exactly the seven cards named above', async () => {
     const { cards } = await loadSeedData()
     const actual = cards
       .filter((c) => (c.meta as { retired?: unknown } | undefined)?.retired === true)
