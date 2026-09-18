@@ -131,10 +131,12 @@ from the decision call (§4.2), so the model sees the report it approved.
 prefix **without** the quotes `formatTableTalk` adds — `PracticeAI: fighting…`
 — so `isTableTalk` matches, the frontend's bubble and log styling apply
 unchanged, and a marker is distinguishable from a spoken line in the log.
-The driver appends a marker whenever `prepare` returns one, then — when the
-caller passed `onCheckpoint` — awaits it with the current game. `game-action`
-commits there (§5.4). The first checkpoint of a request therefore commits
-the human's own action together with the opening marker.
+The policy asks for a marker through the `checkpoint` hook the driver hands
+to `candidates` (§5.1): the driver appends the line and — when its caller
+passed `onCheckpoint` — awaits it with the current game, before the policy
+goes on to its model call. `game-action` commits there (§5.4). The first
+checkpoint of a request therefore commits the human's own action together
+with the opening marker.
 
 A section the model passes on immediately still produces the next section's
 marker and commit — a commit whose only change is the log line, telling the
@@ -267,23 +269,26 @@ bot's own cards.
 
 ## 5. Architecture
 
-### 5.1 `BotPolicy` — two optional hooks
+### 5.1 `BotPolicy` — a hook in, an outcome back
 
 ```ts
+export interface PolicyHooks {
+  // A policy that runs the turn in sections calls this as it enters a
+  // non-empty section, before its next model call: the driver appends the
+  // marker line and its caller commits (§3.5). The policy never sees the
+  // game; it hands over a fixed string and awaits.
+  checkpoint(marker: string): Promise<void>
+}
 export interface BotPolicy {
   readonly needsMenu?: boolean
-  // Bookkeeping before a call, with the menu in view: a policy that runs the
-  // turn in sections advances its pointer here and returns the marker line
-  // for a section it has just entered, or null. Never a model call.
-  prepare?(view: BotView, kind: OwedKind): string | null
-  candidates(view: BotView, kind: OwedKind): GameAction[] | Promise<GameAction[]>
+  candidates(view: BotView, kind: OwedKind, hooks?: PolicyHooks): GameAction[] | Promise<GameAction[]>
   // Told which candidate the engine accepted and what it did (a public
   // diff, describeOutcome). Returns the table-talk line to write, if any.
   onAccepted?(action: GameAction, kind: OwedKind, outcome: string): string | null | void
 }
 ```
 
-`basicPolicy` implements neither hook; `LlmPolicy` ignores `outcome`.
+`basicPolicy` and `LlmPolicy` ignore the hook and the outcome.
 
 ### 5.2 The driver
 
@@ -295,11 +300,13 @@ export async function runBotUntilIdle(
 ```
 
 Per iteration: `kind = botOwes` (null → return) → menu when `needsMenu` →
-`view` → `marker = policy.prepare?.(view, kind)` → if a marker: append it
-under the prefix (no guard needed — a fixed string that names no card) and
-`await onCheckpoint?.(game)` → `candidates` → apply the first the engine
-accepts (fallback ladder unchanged) → `outcome = describeOutcome(before, after, side)`
-→ `onAccepted(action, kind, outcome)` → guard and append the talk line.
+`view` → `candidates(view, kind, hooks)`, where `hooks.checkpoint(marker)`
+appends the marker to the driver's current game (no guard needed — a fixed
+string that names no card) and awaits `onCheckpoint?.(game)` → apply the
+first candidate the engine accepts (fallback ladder unchanged) →
+`outcome = describeOutcome(before, after, side)`, with `before` the game as
+it stood after any markers, so a marker never reads as part of a move →
+`onAccepted(action, kind, outcome)` → guard and append the talk line.
 `applied` and the caps are unchanged. A caller without `onCheckpoint` —
 `lobby-action` START, the eval harness, the self-play test — gets today's
 single result with the markers in its log.
@@ -317,27 +324,27 @@ today; `makeBotPolicy` returns
 which both classes satisfy (the eval switches its `instanceof` check to
 this shape).
 
-- `prepare(view, kind)`: tripped or `kind !== 'turn'` → null. Otherwise
-  set the pointer on first sight (`sawDecision ? 'activate' : 'deploy'`),
-  skip forward per §3.2 step 2 using `view.menu` filtered by `section`,
-  and return the marker when the pointer moved to a section it has not
-  announced this request.
-- `candidates(view, kind)`: tripped → fallback. `kind === 'decision'` sets
-  `sawDecision`. A `turn` with the pointer at `finish` and a pending
-  advance → `[END_TURN item, ...fallback]` with no call. A plan in hand
-  (multi-action setting) still present in the menu → it, as `LlmPolicy`.
-  Otherwise the budget check (`calls`, `spentMs`, as today) → build the
-  next user message (§4.1) → call → parse → for a turn, map the section
-  ids back to menu items; the row is filed; the first item leads the
-  candidates with the heuristic tail behind it, or on `[]` the pointer
-  advances (a `finish` pass → `END_TURN`), or on a one-move kind's `[]` the
-  heuristic answers with `passed`.
+- `candidates(view, kind, hooks)`: tripped → fallback. `kind === 'decision'`
+  sets `sawDecision`. A one-move kind → one call (below). A `turn`: set the
+  pointer on first sight (`sawDecision ? 'activate' : 'deploy'`); a pending
+  advance moves it (at `finish` → `[END_TURN item, ...fallback]` with no
+  call); a plan in hand (multi-action setting) still present in the menu →
+  it, as `LlmPolicy`. Then, in a loop: skip forward per §3.2 step 2 using
+  `view.menu` filtered by `section`; a section not yet announced this
+  request → `await hooks.checkpoint(SECTION_MARKERS[section])` and mark
+  the board due; the budget check (`calls`, `spentMs`, as today) → build the
+  next user message (§4.1) → call → parse → map the section's numbers back
+  to menu items and file the row. One item → it leads the candidates with
+  the heuristic tail behind. `[]` → the pointer advances (a `finish` pass →
+  `END_TURN`) and the loop goes round — the next section's checkpoint, then
+  its call — inside the same `candidates` call. A one-move kind's `[]` →
+  the heuristic answers with `passed`.
 - `onAccepted(action, kind, outcome)`: the accepted action is recorded on
   the row and the outcome kept for the next message; a plan head is
   shifted; a non-plan action files `plan_rejected` and forces `continue`;
-  for a turn the section's move count rises and `pendingThen` is applied
-  (`next` → advance; the pointer's new section is announced by the next
-  `prepare`). Returns `pendingTalk` once.
+  for a turn the section's move count rises and, once the plan is empty,
+  `pendingThen` is applied (`next` → a pending advance). Returns
+  `pendingTalk` once.
 
 ### 5.4 `game-action`
 
@@ -441,8 +448,8 @@ lands.
 - `shared/ai/llm/llmSettings.ts` — §8.
 - `shared/ai/llm/telemetry.ts` — `section`, `seq`, `passed`, §7.
 - `shared/ai/llm/makePolicy.ts` — `BOT_FLOW`, `ModelBackedPolicy`, §5.5.
-- `shared/ai/basicPolicy.ts` — the two hooks, §5.1.
-- `shared/ai/botDriver.ts` — `prepare`, markers, `onCheckpoint`, `outcome`, §5.2.
+- `shared/ai/basicPolicy.ts` — `PolicyHooks` and the outcome argument, §5.1.
+- `shared/ai/botDriver.ts` — the checkpoint hook, markers, `onCheckpoint`, `outcome`, §5.2.
 - `supabase/functions/game-action/index.ts` — `commit`, `BOT_FLOW`, §5.4.
 - `supabase/functions/lobby-action/index.ts` — `BOT_FLOW` passed through.
 - `supabase/functions/shared-manifest.json` — the three new modules for both
@@ -477,8 +484,9 @@ lands.
   one-move pass files `passed` without tripping; every trip reason and both
   budget caps; `plan_rejected` forces `continue`; `ACTIONS_PER_ANSWER = 2`
   keeps a plan and re-verifies it; rows carry `section` and `seq`.
-- `botDriver.test.ts` — `prepare` runs before every call; a marker is
-  appended and `onCheckpoint` awaited with the game as of that moment; no
+- `botDriver.test.ts` — `hooks.checkpoint` appends the marker and awaits
+  `onCheckpoint` with the game as of that moment, before the policy's next
+  call; the outcome diff excludes the marker; no
   checkpoint and no marker for `basicPolicy`; `onAccepted` receives the
   real outcome text; a caller without `onCheckpoint` gets one result.
 - `botView.test.ts` / `prompt.test.ts` — unchanged, still green.
