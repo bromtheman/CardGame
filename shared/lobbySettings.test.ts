@@ -7,11 +7,11 @@ import {
 } from './lobbySettings.ts'
 
 describe('DEFAULT_LOBBY_SETTINGS', () => {
-  it('is 3 water zones at 1000 HP', () => {
+  it('is 3 water zones at 2000 HP', () => {
     expect(DEFAULT_LOBBY_SETTINGS.zones).toEqual([
-      { biome: 'water', baseHp: 1000 },
-      { biome: 'water', baseHp: 1000 },
-      { biome: 'water', baseHp: 1000 },
+      { biome: 'water', baseHp: 2000 },
+      { biome: 'water', baseHp: 2000 },
+      { biome: 'water', baseHp: 2000 },
     ])
   })
   it('offers the default income so the lobby form opens on it', () => {
