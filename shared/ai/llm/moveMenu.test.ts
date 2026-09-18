@@ -6,6 +6,7 @@ import { FALLBACK } from '../botDriver'
 import { MENU_MAX_ITEMS, MENU_MAX_TRIALS } from './llmSettings'
 import { buildMenu, MENU_ACTION_TYPES, MENU_EXCLUDED_TYPES, sameAction } from './moveMenu'
 
+import { sectionOf } from './sections'
 const BOT = 'bob'   // side 'b', as in every practice game
 
 describe('buildMenu', () => {
@@ -56,6 +57,20 @@ describe('buildMenu', () => {
     const menu = buildMenu(g, BOT, makeCtx(), 'turn')   // makeCtx() defaults catalog: []
     expect(menu.some((m) => m.action.type === 'END_TURN')).toBe(true)
     expect(menu.some((m) => m.action.type === 'USE_HERO_POWER' && m.action.power === 'drones')).toBe(false)
+  })
+
+  it("tags every item with its section — END TURN is finish, one-move kinds are none", () => {
+    const g = makeGame({ activePlayer: BOT, turnNumber: 3 })
+    g.state.zones[0].cards.b.push(zoneEntry({ instanceId: "mine-1", materialCost: 150000, keywords: ["mobile"], playedOnTurn: 1 }))
+    const menu = buildMenu(g, BOT, makeCtx(), "turn")
+    for (const item of menu) expect(item.section, item.text).toBe(sectionOf(item.action))
+    expect(menu.find((m) => m.action.type === "END_TURN")?.section).toBe("finish")
+    expect(menu.find((m) => m.action.type === "ATTACK_ENEMY_BASE")?.section).toBe("fight")
+    expect(menu.find((m) => m.action.type === "MOVE_VEHICLE")?.section).toBe("deploy")
+
+    const c = makeGame({ activePlayer: "alice", turnNumber: 3 })
+    c.state.pendingEffect = { effect: "e", side: "b", card: inst({}), kind: "choice", prompt: "Pick", options: [{ id: "x", label: "X" }] }
+    for (const item of buildMenu(c, BOT, makeCtx(), "choice")) expect(item.section).toBeNull()
   })
 
   it('enumerates responses, decisions and choices', () => {
@@ -112,7 +127,9 @@ describe('buildMenu', () => {
     const g = makeGame({ activePlayer: BOT, turnNumber: 3 })
     for (let i = 0; i < 8; i++) g.state.zones[0].cards.b.push(zoneEntry({ instanceId: `m-${i}`, keywords: ['mobile'], playedOnTurn: 1 }))
     const menu = buildMenu(g, BOT, makeCtx(), 'turn')
-    expect(menu.length).toBeLessThanOrEqual(MENU_MAX_ITEMS)
+    for (const section of ['deploy', 'activate', 'fight', 'finish', null] as const) {
+      expect(menu.filter((m) => m.section === section).length, String(section)).toBeLessThanOrEqual(MENU_MAX_ITEMS)
+    }
     expect(menu.length).toBeLessThanOrEqual(MENU_MAX_TRIALS)
     expect(menu.some((m) => sameAction(m.action, FALLBACK.turn))).toBe(true)
   })

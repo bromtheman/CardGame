@@ -11,11 +11,15 @@ import { FALLBACK } from '../fallbacks.ts'
 import { mulberry32 } from '../seededRng.ts'
 import { describeMenuItem } from './describe.ts'
 import { MENU_MAX_ITEMS, MENU_MAX_TRIALS } from './llmSettings.ts'
+import { sectionOf } from './sections.ts'
+import type { Section } from './sections.ts'
 
 // One verified-legal move, as the model sees it (spec §4). Ids are 1-based
 // and private to one menu; a plan is mapped to actions the moment it is
-// parsed and compared with sameAction from then on.
-export interface MenuItem { id: number; action: GameAction; text: string }
+// parsed and compared with sameAction from then on. `section` is where the
+// sectioned flow shows the item (2026-09-18 spec §3.1); null for the
+// one-move kinds.
+export interface MenuItem { id: number; action: GameAction; text: string; section: Section | null }
 
 // Every action type the enumerator can emit. moveMenu.test.ts pins this list
 // plus MENU_EXCLUDED_TYPES against the engine's knownActionTypes(), so a new
@@ -198,9 +202,17 @@ export function buildMenu(game: EngineGame, botId: string, ctx: EngineContext, k
       continue
     }
     if (!r.ok) continue
-    items.push({ id: 0, action, text: describeMenuItem(game, r.game, side, action) })
+    items.push({ id: 0, action, text: describeMenuItem(game, r.game, side, action), section: sectionOf(action) })
   }
-  const kept = items.slice(0, MENU_MAX_ITEMS)
+  // The item cap is per section (2026-09-18 spec §6): the sectioned flow
+  // shows one section at a time, and a busy deploy must not crowd out the
+  // attacks. In practice no section nears it (turn menus peak near fifty).
+  const seenPerSection = new Map<Section | null, number>()
+  const kept = items.filter((m) => {
+    const n = seenPerSection.get(m.section) ?? 0
+    seenPerSection.set(m.section, n + 1)
+    return n < MENU_MAX_ITEMS
+  })
   const keep = FALLBACK[kind]
   if (!kept.some((m) => sameAction(m.action, keep))) {
     const fallback = items.find((m) => sameAction(m.action, keep))
