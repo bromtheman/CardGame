@@ -1849,17 +1849,21 @@ describe('SectionedLlmPolicy — one-move kinds and failure', () => {
   })
 
   it('files plan_rejected when the engine took something else, and re-asks in the same section', async () => {
+    // The second candidates call re-asks deploy (the refusal is "continue"),
+    // is answered [], then walks fight and finish on the unchanged board —
+    // four calls in all before it returns END TURN.
     const g = turnGame()
     const ctx = makeCtx()
-    const client = scripted([{ pick: 'PLAY Corsair', then: 'next' }, { pick: null }])
+    const client = scripted([{ pick: 'PLAY Corsair', then: 'next' }, { pick: null }, { pick: null }, { pick: null }])
     const policy = new SectionedLlmPolicy(client, basicPolicy, 'fake/model', fast)
     const hooks = { checkpoint: async () => {} }
     await policy.candidates(viewFor(g, 'b', ctx.rng, buildMenu(g, BOT, ctx, 'turn')), 'turn', hooks)
-    // Pretend the engine refused it and the heuristic tail's END_TURN landed instead.
+    // Pretend the engine refused it and a heuristic tail candidate landed instead.
     expect(policy.onAccepted({ type: 'ATTACK_ENEMY_BASE', zoneId: 1 }, 'turn', 'enemy base 1000→940')).toBeNull()
     expect(policy.rows[0].fallbackReason).toBe('plan_rejected')
-    await policy.candidates(viewFor(g, 'b', ctx.rng, buildMenu(g, BOT, ctx, 'turn')), 'turn', hooks)
-    expect(client.calls.length).toBe(2)
+    const next = await policy.candidates(viewFor(g, 'b', ctx.rng, buildMenu(g, BOT, ctx, 'turn')), 'turn', hooks)
+    expect(next[0].type).toBe('END_TURN')
+    expect(client.calls.length).toBe(4)
     expect(userOf(client.calls[1])).toContain('OUTCOME: The engine refused your move; instead: enemy base 1000→940')
     expect(userOf(client.calls[1])).toContain('SECTION: DEPLOY')   // still deploy: a refusal is "continue"
   })
