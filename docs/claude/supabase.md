@@ -392,6 +392,37 @@ heuristic plays and every request files one `disabled` telemetry row.
    OPENROUTER_API_KEY=sk-or-…`). Optional: `BOT_MODEL=<openrouter model id>`
    to switch models without a deploy; `BOT_LLM_DISABLED=1` is the kill switch.
    Secrets are read per request, so a change needs no redeploy.
+   - **Switching to DeepSeek:** `BOT_MODEL=deepseek/deepseek-v4.1-flash`.
+     Its rows in `shared/ai/llm/llmSettings.ts` do the rest:
+     `MODEL_REASONING_EFFORT` sends OpenRouter's `reasoning: { effort: 'high' }`
+     so the bot thinks before it answers (the level does not shorten the
+     thinking — 580–4 500 tokens on one prompt at `low` and `high` alike),
+     and `MODEL_ROUTING` sends `provider: { sort: 'throughput',
+     require_parameters: true }`, which matters more than the model: OpenRouter
+     spreads it over twenty providers whose speed differs 3× (StreamLake
+     48 tok/s, Modal 105–177 tok/s), and in the 2026-09-17 evals both default
+     routing and a StreamLake pin timed out 10–11 of 12 calls into the
+     heuristic; Alibaba answered with prose instead of the schema's JSON,
+     which `require_parameters` excludes. On the fastest route a call took
+     6–38 s, hence `LLM_CALL_TIMEOUT_MS` 60 s. Mercury sends neither field
+     and stays the code default; delete `BOT_MODEL` to go back. The
+     OpenRouter catalog (`GET /api/v1/models`, and
+     `/api/v1/models/<id>/endpoints` for provider slugs, ceilings and
+     parameter support) is the source for a new model's rows;
+     `LLM_MAX_OUTPUT_TOKENS` (65 536) must not exceed the provider's
+     `max_completion_tokens`, or every call is a 400 and the heuristic plays
+     with telemetry saying `http`.
+   - `BOT_REASONING_EFFORT=none|minimal|low|medium|high|xhigh|max` overrides
+     the model's row for any model (`none` switches reasoning off where the
+     model allows it). Unset, blank or misspelt, the model's own default
+     stands — a typo never silently turns reasoning off. Mercury tolerates an
+     explicit effort (probed 2026-09-17).
+   - `BOT_PROVIDERS=<slug>[,<slug>…]` adds an `only` pin on top of the
+     model's routing row (slugs as the endpoints listing prints them, e.g.
+     `modal`, `together`); blank means the row, never "no provider".
+   - The eval measures exactly what production sends:
+     `npm run bot:eval -- --games 10 --model deepseek/deepseek-v4.1-flash`
+     (`--reasoning <level>` and `--providers <slugs>` mirror the secrets).
 3. `node scripts/smoke-practice.mjs` with `SUPABASE_ACCESS_TOKEN` set — it
    reads the game's `bot_decisions` rows through the Management API.
 4. Spend and health, by SQL: `select date_trunc('day', created_at) d,

@@ -41,6 +41,8 @@ export class OpenRouterClient implements LlmClient {
           max_tokens: req.maxTokens,
           temperature: req.temperature,
           usage: { include: true },
+          ...(req.reasoningEffort === undefined ? {} : { reasoning: { effort: req.reasoningEffort } }),
+          ...(req.routing === undefined ? {} : { provider: req.routing }),
         }),
       })
     } catch (e) {

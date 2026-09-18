@@ -33,6 +33,22 @@ describe('OpenRouterClient', () => {
     expect(body.max_tokens).toBe(50)
     expect(body.temperature).toBe(0.5)
     expect(body.usage).toEqual({ include: true })
+    expect(body).not.toHaveProperty('reasoning')
+    expect(body).not.toHaveProperty('provider')
+  })
+  it('sends the routing preferences as OpenRouter\'s provider object', async () => {
+    const capture: { init?: RequestInit } = {}
+    const client = new OpenRouterClient('k', 'deepseek/deepseek-v4.1-flash', fetchReturning(200, { choices: [{ message: { content: '{}' } }] }, capture))
+    await client.complete({ ...req, routing: { sort: 'throughput', require_parameters: true, only: ['modal'] } }, new AbortController().signal)
+    expect(JSON.parse(capture.init!.body as string).provider).toEqual({ sort: 'throughput', require_parameters: true, only: ['modal'] })
+  })
+  it('sends OpenRouter\'s unified reasoning field only when the request names an effort', async () => {
+    const capture: { init?: RequestInit } = {}
+    const client = new OpenRouterClient('k', 'deepseek/deepseek-v4-flash', fetchReturning(200, { choices: [{ message: { content: '{}' } }] }, capture))
+    await client.complete({ ...req, reasoningEffort: 'high' }, new AbortController().signal)
+    expect(JSON.parse(capture.init!.body as string).reasoning).toEqual({ effort: 'high' })
+    await client.complete({ ...req, reasoningEffort: 'none' }, new AbortController().signal)
+    expect(JSON.parse(capture.init!.body as string).reasoning).toEqual({ effort: 'none' })
   })
   it('reports missing usage as nulls', async () => {
     const client = new OpenRouterClient('k', 'm', fetchReturning(200, { choices: [{ message: { content: 'x' } }] }))

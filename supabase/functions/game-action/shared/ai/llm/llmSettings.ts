@@ -4,13 +4,53 @@
 // by makePolicy.ts; DEFAULT_BOT_MODEL is the one default that lives here.
 export const DEFAULT_BOT_MODEL = 'inception/mercury-2.5'
 export const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions'
-// A reasoning call is ~2 s; the caps are for a slow provider moment, and
-// the owner would rather wait than hand the turn to the heuristic (2026-09-17).
-// The frontend's "PracticeAI is thinking…" label covers the wait; the request
-// cap keeps two slow calls inside one click, and LLM_MAX_CALLS_PER_REQUEST
-// still bounds the count.
-export const LLM_CALL_TIMEOUT_MS = 30_000       // per call, via AbortController
-export const LLM_REQUEST_BUDGET_MS = 60_000     // total model time per request
+// OpenRouter's unified `reasoning.effort` — one field for every provider
+// (docs/use-cases/reasoning-tokens). It is sent only when the model's row
+// below or BOT_REASONING_EFFORT names a level, so the request Mercury was
+// evaluated with is unchanged: Mercury reasons on its own (the catalog's
+// `default_enabled: true`). DeepSeek V4.1 Flash reasons by default too and
+// accepts low|high|max (`default_effort: high`); the field pins the level
+// rather than leaving it to whichever provider serves the call. Effort does
+// not shorten its thinking — on one turn-1 prompt it ran 580–4 500 tokens at
+// `low` and `high` alike (2026-09-17 probe) — so `high` is the row and the
+// timeouts below absorb the spread. `none` switches reasoning off where the
+// model allows it.
+export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+export const REASONING_EFFORTS: readonly ReasoningEffort[] = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']
+export const MODEL_REASONING_EFFORT: Readonly<Record<string, ReasoningEffort>> = {
+  'deepseek/deepseek-v4.1-flash': 'high',
+}
+// OpenRouter's `provider` routing object (docs/features/provider-routing).
+// One model id is spread over many providers (twenty for DeepSeek V4.1
+// Flash) that differ in speed by 3×: at StreamLake's 48 tok/s a
+// 1 400-token think is the whole 30 s cap, and the 2026-09-17 evals timed
+// out 10–11 of 12 calls under both default routing and a StreamLake pin.
+// `sort: 'throughput'` routes each call to the provider OpenRouter currently
+// measures as fastest (Modal at 105–177 tok/s in the probe), and
+// `require_parameters` skips providers that do not claim structured
+// outputs — Alibaba answered with prose instead of the schema's JSON.
+// BOT_PROVIDERS adds an `only` pin on top of the row (or alone, for a model
+// without one); slugs come from GET /api/v1/models/<id>/endpoints.
+export interface OpenRouterRouting {
+  sort?: 'throughput' | 'latency' | 'price'
+  only?: readonly string[]
+  require_parameters?: boolean
+}
+export const MODEL_ROUTING: Readonly<Record<string, OpenRouterRouting>> = {
+  'deepseek/deepseek-v4.1-flash': { sort: 'throughput', require_parameters: true },
+}
+// The caps are for a long think or a slow provider moment, and the owner
+// would rather wait than hand the turn to the heuristic (2026-09-17). The
+// frontend's "PracticeAI is thinking…" label covers the wait. DeepSeek V4.1
+// Flash measured 6–38 s per call on the fastest route (the think length
+// varies 8× on one prompt), so the call cap is 60 s; a Mercury call is ~2 s.
+// The budget admits another call only while the time already spent is under
+// it, so one request is bounded by budget + one call ≈ 120 s, inside the
+// runtime's 150 s wall clock — raising the budget to 120 s would let a
+// request run to 180 s and take the human's own action down with it.
+// LLM_MAX_CALLS_PER_REQUEST still bounds the count.
+export const LLM_CALL_TIMEOUT_MS = 60_000       // per call, via AbortController
+export const LLM_REQUEST_BUDGET_MS = 60_000     // model time already spent that still admits a call
 export const LLM_MAX_CALLS_PER_REQUEST = 4      // one plan + reactions
 export const LLM_MAX_PLAN_LENGTH = 12           // menu ids per answer; the schema's maxItems
 // Mercury 2.5 REASONS before it answers, and the reasoning is spent inside

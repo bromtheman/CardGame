@@ -1,3 +1,5 @@
+import type { OpenRouterRouting, ReasoningEffort } from './llmSettings.ts'
+
 // The seam between the policy and any model provider (spec §3.4). The
 // policy tests inject a fake; production injects OpenRouterClient. Errors
 // are typed so the policy can file the right fallback reason.
@@ -7,6 +9,8 @@ export interface LlmRequest {
   schema: Record<string, unknown>
   maxTokens: number
   temperature: number
+  reasoningEffort?: ReasoningEffort   // absent: the model's own default
+  routing?: OpenRouterRouting         // OpenRouter's provider preferences; absent: its default routing
 }
 export interface LlmUsage {
   promptTokens: number | null

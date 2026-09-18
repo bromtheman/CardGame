@@ -559,6 +559,8 @@ Deno.serve(async (req) => {
         OPENROUTER_API_KEY: Deno.env.get('OPENROUTER_API_KEY'),
         BOT_MODEL: Deno.env.get('BOT_MODEL'),
         BOT_LLM_DISABLED: Deno.env.get('BOT_LLM_DISABLED'),
+        BOT_REASONING_EFFORT: Deno.env.get('BOT_REASONING_EFFORT'),
+        BOT_PROVIDERS: Deno.env.get('BOT_PROVIDERS'),
       }) : null
       if (policy && game.activePlayer === locked.guest_id) {
         try {

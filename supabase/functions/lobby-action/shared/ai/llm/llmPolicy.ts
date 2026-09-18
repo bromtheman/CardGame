@@ -6,13 +6,23 @@ import type { LlmClient, LlmUsage } from './llmClient.ts'
 import {
   LLM_CALL_TIMEOUT_MS, LLM_MAX_CALLS_PER_REQUEST, LLM_MAX_OUTPUT_TOKENS, LLM_REQUEST_BUDGET_MS, LLM_TEMPERATURE,
 } from './llmSettings.ts'
+import type { OpenRouterRouting, ReasoningEffort } from './llmSettings.ts'
 import { sameAction } from './moveMenu.ts'
 import type { MenuItem } from './moveMenu.ts'
 import { parsePlanAnswer, PLAN_SCHEMA } from './planSchema.ts'
 import { buildSystemPrompt, buildUserPrompt } from './prompt.ts'
 import type { FallbackReason, TelemetryRow } from './telemetry.ts'
 
-export interface LlmPolicySettings { callTimeoutMs: number; requestBudgetMs: number; maxCalls: number }
+// reasoningEffort and routing ride on every call of the request;
+// makePolicy.ts picks them per model and env, and absent means the model's
+// own default / OpenRouter's default routing.
+export interface LlmPolicySettings {
+  callTimeoutMs: number
+  requestBudgetMs: number
+  maxCalls: number
+  reasoningEffort?: ReasoningEffort
+  routing?: OpenRouterRouting
+}
 export const DEFAULT_LLM_POLICY_SETTINGS: LlmPolicySettings = {
   callTimeoutMs: LLM_CALL_TIMEOUT_MS, requestBudgetMs: LLM_REQUEST_BUDGET_MS, maxCalls: LLM_MAX_CALLS_PER_REQUEST,
 }
@@ -32,7 +42,7 @@ export class LlmPolicy implements BotPolicy {
   private readonly client: LlmClient | null
   private readonly fallback: BotPolicy
   private readonly model: string
-  private readonly settings: LlmPolicySettings
+  readonly settings: LlmPolicySettings
   private readonly now: () => number
   private plan: MenuItem[] = []
   private planKind: OwedKind | null = null
@@ -142,6 +152,8 @@ export class LlmPolicy implements BotPolicy {
         schema: PLAN_SCHEMA as unknown as Record<string, unknown>,
         maxTokens: LLM_MAX_OUTPUT_TOKENS,
         temperature: LLM_TEMPERATURE,
+        reasoningEffort: this.settings.reasoningEffort,
+        routing: this.settings.routing,
       }, ac.signal)
       text = res.text
       usage = res.usage
