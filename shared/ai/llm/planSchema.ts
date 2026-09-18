@@ -42,7 +42,14 @@ const isRecord = (x: unknown): x is Record<string, unknown> => x !== null && typ
 // malformed.
 const FENCE_RE = /^```(?:json)?\s*([\s\S]*?)\s*```$/
 
-function menuId(x: unknown): number | null {
+// One code fence stripped, whitespace trimmed — shared with answerSchema.ts.
+export function unfence(text: string): string {
+  const trimmed = text.trim()
+  const fenced = FENCE_RE.exec(trimmed)
+  return fenced ? fenced[1] : trimmed
+}
+
+export function menuId(x: unknown): number | null {
   if (Number.isInteger(x)) return x as number
   if (typeof x !== 'string') return null
   const digits = x.trim().replace(/^#/, '')
@@ -50,10 +57,8 @@ function menuId(x: unknown): number | null {
 }
 
 export function parsePlanAnswer(text: string): PlanAnswer | null {
-  const trimmed = text.trim()
-  const fenced = FENCE_RE.exec(trimmed)
   let raw: unknown
-  try { raw = JSON.parse(fenced ? fenced[1] : trimmed) } catch { return null }
+  try { raw = JSON.parse(unfence(text)) } catch { return null }
   if (!isRecord(raw)) return null
   const { plan, expectation, tableTalk } = raw
   if (!Array.isArray(plan) || plan.length === 0) return null
