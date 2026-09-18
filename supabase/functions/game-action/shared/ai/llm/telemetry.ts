@@ -1,10 +1,13 @@
 import type { GameAction } from '../../engine/engineTypes.ts'
 import type { OwedKind } from '../basicPolicy.ts'
+import type { Section } from './sections.ts'
 
 // Why the model did not answer a call (spec §7.1). `disabled` = no key or the
 // kill switch; `plan_rejected` = the engine refused a move the menu had
-// verified (an engine bug, or an rng-dependent legality).
-export type FallbackReason = 'timeout' | 'http' | 'malformed' | 'budget' | 'disabled' | 'plan_rejected'
+// verified (an engine bug, or an rng-dependent legality); `passed` = the
+// sectioned flow's empty answer on a one-move kind, answered by the
+// heuristic without a trip (2026-09-18 spec §3.3).
+export type FallbackReason = 'timeout' | 'http' | 'malformed' | 'budget' | 'disabled' | 'plan_rejected' | 'passed'
 
 export interface BattleExpectation { zoneId: number; outcome: 'win' | 'lose' | 'even'; confidence: number }
 export interface Expectation { summary: string; battle: BattleExpectation | null }
@@ -34,6 +37,11 @@ export interface TelemetryRow {
   // a provider 5xx and a model-id typo (400) — all of which read as just
   // 'http' in fallbackReason alone.
   error: string | null
+  // Sectioned flow (2026-09-18 spec §7): the section a turn call was for
+  // and the call's number within the request. Null in the single flow, on a
+  // one-move kind's section, and on the disabled row.
+  section: Section | null
+  seq: number | null
 }
 
 export function toBotDecisionRow(row: TelemetryRow, gameId: string, version: number) {
@@ -43,5 +51,6 @@ export function toBotDecisionRow(row: TelemetryRow, gameId: string, version: num
     cached_tokens: row.cachedTokens, cost_usd: row.costUsd, menu_size: row.menuSize,
     plan: row.plan, applied: row.applied, expectation: row.expectation, report: row.report,
     table_talk: row.tableTalk, fallback_reason: row.fallbackReason, error: row.error,
+    section: row.section, seq: row.seq,
   }
 }

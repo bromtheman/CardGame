@@ -41,18 +41,26 @@ export const MODEL_ROUTING: Readonly<Record<string, OpenRouterRouting>> = {
 }
 // The caps are for a long think or a slow provider moment, and the owner
 // would rather wait than hand the turn to the heuristic (2026-09-17). The
-// frontend's "PracticeAI is thinking…" label covers the wait. DeepSeek V4.1
-// Flash measured 6–38 s per call on the fastest route (the think length
-// varies 8× on one prompt), so the call cap is 60 s; a Mercury call is ~2 s.
-// The budget admits another call only while the time already spent is under
-// it, so one request is bounded by budget + one call ≈ 120 s, inside the
-// runtime's 150 s wall clock — raising the budget to 120 s would let a
-// request run to 180 s and take the human's own action down with it.
-// LLM_MAX_CALLS_PER_REQUEST still bounds the count.
-export const LLM_CALL_TIMEOUT_MS = 60_000       // per call, via AbortController
-export const LLM_REQUEST_BUDGET_MS = 60_000     // model time already spent that still admits a call
-export const LLM_MAX_CALLS_PER_REQUEST = 4      // one plan + reactions
-export const LLM_MAX_PLAN_LENGTH = 12           // menu ids per answer; the schema's maxItems
+// frontend's "PracticeAI is thinking…" label covers the wait, and the
+// sectioned flow (2026-09-18 sectioned bot turn spec §8) commits after every
+// section so the board moves while the request runs. A Mercury call is ~5 s
+// at its default effort; the sectioned flow makes 4–6 of them on a typical
+// turn and up to LLM_MAX_CALLS_PER_REQUEST on a busy one. The budget admits
+// another call only while the time already spent is under it, so one
+// request is bounded by budget + one call = 125 s, inside the runtime's
+// 150 s wall clock with the commits and the engine in the rest. DeepSeek
+// V4.1 Flash at `high` (40–55 s a call) does not fit this many calls; the
+// budget hands its turn to the heuristic as designed.
+export const LLM_CALL_TIMEOUT_MS = 45_000       // per call, via AbortController
+export const LLM_REQUEST_BUDGET_MS = 80_000     // model time already spent that still admits a call
+export const LLM_MAX_CALLS_PER_REQUEST = 16     // sections, moves, passes, a choice
+export const LLM_MAX_PLAN_LENGTH = 12           // single flow: menu ids per answer; the schema's maxItems
+// Sectioned flow (spec §3.2, §8): moves the model may name per answer — the
+// answer schema's maxItems and the batching escape hatch; above one, later
+// moves are read from annotations the first move made stale — and moves per
+// section per request before the pointer advances without a call.
+export const ACTIONS_PER_ANSWER = 1
+export const SECTION_MAX_ACTIONS = 8
 // Mercury 2.5 REASONS before it answers, and the reasoning is spent inside
 // max_tokens: at 600 it ran out mid-thought and every answer came back empty
 // or garbled (2026-09-17 eval — 100% `http` fallbacks). 65 536 is the

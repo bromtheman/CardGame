@@ -198,6 +198,7 @@ export class LlmPolicy implements BotPolicy {
       menuSize, plan: [], applied: [], expectation: null,
       report: kind === 'decision' && report ? { results: report.results, repairs: report.repairs } : null,
       tableTalk: null, fallbackReason: reason, error,
+      section: null, seq: null,
     }
   }
 }
