@@ -80,6 +80,18 @@ describe('LlmPolicy', () => {
     expect(row.menuSize).toBeGreaterThan(0)
   })
 
+  it('passes the reasoning effort and routing from its settings to every call, and neither when unset', async () => {
+    const reasoning = planningClient([['PLAY Corsair'], ['END TURN']])
+    await runBotUntilIdle(turnGame(), BOT, makeCtx(), new LlmPolicy(reasoning, basicPolicy, 'fake/model', { ...fast, reasoningEffort: 'high', routing: { sort: 'throughput' } }))
+    expect(reasoning.calls.length).toBe(2)
+    expect(reasoning.calls.map((c) => c.reasoningEffort)).toEqual(['high', 'high'])
+    expect(reasoning.calls.map((c) => c.routing)).toEqual([{ sort: 'throughput' }, { sort: 'throughput' }])
+    const plain = planningClient([['PLAY Corsair', 'END TURN']])
+    await runBotUntilIdle(turnGame(), BOT, makeCtx(), new LlmPolicy(plain, basicPolicy, 'fake/model', fast))
+    expect(plain.calls[0].reasoningEffort).toBeUndefined()
+    expect(plain.calls[0].routing).toBeUndefined()
+  })
+
   it('makes exactly one reaction call when the plan runs out before END TURN', async () => {
     const client = planningClient([['PLAY Corsair'], ['END TURN']])
     const policy = new LlmPolicy(client, basicPolicy, 'fake/model', fast)

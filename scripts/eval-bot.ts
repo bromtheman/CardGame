@@ -3,8 +3,12 @@
 // model policy against basicPolicy over N seeded games, seats alternated,
 // battles reported with rng-drawn HP by the harness. Never in CI.
 //
-//   npm run bot:eval -- --games 20 --model inception/mercury-2.5 [--seed 1]
+//   npm run bot:eval -- --games 20 --model inception/mercury-2.5 [--seed 1] [--reasoning high] [--providers streamlake]
 //
+// --reasoning and --providers take the same values as the BOT_REASONING_EFFORT
+// and BOT_PROVIDERS secrets and default the same way (the model's rows in
+// llmSettings.ts, else the model's own behaviour on any provider), so an
+// eval measures what production sends.
 // Needs OPENROUTER_API_KEY in the environment or ./.env.local (gitignored).
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
@@ -17,8 +21,9 @@ import type { SnapshotCard } from '../shared/engine/gameInit.ts'
 import { basicPolicy } from '../shared/ai/basicPolicy.ts'
 import { BOT_FACTIONS } from '../shared/ai/botDecks.ts'
 import { botOwes, runBotUntilIdle } from '../shared/ai/botDriver.ts'
-import { LlmPolicy } from '../shared/ai/llm/llmPolicy.ts'
+import { DEFAULT_LLM_POLICY_SETTINGS, LlmPolicy } from '../shared/ai/llm/llmPolicy.ts'
 import { DEFAULT_BOT_MODEL, LLM_REQUEST_BUDGET_MS } from '../shared/ai/llm/llmSettings.ts'
+import { reasoningEffortFor, routingFor } from '../shared/ai/llm/makePolicy.ts'
 import { OpenRouterClient } from '../shared/ai/llm/openRouterClient.ts'
 import type { TelemetryRow } from '../shared/ai/llm/telemetry.ts'
 import { newGame, reportBattle, STEP_CAP, TURN_CAP } from '../shared/ai/selfPlayHarness.ts'
@@ -61,6 +66,11 @@ if (!key) { console.error('OPENROUTER_API_KEY is not set (environment or ./.env.
 const games = Number(arg('games', '20'))
 const model = arg('model', DEFAULT_BOT_MODEL)
 const firstSeed = Number(arg('seed', '1'))
+const settings = {
+  ...DEFAULT_LLM_POLICY_SETTINGS,
+  reasoningEffort: reasoningEffortFor(model, arg('reasoning', '')),
+  routing: routingFor(model, arg('providers', '')),
+}
 
 const { cards } = await loadSeedData()
 const catalog = cards.filter((c) => c.isBuiltIn).map(toSnapshot)
@@ -84,7 +94,7 @@ for (let i = 0; i < games; i++) {
     const id = side === 'a' ? 'alice' : 'bot'
     if (!botOwes(game, side)) return
     // One policy instance per "request", as production builds one per call.
-    const policy = side === modelSide ? new LlmPolicy(client, basicPolicy, model) : basicPolicy
+    const policy = side === modelSide ? new LlmPolicy(client, basicPolicy, model, settings) : basicPolicy
     const t0 = Date.now()
     game = (await runBotUntilIdle(game, id, ctx, policy)).game
     if (policy instanceof LlmPolicy) { rows.push(...policy.rows); turnMs.push(Date.now() - t0); requests++ }
@@ -119,7 +129,7 @@ const decided = outcomes.filter((o) => o.winner !== 'none')
 const wins = outcomes.filter((o) => o.winner === 'model').length
 const fallbacks = allRows.filter((r) => r.fallbackReason !== null)
 console.log('')
-console.log(`model ${model}: ${wins}/${decided.length} decided games won (${pct(wins, decided.length)}), ${outcomes.length - decided.length} hit the ${TURN_CAP}-turn cap`)
+console.log(`model ${model} (reasoning ${settings.reasoningEffort ?? 'model default'}, routing ${settings.routing ? JSON.stringify(settings.routing) : 'default'}): ${wins}/${decided.length} decided games won (${pct(wins, decided.length)}), ${outcomes.length - decided.length} hit the ${TURN_CAP}-turn cap`)
 console.log(`calls per model request: ${(allRows.length / Math.max(1, outcomes.reduce((s, o) => s + o.requests, 0))).toFixed(2)}`)
 console.log(`model time per turn: p50 ${p(allTurnMs, 0.5)} ms, p95 ${p(allTurnMs, 0.95)} ms (budget ${LLM_REQUEST_BUDGET_MS} ms)`)
 console.log(`tokens per call: prompt ${Math.round(allRows.reduce((s, r) => s + (r.promptTokens ?? 0), 0) / Math.max(1, allRows.length))}, cached ${Math.round(allRows.reduce((s, r) => s + (r.cachedTokens ?? 0), 0) / Math.max(1, allRows.length))}, completion ${Math.round(allRows.reduce((s, r) => s + (r.completionTokens ?? 0), 0) / Math.max(1, allRows.length))}`)

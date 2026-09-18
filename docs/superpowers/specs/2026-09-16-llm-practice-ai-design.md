@@ -203,8 +203,10 @@ and 150 s of wall clock; awaiting `fetch` costs no CPU. The model calls are
 wall clock (bounded by `LLM_REQUEST_BUDGET_MS`); the menu is CPU (bounded by
 `MENU_MAX_TRIALS`, §4.4). Today's bot turn is ~400 ms end to end; the typical
 turn is 2–6 s with the model (a reasoning call measures ~2 s), and the caps in
-§8 let a slow provider moment run to 30 s per call / 60 s per request rather
-than hand the turn to the heuristic — well inside the 150 s wall clock.
+§8 let a long think or a slow provider moment run to 60 s per call, with a
+further call admitted only while under 60 s is spent (≈ 120 s per request at
+worst), rather than hand the turn to the heuristic — inside the 150 s wall
+clock.
 
 ## 4. The move menu — `shared/ai/llm/moveMenu.ts`
 
@@ -493,15 +495,28 @@ merge.
 
 **Env (ops):** `BOT_MODEL` — any OpenRouter model id, default
 `DEFAULT_BOT_MODEL = 'inception/mercury-2.5'`; `BOT_LLM_DISABLED=1` — kill
-switch, heuristic only, no deploy needed.
+switch, heuristic only, no deploy needed; `BOT_REASONING_EFFORT` — one of
+OpenRouter's unified `reasoning.effort` levels
+(`none|minimal|low|medium|high|xhigh|max`), sent on every call when set,
+otherwise the model's row in `MODEL_REASONING_EFFORT` (DeepSeek V4.1 Flash:
+`high`; the level does not shorten its thinking, which ran 580–4 500 tokens
+on one prompt at `low` and `high` alike), otherwise no field — Mercury reasons on its own and its evaluated request is unchanged
+(2026-09-17). An unrecognised value leaves the model's default standing
+rather than switching reasoning off. `BOT_PROVIDERS` — comma-separated
+OpenRouter provider slugs, added as `only` to the `provider` routing object;
+unset, the model's row in `MODEL_ROUTING` (DeepSeek V4.1 Flash:
+`{ sort: 'throughput', require_parameters: true }` — OpenRouter spreads it
+over twenty providers whose speed differs 3×, and both default routing and a
+StreamLake pin timed out 10–11 of 12 calls in the 2026-09-17 evals; Alibaba
+answered with prose instead of JSON), otherwise no field.
 
 **Tunables (code), `shared/ai/llm/llmSettings.ts`** — one place, the
 `gameSettings.ts` rule:
 
 | Name | Default | |
 |---|---|---|
-| `LLM_CALL_TIMEOUT_MS` | 30 000 | per call, via `AbortController` — raised from 4 000 on 2026-09-17: a slow provider moment should not hand the turn to the heuristic; the thinking label covers the wait |
-| `LLM_REQUEST_BUDGET_MS` | 60 000 | total model time per request (two slow calls) |
+| `LLM_CALL_TIMEOUT_MS` | 60 000 | per call, via `AbortController` — 4 000 → 30 000 → 60 000 on 2026-09-17: a long think or a slow provider moment should not hand the turn to the heuristic; DeepSeek V4.1 Flash measured 6–38 s per call on the fastest route; the thinking label covers the wait |
+| `LLM_REQUEST_BUDGET_MS` | 60 000 | model time already spent that still admits another call; one request is bounded by budget + one call ≈ 120 s, inside the 150 s wall clock |
 | `LLM_MAX_CALLS_PER_REQUEST` | 4 | plan + reactions |
 | `LLM_MAX_PLAN_LENGTH` | 12 | menu ids per answer; the schema's `maxItems` |
 | `LLM_MAX_OUTPUT_TOKENS` | 65 536 | the provider's `max_completion_tokens`; Mercury reasons inside this budget (~1k tokens, ~2 s per call) — 600 truncated every answer (2026-09-17) |
