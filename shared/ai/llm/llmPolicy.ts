@@ -147,8 +147,11 @@ export class LlmPolicy implements BotPolicy {
     let detail: string | null = null
     try {
       const res = await this.client!.complete({
-        system: buildSystemPrompt(view.state.factions[view.side]),
-        user: buildUserPrompt({ view, kind, menu, situation, planSoFar: this.appliedItems }),
+        messages: [
+          { role: 'system', content: buildSystemPrompt(view.state.factions[view.side]) },
+          { role: 'user', content: buildUserPrompt({ view, kind, menu, situation, planSoFar: this.appliedItems }) },
+        ],
+        schemaName: 'plan',
         schema: PLAN_SCHEMA as unknown as Record<string, unknown>,
         maxTokens: LLM_MAX_OUTPUT_TOKENS,
         temperature: LLM_TEMPERATURE,

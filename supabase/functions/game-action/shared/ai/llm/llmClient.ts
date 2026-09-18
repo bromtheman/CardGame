@@ -3,10 +3,12 @@ import type { OpenRouterRouting, ReasoningEffort } from './llmSettings.ts'
 // The seam between the policy and any model provider (spec §3.4). The
 // policy tests inject a fake; production injects OpenRouterClient. Errors
 // are typed so the policy can file the right fallback reason.
+export type ChatRole = 'system' | 'user' | 'assistant'
+export interface ChatMessage { role: ChatRole; content: string }
 export interface LlmRequest {
-  system: string
-  user: string
+  messages: ChatMessage[]             // the primer first; the sectioned flow appends a whole history
   schema: Record<string, unknown>
+  schemaName: string                  // response_format's json_schema.name: 'plan' or 'answer'
   maxTokens: number
   temperature: number
   reasoningEffort?: ReasoningEffort   // absent: the model's own default

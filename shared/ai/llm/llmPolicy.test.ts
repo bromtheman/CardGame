@@ -7,6 +7,8 @@ import { LlmHttpError, LlmTimeoutError } from './llmClient'
 import type { LlmClient, LlmRequest } from './llmClient'
 import { LlmPolicy } from './llmPolicy'
 
+const userOf = (req: LlmRequest): string => req.messages[req.messages.length - 1].content
+
 const BOT = 'bob'
 
 // Each entry answers one call: a JSON string, an Error to throw, or 'hang'
@@ -45,7 +47,8 @@ function planningClient(plans: string[][], talk: (string | null)[] = []): LlmCli
     model: 'fake/model', calls,
     async complete(req) {
       calls.push(req)
-      const menuText = req.user.slice(req.user.indexOf('MENU'))
+      const user = userOf(req)
+      const menuText = user.slice(user.indexOf('MENU'))
       const n = Math.min(i, plans.length - 1)
       const text = answerFor(menuText, plans[n], { tableTalk: talk[i] ?? null })
       i++
@@ -98,8 +101,8 @@ describe('LlmPolicy', () => {
     const { applied } = await runBotUntilIdle(turnGame(), BOT, makeCtx(), policy)
     expect(applied.map((a) => a.type)).toEqual(['PLAY_CARD_TO_ZONE', 'END_TURN'])
     expect(client.calls.length).toBe(2)
-    expect(client.calls[1].user).toContain('SITUATION:')
-    expect(client.calls[1].user).toContain('Your plan so far: #')
+    expect(userOf(client.calls[1])).toContain('SITUATION:')
+    expect(userOf(client.calls[1])).toContain('Your plan so far: #')
     expect(policy.rows.length).toBe(2)
   })
 
@@ -112,7 +115,7 @@ describe('LlmPolicy', () => {
     const { applied } = await runBotUntilIdle(g, BOT, makeCtx(), policy)
     expect(applied.map((a) => a.type)).toEqual(['PLAY_CARD_TO_ZONE', 'END_TURN'])
     expect(client.calls.length).toBe(2)
-    expect(client.calls[1].user).toContain('no longer available')
+    expect(userOf(client.calls[1])).toContain('no longer available')
   })
 
   it('falls back to the heuristic and trips on malformed output', async () => {
