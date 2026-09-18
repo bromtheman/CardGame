@@ -82,8 +82,8 @@ A `turn` runs as follows, inside one request and one conversation:
 2. Before each call the policy skips forward over sections whose menu is
    empty, and over a section that has reached `SECTION_MAX_ACTIONS` moves
    this request. `finish` is never skipped (its menu always holds
-   `END_TURN`). Entering a non-empty section produces that section's
-   **marker** (§3.5).
+   `END_TURN`); at its cap the turn ends with `END_TURN` and no call.
+   Entering a non-empty section produces that section's **marker** (§3.5).
 3. The model is shown the section's items, renumbered from 1, and answers
    with `actions` (0 or 1 menu numbers — up to `ACTIONS_PER_ANSWER`) and
    `then`.
@@ -156,7 +156,8 @@ one history:
    `buildUserPrompt` writes it today (turn and side, materials with the
    spend cue on a turn call, counts, powers used, alert card, BOARD, YOUR
    HAND, the CHOICE / INCOMING ATTACK / BATTLE REPORT block when owed,
-   RECENT LOG), then the section line and menu (§4.3) for a turn, or the
+   RECENT LOG — with marker lines left out, they are the bot's own
+   bookkeeping), then the section line and menu (§4.3) for a turn, or the
    kind's menu and ask for a one-move kind.
 3. **assistant** — the model's answer text, verbatim.
 4. **user, every later call** —
@@ -250,7 +251,9 @@ does. Limits come from `llmSettings.ts` at module load.
 `{ actions: number[]; then: 'continue' | 'next'; expectation: Expectation; tableTalk: string | null }`
 — `expectation` is `{ summary: note, battle }`, today's shape, so the
 telemetry column and the balance readout are unchanged. Unknown ids are
-dropped; an unparseable answer is `malformed` and trips.
+dropped, and an answer whose every id was unknown is `malformed` (a
+hallucinated number must not read as a deliberate pass); `[]` is the
+deliberate empty answer. An unparseable answer is `malformed` and trips.
 
 ### 4.6 Hidden information
 
