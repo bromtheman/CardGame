@@ -2,13 +2,14 @@ import { describe, expect, it } from 'vitest'
 import { KEYWORDS, MATERIALS_PER_TURN, SURVIVE_HP_PERCENT } from '../../gameSettings'
 import { shipProfilesForFaction } from '../../shipProfiles'
 import { FACTION_NOTES, GENERAL_TIPS } from './factionNotes'
-import { KEYWORD_GLOSSARY, PRIMER_TEMPLATE, renderPrimer } from './rulesPrimer'
+import { HOW_YOU_PLAY, KEYWORD_GLOSSARY, PRIMER_TEMPLATE, renderPrimer } from './rulesPrimer'
 
 describe('rules primer', () => {
   it('carries no literal number — every figure is a placeholder filled from gameSettings', () => {
     const stripped = PRIMER_TEMPLATE.replace(/\{\{[A-Z_]+\}\}/g, '')
     expect(stripped).not.toMatch(/\d/)
     for (const text of Object.values(KEYWORD_GLOSSARY)) expect(text).not.toMatch(/\d/)
+    for (const block of Object.values(HOW_YOU_PLAY)) expect(block).not.toMatch(/\d/)
   })
   it('gives the economy its own rule: materials are overwritten each turn, never saved', () => {
     // One clause inside the turn-flow bullet lost to the model's "materials
@@ -22,12 +23,29 @@ describe('rules primer', () => {
   it('has a glossary line for every keyword the engine knows', () => {
     for (const keyword of Object.values(KEYWORDS)) expect(KEYWORD_GLOSSARY[keyword], keyword).toBeTruthy()
   })
-  it('shows the exact JSON object the model must answer with', () => {
-    const shape = PRIMER_TEMPLATE.slice(PRIMER_TEMPLATE.indexOf('HOW YOU PLAY'))
+  it('shows the exact JSON object the model must answer with, per flow', () => {
     for (const key of ['"plan"', '"expectation"', '"summary"', '"battle"', '"zoneId"', '"outcome"', '"confidence"', '"tableTalk"']) {
-      expect(shape, key).toContain(key)
+      expect(HOW_YOU_PLAY.single, key).toContain(key)
     }
-    expect(shape).toContain('ONE JSON object')
+    for (const key of ['"actions"', '"then"', '"note"', '"battle"', '"zoneId"', '"outcome"', '"confidence"', '"tableTalk"', '"continue"', '"next"']) {
+      expect(HOW_YOU_PLAY.sections, key).toContain(key)
+    }
+    for (const block of Object.values(HOW_YOU_PLAY)) {
+      expect(block.startsWith('HOW YOU PLAY\n')).toBe(true)
+      expect(block).toContain('ONE JSON object')
+    }
+  })
+  it('renders the single flow’s answer shape by default and the sectioned flow’s on request, after the same prefix', () => {
+    const single = renderPrimer('DWG')
+    const sections = renderPrimer('DWG', 'sections')
+    expect(single).toContain(HOW_YOU_PLAY.single)
+    expect(single).not.toContain('"actions"')
+    expect(sections).toContain(HOW_YOU_PLAY.sections)
+    expect(sections).not.toContain('"plan"')
+    expect(sections).toContain('DEPLOY')
+    expect(sections).toContain('continues from ACTIVATE')
+    expect(single.slice(0, single.indexOf('HOW YOU PLAY'))).toBe(sections.slice(0, sections.indexOf('HOW YOU PLAY')))
+    expect(sections).not.toContain('{{')
   })
   it('renders every placeholder, the faction, and the glossary', () => {
     const text = renderPrimer('DWG')

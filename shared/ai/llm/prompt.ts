@@ -6,6 +6,7 @@ import type { OwedKind } from '../basicPolicy.ts'
 import type { BotView } from '../botView.ts'
 import { LOG_TAIL_LINES } from './llmSettings.ts'
 import type { MenuItem } from './moveMenu.ts'
+import type { PrimerFlow } from './rulesPrimer.ts'
 import { renderPrimer } from './rulesPrimer.ts'
 
 // Built from the BotView and the menu, nothing else (spec §5.2, §5.5):
@@ -19,7 +20,7 @@ export interface PromptInput {
   planSoFar?: MenuItem[]
 }
 
-export const buildSystemPrompt = (faction: string): string => renderPrimer(faction)
+export const buildSystemPrompt = (faction: string, flow: PrimerFlow = 'single'): string => renderPrimer(faction, flow)
 
 const money = (n: number): string => shortHandNumber(n)
 
