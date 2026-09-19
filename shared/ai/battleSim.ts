@@ -57,14 +57,25 @@ export function hullStrength(entry: ZoneCardEntry, enemies: readonly ZoneCardEnt
   }
 }
 
-// The share of a side's hulls expected to be focused: ratio / (1 + ratio)
-// of enemy offense to own defense — a half in an even fight, three quarters
-// when outgunned three to one.
+// The share of a side's hulls expected to be focused: a Lanchester-like
+// SQUARE law, ratio² / (1 + ratio²) of enemy offense to own defense — a half
+// in an even fight, nine tenths when outgunned three to one (not three
+// quarters, as the earlier linear ratio/(1+ratio) law gave).
+//
+// 2026-09-19 scored-menu Task 3 fix round 1: the linear law lost
+// M·E/(M+E) of value on BOTH sides in expectation, for any mismatch M:E —
+// declaring ANY fleet attack was zero-sum on tempo, because a side twice as
+// dear was, in expectation, exactly twice as likely to come out ahead by
+// exactly the amount that made the trade a wash either way. The square law
+// breaks that: expected losses now favour the stronger side in ABSOLUTE
+// cost, so declaring a battle you are stronger in gains tempo, and one
+// you are outgunned in loses it, rather than merely trading it.
 export function lossFraction(ownDefense: number, enemyOffense: number): number {
   if (enemyOffense <= 0) return 0
   if (ownDefense <= 0) return 1
   const ratio = enemyOffense / ownDefense
-  return ratio / (1 + ratio)
+  const ratioSquared = ratio * ratio
+  return ratioSquared / (1 + ratioSquared)
 }
 
 // One draw of a noise factor on the odds, ~lognormal with σ ≈ 0.3: three

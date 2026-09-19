@@ -39,7 +39,12 @@ export function strikePower(hulls: readonly ZoneCardEntry[]): number {
 
 // Turns until `attacker` fells the defender's SECOND base at current power,
 // every zone bombarding in parallel: a fallen base is 0, a zone with a
-// defending Blocker or no striker stalls at the cap, else HP / power.
+// defending Blocker or no striker stalls at the cap, else HP / power. The
+// game ends when the second base falls, but the SUM of the two smallest zone
+// times — not just the second-smallest — is what's returned, so progress
+// against the first zone stays visible in the score rather than vanishing
+// the moment a second zone isn't yet threatened (2026-09-19 scored-menu
+// Task 3 fix round 1).
 export function turnsToWin(game: EngineGame, attacker: Side): number {
   const defender = otherSide(attacker)
   const times = game.state.zones.map((z) => {
@@ -49,7 +54,7 @@ export function turnsToWin(game: EngineGame, attacker: Side): number {
     const power = strikePower(z.cards[attacker] as ZoneCardEntry[])
     return power > 0 ? Math.min(EVALUATOR.capTurns, hp / power) : EVALUATOR.capTurns
   }).sort((x, y) => x - y)
-  return times.length > 1 ? times[1] : (times[0] ?? EVALUATOR.capTurns)
+  return times.length > 1 ? times[0] + times[1] : (times[0] ?? EVALUATOR.capTurns)
 }
 
 const boardCost = (game: EngineGame, side: Side): number =>

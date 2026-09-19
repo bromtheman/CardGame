@@ -56,10 +56,10 @@ describe('hullStrength', () => {
 })
 
 describe('lossFraction', () => {
-  it('is a half in an even fight, three quarters when outgunned three to one, a quarter the other way', () => {
+  it('is a half in an even fight, nine tenths when outgunned three to one, a tenth the other way', () => {
     expect(lossFraction(100, 100)).toBeCloseTo(0.5)
-    expect(lossFraction(100, 300)).toBeCloseTo(0.75)
-    expect(lossFraction(300, 100)).toBeCloseTo(0.25)
+    expect(lossFraction(100, 300)).toBeCloseTo(0.9)
+    expect(lossFraction(300, 100)).toBeCloseTo(0.1)
   })
   it('never divides by zero: no defense means total loss, no enemy offense means none', () => {
     expect(lossFraction(0, 100)).toBe(1)

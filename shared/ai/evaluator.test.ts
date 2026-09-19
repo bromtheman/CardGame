@@ -20,12 +20,12 @@ describe('strikePower', () => {
 })
 
 describe('turnsToWin', () => {
-  it('is the second-smallest zone time: two bases must fall', () => {
+  it('is the sum of the two smallest zone times: two bases must fall, and first-zone progress still counts', () => {
     const g = makeGame()
     g.state.zones[0].cards.b.push(hull(500000))   // 1000 HP / 500 = 2 turns
     g.state.zones[1].cards.b.push(hull(100000))   // 10 turns
-    expect(turnsToWin(g, 'b')).toBe(10)
-    expect(turnsToWin(g, 'a')).toBe(EVALUATOR.capTurns)   // a strikes nowhere
+    expect(turnsToWin(g, 'b')).toBe(12)                     // [2, 10, cap] → 2 + 10
+    expect(turnsToWin(g, 'a')).toBe(2 * EVALUATOR.capTurns) // a strikes nowhere: [cap, cap, cap] → cap + cap
   })
   it('counts a fallen base as zero and stalls a zone with no power or an enemy Blocker at the cap', () => {
     const g = makeGame()
@@ -33,7 +33,7 @@ describe('turnsToWin', () => {
     g.state.zones[1].cards.b.push(hull(200000))
     g.state.zones[1].cards.a.push(hull(40000, { keywords: [KEYWORDS.BLOCKER] }))
     g.state.zones[2].cards.b.push(hull(250000))   // 4 turns
-    expect(turnsToWin(g, 'b')).toBe(4)            // [0, cap, 4] → second smallest
+    expect(turnsToWin(g, 'b')).toBe(4)            // [0, cap, 4] → sum of two smallest (0 + 4)
   })
 })
 
@@ -63,7 +63,11 @@ describe('positionScore', () => {
   it('scales board-cost advantage by lobby materialsPerTurn setting', () => {
     const defaultGame = makeGame()
     const defaultEmpty = makeGame()
-    defaultGame.state.zones[0].cards.b.push(hull(150000))
+    // A sub: board cost only, no strike power — turnsToWin (now a SUM, so no
+    // longer immune to a single populated zone) must stay identical between
+    // the "game" and "empty" halves of the comparison, or its materialsPerTurn-
+    // independent turns swamp the board term this test isolates.
+    defaultGame.state.zones[0].cards.b.push(hull(150000, { vehicleType: 'sub' }))
 
     const customGame = makeGame({ settings: { zones: [
       { biome: 'water', baseHp: 1000 },
@@ -75,7 +79,7 @@ describe('positionScore', () => {
       { biome: 'beach', baseHp: 1000 },
       { biome: 'land', baseHp: 1000 },
     ], materialsPerTurn: 150000 } })
-    customGame.state.zones[0].cards.b.push(hull(150000))
+    customGame.state.zones[0].cards.b.push(hull(150000, { vehicleType: 'sub' }))
 
     const defaultDiff = positionScore(defaultGame, 'b') - positionScore(defaultEmpty, 'b')
     const customDiff = positionScore(customGame, 'b') - positionScore(customEmpty, 'b')
