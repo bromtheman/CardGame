@@ -3,8 +3,10 @@ import { DEFAULT_LOBBY_SETTINGS } from '../lobbySettings.ts'
 import type { EngineContext, EngineGame, GameAction } from '../engine/engineTypes.ts'
 import { buildInitialGame } from '../engine/gameInit.ts'
 import type { SnapshotCard } from '../engine/gameInit.ts'
-import { battleParticipants, legalZonesFor } from '../engine/index.ts'
-import { BOT_DECKS } from './botDecks.ts'
+import { legalZonesFor } from '../engine/index.ts'
+import { resolveBattle } from './battleSim.ts'
+import { shipProfilesForFaction } from '../shipProfiles.ts'
+import { BOT_DECKS, BOT_FACTIONS, isBotFaction } from './botDecks.ts'
 import type { BotFaction } from './botDecks.ts'
 import { mulberry32 } from './seededRng.ts'
 
@@ -14,6 +16,24 @@ import { mulberry32 } from './seededRng.ts'
 export const TURN_CAP = 40
 export const STEP_CAP = 2000
 export { mulberry32 }
+
+// The bot factions whose hulls have FtDArmament profiles — the ones the
+// battle resolver (battleSim.ts) can actually judge. An unprofiled faction
+// fights as bare cost, which measures nothing, so the eval defaults to these.
+export const profiledFactions = (): BotFaction[] =>
+  BOT_FACTIONS.filter((f) => shipProfilesForFaction(f).length > 0)
+
+// The eval's --factions argument: a comma list of bot factions (any case),
+// blank or absent for the profiled ones. The pairing rotates through the
+// list, so it needs at least two.
+export function parseFactions(arg: string | undefined): BotFaction[] {
+  const wanted = (arg ?? '').split(',').map((s) => s.trim().toUpperCase()).filter((s) => s !== '')
+  if (wanted.length === 0) return profiledFactions()
+  const unknown = wanted.filter((f) => !isBotFaction(f))
+  if (unknown.length) throw new Error(`unknown bot faction(s): ${unknown.join(', ')} (known: ${BOT_FACTIONS.join(', ')})`)
+  if (wanted.length < 2) throw new Error('--factions needs at least two factions to pair them')
+  return wanted as BotFaction[]
+}
 
 export function deckFor(faction: BotFaction, snapshots: Map<string, SnapshotCard>, byName: Map<string, SnapshotCard>) {
   const cards: Record<string, number> = {}
@@ -49,12 +69,11 @@ export function newGame(opts: { seed: number; factionA: BotFaction; factionB: Bo
   return { game, ctx, rng }
 }
 
-// A report with rng-drawn ending HP for every participant, so deaths,
-// repairs and death triggers all fire.
+// The human's report, resolved by strength instead of a coin flip
+// (battleSim.ts): deaths, repairs and death triggers all still fire, and a
+// fight the bot should have won now usually is.
 export function reportBattle(game: EngineGame, rng: () => number): GameAction {
-  const results: Record<string, number> = {}
-  for (const id of battleParticipants(game.state).keys()) results[id] = Math.floor(rng() * 101)
-  return { type: 'SUBMIT_BATTLE_REPORT', results, repairs: [] }
+  return { type: 'SUBMIT_BATTLE_REPORT', results: resolveBattle(game, rng), repairs: [] }
 }
 
 // The scripted human, side 'a'. One action per call; null means nobody owes.

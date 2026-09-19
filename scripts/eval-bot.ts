@@ -3,8 +3,10 @@
 // model policy against basicPolicy over N seeded games, seats alternated,
 // battles reported with rng-drawn HP by the harness. Never in CI.
 //
-//   npm run bot:eval -- --games 20 --model inception/mercury-2.5 [--flow sections|single] [--seed 1] [--reasoning high] [--providers streamlake]
+//   npm run bot:eval -- --games 20 --model inception/mercury-2.5 [--flow sections|single] [--factions DWG,SS,WF] [--seed 1] [--reasoning high] [--providers streamlake]
 // --flow mirrors BOT_FLOW (default sections); run both flows on the same seeds for the same-model comparison (sectioned spec §10.2).
+// --factions picks the decks both seats rotate through; the default is the factions with ship profiles, the only ones the
+// strength-based battle resolver (shared/ai/battleSim.ts) can judge — an unprofiled faction fights as bare cost.
 //
 // --reasoning and --providers take the same values as the BOT_REASONING_EFFORT
 // and BOT_PROVIDERS secrets and default the same way (the model's rows in
@@ -21,7 +23,6 @@ import type { EngineGame } from '../shared/engine/engineTypes.ts'
 import type { SnapshotCard } from '../shared/engine/gameInit.ts'
 import { basicPolicy } from '../shared/ai/basicPolicy.ts'
 import type { BotPolicy } from '../shared/ai/basicPolicy.ts'
-import { BOT_FACTIONS } from '../shared/ai/botDecks.ts'
 import { botOwes, runBotUntilIdle } from '../shared/ai/botDriver.ts'
 import { DEFAULT_LLM_POLICY_SETTINGS, LlmPolicy } from '../shared/ai/llm/llmPolicy.ts'
 import { DEFAULT_BOT_MODEL, LLM_REQUEST_BUDGET_MS } from '../shared/ai/llm/llmSettings.ts'
@@ -30,7 +31,7 @@ import type { ModelBackedPolicy } from '../shared/ai/llm/makePolicy.ts'
 import { OpenRouterClient } from '../shared/ai/llm/openRouterClient.ts'
 import { SectionedLlmPolicy } from '../shared/ai/llm/sectionedPolicy.ts'
 import type { TelemetryRow } from '../shared/ai/llm/telemetry.ts'
-import { newGame, reportBattle, STEP_CAP, TURN_CAP } from '../shared/ai/selfPlayHarness.ts'
+import { newGame, parseFactions, reportBattle, STEP_CAP, TURN_CAP } from '../shared/ai/selfPlayHarness.ts'
 
 // Same shape selfPlay.test.ts builds; the harness itself stays seed-free.
 function toSnapshot(card: SeedCard): SnapshotCard {
@@ -70,6 +71,7 @@ if (!key) { console.error('OPENROUTER_API_KEY is not set (environment or ./.env.
 const games = Number(arg('games', '20'))
 const model = arg('model', DEFAULT_BOT_MODEL)
 const firstSeed = Number(arg('seed', '1'))
+const factions = parseFactions(arg('factions', ''))
 const flow = botFlowFor(arg('flow', 'sections'))
 const settings = {
   ...DEFAULT_LLM_POLICY_SETTINGS,
@@ -88,8 +90,8 @@ const outcomes: Outcome[] = []
 for (let i = 0; i < games; i++) {
   const seed = firstSeed + i
   const modelSide: 'a' | 'b' = i % 2 === 0 ? 'b' : 'a'
-  const factionA = BOT_FACTIONS[i % BOT_FACTIONS.length]
-  const factionB = BOT_FACTIONS[(i + 1) % BOT_FACTIONS.length]
+  const factionA = factions[i % factions.length]
+  const factionB = factions[(i + 1) % factions.length]
   const { game: start, ctx, rng } = newGame({ seed, factionA, factionB, catalog, byName })
   let game: EngineGame = start
   const rows: TelemetryRow[] = []
@@ -137,7 +139,7 @@ const decided = outcomes.filter((o) => o.winner !== 'none')
 const wins = outcomes.filter((o) => o.winner === 'model').length
 const fallbacks = allRows.filter((r) => r.fallbackReason !== null)
 console.log('')
-console.log(`flow ${flow}, model ${model} (reasoning ${settings.reasoningEffort ?? 'model default'}, routing ${settings.routing ? JSON.stringify(settings.routing) : 'default'}): ${wins}/${decided.length} decided games won (${pct(wins, decided.length)}), ${outcomes.length - decided.length} hit the ${TURN_CAP}-turn cap`)
+console.log(`flow ${flow}, factions ${factions.join('/')}, model ${model} (reasoning ${settings.reasoningEffort ?? 'model default'}, routing ${settings.routing ? JSON.stringify(settings.routing) : 'default'}): ${wins}/${decided.length} decided games won (${pct(wins, decided.length)}), ${outcomes.length - decided.length} hit the ${TURN_CAP}-turn cap`)
 console.log(`calls per model request: ${(allRows.length / Math.max(1, outcomes.reduce((s, o) => s + o.requests, 0))).toFixed(2)}`)
 console.log(`model time per turn: p50 ${p(allTurnMs, 0.5)} ms, p95 ${p(allTurnMs, 0.95)} ms (budget ${LLM_REQUEST_BUDGET_MS} ms)`)
 console.log(`tokens per call: prompt ${Math.round(allRows.reduce((s, r) => s + (r.promptTokens ?? 0), 0) / Math.max(1, allRows.length))}, cached ${Math.round(allRows.reduce((s, r) => s + (r.cachedTokens ?? 0), 0) / Math.max(1, allRows.length))}, completion ${Math.round(allRows.reduce((s, r) => s + (r.completionTokens ?? 0), 0) / Math.max(1, allRows.length))}`)
