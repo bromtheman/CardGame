@@ -457,4 +457,31 @@ describe('SectionedLlmPolicy — the tempo guard', () => {
     expect(applied.map((a) => a.type)).toEqual(['END_TURN'])
     expect(policy.rows.every((r) => r.guard === null)).toBe(true)
   })
+
+  it('does not advance the section pointer when the guard replaces a re-verified plan-head item', async () => {
+    // actionsPerAnswer 2: the model names the best deploy move (Corsair to
+    // zone 2) and a throwaway second move (Draw) in the SAME answer, then:
+    // 'next'. Draw is legal both before and after the Corsair lands, so it
+    // survives as the plan head on the next candidates call — but by then
+    // the zone-1 base attack is the best thing on the whole menu and clears
+    // the margin over Draw's score of 0, so the guard replaces it. The
+    // answer's then: 'next' belongs to the WHOLE two-move plan, not to the
+    // guard's substitute — it must not leak into an early advance once the
+    // (now one-move-shorter) plan reads as "drained".
+    const client = scripted([
+      { pick: ['PLAY Corsair (40k) to zone 2', 'HERO POWER Draw'], then: 'next' },
+      { pick: null, then: 'next' },   // still DEPLOY (the pointer did not move) → nothing else clears the margin → advances for real
+      { pick: null, then: 'next' },   // FINISH pass → END TURN
+    ])
+    const policy = new SectionedLlmPolicy(client, basicPolicy, 'fake/model', { ...fast, actionsPerAnswer: 2 })
+    const { applied } = await runBotUntilIdle(turnGame(), BOT, makeCtx(), policy)
+    expect(applied.map((a) => a.type)).toEqual(['PLAY_CARD_TO_ZONE', 'ATTACK_ENEMY_BASE', 'END_TURN'])
+    expect(client.calls.length).toBe(3)   // Draw's replacement is free — it never re-asks the model
+    expect(policy.rows[0].plan).toHaveLength(2)
+    expect(policy.rows[0].guard).toEqual(expect.objectContaining({ picked: policy.rows[0].plan[1].id }))
+    expect(policy.rows[0].applied.map((a) => a.type)).toEqual(['PLAY_CARD_TO_ZONE', 'ATTACK_ENEMY_BASE'])
+    // then: 'next' did not fire early: the next ask is still DEPLOY, not FIGHT.
+    expect(userOf(client.calls[1])).toContain('SECTION: DEPLOY')
+    expect(policy.rows.map((r) => r.section)).toEqual(['deploy', 'deploy', 'finish'])
+  })
 })

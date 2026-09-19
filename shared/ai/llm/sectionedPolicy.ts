@@ -125,7 +125,7 @@ export class SectionedLlmPolicy implements BotPolicy {
       if (menu.some((m) => sameAction(m.action, head.action))) {
         this.plan.shift()
         const { item, guard } = guardPick(menu, head, this.margin())
-        if (guard && item && this.planRow) { this.planRow.guard = guard; this.plan = [] }
+        if (guard && item && this.planRow) { this.planRow.guard = guard; this.plan = []; this.pendingThen = null }
         this.expected = (item ?? head).action
         this.expectedRow = this.planRow
         return [(item ?? head).action, ...(await this.fallback.candidates(view, 'turn'))]
@@ -172,6 +172,7 @@ export class SectionedLlmPolicy implements BotPolicy {
         this.propose(picked.item, asked.row, null)
         this.plan = []
         this.planRow = null
+        this.pendingThen = null
         return [picked.item.action, ...(await this.fallback.candidates(view, 'turn'))]
       }
       this.propose(asked.items[0], asked.row, asked.answer.then)
