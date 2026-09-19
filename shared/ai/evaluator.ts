@@ -110,7 +110,20 @@ function endedScore(input: EngineGame, botId: string, side: Side, ctx: EngineCon
   const game = settleChoices(input, ctx)
   if (!game) return null
   const owed = botOwes(game, side)
-  if (owed === null) return positionScore(game, side)   // the game ended on this move
+  if (owed === null) {
+    // botOwes is null for two different reasons (see its own doc comment):
+    // the game decided, OR a locked battle is waiting on a report
+    // (state.activeBattle set, no pendingReport yet). The second case cannot
+    // reach here: scoreMove checks awaitingResponse/activeBattle on the
+    // settled trial and routes to battleMean BEFORE ever calling endedScore
+    // directly, and battleMean's own call always runs right after
+    // DECIDE_BATTLE_REPORT has cleared both fields (2026-09-19 scored-menu
+    // Task 3 fix round 2). So a decided game is the only reachable null here
+    // — anything else would mean silently scoring an unresolved battle,
+    // which scoreMove's own contract ("null when the trial cannot be
+    // completed") rules out.
+    return game.status !== 'active' ? positionScore(game, side) : null
+  }
   if (owed !== 'turn') return null
   const r = applyAction(game, botId, { type: 'END_TURN' }, ctx)
   return r.ok ? positionScore(r.game, side) : null
@@ -161,12 +174,32 @@ export function scoreMove(game: EngineGame, botId: string, action: GameAction, c
   const trial = applyAction(game, botId, action, withRng(ctx, seed))
   if (!trial.ok) return null
   if (action.type === 'END_TURN') return positionScore(trial.game, side)
-  // A fleet attack always leaves either a response window (awaitingResponse)
-  // or an already-locked battle (activeBattle) — battleMean handles both.
-  if (action.type === 'ATTACK_ENEMY_FLEET' && (trial.game.state.awaitingResponse || trial.game.state.activeBattle)) {
-    return battleMean(trial.game, botId, side, ctx, seed)
+  // Settle any choice the trial itself raised before asking whether a battle
+  // is now open: DP2 fires AT battle lock, so a card that suspends there
+  // (Terawatt's join, DWG Waters' clause-2 summon) can freeze a choice
+  // alongside the very battle it's asking about — gameEngine.ts's applyAction
+  // allows pendingEffect and a battle freeze to both be set at once. +1 so
+  // this post-trial rng stream never repeats the trial's own draws when a
+  // caller reuses the same seed for both.
+  const settled = settleChoices(trial.game, withRng(ctx, seed + 1))
+  if (!settled) return null
+  // A battle to fight — not only a fleet attack's own response window or
+  // lock, but ANY action whose effect force-declares one (WF's Martyr
+  // Attack, DWG Waters intercepting a bombardment, declareForcedBattle
+  // generally). No longer gated on action.type === 'ATTACK_ENEMY_FLEET'
+  // (2026-09-19 scored-menu Task 3 fix round 2): botOwes(game, side) === null
+  // ALSO means "a locked battle awaits a report," so the check has to happen
+  // here — before endedScore ever reads botOwes; see its own comment. END
+  // TURN is exempted above rather than checked here: turnEndRiders (the only
+  // thing endTurn dispatches) never calls declareForcedBattle, so ending a
+  // turn cannot itself leave a battle open — the spec's "END TURN scores its
+  // own trial state" carve-out is unconditional by construction, not by
+  // omission. battleMean keeps scoring off the ORIGINAL seed (not seed + 1):
+  // its own per-sample offsets are independent of how `settled` was reached,
+  // and this preserves the exact numbers already verified for a fleet attack
+  // that raises no choice (the common case, where settleChoices is a no-op).
+  if (settled.state.awaitingResponse || settled.state.activeBattle) {
+    return battleMean(settled, botId, side, ctx, seed)
   }
-  // +1 so the post-trial rng stream (choice settling, END TURN) never repeats
-  // the trial's own draws when a caller reuses the same seed for both.
-  return endedScore(trial.game, botId, side, withRng(ctx, seed + 1))
+  return endedScore(settled, botId, side, withRng(ctx, seed + 1))
 }

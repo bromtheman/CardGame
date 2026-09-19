@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { KEYWORDS } from '../gameSettings'
-import { inst, makeCtx, makeGame, zoneEntry } from '../engine/testFixtures'
+import { inst, makeCtx, makeGame, snap, zoneEntry } from '../engine/testFixtures'
+import { applyAction, sideOf } from '../engine/index'
 import { EVALUATOR, positionScore, scoreMove, strikePower, turnsToWin } from './evaluator'
 
 const hull = (cost: number, over: Parameters<typeof zoneEntry>[0] = {}) => zoneEntry({ materialCost: cost, vehicleType: 'ship', ...over })
@@ -122,5 +123,48 @@ describe('scoreMove', () => {
     const attack = { type: 'ATTACK_ENEMY_FLEET', zoneId: 1 } as const
     expect(scoreMove(outgunned, BOT, attack, makeCtx(), 3)!).toBeLessThan(scoreMove(outgunned, BOT, { type: 'END_TURN' }, makeCtx(), 3)!)
     expect(scoreMove(easy, BOT, attack, makeCtx(), 3)!).toBeGreaterThan(scoreMove(easy, BOT, { type: 'END_TURN' }, makeCtx(), 3)!)
+  })
+  it('returns null for a fleet attack declared mid-battle: the engine refuses a second one', () => {
+    const g = turnGame()
+    g.state.zones[0].cards.a.push(hull(90000, { instanceId: 'foe-1' }))
+    // An activeBattle already locks zone 1, built the way battleSim.test.ts's
+    // own battle() helper builds one. ATTACK_ENEMY_FLEET is not a
+    // BATTLE_ACTION, so the engine's battleFrozen gate refuses it outright —
+    // scoreMove must return null, not score the pre-existing battle's snapshot.
+    g.state.activeBattle = {
+      zoneId: 1, aggressor: 'b', attackerIds: ['mine-1'], defenderIds: ['foe-1'],
+      distanceM: 1200, distanceModifiedBy: [], summons: [], continuation: null,
+    }
+    expect(scoreMove(g, BOT, { type: 'ATTACK_ENEMY_FLEET', zoneId: 1 }, makeCtx(), 9)).toBeNull()
+  })
+  it('samples a non-fleet-attack move that leaves a battle locked: a card effect that force-declares one', () => {
+    // WF's Martyr Attack (wfEffects.ts martyrAttackEffect): an ability card
+    // that summons Martyrs to fight a targeted enemy vehicle alone, via
+    // declareForcedBattle — which locks activeBattle directly, with no
+    // response window (battleDeclare.ts: a forced battle "skips the Stealthy
+    // opt-out entirely"). The action here is PLAY_CARD_TARGETING_CARD_ON_FIELD,
+    // never ATTACK_ENEMY_FLEET, so this only samples through battleMean if
+    // scoreMove routes on the resulting state rather than the action type
+    // (2026-09-19 scored-menu Task 3 fix round 2).
+    const martyrHull = snap({ name: 'Martyr', faction: 'WF', vehicleType: 'plane', materialCost: 8500, meta: { summonOnly: true } })
+    const martyrAttack = inst({
+      instanceId: 'martyr-attack-1', name: 'Martyr Attack', type: 'ability', materialCost: 0,
+      meta: { playOnVehicleEffect: 'martyrAttackEffect' },
+    })
+    const g = makeGame({
+      activePlayer: BOT, turnNumber: 3,
+      privates: { a: { hand: [], deck: [] }, b: { hand: [martyrAttack], deck: [] } },
+    })
+    g.state.zones[0].cards.a.push(hull(90000, { instanceId: 'foe-1' }))
+    const ctx = makeCtx({ catalog: [martyrHull] })
+    const action = { type: 'PLAY_CARD_TARGETING_CARD_ON_FIELD', instanceId: 'martyr-attack-1', targetInstanceId: 'foe-1' } as const
+    const sampled = scoreMove(g, BOT, action, ctx, 5)
+    expect(sampled).not.toBeNull()
+    // Not just non-null: it must differ from the unresolved pre-battle
+    // snapshot (the exact bug this fixes) — the 4 Martyrs against foe-1
+    // fight it out, they don't stand there forever unfought.
+    const trial = applyAction(g, BOT, action, ctx)
+    const unsampled = trial.ok ? positionScore(trial.game, sideOf(g, BOT)!) : null
+    expect(sampled).not.toBe(unsampled)
   })
 })
