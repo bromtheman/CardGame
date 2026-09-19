@@ -23,8 +23,13 @@ import { shipProfileOf } from '../shipProfiles.ts'
 
 export interface HullStrength { offense: number; defense: number }
 
-// 0.7 + 0.1 × score: a 1 is 0.8, a 3 is 1.0, a 5 is 1.2.
-const shade = (score: number): number => 0.7 + 0.1 * score
+// 0.85 + 0.05 × score: a 1 is 0.9, a 3 is 1.0, a 5 is 1.1 — profiles tip a
+// fight, cost decides it. Calibrated 2026-09-19: at 0.7 + 0.1 × score WF lost
+// about nine eval games in ten whoever held it (its small hulls sit in the
+// bottom quintiles), while under random battles it held parity — and WF is
+// not weak in From The Depths; its strength is big hulls and tactics no
+// resolver sees. A 1.5× price now beats the best profile in the set.
+const shade = (score: number): number => 0.85 + 0.05 * score
 const NEUTRAL = 3
 
 type MatchupKey = 'ships' | 'aircraft' | 'submarines'
@@ -67,8 +72,9 @@ export function lossFraction(ownDefense: number, enemyOffense: number): number {
 // odds is rare, not impossible.
 const oddsNoise = (rng: () => number): number => Math.exp((rng() + rng() + rng() - 1.5) * 0.6)
 
-// Tougher hulls are focused less often: 1.15 at toughness 1, 0.85 at 3, 0.55 at 5.
-const focusFactor = (toughness: number): number => 1.3 - 0.15 * toughness
+// Tougher hulls are focused less often, by the same shade in inverse: 1.11
+// at toughness 1, 1.0 at 3, 0.91 at 5.
+const focusFactor = (toughness: number): number => 1 / shade(toughness)
 const FOCUS_CAP = 0.95
 // A focused hull's HP is drawn from below the survive line: most of that
 // band is destruction, the top of it the repair window.

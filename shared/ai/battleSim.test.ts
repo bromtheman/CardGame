@@ -26,6 +26,17 @@ describe('hullStrength', () => {
     expect(strong.defense).toBeGreaterThan(100000)
     expect(strong.offense).toBeGreaterThan(weak.offense)
   })
+  it('nudges rather than decides: the best profile in the set is under 1.5× the worst at equal cost', () => {
+    // Calibrated 2026-09-19: under a 0.7 + 0.1 × score shade WF lost ~90 % of
+    // eval games whoever held it, while under random battles it held parity —
+    // and WF is not weak in From The Depths; its strength is big hulls and
+    // tactics no resolver sees. So cost decides and profiles tip.
+    const weak = hullStrength(corsair('c'), [plain('e')])
+    const strong = hullStrength(crossbones('x'), [plain('e')])
+    expect(strong.offense / weak.offense).toBeLessThan(1.5)
+    expect(strong.defense / weak.defense).toBeLessThan(1.3)
+    expect(hullStrength(plain('big', 150000), [plain('e')]).offense).toBeGreaterThan(strong.offense)   // a 1.5× price beats the best profile
+  })
   it('reads the matchup against what the enemy actually fields', () => {
     // Corsair: vs aircraft 3 (neutral), vs ships 2 — it fights planes better than ships.
     const vsPlanes = hullStrength(corsair('c'), [plain('e', 100000, { vehicleType: 'plane' })])
@@ -112,7 +123,7 @@ describe('resolveBattle', () => {
     expect(hps.some((hp) => hp < REPAIR_WINDOW_MIN_PERCENT)).toBe(true)                                   // destroyed
     expect(hps.some((hp) => hp >= REPAIR_WINDOW_MIN_PERCENT && hp < SURVIVE_HP_PERCENT)).toBe(true)      // repairable
   })
-  it('lets the profiles decide between hulls of equal cost', () => {
+  it('lets the profiles tip a fight between hulls of equal cost', () => {
     // Two Crossbones (fire 5 / tough 4) against two Corsairs (fire 1 / tough 1)
     // at the same printed cost: the profiled strength, not the price, wins.
     const g = battle([crossbones('x1'), crossbones('x2')], [corsair('c1'), corsair('c2')])
@@ -122,7 +133,7 @@ describe('resolveBattle', () => {
       strongAlive += Number(alive(r.x1)) + Number(alive(r.x2))
       weakAlive += Number(alive(r.c1)) + Number(alive(r.c2))
     }
-    expect(strongAlive).toBeGreaterThan(weakAlive * 1.5)
+    expect(strongAlive).toBeGreaterThan(weakAlive * 1.15)
   })
 })
 

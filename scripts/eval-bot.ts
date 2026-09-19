@@ -84,7 +84,7 @@ const catalog = cards.filter((c) => c.isBuiltIn).map(toSnapshot)
 const byName = new Map(catalog.map((c) => [`${c.faction}:${c.name}`, c]))
 const client = new OpenRouterClient(key, model)
 
-interface Outcome { seed: number; modelSide: 'a' | 'b'; winner: 'model' | 'heuristic' | 'none'; turns: number; rows: TelemetryRow[]; requests: number; turnMs: number[] }
+interface Outcome { seed: number; modelSide: 'a' | 'b'; modelFaction: string; winner: 'model' | 'heuristic' | 'none'; turns: number; rows: TelemetryRow[]; requests: number; turnMs: number[] }
 const outcomes: Outcome[] = []
 
 for (let i = 0; i < games; i++) {
@@ -126,7 +126,7 @@ for (let i = 0; i < games; i++) {
   }
   const modelId = modelSide === 'a' ? 'alice' : 'bot'
   const winner: Outcome['winner'] = game.status === 'active' ? 'none' : game.winnerId === modelId ? 'model' : 'heuristic'
-  outcomes.push({ seed, modelSide, winner, turns: game.turnNumber, rows, requests, turnMs })
+  outcomes.push({ seed, modelSide, modelFaction: modelSide === 'a' ? factionA : factionB, winner, turns: game.turnNumber, rows, requests, turnMs })
   const cost = rows.reduce((s, r) => s + (r.costUsd ?? 0), 0)
   console.log(`seed ${seed}: model as ${modelSide} vs heuristic → ${winner} in ${game.turnNumber} turns, ${rows.length} calls, $${cost.toFixed(4)}`)
 }
@@ -147,3 +147,6 @@ console.log(`cost per game: $${(allRows.reduce((s, r) => s + (r.costUsd ?? 0), 0
 const byReason = new Map<string, number>()
 for (const r of fallbacks) byReason.set(r.fallbackReason!, (byReason.get(r.fallbackReason!) ?? 0) + 1)
 console.log(`fallback rate: ${pct(fallbacks.length, allRows.length)}${byReason.size ? ` (${[...byReason].map(([k, v]) => `${k} ${v}`).join(', ')})` : ''}`)
+// The faction the model held decides more games than the model does (2026-09-19:
+// WF vs DWG swung 0–6 to 5–1 under one resolver), so the aggregate alone misleads.
+console.log(`by model faction: ${factions.map((f) => { const g = decided.filter((o) => o.modelFaction === f); return `${f} ${g.filter((o) => o.winner === 'model').length}-${g.filter((o) => o.winner === 'heuristic').length}` }).join(', ')}`)
