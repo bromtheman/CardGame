@@ -1,7 +1,6 @@
 import { BASE_DAMAGE_DIVISOR, KEYWORDS } from '../gameSettings.ts'
 import { materialsPerTurnOf } from '../lobbySettings.ts'
-import type { CardInstance } from '../engine/gameInit.ts'
-import type { EngineGame, Side } from '../engine/engineTypes.ts'
+import type { EngineGame, Side, ZoneCardEntry } from '../engine/engineTypes.ts'
 import { baseStrikersIn, effectiveMaterialCostOf, otherSide } from '../engine/index.ts'
 
 // A one-ply position evaluator in TURNS OF TEMPO (2026-09-19 scored menu
@@ -25,8 +24,8 @@ export const EVALUATOR = {
 // Temporary hulls (removed at the next turn start, so they never strike).
 // Fresh deployments are eligible—the score is read at the start of the
 // enemy's turn, and they strike on the bot's.
-export function strikePower(hulls: readonly CardInstance[]): number {
-  const strikers = baseStrikersIn(hulls as any, Infinity)
+export function strikePower(hulls: readonly ZoneCardEntry[]): number {
+  const strikers = baseStrikersIn(hulls as ZoneCardEntry[], Infinity)
   return strikers.reduce((sum, c) => {
     if (c.keywords.includes(KEYWORDS.TEMPORARY)) return sum
     return sum + Math.floor(effectiveMaterialCostOf(c) / BASE_DAMAGE_DIVISOR)
@@ -42,7 +41,7 @@ export function turnsToWin(game: EngineGame, attacker: Side): number {
     const hp = z.baseHp[defender]
     if (hp <= 0) return 0
     if (z.cards[defender].some((c) => c.keywords.includes(KEYWORDS.BLOCKER))) return EVALUATOR.capTurns
-    const power = strikePower(z.cards[attacker])
+    const power = strikePower(z.cards[attacker] as ZoneCardEntry[])
     return power > 0 ? Math.min(EVALUATOR.capTurns, hp / power) : EVALUATOR.capTurns
   }).sort((x, y) => x - y)
   return times.length > 1 ? times[1] : (times[0] ?? EVALUATOR.capTurns)
