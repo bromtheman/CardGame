@@ -3,10 +3,13 @@
 // model policy against basicPolicy over N seeded games, seats alternated,
 // battles reported with rng-drawn HP by the harness. Never in CI.
 //
-//   npm run bot:eval -- --games 20 --model inception/mercury-2.5 [--flow sections|single] [--factions DWG,SS,WF] [--seed 1] [--reasoning high] [--providers streamlake]
+//   npm run bot:eval -- --games 20 --model inception/mercury-2.5 [--flow sections|single] [--pairing mirror|cross] [--factions DWG,SS,WF] [--seed 1] [--reasoning high] [--providers streamlake]
 // --flow mirrors BOT_FLOW (default sections); run both flows on the same seeds for the same-model comparison (sectioned spec §10.2).
-// --factions picks the decks both seats rotate through; the default is the factions with ship profiles, the only ones the
+// --factions picks the decks the games rotate through; the default is the factions with ship profiles, the only ones the
 // strength-based battle resolver (shared/ai/battleSim.ts) can judge — an unprofiled faction fights as bare cost.
+// --pairing mirror (default) seats the same deck on both sides, so the win rate is the policy's skill against a 50 % baseline;
+// cross rotates the decks one seat apart, under which the faction draw decides most games (selfPlayHarness.ts) — read its
+// "by model faction" line, never the aggregate.
 //
 // --reasoning and --providers take the same values as the BOT_REASONING_EFFORT
 // and BOT_PROVIDERS secrets and default the same way (the model's rows in
@@ -31,7 +34,7 @@ import type { ModelBackedPolicy } from '../shared/ai/llm/makePolicy.ts'
 import { OpenRouterClient } from '../shared/ai/llm/openRouterClient.ts'
 import { SectionedLlmPolicy } from '../shared/ai/llm/sectionedPolicy.ts'
 import type { TelemetryRow } from '../shared/ai/llm/telemetry.ts'
-import { newGame, parseFactions, reportBattle, STEP_CAP, TURN_CAP } from '../shared/ai/selfPlayHarness.ts'
+import { matchupFor, newGame, parseFactions, parsePairing, reportBattle, STEP_CAP, TURN_CAP } from '../shared/ai/selfPlayHarness.ts'
 
 // Same shape selfPlay.test.ts builds; the harness itself stays seed-free.
 function toSnapshot(card: SeedCard): SnapshotCard {
@@ -71,7 +74,8 @@ if (!key) { console.error('OPENROUTER_API_KEY is not set (environment or ./.env.
 const games = Number(arg('games', '20'))
 const model = arg('model', DEFAULT_BOT_MODEL)
 const firstSeed = Number(arg('seed', '1'))
-const factions = parseFactions(arg('factions', ''))
+const pairing = parsePairing(arg('pairing', ''))
+const factions = parseFactions(arg('factions', ''), pairing)
 const flow = botFlowFor(arg('flow', 'sections'))
 const settings = {
   ...DEFAULT_LLM_POLICY_SETTINGS,
@@ -90,8 +94,7 @@ const outcomes: Outcome[] = []
 for (let i = 0; i < games; i++) {
   const seed = firstSeed + i
   const modelSide: 'a' | 'b' = i % 2 === 0 ? 'b' : 'a'
-  const factionA = factions[i % factions.length]
-  const factionB = factions[(i + 1) % factions.length]
+  const { factionA, factionB } = matchupFor(factions, i, pairing)
   const { game: start, ctx, rng } = newGame({ seed, factionA, factionB, catalog, byName })
   let game: EngineGame = start
   const rows: TelemetryRow[] = []
@@ -128,7 +131,7 @@ for (let i = 0; i < games; i++) {
   const winner: Outcome['winner'] = game.status === 'active' ? 'none' : game.winnerId === modelId ? 'model' : 'heuristic'
   outcomes.push({ seed, modelSide, modelFaction: modelSide === 'a' ? factionA : factionB, winner, turns: game.turnNumber, rows, requests, turnMs })
   const cost = rows.reduce((s, r) => s + (r.costUsd ?? 0), 0)
-  console.log(`seed ${seed}: model as ${modelSide} vs heuristic → ${winner} in ${game.turnNumber} turns, ${rows.length} calls, $${cost.toFixed(4)}`)
+  console.log(`seed ${seed}: model as ${modelSide} (${factionA} vs ${factionB}) → ${winner} in ${game.turnNumber} turns, ${rows.length} calls, ${cost.toFixed(4)}`)
 }
 
 const pct = (n: number, d: number) => (d === 0 ? '–' : `${Math.round((100 * n) / d)}%`)
@@ -139,7 +142,7 @@ const decided = outcomes.filter((o) => o.winner !== 'none')
 const wins = outcomes.filter((o) => o.winner === 'model').length
 const fallbacks = allRows.filter((r) => r.fallbackReason !== null)
 console.log('')
-console.log(`flow ${flow}, factions ${factions.join('/')}, model ${model} (reasoning ${settings.reasoningEffort ?? 'model default'}, routing ${settings.routing ? JSON.stringify(settings.routing) : 'default'}): ${wins}/${decided.length} decided games won (${pct(wins, decided.length)}), ${outcomes.length - decided.length} hit the ${TURN_CAP}-turn cap`)
+console.log(`flow ${flow}, ${pairing} ${factions.join('/')}, model ${model} (reasoning ${settings.reasoningEffort ?? 'model default'}, routing ${settings.routing ? JSON.stringify(settings.routing) : 'default'}): ${wins}/${decided.length} decided games won (${pct(wins, decided.length)}), ${outcomes.length - decided.length} hit the ${TURN_CAP}-turn cap`)
 console.log(`calls per model request: ${(allRows.length / Math.max(1, outcomes.reduce((s, o) => s + o.requests, 0))).toFixed(2)}`)
 console.log(`model time per turn: p50 ${p(allTurnMs, 0.5)} ms, p95 ${p(allTurnMs, 0.95)} ms (budget ${LLM_REQUEST_BUDGET_MS} ms)`)
 console.log(`tokens per call: prompt ${Math.round(allRows.reduce((s, r) => s + (r.promptTokens ?? 0), 0) / Math.max(1, allRows.length))}, cached ${Math.round(allRows.reduce((s, r) => s + (r.cachedTokens ?? 0), 0) / Math.max(1, allRows.length))}, completion ${Math.round(allRows.reduce((s, r) => s + (r.completionTokens ?? 0), 0) / Math.max(1, allRows.length))}`)
@@ -147,6 +150,7 @@ console.log(`cost per game: $${(allRows.reduce((s, r) => s + (r.costUsd ?? 0), 0
 const byReason = new Map<string, number>()
 for (const r of fallbacks) byReason.set(r.fallbackReason!, (byReason.get(r.fallbackReason!) ?? 0) + 1)
 console.log(`fallback rate: ${pct(fallbacks.length, allRows.length)}${byReason.size ? ` (${[...byReason].map(([k, v]) => `${k} ${v}`).join(', ')})` : ''}`)
-// The faction the model held decides more games than the model does (2026-09-19:
-// WF vs DWG swung 0–6 to 5–1 under one resolver), so the aggregate alone misleads.
+// Under cross pairing the faction the model held decides more games than the
+// model does (2026-09-19: WF vs DWG swung 0–6 to 5–1 under one resolver), so the
+// aggregate alone misleads; under mirror pairing this reads how each deck is played.
 console.log(`by model faction: ${factions.map((f) => { const g = decided.filter((o) => o.modelFaction === f); return `${f} ${g.filter((o) => o.winner === 'model').length}-${g.filter((o) => o.winner === 'heuristic').length}` }).join(', ')}`)

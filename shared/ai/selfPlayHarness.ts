@@ -23,16 +23,41 @@ export { mulberry32 }
 export const profiledFactions = (): BotFaction[] =>
   BOT_FACTIONS.filter((f) => shipProfilesForFaction(f).length > 0)
 
+// How the eval seats the factions (2026-09-19). 'mirror' puts the same deck on
+// both seats, so the win rate is the policy's skill and nothing else: with
+// basicPolicy on both seats the model's seat wins 50 % by symmetry (seat order
+// measured at 50/47 over 120 games). 'cross' rotates the list one seat apart —
+// the older schedule, under which the faction draw decided ~90 % of the games
+// whoever played (heuristic vs heuristic, calibrated resolver: DWG won 90 % of
+// its games, SS 36 %, WF 24 %, and the same under a coin flip), so an aggregate
+// win rate mostly reported who drew DWG.
+export type Pairing = 'mirror' | 'cross'
+
+export function parsePairing(arg: string | undefined): Pairing {
+  const p = (arg ?? '').trim().toLowerCase()
+  if (p === '' || p === 'mirror') return 'mirror'
+  if (p === 'cross') return 'cross'
+  throw new Error(`unknown pairing "${arg}" (mirror or cross)`)
+}
+
 // The eval's --factions argument: a comma list of bot factions (any case),
-// blank or absent for the profiled ones. The pairing rotates through the
-// list, so it needs at least two.
-export function parseFactions(arg: string | undefined): BotFaction[] {
+// blank or absent for the profiled ones. Crossing needs at least two.
+export function parseFactions(arg: string | undefined, pairing: Pairing = 'mirror'): BotFaction[] {
   const wanted = (arg ?? '').split(',').map((s) => s.trim().toUpperCase()).filter((s) => s !== '')
   if (wanted.length === 0) return profiledFactions()
   const unknown = wanted.filter((f) => !isBotFaction(f))
   if (unknown.length) throw new Error(`unknown bot faction(s): ${unknown.join(', ')} (known: ${BOT_FACTIONS.join(', ')})`)
-  if (wanted.length < 2) throw new Error('--factions needs at least two factions to pair them')
+  if (pairing === 'cross' && wanted.length < 2) throw new Error('--factions needs at least two factions to cross them')
   return wanted as BotFaction[]
+}
+
+// The decks for game i of a run: game i mirrors factions[i % n], or crosses
+// it with the next in the list; the eval alternates the model's seat per
+// game, so a cross cycle of 2n games gives every ordered pair both seats.
+export function matchupFor(factions: readonly BotFaction[], i: number, pairing: Pairing): { factionA: BotFaction; factionB: BotFaction } {
+  const factionA = factions[i % factions.length]
+  const factionB = pairing === 'mirror' ? factionA : factions[(i + 1) % factions.length]
+  return { factionA, factionB }
 }
 
 export function deckFor(faction: BotFaction, snapshots: Map<string, SnapshotCard>, byName: Map<string, SnapshotCard>) {
