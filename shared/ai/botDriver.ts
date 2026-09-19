@@ -1,13 +1,15 @@
 import type { EngineContext, EngineGame, GameAction, Side } from '../engine/engineTypes.ts'
-import { applyAction, otherSide, sideOf } from '../engine/index.ts'
+import { applyAction, sideOf } from '../engine/index.ts'
 import { LOG_MAX_ENTRIES } from '../gameSettings.ts'
 import type { BotPolicy, OwedKind, PolicyHooks } from './basicPolicy.ts'
+import { botOwes } from './botOwes.ts'
 import { viewFor } from './botView.ts'
 import { FALLBACK } from './fallbacks.ts'
 import { describeOutcome } from './llm/describe.ts'
 import { buildMenu } from './llm/moveMenu.ts'
 import { formatTableTalk, guardTableTalk } from './llm/tableTalk.ts'
 export { FALLBACK } from './fallbacks.ts'
+export { botOwes } from './botOwes.ts'
 
 // Accepted policy actions per request before the driver stops listening to
 // the policy and applies fallbacks only (2026-09-16 AI opponent spec §5.2).
@@ -19,22 +21,6 @@ export const BOT_FALLBACK_CAP = 10
 // commits it (2026-09-18 sectioned bot turn spec §5.4). Absent, the markers
 // still land in the log and the caller commits once at the end.
 export type Checkpoint = (game: EngineGame) => Promise<void>
-
-// What the bot owes right now, in the order applyAction freezes things:
-// a pending choice first, then the battle windows, then the turn (spec §5.1).
-// Null means the human owes the next action — or nobody does, because the
-// game is over or a locked battle is waiting to be fought in From The Depths.
-// The bot never submits a report, so a report it submitted is unreachable.
-export function botOwes(game: EngineGame, botSide: Side): OwedKind | null {
-  if (game.status !== 'active') return null
-  const s = game.state
-  if (s.pendingEffect) return s.pendingEffect.side === botSide ? 'choice' : null
-  if (s.awaitingResponse) return otherSide(s.awaitingResponse.aggressor) === botSide ? 'response' : null
-  if (s.pendingReport) return s.pendingReport.submittedBy !== botSide ? 'decision' : null
-  if (s.activeBattle) return null
-  const botId = botSide === 'a' ? game.playerA : game.playerB
-  return game.activePlayer === botId ? 'turn' : null
-}
 
 // The one place a table-talk line enters the public log: after the engine's
 // own lines for the move that carried it, under the prefix, past the guard,
