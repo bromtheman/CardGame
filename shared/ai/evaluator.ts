@@ -1,7 +1,8 @@
-import { BASE_DAMAGE_DIVISOR, KEYWORDS, MATERIALS_PER_TURN, VEHICLE_TYPES } from '../gameSettings.ts'
+import { BASE_DAMAGE_DIVISOR, KEYWORDS } from '../gameSettings.ts'
+import { materialsPerTurnOf } from '../lobbySettings.ts'
 import type { CardInstance } from '../engine/gameInit.ts'
 import type { EngineGame, Side } from '../engine/engineTypes.ts'
-import { effectiveMaterialCostOf, otherSide } from '../engine/index.ts'
+import { baseStrikersIn, effectiveMaterialCostOf, otherSide } from '../engine/index.ts'
 
 // A one-ply position evaluator in TURNS OF TEMPO (2026-09-19 scored menu
 // spec §3). Under this engine a game is a two-base bombardment race: the
@@ -18,15 +19,16 @@ export const EVALUATOR = {
   win: 1000,           // a decided game
 } as const
 
-// Base damage a set of hulls deals per bombardment once eligible: not subs,
-// not Inoffensive, not noBaseDamage, not Temporary (removed at the next turn
-// start, so they never strike). Hulls played this turn count — the score is
-// read at the start of the enemy's turn, and they strike on the bot's.
+// Base damage a set of hulls deals per bombardment: applies the engine's
+// strike-eligibility roster from baseAttack.ts (not subs, not Inoffensive,
+// not noBaseDamage; hulls played before the turn count), then excludes
+// Temporary hulls (removed at the next turn start, so they never strike).
+// Fresh deployments are eligible—the score is read at the start of the
+// enemy's turn, and they strike on the bot's.
 export function strikePower(hulls: readonly CardInstance[]): number {
-  return hulls.reduce((sum, c) => {
-    if (c.vehicleType === VEHICLE_TYPES.SUB) return sum
-    if (c.keywords.includes(KEYWORDS.INOFFENSIVE) || c.keywords.includes(KEYWORDS.TEMPORARY)) return sum
-    if (c.meta.noBaseDamage === true) return sum
+  const strikers = baseStrikersIn(hulls as any, Infinity)
+  return strikers.reduce((sum, c) => {
+    if (c.keywords.includes(KEYWORDS.TEMPORARY)) return sum
     return sum + Math.floor(effectiveMaterialCostOf(c) / BASE_DAMAGE_DIVISOR)
   }, 0)
 }
@@ -53,7 +55,7 @@ export function positionScore(game: EngineGame, side: Side): number {
   const enemy = otherSide(side)
   const me = side === 'a' ? game.playerA : game.playerB
   if (game.status !== 'active') return game.winnerId === me ? EVALUATOR.win : -EVALUATOR.win
-  const income = MATERIALS_PER_TURN * Math.max(1, Math.floor(game.turnNumber))
+  const income = materialsPerTurnOf(game.settings) * Math.max(1, Math.floor(game.turnNumber))
   return turnsToWin(game, enemy) - turnsToWin(game, side)
     + EVALUATOR.board * (boardCost(game, side) - boardCost(game, enemy)) / income
     + EVALUATOR.hand * game.privates[side].hand.length

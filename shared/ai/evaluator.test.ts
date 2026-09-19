@@ -60,4 +60,26 @@ describe('positionScore', () => {
     expect(positionScore(g, 'b')).toBe(EVALUATOR.win)
     expect(positionScore(g, 'a')).toBe(-EVALUATOR.win)
   })
+  it('scales board-cost advantage by lobby materialsPerTurn setting', () => {
+    const defaultGame = makeGame()
+    const defaultEmpty = makeGame()
+    defaultGame.state.zones[0].cards.b.push(hull(150000))
+
+    const customGame = makeGame({ settings: { zones: [
+      { biome: 'water', baseHp: 1000 },
+      { biome: 'beach', baseHp: 1000 },
+      { biome: 'land', baseHp: 1000 },
+    ], materialsPerTurn: 150000 } })
+    const customEmpty = makeGame({ settings: { zones: [
+      { biome: 'water', baseHp: 1000 },
+      { biome: 'beach', baseHp: 1000 },
+      { biome: 'land', baseHp: 1000 },
+    ], materialsPerTurn: 150000 } })
+    customGame.state.zones[0].cards.b.push(hull(150000))
+
+    const defaultDiff = positionScore(defaultGame, 'b') - positionScore(defaultEmpty, 'b')
+    const customDiff = positionScore(customGame, 'b') - positionScore(customEmpty, 'b')
+    // Custom income is 2x default, so board advantage is scaled to half
+    expect(customDiff).toBeCloseTo(defaultDiff * 0.5, 5)
+  })
 })
