@@ -55,6 +55,7 @@
     "ai/llm/prompt.ts",
     "ai/llm/conversation.ts",
     "ai/llm/llmPolicy.ts",
+    "ai/llm/sectionedPolicy.ts",
     "ai/llm/makePolicy.ts"
   ],
   "game-action": [
@@ -112,6 +113,7 @@
     "ai/llm/prompt.ts",
     "ai/llm/conversation.ts",
     "ai/llm/llmPolicy.ts",
+    "ai/llm/sectionedPolicy.ts",
     "ai/llm/makePolicy.ts"
   ],
   "battle-report": ["battleReport.ts"]

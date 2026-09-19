@@ -22,6 +22,9 @@ export interface LlmPolicySettings {
   maxCalls: number
   reasoningEffort?: ReasoningEffort
   routing?: OpenRouterRouting
+  // Sectioned flow only: moves the model may name per answer. Defaults to
+  // ACTIONS_PER_ANSWER; a test sets 2 to exercise the plan path.
+  actionsPerAnswer?: number
 }
 export const DEFAULT_LLM_POLICY_SETTINGS: LlmPolicySettings = {
   callTimeoutMs: LLM_CALL_TIMEOUT_MS, requestBudgetMs: LLM_REQUEST_BUDGET_MS, maxCalls: LLM_MAX_CALLS_PER_REQUEST,
