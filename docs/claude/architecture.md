@@ -548,18 +548,34 @@ one more caller of `applyAction`; nothing in the engine knows it exists.
   source by `botDecks.test.ts`; `ADD_BOT` resolves them against the live
   `cards` table. `selfPlay.test.ts` plays every deck over seeded games — the
   first place a new card effect that wedges the bot shows up.
-- **The model policy (`shared/ai/llm/`, LLM spec 2026-09-16):** the driver
-  builds a verified, annotated move menu (`moveMenu.ts` — every action shape
-  enumerated, each applied on a clone, survivors described by public diff)
-  for a policy that declares `needsMenu`; `LlmPolicy` asks the model for a
-  plan of menu ids, re-verifies every planned move against the *current*
-  menu before offering it, and trips to `basicPolicy` on any failure. The
-  menu's `MENU_ACTION_TYPES` is pinned to `knownActionTypes()` — a new engine
-  action fails `moveMenu.test.ts` until the menu offers it. Table-talk enters
-  `state.log` only through the driver, after `guardTableTalk`, under
-  `TABLE_TALK_PREFIX`. The prompt is built from the `BotView` and the menu
-  alone; `prompt.test.ts` serialises the whole request body against known
-  opponent secrets.
+- **The model policies (`shared/ai/llm/`, LLM spec 2026-09-16 and the
+  2026-09-18 sectioned bot turn spec):** the driver builds a verified,
+  annotated move menu (`moveMenu.ts` — every action shape enumerated, each
+  applied on a clone, survivors described by public diff, each tagged with
+  its `section`) for a policy that declares `needsMenu`. `BOT_FLOW` picks
+  the policy: **`SectionedLlmPolicy`** (default) runs the turn as one
+  conversation per request in four sections — deploy → activate → fight →
+  finish (`sections.ts`) — showing the model only the current section's
+  items renumbered, taking ONE move per exchange, feeding back what the
+  engine really did (`describeOutcome`, via `onAccepted`'s third argument),
+  and asking the driver to checkpoint through `hooks.checkpoint(marker)` as
+  it enters a section; `game-action` commits at every checkpoint, so the
+  board redraws section by section, and the fixed marker lines
+  (`PracticeAI: fighting…`, prefix without quotes) ride the table-talk
+  styling. A turn after a decision in the same request resumes at activate.
+  `LlmPolicy` (`BOT_FLOW=single`) is the older single-shot plan of menu ids,
+  kept for the same-model eval (`npm run bot:eval -- --flow single`). Both
+  re-verify every move against the *current* menu before offering it and
+  trip to `basicPolicy` on any failure. The menu's `MENU_ACTION_TYPES` is
+  pinned to `knownActionTypes()`, and `sectionOf` is pinned the same way —
+  a new engine action fails `moveMenu.test.ts` and `sections.test.ts` until
+  it is offered and placed. Table-talk enters `state.log` only through the
+  driver, after `guardTableTalk`, under `TABLE_TALK_PREFIX`. The prompts are
+  built from the `BotView` and the menu alone (`prompt.ts` blocks,
+  `conversation.ts` messages); `prompt.test.ts` and `conversation.test.ts`
+  serialise the whole request against known opponent secrets. Telemetry rows
+  carry `section` and `seq`; `passed` is the sectioned flow's empty answer
+  on a one-move kind.
   The system prefix is `rulesPrimer.ts` (rules templated from
   `gameSettings.ts`, no digit outside a placeholder) plus the owner's strategy
   prose in `factionNotes.ts` — `GENERAL_TIPS` for every faction, then a

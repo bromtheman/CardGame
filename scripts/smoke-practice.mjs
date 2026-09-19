@@ -74,10 +74,16 @@ if (ship) {
   console.log('  SKIP  P1 deploys a ship into zone 1 — no affordable ship in the opening hand')
 }
 
+const rounds = []
 for (let round = 1; round <= 3; round++) {
   const before = await load()
   const r = await act({ type: 'END_TURN' })
   const after = await load()
+  // Sectioned bot turn (2026-09-18 spec §10.3): the bot's turn lands in
+  // several versions, each announced by a marker line. Recorded here,
+  // asserted at the end once the rows say which flow played.
+  const fresh = after.state.log.slice(before.state.log.length)
+  rounds.push({ versions: after.version - before.version, markers: fresh.filter((l) => /^PracticeAI: (deploying|activating|fighting|finishing)…$/.test(l)).length })
   const botMoved = after.state.log.length > before.state.log.length + 1
   // Either the bot finished its turn (P1 active again) or it declared a
   // fleet attack and is waiting on P1's report (frozen, bot still active).
@@ -114,10 +120,19 @@ if (!accessToken) {
   const res = await fetch(`https://api.supabase.com/v1/projects/${ref}/database/query`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query: `select kind, model, fallback_reason, latency_ms, table_talk from public.bot_decisions where game_id = '${gameId}' order by id` }),
+    body: JSON.stringify({ query: `select kind, model, fallback_reason, latency_ms, table_talk, section, seq from public.bot_decisions where game_id = '${gameId}' order by id` }),
   })
   const rows = res.ok ? await res.json() : []
   step('bot_decisions rows exist for the game', res.ok && rows.length > 0, `HTTP ${res.status}, ${rows.length} rows`)
+  const sectioned = rows.some((r) => r.section !== null)
+  if (sectioned) {
+    step('every bot turn committed in sections with marker lines', rounds.every((r) => r.versions >= 2 && r.markers >= 1),
+      rounds.map((r, i) => `round ${i + 1}: +${r.versions} versions, ${r.markers} markers`).join('; '))
+    step('rows carry section and seq', rows.filter((r) => r.kind === 'turn').every((r) => r.section !== null && r.seq !== null),
+      rows.map((r) => `${r.kind}/${r.section ?? '-'}#${r.seq ?? '-'}`).join(' '))
+  } else {
+    console.log(`  INFO  single flow or heuristic played (no section on any row); rounds: ${rounds.map((r) => `+${r.versions}v/${r.markers}m`).join(' ')}`)
+  }
   const live = rows.filter((r) => r.fallback_reason === null)
   if (rows.length > 0 && rows.every((r) => r.fallback_reason === 'disabled')) {
     step('model disabled on the deployed function — heuristic played, no table-talk', talkLines.length === 0, `${talkLines.length} table-talk lines`)
