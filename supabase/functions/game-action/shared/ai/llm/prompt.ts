@@ -4,7 +4,7 @@ import { effectiveMaterialCostOf } from '../../engine/index.ts'
 import { shortHandNumber } from '../../format.ts'
 import type { OwedKind } from '../basicPolicy.ts'
 import type { BotView } from '../botView.ts'
-import { LOG_TAIL_LINES } from './llmSettings.ts'
+import { LOG_TAIL_LINES, MENU_SCORE_WINDOW_TURNS } from './llmSettings.ts'
 import { tempoTag, withinWindow } from './moveMenu.ts'
 import type { MenuItem } from './moveMenu.ts'
 import { renderPrimer } from './rulesPrimer.ts'
@@ -22,6 +22,9 @@ export interface PromptInput {
   menu: MenuItem[]
   situation?: string | null
   planSoFar?: MenuItem[]
+  // The turn menu's score window (2026-09-19 scored menu spec §6.3);
+  // defaults to MENU_SCORE_WINDOW_TURNS, as withinWindow itself does.
+  window?: number
 }
 
 export const buildSystemPrompt = (faction: string, flow: PrimerFlow = 'single'): string => renderPrimer(faction, flow)
@@ -117,7 +120,7 @@ export function logTail(view: BotView): string[] {
   return tail.length ? ['RECENT LOG', ...tail.map((l) => `- ${l}`)] : []
 }
 
-export function buildUserPrompt({ view, kind, menu, situation, planSoFar }: PromptInput): string {
+export function buildUserPrompt({ view, kind, menu, situation, planSoFar, window }: PromptInput): string {
   const out: string[] = [...headerLines(view, kind), '', ...boardBlock(view), '', ...handBlock(view)]
   const owed = kindBlock(view, kind)
   if (owed.length) out.push('', ...owed)
@@ -126,7 +129,7 @@ export function buildUserPrompt({ view, kind, menu, situation, planSoFar }: Prom
   if (situation) out.push('', `SITUATION: ${situation}`)
   if (planSoFar && planSoFar.length) out.push(`Your plan so far: ${planSoFar.map((m) => `#${m.id} ${m.text}`).join(' | ')}`)
   out.push('', 'MENU')
-  out.push(...(kind === 'turn' ? withinWindow(menu) : menu).map((m) => `#${m.id}${tempoTag(m.score)} ${m.text}`))
+  out.push(...(kind === 'turn' ? withinWindow(menu, window ?? MENU_SCORE_WINDOW_TURNS) : menu).map((m) => `#${m.id}${tempoTag(m.score)} ${m.text}`))
   out.push('', ASK[kind])
   return out.join('\n')
 }

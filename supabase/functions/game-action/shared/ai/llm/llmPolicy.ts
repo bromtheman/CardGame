@@ -5,12 +5,14 @@ import { EMPTY_USAGE, LlmHttpError, LlmTimeoutError } from './llmClient.ts'
 import type { LlmClient, LlmUsage } from './llmClient.ts'
 import {
   LLM_CALL_TIMEOUT_MS, LLM_MAX_CALLS_PER_REQUEST, LLM_MAX_OUTPUT_TOKENS, LLM_REQUEST_BUDGET_MS, LLM_TEMPERATURE,
+  MENU_SCORE_WINDOW_TURNS, TEMPO_GUARD_TURNS,
 } from './llmSettings.ts'
 import type { OpenRouterRouting, ReasoningEffort } from './llmSettings.ts'
-import { sameAction } from './moveMenu.ts'
+import { sameAction, withinWindow } from './moveMenu.ts'
 import type { MenuItem } from './moveMenu.ts'
 import { parsePlanAnswer, PLAN_SCHEMA } from './planSchema.ts'
 import { buildSystemPrompt, buildUserPrompt } from './prompt.ts'
+import { guardPick } from './tempoGuard.ts'
 import type { FallbackReason, TelemetryRow } from './telemetry.ts'
 
 // reasoningEffort and routing ride on every call of the request;
@@ -25,9 +27,15 @@ export interface LlmPolicySettings {
   // Sectioned flow only: moves the model may name per answer. Defaults to
   // ACTIONS_PER_ANSWER; a test sets 2 to exercise the plan path.
   actionsPerAnswer?: number
+  // The tempo guard's margin and the turn menu's score window (2026-09-19
+  // scored menu spec §6.2, §6.3). Default to the llmSettings values so a
+  // test or the eval can vary them without editing settings.
+  tempoGuardTurns?: number
+  menuScoreWindowTurns?: number
 }
 export const DEFAULT_LLM_POLICY_SETTINGS: LlmPolicySettings = {
   callTimeoutMs: LLM_CALL_TIMEOUT_MS, requestBudgetMs: LLM_REQUEST_BUDGET_MS, maxCalls: LLM_MAX_CALLS_PER_REQUEST,
+  tempoGuardTurns: TEMPO_GUARD_TURNS, menuScoreWindowTurns: MENU_SCORE_WINDOW_TURNS,
 }
 
 // The model-backed policy (spec §3.3). One instance per request: it holds
@@ -91,7 +99,7 @@ export class LlmPolicy implements BotPolicy {
     if (menu.length === 0) return this.fallback.candidates(view, kind)
     const next = this.plan[0]
     if (next && this.planKind === kind && menu.some((m) => sameAction(m.action, next.action))) {
-      return [next.action, ...(await this.fallback.candidates(view, kind))]
+      return [this.guarded(menu, next, kind).action, ...(await this.fallback.candidates(view, kind))]
     }
     const situation = this.situationFor(kind, next)
     this.plan = []
@@ -104,7 +112,18 @@ export class LlmPolicy implements BotPolicy {
     if (items === null) return this.fallback.candidates(view, kind)
     this.plan = items
     this.planKind = kind
-    return [items[0].action, ...(await this.fallback.candidates(view, kind))]
+    return [this.guarded(menu, items[0], kind).action, ...(await this.fallback.candidates(view, kind))]
+  }
+
+  // The tempo guard on a turn move (spec §6.2): a guarded pick replaces the
+  // plan — the board will change on a premise the plan did not hold.
+  private guarded(menu: MenuItem[], chosen: MenuItem, kind: OwedKind): MenuItem {
+    if (kind !== 'turn') return chosen
+    const { item, guard } = guardPick(menu, chosen, this.settings.tempoGuardTurns ?? TEMPO_GUARD_TURNS)
+    if (!guard || !item) return chosen
+    if (this.currentRow) this.currentRow.guard = guard
+    this.plan = [item]
+    return item
   }
 
   onAccepted(action: GameAction, _kind: OwedKind): string | null {
@@ -150,7 +169,7 @@ export class LlmPolicy implements BotPolicy {
       const res = await this.client!.complete({
         messages: [
           { role: 'system', content: buildSystemPrompt(view.state.factions[view.side]) },
-          { role: 'user', content: buildUserPrompt({ view, kind, menu, situation, planSoFar: this.appliedItems }) },
+          { role: 'user', content: buildUserPrompt({ view, kind, menu, situation, planSoFar: this.appliedItems, window: this.settings.menuScoreWindowTurns }) },
         ],
         schemaName: 'plan',
         schema: PLAN_SCHEMA as unknown as Record<string, unknown>,
@@ -170,7 +189,11 @@ export class LlmPolicy implements BotPolicy {
     const latencyMs = Math.max(0, this.now() - started)
     this.spentMs += latencyMs
     const answer = reason === null && text !== null ? parsePlanAnswer(text) : null
-    const items = answer ? answer.plan.map((id) => menu.find((m) => m.id === id)).filter((m): m is MenuItem => m !== undefined) : []
+    // Ids resolve against the SHOWN menu (the same withinWindow(...) array
+    // the prompt printed), not the full one — an id the window hid was never
+    // presented, so naming it is a hallucination, not a move (ruling 2).
+    const shown = kind === 'turn' ? withinWindow(menu, this.settings.menuScoreWindowTurns) : menu
+    const items = answer ? answer.plan.map((id) => shown.find((m) => m.id === id)).filter((m): m is MenuItem => m !== undefined) : []
     if (reason === null && items.length === 0) {
       reason = 'malformed'
       detail = `unparseable answer: ${(text ?? '').slice(0, 160)}`
@@ -202,7 +225,7 @@ export class LlmPolicy implements BotPolicy {
       menuSize, plan: [], applied: [], expectation: null,
       report: kind === 'decision' && report ? { results: report.results, repairs: report.repairs } : null,
       tableTalk: null, fallbackReason: reason, error,
-      section: null, seq: null,
+      section: null, seq: null, guard: null,
     }
   }
 }

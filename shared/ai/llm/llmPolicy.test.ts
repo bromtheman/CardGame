@@ -6,8 +6,37 @@ import { viewFor } from '../botView'
 import { LlmHttpError, LlmTimeoutError } from './llmClient'
 import type { LlmClient, LlmRequest } from './llmClient'
 import { LlmPolicy } from './llmPolicy'
+import { buildMenu, withinWindow } from './moveMenu'
 
 const userOf = (req: LlmRequest): string => req.messages[req.messages.length - 1].content
+
+// A menu number by predicate against the menu the LAST user message showed
+// (sectionedPolicy.test.ts's helper, ported here for the guard tests below,
+// which need to name one specific item rather than a whole plan).
+function idOf(user: string, want: string): number {
+  const menu = user.slice(user.indexOf('MENU'))
+  const line = menu.split('\n').find((l) => /^#\d+ /.test(l) && l.includes(want))
+  if (!line) throw new Error(`no menu line matching "${want}" in:\n${menu}`)
+  return Number(line.slice(1).split(' ')[0])
+}
+
+// A fake that always proposes END TURN alone, resolved from whatever menu
+// the request shows — the tempo guard tests plan around the model naming
+// only this move so the guard (or its absence) is the only thing at play.
+function endTurnOnlyClient(calls: LlmRequest[] = []): LlmClient & { calls: LlmRequest[] } {
+  return {
+    model: 'fake/model', calls,
+    async complete(req) {
+      calls.push(req)
+      const id = idOf(userOf(req), 'END TURN')
+      return {
+        text: JSON.stringify({ plan: [id], expectation: { summary: 's', battle: null }, tableTalk: null }),
+        usage: { promptTokens: 100, completionTokens: 10, cachedTokens: 50, costUsd: 0.00001 },
+        latencyMs: 1,
+      }
+    },
+  }
+}
 
 const BOT = 'bob'
 
@@ -198,5 +227,61 @@ describe('LlmPolicy', () => {
     expect(applied.map((a) => a.type)).toEqual(['PLAY_CARD_TO_ZONE', 'END_TURN'])
     expect(policy.rows).toHaveLength(1)
     expect(policy.rows[0]).toMatchObject({ kind: 'turn', model: 'inception/mercury-2.5', fallbackReason: 'disabled', menuSize: 0, latencyMs: 0, plan: [] })
+  })
+})
+
+describe('LlmPolicy — the tempo guard', () => {
+  // A deploy that scores well above END TURN; the model plans END TURN only.
+  const guardGame = () => {
+    const g = makeGame({ activePlayer: BOT, turnNumber: 3, privates: { a: { hand: [], deck: [] }, b: { hand: [inst({ instanceId: 'ship-100', materialCost: 100000 })], deck: [] } } })
+    g.state.resources.b.materials = 225000
+    return g
+  }
+
+  it('plays the best move instead of a plan that ends the turn a margin below it, and files the guard', async () => {
+    const policy = new LlmPolicy(endTurnOnlyClient(), basicPolicy, 'fake/model', fast)
+    const { applied } = await runBotUntilIdle(guardGame(), BOT, makeCtx(), policy)
+    expect(applied[0].type).toBe('PLAY_CARD_TO_ZONE')
+    expect(policy.rows[0].guard).toEqual(expect.objectContaining({ picked: expect.any(Number), taken: expect.any(Number) }))
+    expect(policy.rows[0].guard!.gap).toBeGreaterThanOrEqual(1)
+  })
+
+  it('never guards with TEMPO_GUARD_TURNS at Infinity', async () => {
+    const policy = new LlmPolicy(endTurnOnlyClient(), basicPolicy, 'fake/model', { ...fast, tempoGuardTurns: Infinity })
+    const { applied } = await runBotUntilIdle(guardGame(), BOT, makeCtx(), policy)
+    expect(applied.map((a) => a.type)).toEqual(['END_TURN'])
+    expect(policy.rows[0].guard).toBeNull()
+  })
+
+  it('drops a plan naming a menu number the window hid, filing it malformed so the fallback plays', async () => {
+    const g = makeGame({
+      activePlayer: BOT, turnNumber: 3,
+      privates: {
+        a: { hand: [], deck: [] },
+        b: {
+          hand: [
+            inst({ instanceId: 'ship-20', name: 'Skiff', materialCost: 20000 }),
+            inst({ instanceId: 'ship-100', name: 'Corsair', materialCost: 100000 }),
+          ],
+          deck: [],
+        },
+      },
+    })
+    g.state.resources.b.materials = 300000
+    // The same menu the driver's first call will build (same fixture, a
+    // fresh seeded ctx — buildMenu draws exactly one rng value, so a second,
+    // independent makeCtx() reproduces it) — so the hidden item's id below
+    // is a real menu number, not a guess.
+    const preview = buildMenu(g, BOT, makeCtx(), 'turn')
+    const weakest = preview
+      .filter((m) => m.action.type === 'PLAY_CARD_TO_ZONE' && m.action.instanceId === 'ship-20')
+      .sort((a, b) => (a.score ?? 0) - (b.score ?? 0))[0]
+    expect(weakest).toBeDefined()
+    expect(withinWindow(preview, 0.5).some((m) => m.id === weakest.id)).toBe(false)   // confirms the fixture hides it
+    const text = JSON.stringify({ plan: [weakest.id], expectation: { summary: 's', battle: null }, tableTalk: null })
+    const policy = new LlmPolicy(fakeClient([text]), basicPolicy, 'fake/model', { ...fast, menuScoreWindowTurns: 0.5 })
+    const { applied } = await runBotUntilIdle(g, BOT, makeCtx(), policy)
+    expect(policy.rows[0].fallbackReason).toBe('malformed')
+    expect(applied[applied.length - 1].type).toBe('END_TURN')   // basicPolicy fallback still plays the turn
   })
 })

@@ -1,6 +1,7 @@
 import type { GameAction } from '../../engine/engineTypes.ts'
 import type { OwedKind } from '../basicPolicy.ts'
 import type { Section } from './sections.ts'
+import type { GuardRecord } from './tempoGuard.ts'
 
 // Why the model did not answer a call (spec §7.1). `disabled` = no key or the
 // kill switch; `plan_rejected` = the engine refused a move the menu had
@@ -42,6 +43,10 @@ export interface TelemetryRow {
   // one-move kind's section, and on the disabled row.
   section: Section | null
   seq: number | null
+  // The tempo guard's record when it replaced the model's pick (2026-09-19
+  // scored menu spec §6.2, §7); null when it did not fire (or cannot yet —
+  // the sectioned flow's guard is Task 8).
+  guard: GuardRecord | null
 }
 
 export function toBotDecisionRow(row: TelemetryRow, gameId: string, version: number) {
@@ -51,6 +56,6 @@ export function toBotDecisionRow(row: TelemetryRow, gameId: string, version: num
     cached_tokens: row.cachedTokens, cost_usd: row.costUsd, menu_size: row.menuSize,
     plan: row.plan, applied: row.applied, expectation: row.expectation, report: row.report,
     table_talk: row.tableTalk, fallback_reason: row.fallbackReason, error: row.error,
-    section: row.section, seq: row.seq,
+    section: row.section, seq: row.seq, guard: row.guard,
   }
 }

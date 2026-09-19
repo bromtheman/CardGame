@@ -297,7 +297,7 @@ export class SectionedLlmPolicy implements BotPolicy {
       menuSize, plan: [], applied: [], expectation: null,
       report: kind === 'decision' && report ? { results: report.results, repairs: report.repairs } : null,
       tableTalk: null, fallbackReason: reason, error,
-      section, seq,
+      section, seq, guard: null,
     }
   }
 }
