@@ -196,6 +196,40 @@ describe('SectionedLlmPolicy — finish, caps and interrupts', () => {
     expect(policy.rows.map((r) => [r.kind, r.section])).toEqual([['turn', 'deploy'], ['choice', null], ['turn', 'fight'], ['turn', 'finish']])
   })
 
+  it('a choice the model passes on still honours the raising move’s then', async () => {
+    // As above, but the model answers [] to the choice: the heuristic picks
+    // an option, and the pending "next" from the deploy move must survive —
+    // the next turn call is FIGHT, not deploy again (spec §3.2 step 4).
+    const g = turnGame()
+    const ctx = makeCtx()
+    const client = scripted([
+      { pick: 'PLAY Corsair', then: 'next' },
+      { pick: null },   // the choice: passed
+      { pick: null },   // fight
+      { pick: null },   // finish → END TURN
+    ])
+    const policy = new SectionedLlmPolicy(client, basicPolicy, 'fake/model', fast)
+    const checkpoints: string[] = []
+    const hooks = { checkpoint: async (m: string) => { checkpoints.push(m) } }
+    const play = (await policy.candidates(viewFor(g, 'b', ctx.rng, buildMenu(g, BOT, ctx, 'turn')), 'turn', hooks))[0]
+    const played = applyAction(g, BOT, play, ctx)
+    if (!played.ok) throw new Error(played.error)
+    policy.onAccepted(play, 'turn', 'zone 1: your hulls 1→2 (+Corsair)')
+    const c = played.game
+    c.state.pendingEffect = { effect: 'e', side: 'b', card: inst({ name: 'Corsair' }), kind: 'choice', prompt: 'Pick', options: [{ id: 'x', label: 'Left' }, { id: 'y', label: 'Right' }] }
+    const choice = (await policy.candidates(viewFor(c, 'b', ctx.rng, buildMenu(c, BOT, ctx, 'choice')), 'choice', hooks))[0]
+    expect(choice.type).toBe('RESOLVE_PENDING_EFFECT')   // the heuristic's pick
+    expect(policy.rows[1].fallbackReason).toBe('passed')
+    policy.onAccepted(choice, 'choice', 'chose')
+    c.state.pendingEffect = null
+    const next = await policy.candidates(viewFor(c, 'b', ctx.rng, buildMenu(c, BOT, ctx, 'turn')), 'turn', hooks)
+    expect(next[0].type).toBe('END_TURN')
+    expect(client.calls.length).toBe(4)
+    expect(userOf(client.calls[2])).toContain('SECTION: FIGHT')
+    expect(checkpoints).toEqual([SECTION_MARKERS.deploy, SECTION_MARKERS.fight, SECTION_MARKERS.finish])
+    expect(policy.rows.map((r) => [r.kind, r.section])).toEqual([['turn', 'deploy'], ['choice', null], ['turn', 'fight'], ['turn', 'finish']])
+  })
+
   it('a turn after a decision in the same request resumes at activate, in the same conversation', async () => {
     const g = makeGame({ activePlayer: BOT, turnNumber: 3 })
     g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'mine-1', name: 'Marauder', materialCost: 150000, playedOnTurn: 1 }))
@@ -268,6 +302,7 @@ describe('SectionedLlmPolicy — one-move kinds and failure', () => {
     const ghost = new SectionedLlmPolicy(scripted([JSON.stringify({ actions: [99], then: 'next', note: 'n', battle: null, tableTalk: null })]), basicPolicy, 'fake/model', fast)
     await runBotUntilIdle(turnGame(), BOT, makeCtx(), ghost)
     expect(ghost.rows.map((r) => r.fallbackReason)).toEqual(['malformed'])
+    expect(ghost.rows[0].error).toMatch(/^unknown menu numbers: 99/)
   })
 
   it('files http and timeout reasons with the detail, and trips', async () => {

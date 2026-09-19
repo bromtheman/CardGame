@@ -44,6 +44,7 @@ export class SectionedLlmPolicy implements BotPolicy {
   private pendingThen: Then | null = null
   private readonly moves: Record<Section, number> = { deploy: 0, activate: 0, fight: 0, finish: 0 }
   private plan: MenuItem[] = []                    // actionsPerAnswer above one only
+  private planRow: TelemetryRow | null = null      // the row the plan's moves belong to
   private expected: GameAction | null = null       // what the driver should accept next
   private expectedRow: TelemetryRow | null = null  // the row that move belongs to
   private lastOutcome: string | null = null
@@ -96,7 +97,7 @@ export class SectionedLlmPolicy implements BotPolicy {
       asked.row.fallbackReason = 'passed'
       return this.fallback.candidates(view, kind)
     }
-    this.propose(asked.items[0], asked.row, asked.answer.then)
+    this.propose(asked.items[0], asked.row, null)
     return [asked.items[0].action, ...(await this.fallback.candidates(view, kind))]
   }
 
@@ -113,6 +114,7 @@ export class SectionedLlmPolicy implements BotPolicy {
       if (menu.some((m) => sameAction(m.action, head.action))) {
         this.plan.shift()
         this.expected = head.action
+        this.expectedRow = this.planRow
         return [head.action, ...(await this.fallback.candidates(view, 'turn'))]
       }
       this.plan = []
@@ -145,6 +147,7 @@ export class SectionedLlmPolicy implements BotPolicy {
       }
       this.propose(asked.items[0], asked.row, asked.answer.then)
       this.plan = asked.items.slice(1)
+      this.planRow = asked.row
       return [asked.items[0].action, ...(await this.fallback.candidates(view, 'turn'))]
     }
   }
@@ -163,10 +166,10 @@ export class SectionedLlmPolicy implements BotPolicy {
     return end ? [end.action, ...tail] : tail
   }
 
-  private propose(item: MenuItem, row: TelemetryRow, then: Then): void {
+  private propose(item: MenuItem, row: TelemetryRow, then: Then | null): void {
     this.expected = item.action
     this.expectedRow = row
-    this.pendingThen = then
+    if (then !== null) this.pendingThen = then
     this.pendingTalk = row.tableTalk
   }
 
@@ -185,16 +188,22 @@ export class SectionedLlmPolicy implements BotPolicy {
       return talk
     }
     // The engine took something else — the heuristic tail or the driver's
-    // fallback. A verified move was refused: file it, drop the plan, and let
-    // the model re-decide in the same section (§3.2 step 5).
+    // fallback. A verified turn move was refused: file it, drop the plan, and
+    // let the model re-decide in the same section (§3.2 step 5). A one-move
+    // kind the heuristic answered (a pass, an empty menu, a refusal) files the
+    // same but leaves the turn's pending state alone — the move that raised a
+    // choice keeps its `then` (§3.2 step 4, §3.3).
     if (this.expected && this.expectedRow && this.expectedRow.fallbackReason === null) this.expectedRow.fallbackReason = 'plan_rejected'
     this.lastOutcome = this.expected ? `The engine refused your move; instead: ${outcome}` : outcome
+    if (kind === 'turn') {
+      this.plan = []
+      this.planRow = null
+      this.pendingThen = null
+      this.advance = false
+    }
     this.expected = null
     this.expectedRow = null
-    this.plan = []
-    this.pendingThen = null
     this.pendingTalk = null
-    this.advance = false
     return null
   }
 
@@ -246,11 +255,13 @@ export class SectionedLlmPolicy implements BotPolicy {
     this.spentMs += latencyMs
     const answer = reason === null && text !== null ? parseAnswer(text, this.settings.actionsPerAnswer ?? ACTIONS_PER_ANSWER) : null
     const items = answer ? itemsFor(numbered, answer.actions) : []
-    // An answer that named only numbers the menu does not have is a
-    // hallucination, not a pass (§4.5).
-    if (reason === null && (answer === null || (answer.actions.length > 0 && items.length === 0))) {
+    if (reason === null && answer === null) {
       reason = 'malformed'
       detail = `unparseable answer: ${(text ?? '').slice(0, 160)}`
+    } else if (reason === null && answer !== null && answer.actions.length > 0 && items.length === 0) {
+      // Numbers the menu does not have: a hallucination, not a pass (§4.5).
+      reason = 'malformed'
+      detail = `unknown menu numbers: ${answer.actions.join(', ')}`
     }
     const row = this.row(view, kind, section, seq, numbered.items.length, latencyMs, reason, usage, detail)
     if (answer && reason === null) {
