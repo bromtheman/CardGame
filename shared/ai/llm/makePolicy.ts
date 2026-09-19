@@ -1,20 +1,34 @@
+import type { BotPolicy } from '../basicPolicy.ts'
 import { basicPolicy } from '../basicPolicy.ts'
 import { DEFAULT_LLM_POLICY_SETTINGS, LlmPolicy } from './llmPolicy.ts'
+import type { LlmPolicySettings } from './llmPolicy.ts'
 import { DEFAULT_BOT_MODEL, MODEL_REASONING_EFFORT, MODEL_ROUTING, REASONING_EFFORTS } from './llmSettings.ts'
 import type { OpenRouterRouting, ReasoningEffort } from './llmSettings.ts'
 import { OpenRouterClient } from './openRouterClient.ts'
+import { SectionedLlmPolicy } from './sectionedPolicy.ts'
+import type { TelemetryRow } from './telemetry.ts'
 
 // Env → policy (spec §3.4). No key, or the kill switch, means the heuristic
-// plays through a disabled LlmPolicy — one wiring path, and the fallback is
-// visible in telemetry. Both functions call this; nothing else constructs a
-// policy in production.
+// plays through a disabled model policy — one wiring path, and the fallback
+// is visible in telemetry. Both functions call this; nothing else constructs
+// a policy in production. BOT_FLOW picks the sectioned conversation (the
+// default) or the single-shot plan (2026-09-18 sectioned bot turn spec §5.5,
+// ruling 6): the two are compared by the eval at the same model and effort.
 export interface BotEnv {
   OPENROUTER_API_KEY?: string
   BOT_MODEL?: string
   BOT_LLM_DISABLED?: string
   BOT_REASONING_EFFORT?: string
   BOT_PROVIDERS?: string
+  BOT_FLOW?: string
 }
+
+export type BotFlow = 'single' | 'sections'
+export const botFlowFor = (raw?: string): BotFlow => ((raw ?? '').trim().toLowerCase() === 'single' ? 'single' : 'sections')
+
+// What both model policies expose beyond BotPolicy: the functions read rows,
+// the eval reads rows and settings, the tests read modelId.
+export type ModelBackedPolicy = BotPolicy & { readonly rows: TelemetryRow[]; readonly modelId: string; readonly settings: LlmPolicySettings }
 
 // BOT_REASONING_EFFORT, when it names a level, beats the model's row in
 // MODEL_REASONING_EFFORT; anything else (unset, blank, a typo) leaves the
@@ -35,7 +49,7 @@ export function routingFor(model: string, override?: string): OpenRouterRouting 
   return only.length > 0 ? { ...row, only } : row
 }
 
-export function makeBotPolicy(env: BotEnv, fetchImpl?: typeof fetch): LlmPolicy {
+export function makeBotPolicy(env: BotEnv, fetchImpl?: typeof fetch): ModelBackedPolicy {
   const model = env.BOT_MODEL?.trim() || DEFAULT_BOT_MODEL
   const key = env.OPENROUTER_API_KEY?.trim() ?? ''
   const disabled = key === '' || ['1', 'true'].includes((env.BOT_LLM_DISABLED ?? '').trim().toLowerCase())
@@ -44,5 +58,8 @@ export function makeBotPolicy(env: BotEnv, fetchImpl?: typeof fetch): LlmPolicy 
     reasoningEffort: reasoningEffortFor(model, env.BOT_REASONING_EFFORT),
     routing: routingFor(model, env.BOT_PROVIDERS),
   }
-  return new LlmPolicy(disabled ? null : new OpenRouterClient(key, model, fetchImpl), basicPolicy, model, settings)
+  const client = disabled ? null : new OpenRouterClient(key, model, fetchImpl)
+  return botFlowFor(env.BOT_FLOW) === 'single'
+    ? new LlmPolicy(client, basicPolicy, model, settings)
+    : new SectionedLlmPolicy(client, basicPolicy, model, settings)
 }

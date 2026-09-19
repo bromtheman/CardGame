@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_LLM_POLICY_SETTINGS } from './llmPolicy'
+import { DEFAULT_LLM_POLICY_SETTINGS, LlmPolicy } from './llmPolicy'
 import { DEFAULT_BOT_MODEL } from './llmSettings'
-import { makeBotPolicy } from './makePolicy'
+import { botFlowFor, makeBotPolicy } from './makePolicy'
+import { SectionedLlmPolicy } from './sectionedPolicy'
 
 describe('makeBotPolicy', () => {
   it('is disabled without a key or with the kill switch, enabled with a key', () => {
@@ -35,5 +36,14 @@ describe('makeBotPolicy', () => {
     expect(makeBotPolicy({ OPENROUTER_API_KEY: 'sk', BOT_PROVIDERS: 'inception' }).settings.routing).toEqual({ only: ['inception'] })
     // Blank means "the model's row", never "no providers at all".
     expect(makeBotPolicy({ OPENROUTER_API_KEY: 'sk', BOT_MODEL: 'deepseek/deepseek-v4.1-flash', BOT_PROVIDERS: ' , ' }).settings.routing).toEqual(fast)
+  })
+  it('builds the sectioned policy by default and the single-shot one on BOT_FLOW=single', () => {
+    expect(makeBotPolicy({ OPENROUTER_API_KEY: 'sk' })).toBeInstanceOf(SectionedLlmPolicy)
+    expect(makeBotPolicy({ OPENROUTER_API_KEY: 'sk', BOT_FLOW: 'sections' })).toBeInstanceOf(SectionedLlmPolicy)
+    expect(makeBotPolicy({ OPENROUTER_API_KEY: 'sk', BOT_FLOW: ' Single ' })).toBeInstanceOf(LlmPolicy)
+    expect(makeBotPolicy({ BOT_FLOW: 'single' })).toBeInstanceOf(LlmPolicy)   // disabled, still the named flow
+    expect(makeBotPolicy({ OPENROUTER_API_KEY: 'sk', BOT_FLOW: 'typo' })).toBeInstanceOf(SectionedLlmPolicy)
+    expect(botFlowFor(undefined)).toBe('sections')
+    expect(botFlowFor('single')).toBe('single')
   })
 })
