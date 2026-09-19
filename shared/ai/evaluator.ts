@@ -1,7 +1,12 @@
 import { BASE_DAMAGE_DIVISOR, KEYWORDS } from '../gameSettings.ts'
 import { materialsPerTurnOf } from '../lobbySettings.ts'
-import type { EngineGame, Side, ZoneCardEntry } from '../engine/engineTypes.ts'
-import { baseStrikersIn, effectiveMaterialCostOf, otherSide } from '../engine/index.ts'
+import type { EngineContext, EngineGame, GameAction, Side, ZoneCardEntry } from '../engine/engineTypes.ts'
+import { applyAction, baseStrikersIn, effectiveMaterialCostOf, otherSide, sideOf } from '../engine/index.ts'
+import { basicPolicy } from './basicPolicy.ts'
+import { botOwes } from './botOwes.ts'
+import { viewFor } from './botView.ts'
+import { resolveBattle } from './battleSim.ts'
+import { mulberry32 } from './seededRng.ts'
 
 // A one-ply position evaluator in TURNS OF TEMPO (2026-09-19 scored menu
 // spec §3). Under this engine a game is a two-base bombardment race: the
@@ -59,4 +64,104 @@ export function positionScore(game: EngineGame, side: Side): number {
     + EVALUATOR.board * (boardCost(game, side) - boardCost(game, enemy)) / income
     + EVALUATOR.hand * game.privates[side].hand.length
     + EVALUATOR.baseHp * game.state.zones.reduce((t, z) => t + z.baseHp[side] - z.baseHp[enemy], 0)
+}
+
+const withRng = (ctx: EngineContext, seed: number): EngineContext => ({ ...ctx, rng: mulberry32(seed >>> 0) })
+const playerOf = (game: EngineGame, side: Side): string => (side === 'a' ? game.playerA : game.playerB)
+
+// Resolves whatever choice a trial left pending, for either side. The pending
+// choice belongs to p.side, and basicPolicy's 'choice' candidates only read
+// state.pendingEffect.options and the view's rng — never which side is
+// asking — so the same call resolves it whichever side owes it; there is no
+// need to gate it on the choice being the BOT's own (an earlier draft did,
+// via a condition that reduced to botOwes(game, p.side) === 'choice', which
+// is always true here since p.side IS state.pendingEffect.side). Falls back
+// to the first option, or cancel, only if basicPolicy offers nothing.
+function settleChoices(input: EngineGame, ctx: EngineContext): EngineGame | null {
+  let game = input
+  for (let guard = 0; guard < EVALUATOR.choiceDepth && game.state.pendingEffect; guard++) {
+    const p = game.state.pendingEffect
+    const actor = playerOf(game, p.side)
+    // basicPolicy's own candidates() is never async — but it is typed through
+    // the general BotPolicy interface, whose signature allows a model-backed
+    // policy's Promise. Narrowed at runtime rather than asserted, so a
+    // genuinely async result degrades to the fallback below instead of lying
+    // to the type system.
+    const result = basicPolicy.candidates(viewFor(game, p.side, ctx.rng), 'choice')
+    const options: GameAction[] = Array.isArray(result) ? result : []
+    if (options.length === 0) options.push(p.options.length ? { type: 'RESOLVE_PENDING_EFFECT', choiceId: p.options[0].id } : { type: 'RESOLVE_PENDING_EFFECT', cancel: true })
+    let settled = false
+    for (const action of options) {
+      const r = applyAction(game, actor, action, ctx)
+      if (r.ok) { game = r.game; settled = true; break }
+    }
+    if (!settled) return null
+  }
+  return game.state.pendingEffect ? null : game
+}
+
+// The position at the start of the enemy's turn if the bot ended now.
+function endedScore(input: EngineGame, botId: string, side: Side, ctx: EngineContext): number | null {
+  const game = settleChoices(input, ctx)
+  if (!game) return null
+  const owed = botOwes(game, side)
+  if (owed === null) return positionScore(game, side)   // the game ended on this move
+  if (owed !== 'turn') return null
+  const r = applyAction(game, botId, { type: 'END_TURN' }, ctx)
+  return r.ok ? positionScore(r.game, side) : null
+}
+
+// A fleet attack played out EVALUATOR.battleSamples times: the defender
+// withdraws nothing (only when it actually has that option — see below) and
+// reports a resolver draw, the bot approves repairing nothing, choices
+// settle, the turn ends, the position is scored. The mean of the samples
+// that completed; null if none did.
+//
+// `declared` may already hold activeBattle rather than awaitingResponse:
+// battleDeclare.ts's ATTACK_ENEMY_FLEET handler opens a response window only
+// when the defender has a Stealthy or omissible hull to withdraw — plain
+// hulls lock straight into activeBattle, and RESPOND_TO_ATTACK refuses
+// outright ("No attack awaits a response") when there is no window to answer.
+// So RESPOND_TO_ATTACK is only spent when awaitingResponse says there is one.
+function battleMean(declared: EngineGame, botId: string, side: Side, ctx: EngineContext, seed: number): number | null {
+  const enemyId = playerOf(declared, otherSide(side))
+  const scores: number[] = []
+  for (let k = 0; k < EVALUATOR.battleSamples; k++) {
+    // 7919 is prime and far bigger than battleSamples, so consecutive samples'
+    // seeds land nowhere near each other in mulberry32's state space.
+    const sample = withRng(ctx, seed + 7919 * (k + 1))
+    let locked = declared
+    if (declared.state.awaitingResponse) {
+      const responded = applyAction(declared, enemyId, { type: 'RESPOND_TO_ATTACK', optOutIds: [] }, sample)
+      if (!responded.ok) continue
+      locked = responded.game
+    }
+    if (!locked.state.activeBattle) continue
+    const reported = applyAction(locked, enemyId, { type: 'SUBMIT_BATTLE_REPORT', results: resolveBattle(locked, sample.rng), repairs: [] }, sample)
+    if (!reported.ok) continue
+    const decided = applyAction(reported.game, botId, { type: 'DECIDE_BATTLE_REPORT', approve: true, repairs: [] }, sample)
+    if (!decided.ok) continue
+    const s = endedScore(decided.game, botId, side, sample)
+    if (s !== null) scores.push(s)
+  }
+  return scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null
+}
+
+// The score of the position the bot would hand the enemy by making `action`
+// and then ending its turn (spec §3.4); END TURN scores its own trial state;
+// null when the engine refuses the move or the trial cannot be completed.
+export function scoreMove(game: EngineGame, botId: string, action: GameAction, ctx: EngineContext, seed: number): number | null {
+  const side = sideOf(game, botId)
+  if (!side) return null
+  const trial = applyAction(game, botId, action, withRng(ctx, seed))
+  if (!trial.ok) return null
+  if (action.type === 'END_TURN') return positionScore(trial.game, side)
+  // A fleet attack always leaves either a response window (awaitingResponse)
+  // or an already-locked battle (activeBattle) — battleMean handles both.
+  if (action.type === 'ATTACK_ENEMY_FLEET' && (trial.game.state.awaitingResponse || trial.game.state.activeBattle)) {
+    return battleMean(trial.game, botId, side, ctx, seed)
+  }
+  // +1 so the post-trial rng stream (choice settling, END TURN) never repeats
+  // the trial's own draws when a caller reuses the same seed for both.
+  return endedScore(trial.game, botId, side, withRng(ctx, seed + 1))
 }
