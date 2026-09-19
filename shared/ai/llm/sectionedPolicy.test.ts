@@ -311,7 +311,7 @@ describe('SectionedLlmPolicy — one-move kinds and failure', () => {
     const r1 = await runBotUntilIdle(turnGame(), BOT, makeCtx(), junk)
     expect(r1.applied.map((a) => a.type)).toEqual(['PLAY_CARD_TO_ZONE', 'ATTACK_ENEMY_BASE', 'END_TURN'])   // basicPolicy's turn
     expect(junk.rows.map((r) => r.fallbackReason)).toEqual(['malformed'])
-    expect(junk.needsMenu).toBe(false)
+    expect(junk.needsMenu).toBe(true)   // tripped, but the scored fallback still reads the menu
     expect(junk.rows[0].error).toMatch(/^unparseable answer/)
 
     const ghost = new SectionedLlmPolicy(scripted([JSON.stringify({ actions: [99], then: 'next', note: 'n', battle: null, tableTalk: null })]), basicPolicy, 'fake/model', fast)
@@ -386,9 +386,9 @@ describe('SectionedLlmPolicy — one-move kinds and failure', () => {
     expect(userOf(stale.calls[1])).toContain('SECTION: DEPLOY')
   })
 
-  it('starts tripped as disabled without a client, builds no menu, and files one disabled row', async () => {
+  it('starts tripped as disabled without a client, wants a menu for the scored fallback, and files one disabled row', async () => {
     const policy = new SectionedLlmPolicy(null, basicPolicy, 'inception/mercury-2.5')
-    expect(policy.needsMenu).toBe(false)
+    expect(policy.needsMenu).toBe(true)
     let checkpoints = 0
     const { applied } = await runBotUntilIdle(turnGame(), BOT, makeCtx(), policy, async () => { checkpoints++ })
     expect(applied.at(-1)?.type).toBe('END_TURN')

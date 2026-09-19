@@ -1,5 +1,5 @@
 import type { BotPolicy } from '../basicPolicy.ts'
-import { basicPolicy } from '../basicPolicy.ts'
+import { scoredPolicy } from '../scoredPolicy.ts'
 import { DEFAULT_LLM_POLICY_SETTINGS, LlmPolicy } from './llmPolicy.ts'
 import type { LlmPolicySettings } from './llmPolicy.ts'
 import { DEFAULT_BOT_MODEL, MODEL_REASONING_EFFORT, MODEL_ROUTING, REASONING_EFFORTS } from './llmSettings.ts'
@@ -8,12 +8,15 @@ import { OpenRouterClient } from './openRouterClient.ts'
 import { SectionedLlmPolicy } from './sectionedPolicy.ts'
 import type { TelemetryRow } from './telemetry.ts'
 
-// Env → policy (spec §3.4). No key, or the kill switch, means the heuristic
+// Env → policy (spec §3.4). No key, or the kill switch, means the evaluator
 // plays through a disabled model policy — one wiring path, and the fallback
-// is visible in telemetry. Both functions call this; nothing else constructs
-// a policy in production. BOT_FLOW picks the sectioned conversation (the
-// default) or the single-shot plan (2026-09-18 sectioned bot turn spec §5.5,
-// ruling 6): the two are compared by the eval at the same model and effort.
+// is visible in telemetry; the evaluator is the fallback inside both model
+// flows now, not the bare heuristic (2026-09-19 scored menu spec §6.4). Both
+// functions call this; nothing else constructs a policy in production.
+// BOT_FLOW picks the sectioned conversation (the default), the single-shot
+// plan (2026-09-18 sectioned bot turn spec §5.5, ruling 6), or the evaluator
+// alone with no model call at all (scored, spec §5) — compared by the eval
+// at the same model and effort.
 export interface BotEnv {
   OPENROUTER_API_KEY?: string
   BOT_MODEL?: string
@@ -23,8 +26,11 @@ export interface BotEnv {
   BOT_FLOW?: string
 }
 
-export type BotFlow = 'single' | 'sections'
-export const botFlowFor = (raw?: string): BotFlow => ((raw ?? '').trim().toLowerCase() === 'single' ? 'single' : 'sections')
+export type BotFlow = 'single' | 'sections' | 'scored'
+export const botFlowFor = (raw?: string): BotFlow => {
+  const f = (raw ?? '').trim().toLowerCase()
+  return f === 'single' ? 'single' : f === 'scored' ? 'scored' : 'sections'
+}
 
 // What both model policies expose beyond BotPolicy: the functions read rows,
 // the eval reads rows and settings, the tests read modelId.
@@ -59,7 +65,9 @@ export function makeBotPolicy(env: BotEnv, fetchImpl?: typeof fetch): ModelBacke
     routing: routingFor(model, env.BOT_PROVIDERS),
   }
   const client = disabled ? null : new OpenRouterClient(key, model, fetchImpl)
-  return botFlowFor(env.BOT_FLOW) === 'single'
-    ? new LlmPolicy(client, basicPolicy, model, settings)
-    : new SectionedLlmPolicy(client, basicPolicy, model, settings)
+  const flow = botFlowFor(env.BOT_FLOW)
+  if (flow === 'scored') return { ...scoredPolicy, rows: [], modelId: 'scored', settings }
+  return flow === 'single'
+    ? new LlmPolicy(client, scoredPolicy, model, settings)
+    : new SectionedLlmPolicy(client, scoredPolicy, model, settings)
 }

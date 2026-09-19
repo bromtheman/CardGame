@@ -125,7 +125,7 @@ describe('LlmPolicy', () => {
     expect(applied.map((a) => a.type)).toEqual(['PLAY_CARD_TO_ZONE', 'END_TURN'])   // basicPolicy played the turn
     expect(client.calls.length).toBe(1)                                                // tripped: no second call
     expect(policy.rows.map((r) => r.fallbackReason)).toEqual(['malformed'])
-    expect(policy.needsMenu).toBe(false)   // tripped: the driver must stop building a menu
+    expect(policy.needsMenu).toBe(true)   // tripped, but the scored fallback still reads the menu
     expect(policy.rows[0].error).toMatch(/^unparseable answer/)
   })
 
@@ -191,9 +191,9 @@ describe('LlmPolicy', () => {
     expect(r.applied[0]).toEqual({ type: 'RESOLVE_PENDING_EFFECT', choiceId: 'y' })
   })
 
-  it('starts tripped as disabled without a client, builds no menu, and files one disabled row', async () => {
+  it('starts tripped as disabled without a client, wants a menu for the scored fallback, and files one disabled row', async () => {
     const policy = new LlmPolicy(null, basicPolicy, 'inception/mercury-2.5')
-    expect(policy.needsMenu).toBe(false)
+    expect(policy.needsMenu).toBe(true)
     const { applied } = await runBotUntilIdle(turnGame(), BOT, makeCtx(), policy)
     expect(applied.map((a) => a.type)).toEqual(['PLAY_CARD_TO_ZONE', 'END_TURN'])
     expect(policy.rows).toHaveLength(1)

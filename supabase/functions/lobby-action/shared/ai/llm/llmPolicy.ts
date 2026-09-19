@@ -36,10 +36,11 @@ export const DEFAULT_LLM_POLICY_SETTINGS: LlmPolicySettings = {
 //
 // The model only ever suggests. Every planned move is re-verified against
 // the CURRENT menu before it is offered (the menu is the legality oracle, so
-// this policy never touches an EngineGame), the heuristic's candidates trail
-// every answer, and any failure — timeout, HTTP, malformed, budget — trips
-// the policy for the rest of the request so failures cannot stack timeouts
-// on the human's click.
+// this policy never touches an EngineGame), the fallback's candidates trail
+// every answer (the evaluator in production — makePolicy.ts — so a tripped
+// or disabled policy still plays by score, not at random), and any failure —
+// timeout, HTTP, malformed, budget — trips the policy for the rest of the
+// request so failures cannot stack timeouts on the human's click.
 export class LlmPolicy implements BotPolicy {
   readonly rows: TelemetryRow[] = []
   private readonly client: LlmClient | null
@@ -72,12 +73,9 @@ export class LlmPolicy implements BotPolicy {
     if (client === null) this.tripped = 'disabled'
   }
 
-  // A getter, not a field set once at construction: once the policy trips
-  // (any failure reason, including the initial 'disabled'), the driver must
-  // stop asking for a verified menu — building one costs up to
-  // MENU_MAX_TRIALS clone-and-apply trials, and a tripped policy never reads
-  // it (candidates() returns the fallback's answer without touching view.menu).
-  get needsMenu(): boolean { return this.client !== null && this.tripped === null }
+  // Always: the scored fallback reads the menu, so a tripped or disabled
+  // policy still needs one built (2026-09-19 scored menu spec §6.4).
+  get needsMenu(): boolean { return true }
 
   get modelId(): string { return this.model }
 

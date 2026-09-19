@@ -2,14 +2,15 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_LLM_POLICY_SETTINGS, LlmPolicy } from './llmPolicy'
 import { DEFAULT_BOT_MODEL } from './llmSettings'
 import { botFlowFor, makeBotPolicy } from './makePolicy'
+import { scoredPolicy } from '../scoredPolicy'
 import { SectionedLlmPolicy } from './sectionedPolicy'
 
 describe('makeBotPolicy', () => {
   it('is disabled without a key or with the kill switch, enabled with a key', () => {
-    expect(makeBotPolicy({}).needsMenu).toBe(false)
-    expect(makeBotPolicy({ OPENROUTER_API_KEY: '   ' }).needsMenu).toBe(false)
-    expect(makeBotPolicy({ OPENROUTER_API_KEY: 'sk', BOT_LLM_DISABLED: '1' }).needsMenu).toBe(false)
-    expect(makeBotPolicy({ OPENROUTER_API_KEY: 'sk', BOT_LLM_DISABLED: 'true' }).needsMenu).toBe(false)
+    expect(makeBotPolicy({}).needsMenu).toBe(true)
+    expect(makeBotPolicy({ OPENROUTER_API_KEY: '   ' }).needsMenu).toBe(true)
+    expect(makeBotPolicy({ OPENROUTER_API_KEY: 'sk', BOT_LLM_DISABLED: '1' }).needsMenu).toBe(true)
+    expect(makeBotPolicy({ OPENROUTER_API_KEY: 'sk', BOT_LLM_DISABLED: 'true' }).needsMenu).toBe(true)
     expect(makeBotPolicy({ OPENROUTER_API_KEY: 'sk' }).needsMenu).toBe(true)
   })
   it('names the model from env, defaulting to DEFAULT_BOT_MODEL', async () => {
@@ -45,5 +46,18 @@ describe('makeBotPolicy', () => {
     expect(makeBotPolicy({ OPENROUTER_API_KEY: 'sk', BOT_FLOW: 'typo' })).toBeInstanceOf(SectionedLlmPolicy)
     expect(botFlowFor(undefined)).toBe('sections')
     expect(botFlowFor('single')).toBe('single')
+  })
+  it('builds the scored flow on BOT_FLOW=scored: no model, no rows, the menu wanted', () => {
+    expect(botFlowFor('scored')).toBe('scored')
+    expect(botFlowFor(' Scored ')).toBe('scored')
+    const p = makeBotPolicy({ OPENROUTER_API_KEY: 'sk', BOT_FLOW: 'scored' })
+    expect(p.modelId).toBe('scored')
+    expect(p.rows).toEqual([])
+    expect(p.needsMenu).toBe(true)
+    expect(p.candidates).toBe(scoredPolicy.candidates)
+  })
+  it('wants the menu even when disabled or tripped — the scored fallback reads it', () => {
+    expect(makeBotPolicy({}).needsMenu).toBe(true)
+    expect(makeBotPolicy({ OPENROUTER_API_KEY: 'sk', BOT_LLM_DISABLED: '1' }).needsMenu).toBe(true)
   })
 })

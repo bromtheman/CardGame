@@ -21,10 +21,11 @@ import type { FallbackReason, TelemetryRow } from './telemetry.ts'
 // §5.3). One instance per request: it holds the message history, the
 // section pointer, the move counts, and the telemetry rows. Like LlmPolicy
 // it only ever suggests — every move it offers is a verified menu item, the
-// heuristic's candidates trail every answer, and any failure trips it for
-// the rest of the request. Unlike LlmPolicy it asks for one move at a time,
-// so every annotation the model reads was simulated from the board it is
-// looking at.
+// fallback's candidates trail every answer (the evaluator in production —
+// makePolicy.ts — so a tripped or disabled policy still plays by score, not
+// at random), and any failure trips it for the rest of the request. Unlike
+// LlmPolicy it asks for one move at a time, so every annotation the model
+// reads was simulated from the board it is looking at.
 interface Asked { answer: Answer; items: MenuItem[]; row: TelemetryRow }
 
 const advanceFrom = (section: Section): Section => nextSection(section) ?? 'finish'
@@ -70,8 +71,9 @@ export class SectionedLlmPolicy implements BotPolicy {
     if (client === null) this.tripped = 'disabled'
   }
 
-  // As LlmPolicy: once tripped, the driver must stop building menus.
-  get needsMenu(): boolean { return this.client !== null && this.tripped === null }
+  // Always: the scored fallback reads the menu, so a tripped or disabled
+  // policy still needs one built (2026-09-19 scored menu spec §6.4).
+  get needsMenu(): boolean { return true }
 
   get modelId(): string { return this.model }
 
