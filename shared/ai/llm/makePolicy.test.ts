@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest'
+import { makeCtx, makeGame } from '../../engine/testFixtures'
+import { viewFor } from '../botView'
+import { scoredPolicy } from '../scoredPolicy'
 import { DEFAULT_LLM_POLICY_SETTINGS, LlmPolicy } from './llmPolicy'
 import { DEFAULT_BOT_MODEL } from './llmSettings'
 import { botFlowFor, makeBotPolicy } from './makePolicy'
-import { scoredPolicy } from '../scoredPolicy'
+import type { MenuItem } from './moveMenu'
 import { SectionedLlmPolicy } from './sectionedPolicy'
 
 describe('makeBotPolicy', () => {
@@ -59,5 +62,30 @@ describe('makeBotPolicy', () => {
   it('wants the menu even when disabled or tripped — the scored fallback reads it', () => {
     expect(makeBotPolicy({}).needsMenu).toBe(true)
     expect(makeBotPolicy({ OPENROUTER_API_KEY: 'sk', BOT_LLM_DISABLED: '1' }).needsMenu).toBe(true)
+  })
+  it('routes a disabled policy through scoredPolicy\'s ranked order — not menu order, not basicPolicy\'s — in both flows', async () => {
+    // id 3 is neither first in menu order nor what basicPolicy's own
+    // heuristic would pick from this empty board (END TURN, its only 'turn'
+    // candidate with no hand and no board) — so the assertion below can only
+    // pass if each flow's fallback is scoredPolicy actually reading the
+    // menu, not basicPolicy ignoring it. Guards against silently reverting
+    // makeBotPolicy's basicPolicy→scoredPolicy fallback swap: every other
+    // test here checks only needsMenu/instanceof/modelId, none of which
+    // would change if that swap were reverted.
+    const menu: MenuItem[] = [
+      { id: 1, action: { type: 'END_TURN' }, text: 'END TURN', section: 'finish', score: 0 },
+      { id: 2, action: { type: 'ATTACK_ENEMY_BASE', zoneId: 1 }, text: 'ATTACK the enemy base in zone 1', section: 'fight', score: 0.5 },
+      { id: 3, action: { type: 'PLAY_CARD_TO_ZONE', instanceId: 'ship-1', zoneId: 1 }, text: 'PLAY Corsair', section: 'deploy', score: 3 },
+    ]
+    const game = makeGame({ activePlayer: 'bob', turnNumber: 3 })
+    const view = viewFor(game, 'b', makeCtx().rng, menu)
+
+    const sections = makeBotPolicy({})                     // no key: disabled, default (sections) flow
+    expect(sections).toBeInstanceOf(SectionedLlmPolicy)
+    expect((await sections.candidates(view, 'turn'))[0]).toEqual(menu[2].action)
+
+    const single = makeBotPolicy({ BOT_FLOW: 'single' })   // no key: disabled, single-shot flow
+    expect(single).toBeInstanceOf(LlmPolicy)
+    expect((await single.candidates(view, 'turn'))[0]).toEqual(menu[2].action)
   })
 })
