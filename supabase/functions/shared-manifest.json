@@ -53,6 +53,7 @@
     "ai/llm/planSchema.ts",
     "ai/llm/answerSchema.ts",
     "ai/llm/prompt.ts",
+    "ai/llm/conversation.ts",
     "ai/llm/llmPolicy.ts",
     "ai/llm/makePolicy.ts"
   ],
@@ -109,6 +110,7 @@
     "ai/llm/planSchema.ts",
     "ai/llm/answerSchema.ts",
     "ai/llm/prompt.ts",
+    "ai/llm/conversation.ts",
     "ai/llm/llmPolicy.ts",
     "ai/llm/makePolicy.ts"
   ],

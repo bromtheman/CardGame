@@ -87,4 +87,12 @@ describe('the prompt', () => {
     expect(user).toContain('honour system')
     expect(user.toLowerCase()).not.toContain('reject the report')
   })
+  it('leaves the bot’s own section markers out of RECENT LOG', () => {
+    const g = fixture()
+    g.state.log.push('PracticeAI: fighting…', 'Zone 1: base bombardment for 60 (940 HP remains)')
+    const menu = buildMenu(g, BOT, makeCtx(), 'turn')
+    const user = buildUserPrompt({ view: viewFor(g, 'b', () => 0.5, menu), kind: 'turn', menu })
+    expect(user).toContain('- Zone 1: base bombardment for 60 (940 HP remains)')
+    expect(user).not.toContain('fighting…')
+  })
 })
