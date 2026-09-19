@@ -535,15 +535,18 @@ one more caller of `applyAction`; nothing in the engine knows it exists.
   the first the engine accepts, then re-asks; every owed kind has a fallback
   (`FALLBACK`) the engine always accepts. 60 accepted policy actions per
   request, then fallbacks only, then a throw — which `game-action` answers as
-  **500 `AI opponent failed`** with nothing committed.
+  **500 `AI opponent failed`** with the sections already committed standing.
 - **Hidden information by construction:** the policy receives a `BotView`
   (own hand + public state), never an `EngineGame`; `botView.test.ts`
   serialises one to prove it.
-- Where it runs: `game-action` after the human's action and before the one
-  `apply_action_tx` commit (bot games always load the catalog); `START` when
-  the bot is rolled first, before `start_game_tx` (which now reads
-  `turnNumber`/`status`/`winnerId` from `p_game`). `lobby-action` therefore
-  carries the full engine in the sync manifest.
+- Where it runs: `game-action` after the human's action, committing through
+  `apply_action_tx` at every checkpoint the bot's policy asks for (the
+  human's action rides the first) and once more at the end — a game without
+  a bot, or a bot that owes nothing, commits exactly once (bot games always
+  load the catalog); `START` when the bot is rolled first, before the one
+  `start_game_tx` (which now reads `turnNumber`/`status`/`winnerId` from
+  `p_game`). `lobby-action` therefore carries the full engine in the sync
+  manifest.
 - The bot's decks are curated lists in `botDecks.ts`, pinned to the seed
   source by `botDecks.test.ts`; `ADD_BOT` resolves them against the live
   `cards` table. `selfPlay.test.ts` plays every deck over seeded games — the

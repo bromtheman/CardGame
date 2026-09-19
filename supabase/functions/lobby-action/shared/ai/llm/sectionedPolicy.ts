@@ -95,6 +95,7 @@ export class SectionedLlmPolicy implements BotPolicy {
     if (asked.items.length === 0) {
       // A pass: the heuristic answers this call and the policy stays up (§3.3).
       asked.row.fallbackReason = 'passed'
+      this.pendingTalk = asked.row.tableTalk ?? this.pendingTalk
       return this.fallback.candidates(view, kind)
     }
     this.propose(asked.items[0], asked.row, null)
@@ -140,6 +141,7 @@ export class SectionedLlmPolicy implements BotPolicy {
       const asked = await this.ask(view, 'turn', section, numberedMenu(menu, section))
       if (asked === null) return this.fallback.candidates(view, 'turn')
       if (asked.items.length === 0) {
+        this.pendingTalk = asked.row.tableTalk ?? this.pendingTalk
         this.lastOutcome = `You chose nothing in ${section.toUpperCase()}.`
         if (section === 'finish') return this.endTurn(view, menu)
         section = advanceFrom(section)
@@ -170,7 +172,7 @@ export class SectionedLlmPolicy implements BotPolicy {
     this.expected = item.action
     this.expectedRow = row
     if (then !== null) this.pendingThen = then
-    this.pendingTalk = row.tableTalk
+    this.pendingTalk = row.tableTalk ?? this.pendingTalk
   }
 
   onAccepted(action: GameAction, kind: OwedKind, outcome: string): string | null {
@@ -203,8 +205,12 @@ export class SectionedLlmPolicy implements BotPolicy {
     }
     this.expected = null
     this.expectedRow = null
+    // A one-move kind the heuristic answered still speaks the line the
+    // answer carried; a refused turn move's line may name what it did not
+    // do, so it is dropped with the plan.
+    const talk = kind === 'turn' ? null : this.pendingTalk
     this.pendingTalk = null
-    return null
+    return talk
   }
 
   // One model call on the conversation. Null after filing the failure and

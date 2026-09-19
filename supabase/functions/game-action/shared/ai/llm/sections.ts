@@ -69,5 +69,5 @@ export const SECTION_ASKS: Record<Section, string> = {
   deploy: 'Pick ONE move (its number), or [] if nothing here is worth doing. then: "continue" for another deploy move, "next" to go on to ACTIVATE.',
   activate: 'Pick ONE, or []. then: "continue" for another, "next" to go on to FIGHT.',
   fight: 'Pick ONE, or []. then: "continue" for another, "next" to go on to FINISH.',
-  finish: 'Pick ONE, or [] to END TURN.',
+  finish: 'Pick ONE, or [] to END TURN. then: "continue" for another move here, "next" to END TURN.',
 }

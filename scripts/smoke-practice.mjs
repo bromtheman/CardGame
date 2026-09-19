@@ -83,8 +83,9 @@ for (let round = 1; round <= 3; round++) {
   // several versions, each announced by a marker line. Recorded here,
   // asserted at the end once the rows say which flow played.
   const fresh = after.state.log.slice(before.state.log.length)
-  rounds.push({ versions: after.version - before.version, markers: fresh.filter((l) => /^PracticeAI: (deploying|activating|fighting|finishing)…$/.test(l)).length })
-  const botMoved = after.state.log.length > before.state.log.length + 1
+  const isMarker = (l) => /^PracticeAI: (deploying|activating|fighting|finishing)…$/.test(l)
+  rounds.push({ versions: after.version - before.version, markers: fresh.filter(isMarker).length })
+  const botMoved = after.state.log.slice(before.state.log.length).filter((l) => !isMarker(l)).length > 1
   // Either the bot finished its turn (P1 active again) or it declared a
   // fleet attack and is waiting on P1's report (frozen, bot still active).
   const botIdle = after.active_player === p1.userId || after.state.activeBattle !== null

@@ -126,6 +126,20 @@ describe('SectionedLlmPolicy — a turn', () => {
     expect(userOf(client.calls[2])).toContain('OUTCOME: You chose nothing in FIGHT.')
     expect(policy.rows.map((r) => r.section)).toEqual(['deploy', 'fight', 'finish'])
   })
+
+  it('speaks the line a pass carried on the next accepted move — the newest one when several passed', async () => {
+    const client = scripted([
+      { pick: 'PLAY Corsair', then: 'next', talk: 'Corsair, forward!' },
+      { pick: null, talk: 'Nothing to fight today.' },
+      { pick: null, talk: 'That will do for this turn.' },
+    ])
+    const policy = new SectionedLlmPolicy(client, basicPolicy, 'fake/model', fast)
+    const { applied, talk, game } = await runBotUntilIdle(turnGame(), BOT, makeCtx(), policy)
+    expect(applied.map((a) => a.type)).toEqual(['PLAY_CARD_TO_ZONE', 'END_TURN'])
+    expect(talk).toEqual(['Corsair, forward!', 'That will do for this turn.'])   // the fight pass's line lost to the newer finish line
+    expect(game.state.log.filter((l) => l.startsWith('PracticeAI: "'))).toHaveLength(2)
+    expect(policy.rows.map((r) => r.tableTalk)).toEqual(['Corsair, forward!', 'Nothing to fight today.', 'That will do for this turn.'])
+  })
 })
 
 describe('SectionedLlmPolicy — finish, caps and interrupts', () => {
@@ -274,12 +288,13 @@ describe('SectionedLlmPolicy — one-move kinds and failure', () => {
   })
 
   it('a pass on a one-move kind is answered by the heuristic, filed as passed, without tripping', async () => {
-    const client = scripted([{ pick: null }])
+    const client = scripted([{ pick: null, talk: 'Come and get me.' }])
     const policy = new SectionedLlmPolicy(client, basicPolicy, 'fake/model', fast)
-    const { applied } = await runBotUntilIdle(responseGame(), BOT, makeCtx(), policy)
+    const { applied, talk } = await runBotUntilIdle(responseGame(), BOT, makeCtx(), policy)
     expect(applied).toEqual([{ type: 'RESPOND_TO_ATTACK', optOutIds: [] }])   // basicPolicy fights with everyone
     expect(policy.rows.map((r) => r.fallbackReason)).toEqual(['passed'])
     expect(policy.needsMenu).toBe(true)
+    expect(talk).toEqual(['Come and get me.'])
   })
 
   it('spends no call and files no row on an empty one-move menu', async () => {
