@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import type { GameAction } from '../engine/engineTypes'
+import type { EngineGame, GameAction } from '../engine/engineTypes'
 import { applyAction } from '../engine/index'
 import { inst, makeCtx, makeGame, zoneEntry } from '../engine/testFixtures'
 import { basicPolicy } from './basicPolicy'
-import type { BotPolicy, OwedKind } from './basicPolicy'
+import type { BotPolicy, OwedKind, PolicyHooks } from './basicPolicy'
 import type { BotView } from './botView'
 import { BOT_ACTION_CAP, FALLBACK, botOwes, runBotUntilIdle } from './botDriver'
 import { LOG_MAX_ENTRIES } from '../gameSettings'
 import { formatTableTalk, isTableTalk } from './llm/tableTalk'
+import { SECTION_MARKERS } from './llm/sections'
 
 // The bot is bob / side 'b' throughout, as in every practice game.
 const BOT = 'bob'
@@ -237,5 +238,63 @@ describe('runBotUntilIdle with a menu-reading, talking policy', () => {
     const { game } = await runBotUntilIdle(g, BOT, makeCtx(), menuPolicy(['Nothing to do but wait.']))
     expect(game.state.log.length).toBeLessThanOrEqual(LOG_MAX_ENTRIES)
     expect(game.state.log[game.state.log.length - 1]).toBe(formatTableTalk('Nothing to do but wait.'))
+  })
+})
+
+describe('runBotUntilIdle with a checkpointing policy', () => {
+  // Enters "deploy" once (marker + checkpoint) before its first move, plays
+  // the first PLAY the menu offers, then ends the turn. Records what the
+  // driver tells it about each accepted move.
+  function sectioned(): BotPolicy & { outcomes: string[]; entered: boolean } {
+    const policy = {
+      needsMenu: true,
+      outcomes: [] as string[],
+      entered: false,
+      async candidates(view: BotView, _kind: OwedKind, hooks?: PolicyHooks): Promise<GameAction[]> {
+        if (!policy.entered) {
+          policy.entered = true
+          await hooks?.checkpoint(SECTION_MARKERS.deploy)
+        }
+        const first = view.menu?.find((m) => m.action.type === 'PLAY_CARD_TO_ZONE')
+        return [first ? first.action : { type: 'END_TURN' }]
+      },
+      onAccepted(_action: GameAction, _kind: OwedKind, outcome: string): null {
+        policy.outcomes.push(outcome)
+        return null
+      },
+    }
+    return policy
+  }
+
+  it('appends the marker and awaits onCheckpoint before the policy’s move, and keeps the marker out of the outcome', async () => {
+    const ship = inst({ instanceId: 'ship-40', name: 'Corsair', materialCost: 40000 })
+    const g = makeGame({ activePlayer: BOT, turnNumber: 3, privates: { a: { hand: [], deck: [] }, b: { hand: [ship], deck: [] } } })
+    const seen: { lastLine: string; hulls: number }[] = []
+    const policy = sectioned()
+    const { game, applied } = await runBotUntilIdle(g, BOT, makeCtx(), policy, async (snapshot: EngineGame) => {
+      seen.push({ lastLine: snapshot.state.log[snapshot.state.log.length - 1], hulls: snapshot.state.zones[0].cards.b.length })
+    })
+    expect(applied.map((a) => a.type)).toEqual(['PLAY_CARD_TO_ZONE', 'END_TURN'])
+    expect(seen).toEqual([{ lastLine: SECTION_MARKERS.deploy, hulls: 0 }])   // committed BEFORE the play
+    expect(game.state.log).toContain(SECTION_MARKERS.deploy)
+    expect(game.state.log.indexOf(SECTION_MARKERS.deploy)).toBeLessThan(game.state.log.findIndex((l) => l.includes('Corsair')))
+    expect(policy.outcomes).toHaveLength(2)
+    expect(policy.outcomes[0]).toContain('zone 1: your hulls 0→1 (+Corsair)')
+    expect(policy.outcomes[0]).not.toContain('deploying')
+    expect(policy.outcomes[1]).toContain('ends your turn')
+  })
+
+  it('still writes the marker for a caller that passed no onCheckpoint', async () => {
+    const g = makeGame({ activePlayer: BOT, turnNumber: 3 })
+    const { game } = await runBotUntilIdle(g, BOT, makeCtx(), sectioned())
+    expect(game.state.log).toContain(SECTION_MARKERS.deploy)
+  })
+
+  it('never checkpoints for the heuristic, and tells it the outcome only if it listens', async () => {
+    const g = makeGame({ activePlayer: BOT, turnNumber: 3 })
+    let checkpoints = 0
+    const { game } = await runBotUntilIdle(g, BOT, makeCtx(), basicPolicy, async () => { checkpoints++ })
+    expect(checkpoints).toBe(0)
+    expect(game.state.log.some((l) => isTableTalk(l))).toBe(false)
   })
 })

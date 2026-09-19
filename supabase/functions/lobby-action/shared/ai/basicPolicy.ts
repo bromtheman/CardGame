@@ -13,14 +13,22 @@ export type OwedKind = 'turn' | 'response' | 'decision' | 'choice'
 // A policy proposes; the engine disposes. Candidates are best-first, and the
 // driver applies the first one applyAction accepts — so a candidate may be
 // illegal and nothing here has to know every rule. A policy may be async
-// (the model-backed one is), may ask for the verified move menu on its view
-// (needsMenu), and is told which candidate the engine accepted so it can
+// (the model-backed ones are), may ask for the verified move menu on its view
+// (needsMenu), may ask the driver to checkpoint through the hooks it is
+// handed (2026-09-18 sectioned bot turn spec §5.1), and is told which
+// candidate the engine accepted and what it did (a public diff), so it can
 // advance a plan — returning, if it likes, one public line for the log,
 // which the driver guards before writing (2026-09-16 LLM PracticeAI spec §3.1).
+export interface PolicyHooks {
+  // Called by a policy that runs the turn in sections as it enters a
+  // non-empty section, before its next model call: the driver appends the
+  // marker line and its caller commits. The policy never sees the game.
+  checkpoint(marker: string): Promise<void>
+}
 export interface BotPolicy {
   readonly needsMenu?: boolean
-  candidates(view: BotView, kind: OwedKind): GameAction[] | Promise<GameAction[]>
-  onAccepted?(action: GameAction, kind: OwedKind): string | null | void
+  candidates(view: BotView, kind: OwedKind, hooks?: PolicyHooks): GameAction[] | Promise<GameAction[]>
+  onAccepted?(action: GameAction, kind: OwedKind, outcome: string): string | null | void
 }
 
 // Fisher–Yates on a copy, driven by the view's rng so tests are deterministic.
