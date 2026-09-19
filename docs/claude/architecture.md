@@ -603,3 +603,15 @@ one more caller of `applyAction`; nothing in the engine knows it exists.
   card-game number; the importer drops the report's FtD material cost for
   that reason. A new faction needs its export spread into `SHIP_PROFILES`,
   the generated file added to `shared-manifest.json`, and `functions:sync`.
+- **Evaluator and tempo guard (2026-09-19).** `shared/ai/evaluator.ts` scores
+  a position in turns of tempo (turns the enemy needs to fell the bot's
+  second base minus the bot's, plus board/hand/base-HP terms) and
+  `scoreMove` scores a move by trial-applying it, settling choices, sampling
+  a fleet attack through `battleSim.ts`, ending the turn and scoring.
+  `buildMenu` attaches the delta against END TURN to every turn item
+  (`MenuItem.score`); the model reads it as `[+2.4]`. `tempoGuard.ts`'s
+  `guardPick` replaces a pick, a pass or END TURN that sits
+  `TEMPO_GUARD_TURNS` or more below the best item and files `guard` on the
+  row. `scoredPolicy` plays the best item — `BOT_FLOW=scored`, and the
+  fallback inside both model flows. Spec:
+  `docs/superpowers/specs/2026-09-19-scored-menu-design.md`.

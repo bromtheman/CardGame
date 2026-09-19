@@ -118,8 +118,9 @@ Flash's rows in `MODEL_REASONING_EFFORT` / `MODEL_ROUTING` ask it to reason
 and route it by throughput — the slow providers time out;
 `BOT_REASONING_EFFORT` and `BOT_PROVIDERS` override). The move menu, not the model, decides legality — see
 docs/claude/architecture.md. `BOT_FLOW=single` restores the single-shot
-planning policy without a deploy (default: the sectioned conversation,
-which commits the practice game after every section).
+planning policy and `BOT_FLOW=scored` plays the tempo evaluator with no
+model; the default is the sectioned conversation. When a call fails or no
+key is set, the evaluator plays, not the heuristic.
 
 Details: docs/claude/supabase.md.
 
