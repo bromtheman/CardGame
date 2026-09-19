@@ -4,7 +4,7 @@ import { applyAction, knownActionTypes } from '../../engine/index'
 import { inst, makeCtx, makeGame, zoneEntry } from '../../engine/testFixtures'
 import { FALLBACK } from '../botDriver'
 import { MENU_MAX_ITEMS, MENU_MAX_TRIALS } from './llmSettings'
-import { buildMenu, MENU_ACTION_TYPES, MENU_EXCLUDED_TYPES, sameAction } from './moveMenu'
+import { buildMenu, MENU_ACTION_TYPES, MENU_EXCLUDED_TYPES, sameAction, tempoTag } from './moveMenu'
 
 import { sectionOf } from './sections'
 const BOT = 'bob'   // side 'b', as in every practice game
@@ -148,5 +148,40 @@ describe('sameAction', () => {
     expect(sameAction({ type: 'MOVE_VEHICLE', instanceId: 'x', zoneId: 1 }, { zoneId: 1, instanceId: 'x', type: 'MOVE_VEHICLE' })).toBe(true)
     expect(sameAction({ type: 'ACTIVATE_VEHICLE', instanceId: 'x', zoneId: undefined }, { type: 'ACTIVATE_VEHICLE', instanceId: 'x' })).toBe(true)
     expect(sameAction({ type: 'MOVE_VEHICLE', instanceId: 'x', zoneId: 1 }, { type: 'MOVE_VEHICLE', instanceId: 'x', zoneId: 2 })).toBe(false)
+  })
+})
+
+describe('tempo deltas', () => {
+  it('scores every turn item against END TURN, which carries 0', () => {
+    const g = makeGame({ activePlayer: BOT, turnNumber: 3, privates: { a: { hand: [], deck: [] }, b: { hand: [inst({ instanceId: 'ship-100', materialCost: 100000 })], deck: [] } } })
+    g.state.resources.b.materials = 225000
+    g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'mine-1', materialCost: 150000, playedOnTurn: 1 }))
+    const menu = buildMenu(g, BOT, makeCtx(), 'turn')
+    const end = menu.find((m) => m.action.type === 'END_TURN')!
+    expect(end.score).toBe(0)
+    const deploy = menu.find((m) => m.action.type === 'PLAY_CARD_TO_ZONE')!
+    const bombard = menu.find((m) => m.action.type === 'ATTACK_ENEMY_BASE')!
+    expect(deploy.score).toBeGreaterThan(0)
+    expect(bombard.score).toBeGreaterThan(0)
+    for (const m of menu) expect(typeof m.score).toBe('number')
+  })
+  it('leaves the one-move kinds unscored', () => {
+    const g = makeGame({ activePlayer: BOT, turnNumber: 3 })
+    g.state.pendingEffect = { effect: 'e', side: 'b', card: inst({}), kind: 'choice', prompt: 'Pick', options: [{ id: 'x', label: 'X' }, { id: 'y', label: 'Y' }] }
+    for (const m of buildMenu(g, BOT, makeCtx(), 'choice')) expect(m.score).toBeNull()
+  })
+  it('still draws exactly one rng value with scoring on', () => {
+    const g = makeGame({ activePlayer: BOT, turnNumber: 3 })
+    g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'mine-1', keywords: ['mobile'], playedOnTurn: 1 }))
+    let draws = 0
+    buildMenu(g, BOT, makeCtx({ rng: () => { draws++; return 0.5 } }), 'turn')
+    expect(draws).toBe(1)
+  })
+  it('formats the tag to one decimal with a sign, and nothing for null', () => {
+    expect(tempoTag(2.44)).toBe(' [+2.4]')
+    expect(tempoTag(-1.26)).toBe(' [-1.3]')
+    expect(tempoTag(0)).toBe(' [0.0]')
+    expect(tempoTag(-0.04)).toBe(' [0.0]')
+    expect(tempoTag(null)).toBe('')
   })
 })

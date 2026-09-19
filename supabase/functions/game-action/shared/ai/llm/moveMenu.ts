@@ -7,6 +7,7 @@ import {
 } from '../../engine/index.ts'
 import type { OwedKind } from '../basicPolicy.ts'
 import { repairableParticipants } from '../basicPolicy.ts'
+import { scoreMove } from '../evaluator.ts'
 import { FALLBACK } from '../fallbacks.ts'
 import { mulberry32 } from '../seededRng.ts'
 import { describeMenuItem } from './describe.ts'
@@ -18,8 +19,18 @@ import type { Section } from './sections.ts'
 // and private to one menu; a plan is mapped to actions the moment it is
 // parsed and compared with sameAction from then on. `section` is where the
 // sectioned flow shows the item (2026-09-18 spec §3.1); null for the
-// one-move kinds.
-export interface MenuItem { id: number; action: GameAction; text: string; section: Section | null }
+// one-move kinds. `score` is the tempo delta against END TURN (2026-09-19
+// scored-menu spec §3.5), computed only for turn-kind menus; null otherwise.
+export interface MenuItem { id: number; action: GameAction; text: string; section: Section | null; score: number | null }
+
+// The bracketed tempo delta a menu line carries (spec §6.1): one decimal,
+// signed, a plain zero for END TURN and for a rounding-zero; nothing for an
+// unscored item.
+export function tempoTag(score: number | null): string {
+  if (score === null) return ''
+  const r = Math.round(score * 10) / 10
+  return ` [${r > 0 ? '+' : ''}${r.toFixed(1)}]`
+}
 
 // Every action type the enumerator can emit. moveMenu.test.ts pins this list
 // plus MENU_EXCLUDED_TYPES against the engine's knownActionTypes(), so a new
@@ -187,7 +198,10 @@ export function enumerate(game: EngineGame, side: Side, kind: OwedKind): GameAct
 export function buildMenu(game: EngineGame, botId: string, ctx: EngineContext, kind: OwedKind): MenuItem[] {
   const side = sideOf(game, botId)
   if (!side) throw new Error(`PracticeAI (${botId}) is not in this game`)
-  const trialCtx: EngineContext = { ...ctx, rng: mulberry32(Math.floor(ctx.rng() * 2 ** 32)) }
+  // One rng draw seeds every trial and every score of this build (the
+  // "draws exactly one rng value" test), so a build is deterministic.
+  const seedBase = Math.floor(ctx.rng() * 2 ** 32)
+  const trialCtx: EngineContext = { ...ctx, rng: mulberry32(seedBase) }
   const items: MenuItem[] = []
   let trials = 0
   for (const action of enumerate(game, side, kind)) {
@@ -202,7 +216,7 @@ export function buildMenu(game: EngineGame, botId: string, ctx: EngineContext, k
       continue
     }
     if (!r.ok) continue
-    items.push({ id: 0, action, text: describeMenuItem(game, r.game, side, action), section: sectionOf(action) })
+    items.push({ id: 0, action, text: describeMenuItem(game, r.game, side, action), section: sectionOf(action), score: null })
   }
   // The item cap is per section (2026-09-18 spec §6): the sectioned flow
   // shows one section at a time, and a busy deploy must not crowd out the
@@ -218,5 +232,15 @@ export function buildMenu(game: EngineGame, botId: string, ctx: EngineContext, k
     const fallback = items.find((m) => sameAction(m.action, keep))
     if (fallback) kept[kept.length - 1] = fallback
   }
-  return kept.map((item, i) => ({ ...item, id: i + 1 }))
+  const numbered = kept.map((item, i) => ({ ...item, id: i + 1 }))
+  return kind === 'turn' ? scored(game, botId, ctx, numbered, seedBase) : numbered
+}
+
+// Every turn item's tempo delta against END TURN (spec §3.5). An item whose
+// trial cannot be completed keeps null and stays offered.
+function scored(game: EngineGame, botId: string, ctx: EngineContext, items: MenuItem[], seedBase: number): MenuItem[] {
+  const raw = items.map((m, i) => scoreMove(game, botId, m.action, ctx, (seedBase + 1 + i) >>> 0))
+  const endIndex = items.findIndex((m) => m.action.type === 'END_TURN')
+  const end = endIndex >= 0 ? raw[endIndex] : null
+  return items.map((m, i) => ({ ...m, score: raw[i] === null || end === null ? null : raw[i]! - end }))
 }
