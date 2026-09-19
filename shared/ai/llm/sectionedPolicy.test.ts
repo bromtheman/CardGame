@@ -12,6 +12,14 @@ import { SectionedLlmPolicy } from './sectionedPolicy'
 
 const BOT = 'bob'
 const fast = { callTimeoutMs: 20, requestBudgetMs: 1000, maxCalls: 16 }
+// turnGame()'s 40k Corsair play scores far above every other move on the
+// board (2026-09-19 scored menu spec §3.5's zone-spread term dominates), so
+// any test written before the tempo guard existed — one whose script passes
+// on or plays around that opportunity for reasons unrelated to the guard —
+// needs the guard switched off to keep exercising what it actually tests.
+// The guard itself is exercised with `fast` (margin on) by the tests below
+// that are about it.
+const noGuard = { ...fast, tempoGuardTurns: Infinity }
 const userOf = (req: LlmRequest): string => req.messages[req.messages.length - 1].content
 
 // A menu number by predicate against the menu the LAST user message showed.
@@ -61,7 +69,7 @@ describe('SectionedLlmPolicy — a turn', () => {
       { pick: 'ATTACK the enemy base in zone 1', then: 'next' },
       { pick: null },
     ])
-    const policy = new SectionedLlmPolicy(client, basicPolicy, 'fake/model', fast)
+    const policy = new SectionedLlmPolicy(client, basicPolicy, 'fake/model', noGuard)
     const markers: string[] = []
     const { game, applied, talk } = await runBotUntilIdle(turnGame(), BOT, makeCtx(), policy, async (g) => { markers.push(g.state.log[g.state.log.length - 1]) })
     expect(applied.map((a) => a.type)).toEqual(['PLAY_CARD_TO_ZONE', 'ATTACK_ENEMY_BASE', 'END_TURN'])
@@ -101,7 +109,7 @@ describe('SectionedLlmPolicy — a turn', () => {
       { pick: 'PLAY Bravo', then: 'next' },
       { pick: null },
     ])
-    const policy = new SectionedLlmPolicy(client, basicPolicy, 'fake/model', fast)
+    const policy = new SectionedLlmPolicy(client, basicPolicy, 'fake/model', noGuard)
     const { applied } = await runBotUntilIdle(g, BOT, makeCtx(), policy)
     expect(applied.map((a) => a.type)).toEqual(['PLAY_CARD_TO_ZONE', 'PLAY_CARD_TO_ZONE', 'END_TURN'])
     expect(client.calls.length).toBe(3)
@@ -116,7 +124,7 @@ describe('SectionedLlmPolicy — a turn', () => {
 
   it('moves on inside one candidates call after a pass, announcing the next section first', async () => {
     const client = scripted([{ pick: null }, { pick: null }, { pick: null }])
-    const policy = new SectionedLlmPolicy(client, basicPolicy, 'fake/model', fast)
+    const policy = new SectionedLlmPolicy(client, basicPolicy, 'fake/model', noGuard)
     const markers: string[] = []
     const { applied } = await runBotUntilIdle(turnGame(), BOT, makeCtx(), policy, async (g) => { markers.push(g.state.log[g.state.log.length - 1]) })
     expect(applied.map((a) => a.type)).toEqual(['END_TURN'])
@@ -133,7 +141,7 @@ describe('SectionedLlmPolicy — a turn', () => {
       { pick: null, talk: 'Nothing to fight today.' },
       { pick: null, talk: 'That will do for this turn.' },
     ])
-    const policy = new SectionedLlmPolicy(client, basicPolicy, 'fake/model', fast)
+    const policy = new SectionedLlmPolicy(client, basicPolicy, 'fake/model', noGuard)
     const { applied, talk, game } = await runBotUntilIdle(turnGame(), BOT, makeCtx(), policy)
     expect(applied.map((a) => a.type)).toEqual(['PLAY_CARD_TO_ZONE', 'END_TURN'])
     expect(talk).toEqual(['Corsair, forward!', 'That will do for this turn.'])   // the fight pass's line lost to the newer finish line
@@ -185,7 +193,7 @@ describe('SectionedLlmPolicy — finish, caps and interrupts', () => {
       { pick: null },   // fight
       { pick: null },   // finish → END TURN
     ])
-    const policy = new SectionedLlmPolicy(client, basicPolicy, 'fake/model', fast)
+    const policy = new SectionedLlmPolicy(client, basicPolicy, 'fake/model', noGuard)
     const checkpoints: string[] = []
     const hooks = { checkpoint: async (m: string) => { checkpoints.push(m) } }
     const play = (await policy.candidates(viewFor(g, 'b', ctx.rng, buildMenu(g, BOT, ctx, 'turn')), 'turn', hooks))[0]
@@ -222,7 +230,7 @@ describe('SectionedLlmPolicy — finish, caps and interrupts', () => {
       { pick: null },   // fight
       { pick: null },   // finish → END TURN
     ])
-    const policy = new SectionedLlmPolicy(client, basicPolicy, 'fake/model', fast)
+    const policy = new SectionedLlmPolicy(client, basicPolicy, 'fake/model', noGuard)
     const checkpoints: string[] = []
     const hooks = { checkpoint: async (m: string) => { checkpoints.push(m) } }
     const play = (await policy.candidates(viewFor(g, 'b', ctx.rng, buildMenu(g, BOT, ctx, 'turn')), 'turn', hooks))[0]
@@ -354,7 +362,7 @@ describe('SectionedLlmPolicy — one-move kinds and failure', () => {
     const g = turnGame()
     const ctx = makeCtx()
     const client = scripted([{ pick: 'PLAY Corsair', then: 'next' }, { pick: null }, { pick: null }, { pick: null }])
-    const policy = new SectionedLlmPolicy(client, basicPolicy, 'fake/model', fast)
+    const policy = new SectionedLlmPolicy(client, basicPolicy, 'fake/model', noGuard)
     const hooks = { checkpoint: async () => {} }
     await policy.candidates(viewFor(g, 'b', ctx.rng, buildMenu(g, BOT, ctx, 'turn')), 'turn', hooks)
     // Pretend the engine refused it and a heuristic tail candidate landed instead.
@@ -370,7 +378,7 @@ describe('SectionedLlmPolicy — one-move kinds and failure', () => {
   it('with actionsPerAnswer 2 keeps a plan and re-verifies its head against the fresh menu', async () => {
     const two = (names: [string, string], cost: number) => makeGame({ activePlayer: BOT, turnNumber: 3, privates: { a: { hand: [], deck: [] }, b: { hand: [inst({ instanceId: 's1', name: names[0], materialCost: cost }), inst({ instanceId: 's2', name: names[1], materialCost: cost })], deck: [] } } })
     const fits = scripted([{ pick: ['PLAY Alpha', 'PLAY Bravo'], then: 'next' }, { pick: null }])
-    const p1 = new SectionedLlmPolicy(fits, basicPolicy, 'fake/model', { ...fast, actionsPerAnswer: 2 })
+    const p1 = new SectionedLlmPolicy(fits, basicPolicy, 'fake/model', { ...noGuard, actionsPerAnswer: 2 })
     const r1 = await runBotUntilIdle(two(['Alpha', 'Bravo'], 40000), BOT, makeCtx(), p1)
     expect(r1.applied.map((a) => a.type)).toEqual(['PLAY_CARD_TO_ZONE', 'PLAY_CARD_TO_ZONE', 'END_TURN'])
     expect(fits.calls.length).toBe(2)   // both plays from one call, then finish
@@ -379,7 +387,7 @@ describe('SectionedLlmPolicy — one-move kinds and failure', () => {
 
     // Two 60k ships, 100k materials: the second drops off the menu → a fresh call in deploy.
     const stale = scripted([{ pick: ['PLAY Alpha', 'PLAY Bravo'], then: 'next' }, { pick: null }, { pick: null }])
-    const p2 = new SectionedLlmPolicy(stale, basicPolicy, 'fake/model', { ...fast, actionsPerAnswer: 2 })
+    const p2 = new SectionedLlmPolicy(stale, basicPolicy, 'fake/model', { ...noGuard, actionsPerAnswer: 2 })
     const r2 = await runBotUntilIdle(two(['Alpha', 'Bravo'], 60000), BOT, makeCtx(), p2)
     expect(r2.applied.map((a) => a.type)).toEqual(['PLAY_CARD_TO_ZONE', 'END_TURN'])
     expect(stale.calls.length).toBe(3)
@@ -395,5 +403,58 @@ describe('SectionedLlmPolicy — one-move kinds and failure', () => {
     expect(checkpoints).toBe(0)
     expect(policy.rows).toHaveLength(1)
     expect(policy.rows[0]).toMatchObject({ kind: 'turn', model: 'inception/mercury-2.5', fallbackReason: 'disabled', menuSize: 0, latencyMs: 0, plan: [], section: null, seq: null })
+  })
+})
+
+describe('SectionedLlmPolicy — the tempo guard', () => {
+  // turnGame()'s Corsair play scores far above everything else on the whole
+  // menu (it claims zone 2, the only zone with no striker yet — 2026-09-19
+  // scored menu spec §3.5's zone-spread term), so a pass at ANY point before
+  // it is played gets guarded into playing it — regardless of which section
+  // is nominally being asked. Once it is down, the zone-1 base attack
+  // (Marauder, played turn 1) is the sole item left scoring a margin above a
+  // pass, so the NEXT pass — still asked as DEPLOY, since a guarded move
+  // proposes with then: null and the pointer does not move — is guarded into
+  // it too. After both, nothing on the board clears the margin, so passing
+  // from there on is genuine: empty ACTIVATE and FIGHT are skipped, FINISH
+  // is asked and passed, and END TURN goes through endTurn() unguarded.
+  it('plays the best move when the model passes DEPLOY with a big deploy on the table, staying in DEPLOY', async () => {
+    const client = scripted([
+      { pick: null, then: 'next' },                       // pass → guarded: the zone-2 Corsair play, still DEPLOY
+      { pick: null, then: 'next' },                       // pass → guarded: the zone-1 base attack, still DEPLOY
+      { pick: null, then: 'next' },                       // pass → nothing left clears the margin → ACTIVATE/FIGHT skipped → FINISH
+      { pick: null, then: 'next' },                       // FINISH pass → END TURN
+    ])
+    const policy = new SectionedLlmPolicy(client, basicPolicy, 'fake/model', fast)
+    const { applied } = await runBotUntilIdle(turnGame(), BOT, makeCtx(), policy)
+    expect(applied.map((a) => a.type)).toEqual(['PLAY_CARD_TO_ZONE', 'ATTACK_ENEMY_BASE', 'END_TURN'])
+    expect(policy.rows[0].guard).toEqual(expect.objectContaining({ picked: null }))
+    expect(client.calls[1].messages[client.calls[1].messages.length - 1].content).toContain('SECTION: DEPLOY')
+  })
+
+  it('plays the base attack before ending the turn on straight passes, without pinning which exact pass the guard catches', async () => {
+    const client = scripted([
+      { pick: null, then: 'next' },                       // DEPLOY pass → guarded: the zone-2 Corsair play
+      { pick: null, then: 'next' },                       // DEPLOY pass (pointer unmoved) → guarded: the base attack
+      { pick: null, then: 'next' },                       // DEPLOY pass (pointer unmoved) → on to FINISH for real
+      { pick: null, then: 'next' },                       // FINISH pass → END TURN
+    ])
+    // Same fixture and script as the test above — the guard's whole-menu read
+    // means the base attack is claimed the moment it is the best thing left,
+    // which happens right after the deploy, not later at FINISH; the looser
+    // assertions here hold for that trace too, without pinning it exactly.
+    const policy = new SectionedLlmPolicy(client, basicPolicy, 'fake/model', fast)
+    const { applied } = await runBotUntilIdle(turnGame(), BOT, makeCtx(), policy)
+    expect(applied.map((a) => a.type)).toContain('ATTACK_ENEMY_BASE')
+    expect(applied[applied.length - 1].type).toBe('END_TURN')
+    expect(policy.rows.some((r) => r.guard !== null)).toBe(true)
+  })
+
+  it('lets every pick stand with the guard at Infinity', async () => {
+    const client = scripted([{ pick: null, then: 'next' }, { pick: null, then: 'next' }, { pick: null, then: 'next' }])
+    const policy = new SectionedLlmPolicy(client, basicPolicy, 'fake/model', { ...fast, tempoGuardTurns: Infinity })
+    const { applied } = await runBotUntilIdle(turnGame(), BOT, makeCtx(), policy)
+    expect(applied.map((a) => a.type)).toEqual(['END_TURN'])
+    expect(policy.rows.every((r) => r.guard === null)).toBe(true)
   })
 })

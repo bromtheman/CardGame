@@ -9,12 +9,15 @@ import { EMPTY_USAGE, LlmHttpError, LlmTimeoutError } from './llmClient.ts'
 import type { ChatMessage, LlmClient, LlmUsage } from './llmClient.ts'
 import { DEFAULT_LLM_POLICY_SETTINGS } from './llmPolicy.ts'
 import type { LlmPolicySettings } from './llmPolicy.ts'
-import { ACTIONS_PER_ANSWER, LLM_MAX_OUTPUT_TOKENS, LLM_TEMPERATURE, SECTION_MAX_ACTIONS } from './llmSettings.ts'
+import {
+  ACTIONS_PER_ANSWER, LLM_MAX_OUTPUT_TOKENS, LLM_TEMPERATURE, MENU_SCORE_WINDOW_TURNS, SECTION_MAX_ACTIONS, TEMPO_GUARD_TURNS,
+} from './llmSettings.ts'
 import { sameAction } from './moveMenu.ts'
 import type { MenuItem } from './moveMenu.ts'
 import { buildSystemPrompt } from './prompt.ts'
 import { inSection, nextSection, SECTION_MARKERS } from './sections.ts'
 import type { Section } from './sections.ts'
+import { guardPick } from './tempoGuard.ts'
 import type { FallbackReason, TelemetryRow } from './telemetry.ts'
 
 // The sectioned, conversational policy (2026-09-18 sectioned bot turn spec
@@ -77,6 +80,11 @@ export class SectionedLlmPolicy implements BotPolicy {
 
   get modelId(): string { return this.model }
 
+  // The tempo guard's margin and the turn menu's score window (2026-09-19
+  // scored menu spec §6.2, §6.3); settings default to the llmSettings values.
+  private margin(): number { return this.settings.tempoGuardTurns ?? TEMPO_GUARD_TURNS }
+  private window(): number { return this.settings.menuScoreWindowTurns ?? MENU_SCORE_WINDOW_TURNS }
+
   async candidates(view: BotView, kind: OwedKind, hooks?: PolicyHooks): Promise<GameAction[]> {
     if (this.tripped) {
       if (this.tripped === 'disabled' && this.rows.length === 0) this.rows.push(this.row(view, kind, null, null, 0, 0, 'disabled'))
@@ -92,7 +100,7 @@ export class SectionedLlmPolicy implements BotPolicy {
   // report nobody can approve) is the driver's fallback — no call, no row.
   private async oneMove(view: BotView, kind: OwedKind, menu: MenuItem[]): Promise<GameAction[]> {
     if (menu.length === 0) return this.fallback.candidates(view, kind)
-    const asked = await this.ask(view, kind, null, numberedMenu(menu, null))
+    const asked = await this.ask(view, kind, null, numberedMenu(menu, null, this.window()))
     if (asked === null) return this.fallback.candidates(view, kind)
     if (asked.items.length === 0) {
       // A pass: the heuristic answers this call and the policy stays up (§3.3).
@@ -116,9 +124,11 @@ export class SectionedLlmPolicy implements BotPolicy {
     if (head) {
       if (menu.some((m) => sameAction(m.action, head.action))) {
         this.plan.shift()
-        this.expected = head.action
+        const { item, guard } = guardPick(menu, head, this.margin())
+        if (guard && item && this.planRow) { this.planRow.guard = guard; this.plan = [] }
+        this.expected = (item ?? head).action
         this.expectedRow = this.planRow
-        return [head.action, ...(await this.fallback.candidates(view, 'turn'))]
+        return [(item ?? head).action, ...(await this.fallback.candidates(view, 'turn'))]
       }
       this.plan = []
     }
@@ -140,14 +150,29 @@ export class SectionedLlmPolicy implements BotPolicy {
         this.boardDue = true
         if (hooks) await hooks.checkpoint(SECTION_MARKERS[section])
       }
-      const asked = await this.ask(view, 'turn', section, numberedMenu(menu, section))
+      const asked = await this.ask(view, 'turn', section, numberedMenu(menu, section, this.window()))
       if (asked === null) return this.fallback.candidates(view, 'turn')
       if (asked.items.length === 0) {
         this.pendingTalk = asked.row.tableTalk ?? this.pendingTalk
+        const { item, guard } = guardPick(menu, null, this.margin())
+        if (guard && item) {
+          asked.row.guard = guard
+          this.lastOutcome = null
+          this.propose(item, asked.row, null)   // no then: the pointer stays here
+          return [item.action, ...(await this.fallback.candidates(view, 'turn'))]
+        }
         this.lastOutcome = `You chose nothing in ${section.toUpperCase()}.`
         if (section === 'finish') return this.endTurn(view, menu)
         section = advanceFrom(section)
         continue
+      }
+      const picked = guardPick(menu, asked.items[0], this.margin())
+      if (picked.guard && picked.item) {
+        asked.row.guard = picked.guard
+        this.propose(picked.item, asked.row, null)
+        this.plan = []
+        this.planRow = null
+        return [picked.item.action, ...(await this.fallback.candidates(view, 'turn'))]
       }
       this.propose(asked.items[0], asked.row, asked.answer.then)
       this.plan = asked.items.slice(1)
@@ -160,9 +185,24 @@ export class SectionedLlmPolicy implements BotPolicy {
     return menu.filter((m) => inSection(m.section, section))
   }
 
-  // END TURN from the menu, no call, no row (§3.2 step 3).
+  // END TURN from the menu, no call, no row — unless the guard overrides it
+  // (§3.2 step 3; 2026-09-19 scored menu spec §6.2). A guarded move attaches
+  // its record to the last row of this request if one exists; otherwise a
+  // fresh row is built and pushed — a row that is not in `rows` is never
+  // written to bot_decisions.
   private async endTurn(view: BotView, menu: MenuItem[]): Promise<GameAction[]> {
-    const end = menu.find((m) => m.action.type === 'END_TURN')
+    const end = menu.find((m) => m.action.type === 'END_TURN') ?? null
+    const { item, guard } = guardPick(menu, end, this.margin())
+    if (guard && item) {
+      let last = this.rows[this.rows.length - 1]
+      if (!last) {
+        last = this.row(view, 'turn', this.section, null, menu.length, 0, null)
+        this.rows.push(last)
+      }
+      last.guard = guard
+      this.propose(item, last, null)
+      return [item.action, ...(await this.fallback.candidates(view, 'turn'))]
+    }
     this.expected = end ? end.action : null
     this.expectedRow = null
     this.pendingThen = null
