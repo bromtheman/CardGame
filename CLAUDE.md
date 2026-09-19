@@ -112,8 +112,9 @@ bootstrapped by hand** after the AI-opponent migration deploys — runbook in
 docs/claude/supabase.md. Until then `ADD_BOT` answers 503 and nothing else
 changes. **It plays through a model only when `OPENROUTER_API_KEY` is set as a
 function secret** (`BOT_LLM_DISABLED=1` is the kill switch); without it the
-heuristic plays and `bot_decisions` says `disabled`. `BOT_MODEL` picks the
-OpenRouter model without a deploy (Mercury 2.5 by default; DeepSeek V4.1
+evaluator (`scoredPolicy`) plays and `bot_decisions` still says `disabled`.
+`BOT_MODEL` picks the OpenRouter model without a deploy (Mercury 2.5 by
+default; DeepSeek V4.1
 Flash's rows in `MODEL_REASONING_EFFORT` / `MODEL_ROUTING` ask it to reason
 and route it by throughput — the slow providers time out;
 `BOT_REASONING_EFFORT` and `BOT_PROVIDERS` override). The move menu, not the model, decides legality — see

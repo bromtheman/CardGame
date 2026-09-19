@@ -383,7 +383,8 @@ created by `ADD_BOT` from `shared/ai/botDecks.ts` and are never deleted.
 Spec: `docs/superpowers/specs/2026-09-16-llm-practice-ai-design.md`. The bot
 plays through a model (OpenRouter, `inception/mercury-2.5` by default) when
 `OPENROUTER_API_KEY` is set as an **Edge Function secret**; otherwise the
-heuristic plays and every request files one `disabled` telemetry row.
+evaluator (`scoredPolicy`) plays and every request files one `disabled`
+telemetry row.
 
 1. Create an OpenRouter API key **with a credit limit** (a few dollars covers
    hundreds of games at ~3¢ each). Exhausted key → HTTP errors → the heuristic
