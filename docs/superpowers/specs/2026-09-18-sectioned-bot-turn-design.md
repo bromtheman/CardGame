@@ -564,3 +564,30 @@ design admits.
 3. Per-section reasoning effort (`medium` for deploy, more for fight) once
    there is a reason in the data.
 4. The board check's frontend fix, if §10.4 finds one.
+
+## 14. Closeout — the eval (2026-09-18)
+
+`npm run bot:eval -- --games 20 --seed 1` per flow, Mercury 2.5 at its default
+effort, same seeds, seats alternated, the harness reporting battles:
+
+| | sections | single |
+|---|---|---|
+| decided games won vs the heuristic | **12/20 (60 %)** | **16/20 (80 %)** |
+| calls per model request | 3.30 | 1.31 |
+| model time per bot turn, p50 / p95 | 14.4 s / 30.9 s | 5.8 s / 15.2 s |
+| tokens per call, prompt / cached / completion | 6 577 / 638 / 2 154 | 5 150 / 128 / 2 496 |
+| cost per game | $0.029 | $0.008 |
+| fallback rate | 1 % (malformed 7, http 2) | 3 % (malformed 8, http 2) |
+
+The §10.2 bar — sections at least matching single's win rate — was **not
+met**; p95 stayed inside the budget. A per-turn diagnostic over three seeds
+(both flows, same harness) found the mechanics working as designed and one
+behavioural difference: the sectioned flow deploys **1.39 plays per bot
+turn against 1.63**, with twice the share of zero-play turns (9/56 vs 3/32)
+— it answers `next` after one deploy move more readily than the single-shot
+plan lists a second — while attacks (0.64 vs 0.69) and hero-power use (0.21
+vs 0.19) per turn match. On those three seeds the diagnostic's outcomes went
+the other way (sections 2–1), so a 20-game sample at temperature 0.7 is
+suggestive rather than conclusive. The code default stays `sections` in
+this branch; the production choice (`BOT_FLOW`) is the owner's, made with
+these numbers.
