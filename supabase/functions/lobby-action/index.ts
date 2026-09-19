@@ -561,6 +561,7 @@ Deno.serve(async (req) => {
         BOT_LLM_DISABLED: Deno.env.get('BOT_LLM_DISABLED'),
         BOT_REASONING_EFFORT: Deno.env.get('BOT_REASONING_EFFORT'),
         BOT_PROVIDERS: Deno.env.get('BOT_PROVIDERS'),
+        BOT_FLOW: Deno.env.get('BOT_FLOW'),
       }) : null
       if (policy && game.activePlayer === locked.guest_id) {
         try {
