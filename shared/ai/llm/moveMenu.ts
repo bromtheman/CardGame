@@ -239,7 +239,17 @@ export function buildMenu(game: EngineGame, botId: string, ctx: EngineContext, k
 // Every turn item's tempo delta against END TURN (spec §3.5). An item whose
 // trial cannot be completed keeps null and stays offered.
 function scored(game: EngineGame, botId: string, ctx: EngineContext, items: MenuItem[], seedBase: number): MenuItem[] {
-  const raw = items.map((m, i) => scoreMove(game, botId, m.action, ctx, (seedBase + 1 + i) >>> 0))
+  const raw = items.map((m, i) => {
+    // scoreMove re-runs the action (plus battle samples and choice
+    // settling) on a different seed than the trial that already verified
+    // it — same rule as that trial's own try/catch: a thrown score means
+    // null for this one item, not a 500 for the whole menu.
+    try {
+      return scoreMove(game, botId, m.action, ctx, (seedBase + 1 + i) >>> 0)
+    } catch {
+      return null
+    }
+  })
   const endIndex = items.findIndex((m) => m.action.type === 'END_TURN')
   const end = endIndex >= 0 ? raw[endIndex] : null
   return items.map((m, i) => ({ ...m, score: raw[i] === null || end === null ? null : raw[i]! - end }))

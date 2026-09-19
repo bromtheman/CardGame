@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import type { GameAction } from '../../engine/engineTypes'
+import { describe, expect, it, vi } from 'vitest'
+import type { EngineContext, EngineGame, GameAction } from '../../engine/engineTypes'
 import { applyAction, knownActionTypes } from '../../engine/index'
 import { inst, makeCtx, makeGame, zoneEntry } from '../../engine/testFixtures'
 import { FALLBACK } from '../botDriver'
@@ -7,6 +7,21 @@ import { MENU_MAX_ITEMS, MENU_MAX_TRIALS } from './llmSettings'
 import { buildMenu, MENU_ACTION_TYPES, MENU_EXCLUDED_TYPES, sameAction, tempoTag } from './moveMenu'
 
 import { sectionOf } from './sections'
+
+// The throw is gated on one sentinel instanceId ('boom-card', created only by
+// the "keeps other items scored when one item throws" test below), so every
+// other test in this file still exercises the real evaluator untouched.
+vi.mock('../evaluator', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../evaluator')>()
+  return {
+    ...actual,
+    scoreMove: (game: EngineGame, botId: string, action: GameAction, ctx: EngineContext, seed: number): number | null => {
+      if (action.type === 'PLAY_CARD_TO_ZONE' && action.instanceId === 'boom-card') throw new Error('scoring boom (test)')
+      return actual.scoreMove(game, botId, action, ctx, seed)
+    },
+  }
+})
+
 const BOT = 'bob'   // side 'b', as in every practice game
 
 describe('buildMenu', () => {
@@ -183,5 +198,24 @@ describe('tempo deltas', () => {
     expect(tempoTag(0)).toBe(' [0.0]')
     expect(tempoTag(-0.04)).toBe(' [0.0]')
     expect(tempoTag(null)).toBe('')
+  })
+  // scoreMove re-runs a verified action on its own seed, so a latent
+  // rng-dependent handler throw can clear the trial and then surface only
+  // during scoring — the mock above forces exactly that for one card's
+  // PLAY_CARD_TO_ZONE. The thrown item must keep null, same as an
+  // uncompletable trial, rather than taking the rest of the menu down with it.
+  it('keeps other items scored when one item throws while scoring', () => {
+    const g = makeGame({
+      activePlayer: BOT, turnNumber: 3,
+      privates: { a: { hand: [], deck: [] }, b: { hand: [inst({ instanceId: 'boom-card', materialCost: 40000 })], deck: [] } },
+    })
+    const menu = buildMenu(g, BOT, makeCtx(), 'turn')
+    const thrown = menu.filter((m) => m.action.type === 'PLAY_CARD_TO_ZONE' && m.action.instanceId === 'boom-card')
+    expect(thrown.length).toBeGreaterThan(0)
+    for (const m of thrown) expect(m.score).toBeNull()
+    const end = menu.find((m) => m.action.type === 'END_TURN')!
+    expect(typeof end.score).toBe('number')
+    const power = menu.find((m) => m.action.type === 'USE_HERO_POWER' && m.action.power === 'draw')!
+    expect(typeof power.score).toBe('number')
   })
 })
