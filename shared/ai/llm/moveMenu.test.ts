@@ -4,7 +4,8 @@ import { applyAction, knownActionTypes } from '../../engine/index'
 import { inst, makeCtx, makeGame, zoneEntry } from '../../engine/testFixtures'
 import { FALLBACK } from '../botDriver'
 import { MENU_MAX_ITEMS, MENU_MAX_TRIALS } from './llmSettings'
-import { buildMenu, MENU_ACTION_TYPES, MENU_EXCLUDED_TYPES, sameAction, tempoTag } from './moveMenu'
+import { buildMenu, MENU_ACTION_TYPES, MENU_EXCLUDED_TYPES, sameAction, tempoTag, withinWindow } from './moveMenu'
+import type { MenuItem } from './moveMenu'
 
 import { sectionOf } from './sections'
 
@@ -217,5 +218,19 @@ describe('tempo deltas', () => {
     expect(typeof end.score).toBe('number')
     const power = menu.find((m) => m.action.type === 'USE_HERO_POWER' && m.action.power === 'draw')!
     expect(typeof power.score).toBe('number')
+  })
+})
+
+describe('withinWindow', () => {
+  it('keeps items within the window of the best, unscored items, and END TURN always', () => {
+    const menu: MenuItem[] = [
+      { id: 1, action: { type: 'END_TURN' }, text: 'end', section: 'finish', score: 0 },
+      { id: 2, action: { type: 'ATTACK_ENEMY_BASE', zoneId: 1 }, text: 'a', section: 'fight', score: 3 },
+      { id: 3, action: { type: 'ATTACK_ENEMY_BASE', zoneId: 2 }, text: 'b', section: 'fight', score: 1.5 },
+      { id: 4, action: { type: 'ATTACK_ENEMY_BASE', zoneId: 3 }, text: 'c', section: 'fight', score: null },
+    ]
+    expect(withinWindow(menu, 2).map((m) => m.id)).toEqual([1, 2, 3, 4])
+    expect(withinWindow(menu, 1).map((m) => m.id)).toEqual([1, 2, 4])
+    expect(withinWindow(menu, Infinity)).toEqual(menu)
   })
 })

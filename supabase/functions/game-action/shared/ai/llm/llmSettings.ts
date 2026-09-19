@@ -76,3 +76,11 @@ export const MENU_MAX_ITEMS = 80                // items shown to the model (pro
 export const MENU_LOG_LINES_PER_ITEM = 4        // engine log lines quoted per menu item
 export const TABLE_TALK_MAX_CHARS = 140
 export const LOG_TAIL_LINES = 15                // public log lines quoted in the prompt
+
+// Scored menu (2026-09-19 spec §6, §8). The tempo guard: a move, a pass or
+// END TURN worth this many turns or more below the best available move is
+// replaced by the best; Infinity switches it off, 0 makes the model a
+// narrator. The window: turn items further below the best than this are not
+// shown (END TURN always is); Infinity shows everything.
+export const TEMPO_GUARD_TURNS = 1
+export const MENU_SCORE_WINDOW_TURNS = Infinity

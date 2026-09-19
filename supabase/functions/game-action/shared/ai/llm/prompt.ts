@@ -5,6 +5,7 @@ import { shortHandNumber } from '../../format.ts'
 import type { OwedKind } from '../basicPolicy.ts'
 import type { BotView } from '../botView.ts'
 import { LOG_TAIL_LINES } from './llmSettings.ts'
+import { tempoTag, withinWindow } from './moveMenu.ts'
 import type { MenuItem } from './moveMenu.ts'
 import { renderPrimer } from './rulesPrimer.ts'
 import type { PrimerFlow } from './rulesPrimer.ts'
@@ -125,7 +126,7 @@ export function buildUserPrompt({ view, kind, menu, situation, planSoFar }: Prom
   if (situation) out.push('', `SITUATION: ${situation}`)
   if (planSoFar && planSoFar.length) out.push(`Your plan so far: ${planSoFar.map((m) => `#${m.id} ${m.text}`).join(' | ')}`)
   out.push('', 'MENU')
-  out.push(...menu.map((m) => `#${m.id} ${m.text}`))
+  out.push(...(kind === 'turn' ? withinWindow(menu) : menu).map((m) => `#${m.id}${tempoTag(m.score)} ${m.text}`))
   out.push('', ASK[kind])
   return out.join('\n')
 }

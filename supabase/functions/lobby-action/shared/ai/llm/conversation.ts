@@ -1,5 +1,7 @@
 import type { OwedKind } from '../basicPolicy.ts'
 import type { BotView } from '../botView.ts'
+import { MENU_SCORE_WINDOW_TURNS } from './llmSettings.ts'
+import { tempoTag, withinWindow } from './moveMenu.ts'
 import type { MenuItem } from './moveMenu.ts'
 import { ASK, boardBlock, handBlock, headerLines, kindBlock, logTail, resourcesLine } from './prompt.ts'
 import { inSection, SECTION_ASKS, SECTION_LINES } from './sections.ts'
@@ -14,9 +16,10 @@ import type { Section } from './sections.ts'
 // null) shows the whole menu.
 export interface Numbered { items: MenuItem[]; lines: string[] }
 
-export function numberedMenu(menu: MenuItem[], section: Section | null): Numbered {
-  const items = section === null ? [...menu] : menu.filter((m) => inSection(m.section, section))
-  return { items, lines: items.map((m, i) => `#${i + 1} ${m.text}`) }
+export function numberedMenu(menu: MenuItem[], section: Section | null, window: number = MENU_SCORE_WINDOW_TURNS): Numbered {
+  const scoped = section === null ? [...menu] : menu.filter((m) => inSection(m.section, section))
+  const items = section === null ? scoped : withinWindow(scoped, window)
+  return { items, lines: items.map((m, i) => `#${i + 1}${tempoTag(m.score)} ${m.text}`) }
 }
 
 // The model's numbers → the items they name; unknown numbers are dropped

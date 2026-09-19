@@ -11,7 +11,7 @@ import { scoreMove } from '../evaluator.ts'
 import { FALLBACK } from '../fallbacks.ts'
 import { mulberry32 } from '../seededRng.ts'
 import { describeMenuItem } from './describe.ts'
-import { MENU_MAX_ITEMS, MENU_MAX_TRIALS } from './llmSettings.ts'
+import { MENU_MAX_ITEMS, MENU_MAX_TRIALS, MENU_SCORE_WINDOW_TURNS } from './llmSettings.ts'
 import { sectionOf } from './sections.ts'
 import type { Section } from './sections.ts'
 
@@ -30,6 +30,14 @@ export function tempoTag(score: number | null): string {
   if (score === null) return ''
   const r = Math.round(score * 10) / 10
   return ` [${r > 0 ? '+' : ''}${r.toFixed(1)}]`
+}
+
+// The items shown to the model under the window (spec §6.3): those within
+// `window` of the best score, unscored items, and END TURN always.
+export function withinWindow(menu: MenuItem[], window: number = MENU_SCORE_WINDOW_TURNS): MenuItem[] {
+  if (!Number.isFinite(window)) return menu
+  const best = Math.max(...menu.map((m) => m.score ?? -Infinity))
+  return menu.filter((m) => m.score === null || m.action.type === 'END_TURN' || m.score >= best - window)
 }
 
 // Every action type the enumerator can emit. moveMenu.test.ts pins this list

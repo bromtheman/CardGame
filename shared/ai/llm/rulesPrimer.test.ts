@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { KEYWORDS, MATERIALS_PER_TURN, SURVIVE_HP_PERCENT } from '../../gameSettings'
 import { shipProfilesForFaction } from '../../shipProfiles'
 import { FACTION_NOTES, GENERAL_TIPS } from './factionNotes'
-import { HOW_YOU_PLAY, KEYWORD_GLOSSARY, PRIMER_TEMPLATE, renderPrimer } from './rulesPrimer'
+import { TEMPO_GUARD_TURNS } from './llmSettings'
+import { HOW_YOU_PLAY, KEYWORD_GLOSSARY, PRIMER_TEMPLATE, PRIMER_VALUES, renderPrimer } from './rulesPrimer'
 
 describe('rules primer', () => {
   it('carries no literal number — every figure is a placeholder filled from gameSettings', () => {
@@ -38,9 +39,13 @@ describe('rules primer', () => {
   it('renders the single flow’s answer shape by default and the sectioned flow’s on request, after the same prefix', () => {
     const single = renderPrimer('DWG')
     const sections = renderPrimer('DWG', 'sections')
-    expect(single).toContain(HOW_YOU_PLAY.single)
+    // Each block's own {{TEMPO_GUARD_LINE}} placeholder is resolved by render,
+    // so the byte-for-byte check is against the block with that one swap made
+    // — same block, same rule, its digit no longer literal.
+    const guardLine = String(PRIMER_VALUES.TEMPO_GUARD_LINE)
+    expect(single).toContain(HOW_YOU_PLAY.single.replace('{{TEMPO_GUARD_LINE}}', guardLine))
     expect(single).not.toContain('"actions"')
-    expect(sections).toContain(HOW_YOU_PLAY.sections)
+    expect(sections).toContain(HOW_YOU_PLAY.sections.replace('{{TEMPO_GUARD_LINE}}', guardLine))
     expect(sections).not.toContain('"plan"')
     expect(sections).toContain('DEPLOY')
     expect(sections).toContain('continues from ACTIVATE')
@@ -112,5 +117,17 @@ describe('rules primer', () => {
     const text = renderPrimer('OW')
     expect(text).not.toContain('YOUR FLEET')
     expect(text).not.toMatch(/\n\n\n/)
+  })
+  it('explains the tempo tag in both flows and names the guard margin through its placeholder', () => {
+    for (const flow of ['single', 'sections'] as const) {
+      const text = renderPrimer('DWG', flow)
+      expect(text).toContain('tempo estimate in brackets')
+      expect(text).toContain(`A move worth ${TEMPO_GUARD_TURNS} turns or more less than the best move is not accepted`)
+      // renderPrimer must substitute in two passes: HOW_YOU_PLAY[flow] is
+      // itself inserted from a placeholder, and carries one of its own.
+      expect(text).not.toContain('{{')
+    }
+    expect(HOW_YOU_PLAY.single).toContain('{{TEMPO_GUARD_LINE}}')
+    expect(HOW_YOU_PLAY.sections).toContain('{{TEMPO_GUARD_LINE}}')
   })
 })

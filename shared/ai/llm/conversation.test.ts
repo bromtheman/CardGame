@@ -4,6 +4,7 @@ import { viewFor } from '../botView'
 import { ANSWER_SCHEMA } from './answerSchema'
 import { firstMessage, followUpMessage, itemsFor, numberedMenu } from './conversation'
 import { buildMenu } from './moveMenu'
+import type { MenuItem } from './moveMenu'
 import { buildSystemPrompt } from './prompt'
 import { SECTION_MARKERS } from './sections'
 
@@ -44,6 +45,15 @@ describe('numberedMenu', () => {
     expect(itemsFor(deploy, [1])).toEqual([deploy.items[0]])
     expect(itemsFor(deploy, [deploy.items.length + 5, 0])).toEqual([])   // unknown numbers dropped
     expect(numberedMenu(menu, null).items).toEqual(menu)                  // a one-move kind shows everything
+  })
+  it('numbers the section’s items with their tempo tags and hides items outside the window, never END TURN', () => {
+    const menu: MenuItem[] = [
+      { id: 1, action: { type: 'PLAY_CARD_TO_ZONE', instanceId: 'x', zoneId: 1 }, text: 'Deploy X', section: 'deploy', score: 4 },
+      { id: 2, action: { type: 'PLAY_CARD_TO_ZONE', instanceId: 'x', zoneId: 2 }, text: 'Deploy X to 2', section: 'deploy', score: 0.5 },
+      { id: 3, action: { type: 'END_TURN' }, text: 'End', section: 'finish', score: 0 },
+    ]
+    expect(numberedMenu(menu, 'deploy').lines).toEqual(['#1 [+4.0] Deploy X', '#2 [+0.5] Deploy X to 2'])
+    expect(numberedMenu(menu, 'finish', 1).lines).toEqual(['#1 [+4.0] Deploy X', '#2 [0.0] End'])
   })
 })
 
