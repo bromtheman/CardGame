@@ -591,3 +591,27 @@ the other way (sections 2–1), so a 20-game sample at temperature 0.7 is
 suggestive rather than conclusive. The code default stays `sections` in
 this branch; the production choice (`BOT_FLOW`) is the owner's, made with
 these numbers.
+
+### 14.1 Under the strength-based resolver (2026-09-19)
+
+The coin flip above could not reward a good fight or punish a bad one, so
+the harness's battle report was replaced by `shared/ai/battleSim.ts`
+(effective cost, profiles tipping — `b214c61`, calibrated `c8fe34e`) and the
+eval restricted to the profiled factions (DWG/SS/WF, `--factions`). Same
+20 seeds, same seats, cross-faction rotation:
+
+| | sections | single |
+|---|---|---|
+| decided games won vs the heuristic | **10/20 (50 %)** | **11/20 (55 %)** |
+| model time per bot turn, p50 / p95 | 16.1 s / 34.6 s | 6.0 s / 16.4 s |
+| cost per game | $0.030 | $0.011 |
+| fallback rate | 1 % (malformed 9, http 1) | 2 % |
+
+No flow difference within noise, and both near the heuristic. The
+[scored menu spec](2026-09-19-scored-menu-design.md) then showed why the
+number is flat: with the heuristic on both seats this cross-faction
+schedule was ~90 % decided by the faction draw (DWG wins 90 % of its games,
+SS 36 %, WF 24 %), so the eval moved to mirror pairing (`af355a7`), and
+under it the sectioned flow was the stronger of the two unaided (65 % vs
+35 % once fights were decisive) — the comparison the closeout there
+records. The numbers in this section are history, not the bar.
