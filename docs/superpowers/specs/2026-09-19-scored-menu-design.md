@@ -314,7 +314,14 @@ carry `guard` where it fired; the human's board is unchanged.
    model room for such moves, and §12 names the rollout.
 2. Battle samples assume the defender withdraws nothing and the bot repairs
    nothing — the harness's report and the heuristic's decision. Both are
-   pessimistic for the bot's own losses, which is the safe side.
+   pessimistic for the bot's own losses, which is the safe side — except
+   for a fleet the human can withdraw *entirely*, where "withdraws nothing"
+   is the optimistic reading: the human fights only by choice and the score
+   (tens of turns for a lone Stealthy hull) is for a fight that never
+   happens. That case never reaches the evaluator: the menu withholds it
+   (LLM spec §4.2, amended 2026-09-20). A partly withdrawable fleet is still
+   scored as if it stood, and §12's scored responses are where a better
+   model of the defender would go.
 3. `battleSim.ts` **is shipped code** — synced into both functions as the
    evaluator's battle stand-in, because the samples need one where the menu
    is built; its calibration stays the eval's business. Its loss law is the

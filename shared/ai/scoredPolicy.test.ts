@@ -65,6 +65,33 @@ describe('scoredPolicy', () => {
     expect(game.state.log.filter((l) => l.includes(' reveals ')).length).toBeLessThanOrEqual(1)
     expect(game.activePlayer).toBe('alice')
   })
+  it('does not re-declare a fleet attack the human just called off by withdrawing every defender', async () => {
+    // The livelock (2026-09-20): the bot's 200k hull faces a lone Stealthy
+    // 50k hull. Declared, the attack opens a response window; the human
+    // withdraws the hull; the engine calls the attack off with the zone
+    // activation unspent and the state otherwise unchanged (design spec
+    // §3.4); the next request finds the bot owing its turn again, and a
+    // policy that reads only the board sees the same attack, at the same
+    // score, and declares it again — a withdrawal per lap for the human,
+    // forever. The bot must end its turn instead, however many laps the
+    // human has already withdrawn.
+    const g = makeGame({ activePlayer: 'bob', turnNumber: 3 })
+    g.state.zones[0].baseHp.a = 0   // no base attack to get in the way
+    g.state.usedHeroPowers.b.push('rapidRedeployment')   // nor a redeployment to a zone with a base to bombard
+    g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'mine-1', materialCost: 200000, playedOnTurn: 2 }))
+    g.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'ghost', materialCost: 50000, keywords: ['stealthy'] }))
+    const declared = applyAction(g, 'bob', { type: 'ATTACK_ENEMY_FLEET', zoneId: 1 }, makeCtx())
+    if (!declared.ok) throw new Error(declared.error)
+    const withdrawn = applyAction(declared.game, 'alice', { type: 'RESPOND_TO_ATTACK', optOutIds: ['ghost'] }, makeCtx())
+    if (!withdrawn.ok) throw new Error(withdrawn.error)
+    expect(withdrawn.game.state.log.at(-1)).toContain('called off')
+    expect(withdrawn.game.state.zones[0].lastActivatedTurn).toBeNull()   // the lap costs the bot nothing — that is the trap
+    expect(botOwes(withdrawn.game, 'b')).toBe('turn')
+    const { game, applied } = await runBotUntilIdle(withdrawn.game, 'bob', makeCtx(), scoredPolicy)
+    expect(applied).toEqual([{ type: 'END_TURN' }])
+    expect(game.state.awaitingResponse).toBeNull()
+    expect(game.activePlayer).toBe('alice')
+  })
   it('answers the one-move kinds with the heuristic’s order', () => {
     const g = makeGame({ activePlayer: 'bob' })
     g.state.pendingEffect = { effect: 'e', side: 'b', card: inst({}), kind: 'choice', prompt: 'pick', options: [{ id: 'x', label: 'x' }] }

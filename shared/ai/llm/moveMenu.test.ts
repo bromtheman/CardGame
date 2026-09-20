@@ -89,6 +89,27 @@ describe('buildMenu', () => {
     for (const item of buildMenu(c, BOT, makeCtx(), "choice")) expect(item.section).toBeNull()
   })
 
+  it('never offers a fleet attack every defender could withdraw from', () => {
+    // A lone Stealthy defender. The engine accepts the declaration, but the
+    // human withdraws the hull at no cost, the attack is called off with the
+    // zone activation unspent (design spec §3.4) and the state unchanged, and
+    // the next request rebuilds this same menu — so a stateless policy
+    // re-declares it forever, a withdrawal per lap for the human. The
+    // heuristic has skipped it since the AI-opponent spec (§6.1); the menu,
+    // which every other flow reads, has to skip it too.
+    const g = makeGame({ activePlayer: BOT, turnNumber: 3 })
+    g.state.zones[0].baseHp.a = 0   // no base attack to get in the way
+    g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'mine-1', materialCost: 200000, playedOnTurn: 2 }))
+    g.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'ghost', materialCost: 50000, keywords: ['stealthy'] }))
+    expect(applyAction(g, BOT, { type: 'ATTACK_ENEMY_FLEET', zoneId: 1 }, makeCtx()).ok).toBe(true)   // the engine would take it
+    const menu = buildMenu(g, BOT, makeCtx(), 'turn').map((m) => m.action)
+    expect(menu).not.toContainEqual({ type: 'ATTACK_ENEMY_FLEET', zoneId: 1 })
+    expect(menu).toContainEqual({ type: 'END_TURN' })
+    // One defender that cannot slip away is enough to make the fight real.
+    g.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'plain', materialCost: 50000 }))
+    expect(buildMenu(g, BOT, makeCtx(), 'turn').map((m) => m.action)).toContainEqual({ type: 'ATTACK_ENEMY_FLEET', zoneId: 1 })
+  })
+
   it('enumerates responses, decisions and choices', () => {
     const g = makeGame({ activePlayer: 'alice', turnNumber: 3 })
     g.state.awaitingResponse = {
