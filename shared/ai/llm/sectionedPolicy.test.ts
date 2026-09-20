@@ -69,7 +69,11 @@ describe('SectionedLlmPolicy — a turn', () => {
       { pick: 'ATTACK the enemy base in zone 1', then: 'next' },
       { pick: null },
     ])
-    const policy = new SectionedLlmPolicy(client, basicPolicy, 'fake/model', noGuard)
+    // Window Infinity too: the fixture's zone-2 Corsair play scores far above
+    // the zone-1 one this test expects picked (the zone Marauder already
+    // occupies) — a wide spread this test isn't about (moveMenu.test.ts's
+    // withinWindow and conversation.test.ts cover the window itself).
+    const policy = new SectionedLlmPolicy(client, basicPolicy, 'fake/model', { ...noGuard, menuScoreWindowTurns: Infinity })
     const markers: string[] = []
     const { game, applied, talk } = await runBotUntilIdle(turnGame(), BOT, makeCtx(), policy, async (g) => { markers.push(g.state.log[g.state.log.length - 1]) })
     expect(applied.map((a) => a.type)).toEqual(['PLAY_CARD_TO_ZONE', 'ATTACK_ENEMY_BASE', 'END_TURN'])
@@ -486,7 +490,11 @@ describe('SectionedLlmPolicy — the tempo guard', () => {
       { pick: null, then: 'next' },   // still DEPLOY (the pointer did not move) → nothing else clears the margin → advances for real
       { pick: null, then: 'next' },   // FINISH pass → END TURN
     ])
-    const policy = new SectionedLlmPolicy(client, basicPolicy, 'fake/model', { ...fast, actionsPerAnswer: 2 })
+    // Window Infinity: the model's own two-move answer deliberately pairs the
+    // best deploy with a throwaway (score 0) one — the window would hide the
+    // throwaway, which is fine in play (the guard still catches it) but
+    // would break this script's first call before the guard is even reached.
+    const policy = new SectionedLlmPolicy(client, basicPolicy, 'fake/model', { ...fast, actionsPerAnswer: 2, menuScoreWindowTurns: Infinity })
     const { applied } = await runBotUntilIdle(turnGame(), BOT, makeCtx(), policy)
     expect(applied.map((a) => a.type)).toEqual(['PLAY_CARD_TO_ZONE', 'ATTACK_ENEMY_BASE', 'END_TURN'])
     expect(client.calls.length).toBe(3)   // Draw's replacement is free — it never re-asks the model

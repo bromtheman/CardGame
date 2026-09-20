@@ -3,7 +3,7 @@ import type { EngineContext, EngineGame, GameAction } from '../../engine/engineT
 import { applyAction, knownActionTypes } from '../../engine/index'
 import { inst, makeCtx, makeGame, zoneEntry } from '../../engine/testFixtures'
 import { FALLBACK } from '../botDriver'
-import { MENU_MAX_ITEMS, MENU_MAX_TRIALS } from './llmSettings'
+import { MENU_MAX_ITEMS, MENU_MAX_TRIALS, MENU_SCORE_WINDOW_TURNS } from './llmSettings'
 import { buildMenu, MENU_ACTION_TYPES, MENU_EXCLUDED_TYPES, sameAction, tempoTag, withinWindow } from './moveMenu'
 import type { MenuItem } from './moveMenu'
 
@@ -232,5 +232,12 @@ describe('withinWindow', () => {
     expect(withinWindow(menu, 2).map((m) => m.id)).toEqual([1, 2, 3, 4])
     expect(withinWindow(menu, 1).map((m) => m.id)).toEqual([1, 2, 4])
     expect(withinWindow(menu, Infinity)).toEqual(menu)
+  })
+})
+
+describe('MENU_SCORE_WINDOW_TURNS', () => {
+  it('defaults to a finite window of 2 turns — the 2026-09-19 eval matrix\'s shipped variant (V3)', () => {
+    expect(Number.isFinite(MENU_SCORE_WINDOW_TURNS)).toBe(true)
+    expect(MENU_SCORE_WINDOW_TURNS).toBe(2)
   })
 })

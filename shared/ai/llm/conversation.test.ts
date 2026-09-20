@@ -28,17 +28,20 @@ describe('numberedMenu', () => {
   it('shows one section’s items renumbered from one, and maps the numbers back', () => {
     const g = fixture()
     const menu = buildMenu(g, BOT, makeCtx(), 'turn')
-    const deploy = numberedMenu(menu, 'deploy')
+    // Infinity throughout: this test is about the renumbering/mapping
+    // mechanic, not the score window (that has its own test below), so it
+    // asks for every item regardless of spread.
+    const deploy = numberedMenu(menu, 'deploy', Infinity)
     expect(deploy.items.length).toBeGreaterThan(0)
     expect(deploy.items.every((m) => m.section === 'deploy')).toBe(true)
     expect(deploy.lines[0]).toMatch(/^#1 /)
     expect(deploy.lines[deploy.items.length - 1]).toMatch(new RegExp(`^#${deploy.items.length} `))
     expect(deploy.lines.some((l) => l.includes('ATTACK'))).toBe(false)
     expect(deploy.lines.some((l) => l.includes('END TURN'))).toBe(false)
-    const fight = numberedMenu(menu, 'fight')
+    const fight = numberedMenu(menu, 'fight', Infinity)
     expect(fight.items.every((m) => m.section === 'fight')).toBe(true)
     expect(fight.lines.some((l) => l.includes('ATTACK the enemy base in zone 1'))).toBe(true)
-    const finish = numberedMenu(menu, 'finish')
+    const finish = numberedMenu(menu, 'finish', Infinity)
     expect(finish.items.some((m) => m.action.type === 'END_TURN')).toBe(true)
     expect(finish.items.some((m) => m.action.type === 'PLAY_CARD_TO_ZONE')).toBe(true)
     expect(finish.items.some((m) => m.section === 'fight')).toBe(false)
@@ -52,7 +55,10 @@ describe('numberedMenu', () => {
       { id: 2, action: { type: 'PLAY_CARD_TO_ZONE', instanceId: 'x', zoneId: 2 }, text: 'Deploy X to 2', section: 'deploy', score: 0.5 },
       { id: 3, action: { type: 'END_TURN' }, text: 'End', section: 'finish', score: 0 },
     ]
-    expect(numberedMenu(menu, 'deploy').lines).toEqual(['#1 [+4.0] Deploy X', '#2 [+0.5] Deploy X to 2'])
+    // Infinity here: this assertion is about the tag formatting, not the
+    // window — the window's own hiding is the next assertion, with an
+    // explicit margin.
+    expect(numberedMenu(menu, 'deploy', Infinity).lines).toEqual(['#1 [+4.0] Deploy X', '#2 [+0.5] Deploy X to 2'])
     expect(numberedMenu(menu, 'finish', 1).lines).toEqual(['#1 [+4.0] Deploy X', '#2 [0.0] End'])
   })
 })
