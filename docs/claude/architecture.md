@@ -557,7 +557,14 @@ one more caller of `applyAction`; nothing in the engine knows it exists.
   2026-09-18 sectioned bot turn spec):** the driver builds a verified,
   annotated move menu (`moveMenu.ts` — every action shape enumerated, each
   applied on a clone, survivors described by public diff, each tagged with
-  its `section`) for a policy that declares `needsMenu`. `BOT_FLOW` picks
+  its `section`) for a policy that declares `needsMenu`. The menu withholds
+  exactly one move the engine accepts: a fleet attack every defender may
+  withdraw from (`calledOffAtWill`, read off the trial's own response
+  window). A called-off attack spends nothing (spec §3.4), every policy is
+  rebuilt per request, and the evaluator scores the fight as if the human
+  stood and fought, so without the prune the bot re-declared against a lone
+  Stealthy hull every time the human withdrew it (2026-09-20). The
+  heuristic has the same rule in `attackCandidates`. `BOT_FLOW` picks
   the policy: **`SectionedLlmPolicy`** (default) runs the turn as one
   conversation per request in four sections — deploy → activate → fight →
   finish (`sections.ts`) — showing the model only the current section's

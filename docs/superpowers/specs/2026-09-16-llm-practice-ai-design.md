@@ -243,6 +243,22 @@ draw from the game's stream and a seeded test stays deterministic whatever
 the menu size. Consequence: an annotation is one *sample* of an rng-dependent
 effect; the real apply may roll differently, and the prompt says so.
 
+**One accepted move is withheld** (amended 2026-09-20): a fleet attack every
+defender may withdraw from — the trial opens a response window whose
+`targetIds` are all in `stealthyIds ∪ omissibleIds` (`calledOffAtWill`).
+This is the AI opponent spec's §6.1 rule, which until then only the
+heuristic applied: the human withdraws at no cost, the attack is called off
+with the zone activation unspent (design spec §3.4) and the state otherwise
+unchanged, the next request rebuilds this same menu, and every policy here
+is stateless across requests — the evaluator, moreover, scores the fight as
+if the human stood and fought (scored-menu spec §11.2), tens of turns above
+END TURN, which the tempo guard then enforces even over a model's pass. So
+the bot re-declared against a lone Stealthy hull every time the human
+withdrew it, a withdrawal per lap, until the human stopped withdrawing.
+Pruned in the menu rather than scored down, because the score alone would
+leave the item pickable by a model whenever nothing else scored above END
+TURN. One defender that cannot slip away keeps the attack on the menu.
+
 ### 4.3 Annotation
 
 Diff the trial's **public** state against the current one, plus own hand

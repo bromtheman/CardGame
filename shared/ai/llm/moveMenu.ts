@@ -197,7 +197,29 @@ export function enumerate(game: EngineGame, side: Side, kind: OwedKind): GameAct
 }
 
 // Enumerate, verify each on a clone (the engine prunes the unaffordable, the
-// wrong-phase, the already-activated), annotate the survivors, cap. The
+// The one move the menu withholds that the engine would accept: a fleet
+// attack every defender may withdraw from (2026-09-16 AI opponent spec
+// §6.1, the heuristic's rule, extended to the menu on 2026-09-20). The
+// human withdraws at no cost — the attack is called off with the zone
+// activation unspent and the state otherwise unchanged (design spec §3.4) —
+// the next request rebuilds this same menu, and a policy that reads only
+// the board (every policy here; the evaluator scores the fight as if the
+// human stood and fought, tens of turns above END TURN, which the tempo
+// guard then enforces over a model's pass) declares it again: a withdrawal
+// per lap for the human, forever. Read off the response window the trial
+// itself opened — exactly what the engine says the defender may withdraw,
+// whichever list it came from — never re-derived; and only a window this
+// trial opened, so an answer to a window already standing is never judged.
+export function calledOffAtWill(before: EngineGame, trial: EngineGame): boolean {
+  const opened = trial.state.awaitingResponse
+  if (!opened || before.state.awaitingResponse) return false
+  const optOut = new Set([...opened.stealthyIds, ...(opened.omissibleIds ?? [])])
+  return opened.targetIds.every((id) => optOut.has(id))
+}
+
+// Enumerate, verify each on a clone (the engine prunes the unaffordable, the
+// wrong-phase, the already-activated; the menu itself prunes only what
+// calledOffAtWill names), annotate the survivors, cap. The
 // trials run on their own rng, seeded by ONE draw from ctx.rng, so a menu of
 // any size costs the game's stream exactly one value (spec §4.2). The kept
 // action is the driver's own FALLBACK per kind (imported, not restated — see
@@ -223,7 +245,7 @@ export function buildMenu(game: EngineGame, botId: string, ctx: EngineContext, k
     } catch {
       continue
     }
-    if (!r.ok) continue
+    if (!r.ok || calledOffAtWill(game, r.game)) continue
     items.push({ id: 0, action, text: describeMenuItem(game, r.game, side, action), section: sectionOf(action), score: null })
   }
   // The item cap is per section (2026-09-18 spec §6): the sectioned flow
