@@ -142,8 +142,9 @@ export class LlmPolicy implements BotPolicy {
       this.pendingTalk = null
       return talk
     }
-    // The engine took something else — a heuristic tail candidate or the
-    // driver's fallback. A verified move was refused: file it, drop the plan.
+    // The engine took something else — a candidate from the fallback's tail
+    // (the evaluator's ranking, then the heuristic's) or the driver's own
+    // fallback. A verified move was refused: file it, drop the plan.
     if (next && this.currentRow && this.currentRow.fallbackReason === null) this.currentRow.fallbackReason = 'plan_rejected'
     this.plan = []
     this.pendingTalk = null

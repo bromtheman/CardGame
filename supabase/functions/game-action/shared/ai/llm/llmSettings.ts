@@ -40,7 +40,8 @@ export const MODEL_ROUTING: Readonly<Record<string, OpenRouterRouting>> = {
   'deepseek/deepseek-v4.1-flash': { sort: 'throughput', require_parameters: true },
 }
 // The caps are for a long think or a slow provider moment, and the owner
-// would rather wait than hand the turn to the heuristic (2026-09-17). The
+// would rather wait than hand the turn to the fallback (2026-09-17 — the
+// heuristic then; the evaluator, scoredPolicy, since 2026-09-19). The
 // frontend's "PracticeAI is thinking…" label covers the wait, and the
 // sectioned flow (2026-09-18 sectioned bot turn spec §8) commits after every
 // section so the board moves while the request runs. A Mercury call is ~5 s
@@ -50,7 +51,7 @@ export const MODEL_ROUTING: Readonly<Record<string, OpenRouterRouting>> = {
 // request is bounded by budget + one call = 125 s, inside the runtime's
 // 150 s wall clock with the commits and the engine in the rest. DeepSeek
 // V4.1 Flash at `high` (40–55 s a call) does not fit this many calls; the
-// budget hands its turn to the heuristic as designed.
+// budget hands the rest of its turn to the evaluator as designed.
 export const LLM_CALL_TIMEOUT_MS = 45_000       // per call, via AbortController
 export const LLM_REQUEST_BUDGET_MS = 80_000     // model time already spent that still admits a call
 export const LLM_MAX_CALLS_PER_REQUEST = 16     // sections, moves, passes, a choice
@@ -66,8 +67,9 @@ export const SECTION_MAX_ACTIONS = 8
 // or garbled (2026-09-17 eval — 100% `http` fallbacks). 65 536 is the
 // provider's max_completion_tokens; a typical turn uses ~1k of it (~$0.00015,
 // ~2 s), and the owner wants the reasoning kept for stronger play and better
-// table-talk. A value above the provider's ceiling risks a 400 → silent
-// heuristic, so this is the ceiling itself, not the 260k context.
+// table-talk. A value above the provider's ceiling risks a 400 → the
+// evaluator playing every turn with only an `http` row to show for it, so
+// this is the ceiling itself, not the 260k context.
 export const LLM_MAX_OUTPUT_TOKENS = 65_536
 export const LLM_TEMPERATURE = 0.7
 export const EXPECTATION_MAX_CHARS = 400

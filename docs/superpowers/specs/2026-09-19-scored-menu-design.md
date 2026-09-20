@@ -62,9 +62,16 @@ the score is read at the start of the enemy's turn, and they strike on ours.
 `turnsToWin(game, attacker)`: per zone, the turns the attacker needs to fell
 the defender's base at current power — `0` if it has already fallen,
 `EVALUATOR.capTurns` (60) if a defender hull there has Blocker or the
-attacker has no strike power there, else `baseHp / strikePower`. Bombardment
-runs in every zone in parallel, so the answer is the **second smallest** —
-the game ends when the second base falls.
+attacker has no strike power there, else `baseHp / strikePower`, clamped
+at the cap (a bombardment slower than the cap counts like a stalled zone).
+Bombardment runs in every zone in parallel and the game ends when the
+second base falls, but the answer is the **sum of the two smallest** zone
+times, not the second smallest alone. The second smallest hid all progress
+against the first zone: a striker in one zone moved nothing until a second
+zone was threatened, so single-zone progress never registered in the score.
+The sum keeps it visible (Task 3 ruling; self-play against the heuristic:
+109–11 as the sum against the §1 experiment's 110–10 as the second smallest
+— equivalent strength, and a score that moves).
 
 ### 3.3 Position score
 
@@ -94,13 +101,21 @@ its turn, or `null` when the move cannot be trial-applied:
    trial context, so scoring is deterministic per menu build).
 2. If the bot now owes a **choice** (an effect asking), take the first
    accepted option from `basicPolicy` (at most four times).
-3. **Fleet attack**: the trial leaves the defender owing a response. Play the
-   battle out `EVALUATOR.battleSamples` (6) times, each with its own rng:
-   the defender withdraws nothing, the defender submits the report
-   `resolveBattle` (battleSim.ts) draws, the bot approves it repairing
-   nothing, any pending choice on either side takes its first option; end
-   the turn; score. The move's score is the **mean** of the samples that
-   completed (`null` if none did).
+3. **A battle**: the trial leaves a battle open — a fleet attack's response
+   window or lock, or one an effect forced (Martyr Attack, an interception).
+   Play it out `EVALUATOR.battleSamples` (6) times, each with its own rng:
+   the defender withdraws nothing (when it has a window at all), the
+   defender submits the report `resolveBattle` (battleSim.ts) draws, the bot
+   approves it repairing nothing, any pending choice on either side takes
+   its first option; end the turn; score. The move's score is the **mean**
+   of the samples that completed (`null` if none did). `resolveBattle` is
+   **shipped code** — the same resolver the eval uses, inside both
+   functions — and its loss law is the **square law** `r² / (1 + r²)`
+   (Lanchester-like: the share of a side's hulls focused, for `r` = enemy
+   offense over own defense; a half in an even fight, nine tenths when
+   outgunned three to one). The linear law `r / (1 + r)` it replaced made
+   every fight zero-sum in expected cost — both sides lost `M·E/(M+E)` for
+   any mismatch — so no evaluator could prefer fighting when stronger.
 4. Otherwise apply END TURN and score the result. END TURN itself scores its
    own trial state.
 
@@ -130,9 +145,17 @@ better; only differences between lines mean anything.
 
 ## 5. `ScoredPolicy` — `shared/ai/scoredPolicy.ts`
 
-`needsMenu: true`. For a turn: the menu sorted by score descending, ties
-in menu order except that **END TURN loses every tie** (materials held at
-END TURN are lost anyway, so a free deploy is never worse than ending). For
+`needsMenu: true`. For a turn: the items with a **strictly positive** delta
+first, score descending with ties in menu order; then **END TURN**; then
+every item at or below it (a zero or null delta), in menu order — still
+offered in case END TURN is refused, but END TURN precedes them all. Only a
+move worth more than ending ranks above ending: an earlier "END TURN loses
+every tie" rule looped on `SET_ALERT_CARD`, which is legal as long as an
+ability card is in hand (a re-reveal replaces the last one) and worth
+exactly 0 (the alert expires with the turn), so the driver revealed it until
+`BOT_ACTION_CAP`, sixty menus and as many public log lines per request
+(final-review ruling; the cost is that a free zero-delta deploy is never
+made by this flow, which the one-ply evaluator could not value anyway). For
 the other kinds: `basicPolicy`'s candidates. `onAccepted` returns `null`
 (no table talk). Exported as `scoredPolicy` (stateless, like `basicPolicy`).
 
@@ -150,10 +173,15 @@ primer's HOW YOU PLAY block (both flows) gains:
 > only the differences matter. It counts bombardment and hulls on the board
 > and plays a fleet battle out by cost; it does not see what an ability does
 > later or how well the human fights, so treat it as a compass, not an order.
-> A move worth {{TEMPO_GUARD_TURNS}} turns or more less than the best move
-> is not accepted — the best move is played instead.
+> A move worth at least {{TEMPO_GUARD_TURNS}} turn(s) of tempo less than the
+> best move is not accepted — the best move is played instead.
 
-The digits stay in placeholders (rulesPrimer.test.ts's no-digit rule).
+The digits stay in placeholders (rulesPrimer.test.ts's no-digit rule). The
+guard sentence is rendered from the margin **the policy runs with** — its
+settings' `tempoGuardTurns`, passed through `buildSystemPrompt(faction,
+flow, guardTurns)` to `renderPrimer` — and is left out entirely when that
+margin is not finite, so an advisory run (`--guard inf`) never tells the
+model a guard exists (final-review ruling).
 
 ### 6.2 The tempo guard
 
@@ -285,8 +313,12 @@ carry `guard` where it fired; the human's board is unchanged.
 2. Battle samples assume the defender withdraws nothing and the bot repairs
    nothing — the harness's report and the heuristic's decision. Both are
    pessimistic for the bot's own losses, which is the safe side.
-3. `battleSim.ts` becomes shipped code because the samples need a battle
-   stand-in in the function; its calibration stays the eval's business.
+3. `battleSim.ts` **is shipped code** — synced into both functions as the
+   evaluator's battle stand-in, because the samples need one where the menu
+   is built; its calibration stays the eval's business. Its loss law is the
+   square law `r² / (1 + r²)` (§3.4 step 3): under the linear law the
+   evaluator's fleet-attack test could not pass, because every fight was
+   zero-sum in expected cost whoever was stronger.
 4. The guard reads the whole menu, not the section, so a skipped fight is
    guarded at END TURN.
 5. The eval keeps `basicPolicy` as the opponent for comparability; the
@@ -307,3 +339,11 @@ carry `guard` where it fired; the human's board is unchanged.
 
 Filled in after the eval matrix runs: the baseline, the variant table, the
 shipped defaults.
+
+The §10.2 matrix runs **after** this branch's final review, from a checkout
+that carries the review's fixes (the pre-fix `scoredPolicy` looped on a
+zero-delta move, §5, which would have skewed every fallback path); its
+results are appended here when they are in. Pending them, the owner has set
+the guard margin at `TEMPO_GUARD_TURNS = 1.0` and kept `sections` as the
+default flow (`BOT_FLOW` unset), so what ships is V2 for the sectioned flow
+with the window off; the matrix still decides the window.

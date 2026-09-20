@@ -531,11 +531,13 @@ one more caller of `applyAction`; nothing in the engine knows it exists.
   bot defending → response; a human-submitted `pendingReport` → decision; a
   locked battle → **nothing** (the human fights in FtD and reports; the bot
   never submits); the bot's own unfrozen turn → turn.
-- `runBotUntilIdle` asks `basicPolicy` for candidates best-first and applies
-  the first the engine accepts, then re-asks; every owed kind has a fallback
-  (`FALLBACK`) the engine always accepts. 60 accepted policy actions per
-  request, then fallbacks only, then a throw — which `game-action` answers as
-  **500 `AI opponent failed`** with the sections already committed standing.
+- `runBotUntilIdle` asks the policy (`basicPolicy` is the heuristic; the
+  model policies and `scoredPolicy` are below) for candidates best-first and
+  applies the first the engine accepts, then re-asks; every owed kind has a
+  fallback (`FALLBACK`) the engine always accepts. 60 accepted policy actions
+  per request, then fallbacks only, then a throw — which `game-action`
+  answers as **500 `AI opponent failed`** with the sections already
+  committed standing.
 - **Hidden information by construction:** the policy receives a `BotView`
   (own hand + public state), never an `EngineGame`; `botView.test.ts`
   serialises one to prove it.
@@ -568,8 +570,13 @@ one more caller of `applyAction`; nothing in the engine knows it exists.
   styling. A turn after a decision in the same request resumes at activate.
   `LlmPolicy` (`BOT_FLOW=single`) is the older single-shot plan of menu ids,
   kept for the same-model eval (`npm run bot:eval -- --flow single`). Both
-  re-verify every move against the *current* menu before offering it and
-  trip to `basicPolicy` on any failure. The menu's `MENU_ACTION_TYPES` is
+  re-verify every move against the *current* menu before offering it —
+  including a plan head, which is guarded at the *current* menu's score, not
+  the one it was planned with — and trip to `scoredPolicy` (the evaluator,
+  below) on any failure; the heuristic `basicPolicy` no longer plays a
+  model flow's turn, it only supplies `scoredPolicy`'s one-move kinds and
+  the tail of its candidates, and the driver's `FALLBACK` action map is the
+  last resort. The menu's `MENU_ACTION_TYPES` is
   pinned to `knownActionTypes()`, and `sectionOf` is pinned the same way —
   a new engine action fails `moveMenu.test.ts` and `sections.test.ts` until
   it is offered and placed. Table-talk enters `state.log` only through the
@@ -612,6 +619,12 @@ one more caller of `applyAction`; nothing in the engine knows it exists.
   (`MenuItem.score`); the model reads it as `[+2.4]`. `tempoGuard.ts`'s
   `guardPick` replaces a pick, a pass or END TURN that sits
   `TEMPO_GUARD_TURNS` or more below the best item and files `guard` on the
-  row. `scoredPolicy` plays the best item — `BOT_FLOW=scored`, and the
-  fallback inside both model flows. Spec:
+  row; the primer's guard sentence is rendered from the margin the policy
+  runs with (`buildSystemPrompt(faction, flow, guardTurns)`) and left out
+  when it is `Infinity`. `scoredPolicy` plays the best item — only a
+  **strictly positive** delta ranks above END TURN, so a zero-delta move
+  that stays legal (an alert re-reveal) never loops — as `BOT_FLOW=scored`,
+  as what plays with no key, and as the fallback inside both model flows
+  after any mid-request failure. `battleSim.ts` ships in both functions for
+  the evaluator's battle samples. Spec:
   `docs/superpowers/specs/2026-09-19-scored-menu-design.md`.

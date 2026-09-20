@@ -387,8 +387,11 @@ evaluator (`scoredPolicy`) plays and every request files one `disabled`
 telemetry row.
 
 1. Create an OpenRouter API key **with a credit limit** (a few dollars covers
-   hundreds of games at ~3¢ each). Exhausted key → HTTP errors → the heuristic
-   plays and telemetry says `http`; no game breaks.
+   hundreds of games at ~3¢ each). Exhausted key → HTTP errors → the evaluator
+   (`scoredPolicy`, the tripped policy's fallback) plays the rest of the
+   request and telemetry says `http`; no game breaks. The bare heuristic
+   (`basicPolicy`) no longer plays a model flow's turn — it only answers
+   the one-move kinds and trails the evaluator's candidates.
 2. Dashboard → Edge Functions → Secrets (or `supabase secrets set
    OPENROUTER_API_KEY=sk-or-…`). Optional: `BOT_MODEL=<openrouter model id>`
    to switch models without a deploy; `BOT_LLM_DISABLED=1` is the kill switch.
@@ -411,8 +414,8 @@ telemetry row.
      `/api/v1/models/<id>/endpoints` for provider slugs, ceilings and
      parameter support) is the source for a new model's rows;
      `LLM_MAX_OUTPUT_TOKENS` (65 536) must not exceed the provider's
-     `max_completion_tokens`, or every call is a 400 and the heuristic plays
-     with telemetry saying `http`.
+     `max_completion_tokens`, or every call is a 400 and the evaluator
+     (`scoredPolicy`) plays with telemetry saying `http`.
    - `BOT_REASONING_EFFORT=none|minimal|low|medium|high|xhigh|max` overrides
      the model's row for any model (`none` switches reasoning off where the
      model allows it). Unset, blank or misspelt, the model's own default

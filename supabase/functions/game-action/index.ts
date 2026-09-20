@@ -265,10 +265,12 @@ Deno.serve(async (req) => {
 
   // A practice game: the bot acts until it owes nothing, in memory, committing
   // at its checkpoints. The policy is the model-backed one when
-  // OPENROUTER_API_KEY is set (LLM spec §3.4), the heuristic otherwise; a
-  // model failure never surfaces here — the policy falls back and files a
-  // telemetry row. A throw is an engine bug surfacing — answered as its own
-  // 500 with the sections already committed standing (sectioned spec §11).
+  // OPENROUTER_API_KEY is set (LLM spec §3.4), the evaluator (scoredPolicy)
+  // otherwise — and the evaluator is also what a model failure falls back
+  // to (2026-09-19 scored menu spec §6.4): it never surfaces here, the
+  // policy files a telemetry row and plays by score for the rest of the
+  // request. A throw is an engine bug surfacing — answered as its own 500
+  // with the sections already committed standing (sectioned spec §11).
   // CONCEDE/ABANDON end the game first, so botOwes is null for them.
   const botId = botPlayerId(next)
   const policy = botId ? makeBotPolicy({

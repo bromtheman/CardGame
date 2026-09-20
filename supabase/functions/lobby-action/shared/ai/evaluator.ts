@@ -45,6 +45,14 @@ export function strikePower(hulls: readonly ZoneCardEntry[]): number {
 // against the first zone stays visible in the score rather than vanishing
 // the moment a second zone isn't yet threatened (2026-09-19 scored-menu
 // Task 3 fix round 1).
+//
+// The else branch is clamped at the cap too: HP / power is unbounded when a
+// striker is small against a big base (a 1-damage striker on a 1000 HP base
+// reads as 1000 turns), and a bombardment that would outlast the cap must
+// count like a stalled zone, not worse than one — a stall and a hopeless
+// bombardment are the same "not happening", so the cap is the ceiling for
+// every zone, the sum stays bounded by twice it, and nothing below the cap
+// is ever outranked by a Blocker or an empty zone (spec §3.2).
 export function turnsToWin(game: EngineGame, attacker: Side): number {
   const defender = otherSide(attacker)
   const times = game.state.zones.map((z) => {
@@ -129,7 +137,10 @@ function endedScore(input: EngineGame, botId: string, side: Side, ctx: EngineCon
   return r.ok ? positionScore(r.game, side) : null
 }
 
-// A fleet attack played out EVALUATOR.battleSamples times: the defender
+// Any battle a trial left open — a fleet attack the bot declared, or one an
+// effect forced (WF's Martyr Attack, DWG Waters intercepting a bombardment;
+// scoreMove routes every awaitingResponse / activeBattle here, whatever the
+// action type) — played out EVALUATOR.battleSamples times: the defender
 // withdraws nothing (only when it actually has that option — see below) and
 // reports a resolver draw, the bot approves repairing nothing, choices
 // settle, the turn ends, the position is scored. The mean of the samples

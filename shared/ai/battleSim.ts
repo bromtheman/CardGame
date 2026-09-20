@@ -4,10 +4,15 @@ import { battleParticipants, effectiveMaterialCostOf } from '../engine/index.ts'
 import { shipProfileOf } from '../shipProfiles.ts'
 
 // A strength-based stand-in for the fleet battle the human fights in From
-// The Depths — for the eval harness and the self-play net only, never a
-// function. It replaces the old coin flip (uniform HP per hull), under which
-// "declare battles you expect to win" was unlearnable: the eval could not
-// reward a good fight or punish a bad one.
+// The Depths. Written for the eval harness and the self-play net, it now
+// SHIPS in both functions (shared-manifest.json) as the evaluator's battle
+// stand-in: scoreMove samples every battle a trial leaves open through
+// resolveBattle (2026-09-19 scored menu spec §3.4, ruling 3). Nothing here
+// ever touches a real game's report — the human still fights and reports,
+// and this only writes the HP figures of a trial's imagined report — and its
+// calibration stays the eval's business. It replaces the old coin flip
+// (uniform HP per hull), under which "declare battles you expect to win" was
+// unlearnable: the eval could not reward a good fight or punish a bad one.
 //
 // Strength is the game's own currency, effective material cost, shaded by
 // the FtDArmament profiles where a hull has one: firepower and the matchup

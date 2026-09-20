@@ -237,8 +237,9 @@ export class SectionedLlmPolicy implements BotPolicy {
       this.pendingTalk = null
       return talk
     }
-    // The engine took something else — the heuristic tail or the driver's
-    // fallback. A verified turn move was refused: file it, drop the plan, and
+    // The engine took something else — the fallback's tail (the evaluator's
+    // ranking, then the heuristic's) or the driver's own fallback. A
+    // verified turn move was refused: file it, drop the plan, and
     // let the model re-decide in the same section (§3.2 step 5). A one-move
     // kind the heuristic answered (a pass, an empty menu, a refusal) files the
     // same but leaves the turn's pending state alone — the move that raised a
