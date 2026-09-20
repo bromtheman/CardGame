@@ -149,4 +149,12 @@ describe('rules primer', () => {
     expect(tempoGuardLine(2)).toContain('at least 2 turns of tempo')
     expect(tempoGuardLine(0.5)).toContain('at least 0.5 turns of tempo')
   })
+  it('explains the board’s enemy-hull scoring braces in both flows, with no digit', () => {
+    const sentence = 'A hull on the board shows its fighting scores in braces when its faction has a profile — fire, toughness, then how it fares against ships, aircraft and submarines, each one weakest to five strongest — for the enemy\'s hulls as well as yours.'
+    expect(sentence).not.toMatch(/\d/)
+    for (const flow of ['single', 'sections'] as const) {
+      expect(HOW_YOU_PLAY[flow]).toContain(sentence)
+      expect(renderPrimer('DWG', flow)).toContain(sentence)
+    }
+  })
 })

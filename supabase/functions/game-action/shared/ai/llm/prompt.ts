@@ -2,6 +2,7 @@ import type { CardInstance, ZoneState } from '../../engine/gameInit.ts'
 import type { Side } from '../../engine/engineTypes.ts'
 import { effectiveMaterialCostOf } from '../../engine/index.ts'
 import { shortHandNumber } from '../../format.ts'
+import { shipProfileOf } from '../../shipProfiles.ts'
 import type { OwedKind } from '../basicPolicy.ts'
 import type { BotView } from '../botView.ts'
 import { LOG_TAIL_LINES, MENU_SCORE_WINDOW_TURNS, TEMPO_GUARD_TURNS } from './llmSettings.ts'
@@ -40,13 +41,25 @@ const enemyOf = (side: Side): Side => (side === 'a' ? 'b' : 'a')
 const cardTag = (c: { name: string; cardText: string }): string =>
   c.cardText.trim() === '' ? '' : ` <card name="${c.name.replace(/"/g, '')}">${c.cardText.trim()}</card>`
 
+// The scores braces (2026-09-19 enemy-profiles follow-up): shipProfileOf
+// looks a hull up in the static faction+name table from shipProfiles.ts —
+// the same roster fleetSection (rulesPrimer.ts) reads for the bot's OWN
+// hulls — so both sides' hulls get it here, for free, from one function.
+// Unprofiled hulls (OW, TG, summons, custom cards) render exactly as
+// before: no lookup hit, no braces.
+function scoresTag(c: CardInstance): string {
+  const p = shipProfileOf(c.faction, c.name)
+  if (!p) return ''
+  return ` {fire ${p.scores.firepower.score}, tough ${p.scores.toughness.score}; vs ships ${p.matchups.ships.score}, air ${p.matchups.aircraft.score}, subs ${p.matchups.submarines.score}}`
+}
+
 function hullLine(c: CardInstance, turnNumber: number): string {
   const entry = c as CardInstance & { playedOnTurn?: number; activatedOnTurn?: number | null }
   const flags: string[] = []
   if (entry.playedOnTurn === turnNumber) flags.push('played this turn')
   if (entry.activatedOnTurn === turnNumber) flags.push('activated this turn')
   const kw = c.keywords.length ? ` [${c.keywords.join(', ')}]` : ''
-  return `${c.name} (${c.vehicleType ?? c.type}, ${money(effectiveMaterialCostOf(c))})${kw}${flags.length ? ` (${flags.join(', ')})` : ''}${cardTag(c)}`
+  return `${c.name} (${c.vehicleType ?? c.type}, ${money(effectiveMaterialCostOf(c))})${kw}${flags.length ? ` (${flags.join(', ')})` : ''}${scoresTag(c)}${cardTag(c)}`
 }
 
 function zoneBlock(z: ZoneState, side: Side, enemy: Side, turnNumber: number): string {

@@ -106,4 +106,23 @@ describe('the prompt', () => {
     const bare = buildUserPrompt({ view, kind: 'turn', menu: menu.map((m) => ({ ...m, score: null })) })
     expect(bare).toContain(`#${menu[0].id} ${menu[0].text}`)
   })
+  // Ship-fighting scores are looked up from shared/shipProfiles.ts, a static
+  // table keyed by faction+name — never from hidden game state — so giving
+  // the enemy's hulls a profile too cannot leak anything the secrecy test
+  // above guards against; nothing new is read out of either private zone.
+  it('adds a profiled enemy hull’s fighting scores in braces, after the flags and before the card tag', () => {
+    const g = fixture()
+    g.state.zones[1].cards.a.push(zoneEntry({ instanceId: 'foe-corsair', name: 'Corsair', faction: 'DWG' }))
+    const menu = buildMenu(g, BOT, makeCtx(), 'turn')
+    const user = buildUserPrompt({ view: viewFor(g, 'b', () => 0.5, menu), kind: 'turn', menu })
+    expect(user).toContain('Corsair (ship, 40k) {fire 1, tough 1; vs ships 2, air 3, subs 1}')
+  })
+  it('leaves an unprofiled hull exactly as before — no braces', () => {
+    const g = fixture()
+    g.state.zones[2].cards.b.push(zoneEntry({ instanceId: 'mine-plain' }))
+    const menu = buildMenu(g, BOT, makeCtx(), 'turn')
+    const user = buildUserPrompt({ view: viewFor(g, 'b', () => 0.5, menu), kind: 'turn', menu })
+    expect(user).toContain('Test Vehicle (ship, 40k)')
+    expect(user).not.toContain('Test Vehicle (ship, 40k) {')
+  })
 })
