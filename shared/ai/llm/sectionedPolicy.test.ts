@@ -450,12 +450,25 @@ describe('SectionedLlmPolicy — the tempo guard', () => {
     expect(policy.rows.some((r) => r.guard !== null)).toBe(true)
   })
 
-  it('lets every pick stand with the guard at Infinity', async () => {
+  it('lets every pick stand with the guard at Infinity, and the primer then names no guard', async () => {
     const client = scripted([{ pick: null, then: 'next' }, { pick: null, then: 'next' }, { pick: null, then: 'next' }])
     const policy = new SectionedLlmPolicy(client, basicPolicy, 'fake/model', { ...fast, tempoGuardTurns: Infinity })
     const { applied } = await runBotUntilIdle(turnGame(), BOT, makeCtx(), policy)
     expect(applied.map((a) => a.type)).toEqual(['END_TURN'])
     expect(policy.rows.every((r) => r.guard === null)).toBe(true)
+    for (const call of client.calls) {
+      expect(call.messages[0].content).toContain('tempo estimate in brackets')
+      expect(call.messages[0].content).not.toContain('is not accepted')
+    }
+  })
+
+  it('tells the model the margin its settings carry — the default and an override', async () => {
+    const byDefault = scripted([{ pick: null, then: 'next' }, { pick: null, then: 'next' }, { pick: null, then: 'next' }, { pick: null, then: 'next' }])
+    await runBotUntilIdle(turnGame(), BOT, makeCtx(), new SectionedLlmPolicy(byDefault, basicPolicy, 'fake/model', fast))
+    expect(byDefault.calls[0].messages[0].content).toContain('A move worth at least 1 turn of tempo less than the best move is not accepted — the best move is played instead.')
+    const wide = scripted([{ pick: null, then: 'next' }, { pick: null, then: 'next' }, { pick: null, then: 'next' }, { pick: null, then: 'next' }])
+    await runBotUntilIdle(turnGame(), BOT, makeCtx(), new SectionedLlmPolicy(wide, basicPolicy, 'fake/model', { ...fast, tempoGuardTurns: 3 }))
+    expect(wide.calls[0].messages[0].content).toContain('A move worth at least 3 turns of tempo less than the best move is not accepted')
   })
 
   it('does not advance the section pointer when the guard replaces a re-verified plan-head item', async () => {
@@ -478,10 +491,50 @@ describe('SectionedLlmPolicy — the tempo guard', () => {
     expect(applied.map((a) => a.type)).toEqual(['PLAY_CARD_TO_ZONE', 'ATTACK_ENEMY_BASE', 'END_TURN'])
     expect(client.calls.length).toBe(3)   // Draw's replacement is free — it never re-asks the model
     expect(policy.rows[0].plan).toHaveLength(2)
-    expect(policy.rows[0].guard).toEqual(expect.objectContaining({ picked: policy.rows[0].plan[1].id }))
+    // The record names the ids of the menu the guard compared — the one
+    // built after the Corsair landed, where Draw is renumbered — not the
+    // plan's own (stale) numbering.
+    const landed = applyAction(turnGame(), BOT, { type: 'PLAY_CARD_TO_ZONE', instanceId: 'ship-40', zoneId: 2 }, makeCtx())
+    if (!landed.ok) throw new Error(landed.error)
+    const fresh = buildMenu(landed.game, BOT, makeCtx(), 'turn')
+    const drawId = fresh.find((m) => m.action.type === 'USE_HERO_POWER' && m.action.power === 'draw')!.id
+    const attackId = fresh.find((m) => m.action.type === 'ATTACK_ENEMY_BASE' && m.action.zoneId === 1)!.id
+    expect(drawId).not.toBe(policy.rows[0].plan[1].id)   // the fixture really renumbers Draw
+    expect(policy.rows[0].guard).toEqual({ picked: drawId, taken: attackId, gap: expect.any(Number) })
     expect(policy.rows[0].applied.map((a) => a.type)).toEqual(['PLAY_CARD_TO_ZONE', 'ATTACK_ENEMY_BASE'])
     // then: 'next' did not fire early: the next ask is still DEPLOY, not FIGHT.
     expect(userOf(client.calls[1])).toContain('SECTION: DEPLOY')
     expect(policy.rows.map((r) => r.section)).toEqual(['deploy', 'deploy', 'finish'])
+  })
+
+  it('guards a re-verified plan-head item against its CURRENT score, not the stale one it was planned with', async () => {
+    // llmPolicy.test.ts's fixture: two 40k ships, both planned into zone 1
+    // in one answer (actionsPerAnswer 2). Every deploy scores the same on
+    // the first menu, so Alpha lands; on the fresh menu Bravo to zone 1 is
+    // worth many turns less than Bravo to zone 2 — a drop only the CURRENT
+    // menu's item shows, since the plan's own Bravo item still carries the
+    // first menu's score.
+    const two = () => makeGame({ activePlayer: BOT, turnNumber: 3, privates: { a: { hand: [], deck: [] }, b: { hand: [inst({ instanceId: 's1', name: 'Alpha', materialCost: 40000 }), inst({ instanceId: 's2', name: 'Bravo', materialCost: 40000 })], deck: [] } } })
+    const landed = applyAction(two(), BOT, { type: 'PLAY_CARD_TO_ZONE', instanceId: 's1', zoneId: 1 }, makeCtx())
+    if (!landed.ok) throw new Error(landed.error)
+    const fresh = buildMenu(landed.game, BOT, makeCtx(), 'turn')
+    const bravoTo = (zoneId: number) => fresh.find((m) => m.action.type === 'PLAY_CARD_TO_ZONE' && m.action.instanceId === 's2' && m.action.zoneId === zoneId)!
+    expect(bravoTo(1).score!).toBeLessThan(bravoTo(2).score! - 1)   // the fixture's drop clears the margin
+    const client = scripted([
+      { pick: ['PLAY Alpha (40k) to zone 1', 'PLAY Bravo (40k) to zone 1'], then: 'next' },
+      { pick: null, then: 'next' },   // still DEPLOY (a guarded head does not move the pointer) → nothing left clears the margin → advances for real
+      { pick: null, then: 'next' },   // FINISH pass → END TURN
+    ])
+    const policy = new SectionedLlmPolicy(client, basicPolicy, 'fake/model', { ...fast, actionsPerAnswer: 2 })
+    const { applied } = await runBotUntilIdle(two(), BOT, makeCtx(), policy)
+    expect(applied).toEqual([
+      { type: 'PLAY_CARD_TO_ZONE', instanceId: 's1', zoneId: 1 },
+      { type: 'PLAY_CARD_TO_ZONE', instanceId: 's2', zoneId: 2 },   // the guard's substitute, not the plan's zone 1
+      { type: 'END_TURN' },
+    ])
+    expect(client.calls.length).toBe(3)
+    expect(policy.rows[0].guard).toEqual({ picked: bravoTo(1).id, taken: bravoTo(2).id, gap: expect.any(Number) })
+    expect(policy.rows[0].guard!.gap).toBeGreaterThanOrEqual(1)
+    expect(userOf(client.calls[1])).toContain('SECTION: DEPLOY')
   })
 })

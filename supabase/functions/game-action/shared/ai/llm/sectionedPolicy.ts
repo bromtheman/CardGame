@@ -119,16 +119,21 @@ export class SectionedLlmPolicy implements BotPolicy {
     let section: Section = this.section ?? (this.sawDecision ? 'activate' : 'deploy')
     this.section = section
     // A plan in hand (actionsPerAnswer above one) whose head is still on the
-    // menu — re-verified against the current board, as LlmPolicy does.
+    // menu — re-verified against the current board, as LlmPolicy does. The
+    // guard reads the head as the CURRENT menu scores it, not the stale item
+    // the answer was parsed from: that one's score and id belong to the
+    // board before the plan's earlier moves changed it.
     const head = this.plan[0]
     if (head) {
-      if (menu.some((m) => sameAction(m.action, head.action))) {
+      const current = menu.find((m) => sameAction(m.action, head.action))
+      if (current) {
         this.plan.shift()
-        const { item, guard } = guardPick(menu, head, this.margin())
+        const { item, guard } = guardPick(menu, current, this.margin())
         if (guard && item && this.planRow) { this.planRow.guard = guard; this.plan = []; this.pendingThen = null }
-        this.expected = (item ?? head).action
+        const chosen = item ?? current
+        this.expected = chosen.action
         this.expectedRow = this.planRow
-        return [(item ?? head).action, ...(await this.fallback.candidates(view, 'turn'))]
+        return [chosen.action, ...(await this.fallback.candidates(view, 'turn'))]
       }
       this.plan = []
     }
@@ -284,7 +289,7 @@ export class SectionedLlmPolicy implements BotPolicy {
     let detail: string | null = null
     try {
       const res = await this.client!.complete({
-        messages: [{ role: 'system', content: buildSystemPrompt(view.state.factions[view.side], 'sections') }, ...this.messages, user],
+        messages: [{ role: 'system', content: buildSystemPrompt(view.state.factions[view.side], 'sections', this.margin()) }, ...this.messages, user],
         schema: ANSWER_SCHEMA as unknown as Record<string, unknown>,
         schemaName: 'answer',
         maxTokens: LLM_MAX_OUTPUT_TOKENS,

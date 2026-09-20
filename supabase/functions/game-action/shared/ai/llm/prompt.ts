@@ -4,7 +4,7 @@ import { effectiveMaterialCostOf } from '../../engine/index.ts'
 import { shortHandNumber } from '../../format.ts'
 import type { OwedKind } from '../basicPolicy.ts'
 import type { BotView } from '../botView.ts'
-import { LOG_TAIL_LINES, MENU_SCORE_WINDOW_TURNS } from './llmSettings.ts'
+import { LOG_TAIL_LINES, MENU_SCORE_WINDOW_TURNS, TEMPO_GUARD_TURNS } from './llmSettings.ts'
 import { tempoTag, withinWindow } from './moveMenu.ts'
 import type { MenuItem } from './moveMenu.ts'
 import { renderPrimer } from './rulesPrimer.ts'
@@ -27,7 +27,10 @@ export interface PromptInput {
   window?: number
 }
 
-export const buildSystemPrompt = (faction: string, flow: PrimerFlow = 'single'): string => renderPrimer(faction, flow)
+// `guardTurns` is the margin the calling policy runs under (its settings'
+// tempoGuardTurns), so the primer's guard sentence matches the guard — and
+// is left out when the guard is off (2026-09-19 scored menu spec §6.1).
+export const buildSystemPrompt = (faction: string, flow: PrimerFlow = 'single', guardTurns: number = TEMPO_GUARD_TURNS): string => renderPrimer(faction, flow, guardTurns)
 
 const money = (n: number): string => shortHandNumber(n)
 const enemyOf = (side: Side): Side => (side === 'a' ? 'b' : 'a')

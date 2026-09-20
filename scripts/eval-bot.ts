@@ -85,13 +85,23 @@ const flow = botFlowFor(arg('flow', 'sections'))
 const opponentName = arg('opponent', 'heuristic')
 if (opponentName !== 'heuristic' && opponentName !== 'scored') throw new Error(`--opponent must be heuristic or scored, not ${opponentName}`)
 const opponent: BotPolicy = opponentName === 'scored' ? scoredPolicy : basicPolicy
-const num = (raw: string, fallback: number): number => (raw === '' ? fallback : raw.toLowerCase() === 'inf' ? Infinity : Number(raw))
+// A number or "inf"; anything else is refused rather than read as NaN, which
+// the policies would treat as "off" (Number.isFinite(NaN) is false) — a
+// mistyped --guard would silently run the advisory variant.
+const num = (name: string, fallback: number): number => {
+  const raw = arg(name, '')
+  if (raw === '') return fallback
+  if (raw.toLowerCase() === 'inf') return Infinity
+  const n = Number(raw)
+  if (Number.isNaN(n)) throw new Error(`--${name} must be a number or "inf", not "${raw}"`)
+  return n
+}
 const settings = {
   ...DEFAULT_LLM_POLICY_SETTINGS,
   reasoningEffort: reasoningEffortFor(model, arg('reasoning', '')),
   routing: routingFor(model, arg('providers', '')),
-  tempoGuardTurns: num(arg('guard', ''), TEMPO_GUARD_TURNS),
-  menuScoreWindowTurns: num(arg('window', ''), MENU_SCORE_WINDOW_TURNS),
+  tempoGuardTurns: num('guard', TEMPO_GUARD_TURNS),
+  menuScoreWindowTurns: num('window', MENU_SCORE_WINDOW_TURNS),
 }
 
 // Skip the key check and the client construction under --flow scored: the

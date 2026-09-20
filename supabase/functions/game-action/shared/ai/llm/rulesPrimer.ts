@@ -91,8 +91,17 @@ export const PRIMER_VALUES: Record<string, string | number> = {
   HERO_POWER_DISTANCE_MOD_M,
   KEYWORDS: Object.values(KEYWORD_GLOSSARY).map((line) => `- ${line}`).join('\n'),
   GENERAL_TIPS,
-  TEMPO_GUARD_TURNS,
-  TEMPO_GUARD_LINE: Number.isFinite(TEMPO_GUARD_TURNS) ? ` A move worth ${TEMPO_GUARD_TURNS} turns or more less than the best move is not accepted — the best move is played instead.` : '',
+}
+
+// The guard sentence of HOW YOU PLAY (2026-09-19 scored menu spec §6.1),
+// rendered from the margin the POLICY runs with — its settings, which the
+// eval varies (--guard) — never from the constant alone, so an advisory run
+// (Infinity) tells the model no guard exists. Every digit lives here; the
+// block keeps its placeholder. A leading space: it follows the compass
+// sentence on the same bullet.
+export function tempoGuardLine(guardTurns: number): string {
+  if (!Number.isFinite(guardTurns)) return ''
+  return ` A move worth at least ${guardTurns} turn${guardTurns === 1 ? '' : 's'} of tempo less than the best move is not accepted — the best move is played instead.`
 }
 
 // '' when the faction has no notes, so the template's blank lines close up.
@@ -121,13 +130,15 @@ function fleetSection(faction: string): string {
 // placeholder of its own ({{TEMPO_GUARD_LINE}}); the second pass resolves
 // that one. A single String.replace only ever scans the ORIGINAL string, so
 // a placeholder inserted by the first pass would otherwise survive verbatim
-// into the rendered primer.
-export function renderPrimer(faction: string, flow: PrimerFlow = 'single'): string {
+// into the rendered primer. `guardTurns` is the policy's margin (its
+// settings' tempoGuardTurns); the constant is only the default.
+export function renderPrimer(faction: string, flow: PrimerFlow = 'single', guardTurns: number = TEMPO_GUARD_TURNS): string {
   const substitute = (text: string): string => text.replace(/\{\{([A-Z_]+)\}\}/g, (match, key: string) => {
     if (key === 'FACTION') return faction
     if (key === 'FACTION_SECTION') return factionSection(faction)
     if (key === 'FLEET_SECTION') return fleetSection(faction)
     if (key === 'HOW_YOU_PLAY') return HOW_YOU_PLAY[flow]
+    if (key === 'TEMPO_GUARD_LINE') return tempoGuardLine(guardTurns)
     const value = PRIMER_VALUES[key]
     if (value === undefined) throw new Error(`rules primer: no value for ${match}`)
     return String(value)

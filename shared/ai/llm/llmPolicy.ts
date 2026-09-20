@@ -98,8 +98,14 @@ export class LlmPolicy implements BotPolicy {
     // fallback handles it. No call, no row.
     if (menu.length === 0) return this.fallback.candidates(view, kind)
     const next = this.plan[0]
-    if (next && this.planKind === kind && menu.some((m) => sameAction(m.action, next.action))) {
-      return [this.guarded(menu, next, kind).action, ...(await this.fallback.candidates(view, kind))]
+    // The plan head is resolved against the CURRENT menu: `next` is the item
+    // of an earlier menu, and its score (and id) belong to that board. The
+    // guard must read the fresh delta — a deploy planned while a zone was
+    // empty is worth far less once the first deploy filled it — and the row
+    // records the ids of the menu the guard compared.
+    const current = next && this.planKind === kind ? menu.find((m) => sameAction(m.action, next.action)) : undefined
+    if (next && current) {
+      return [this.guarded(menu, current, kind).action, ...(await this.fallback.candidates(view, kind))]
     }
     const situation = this.situationFor(kind, next)
     this.plan = []
@@ -168,7 +174,7 @@ export class LlmPolicy implements BotPolicy {
     try {
       const res = await this.client!.complete({
         messages: [
-          { role: 'system', content: buildSystemPrompt(view.state.factions[view.side]) },
+          { role: 'system', content: buildSystemPrompt(view.state.factions[view.side], 'single', this.settings.tempoGuardTurns ?? TEMPO_GUARD_TURNS) },
           { role: 'user', content: buildUserPrompt({ view, kind, menu, situation, planSoFar: this.appliedItems, window: this.settings.menuScoreWindowTurns }) },
         ],
         schemaName: 'plan',

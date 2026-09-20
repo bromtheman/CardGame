@@ -8,16 +8,22 @@ import type { MenuItem } from './llm/moveMenu.ts'
 // menu, best tempo delta first. The third flow (BOT_FLOW=scored), the
 // fallback inside both model flows, and what plays with no key. Stateless,
 // like basicPolicy; the one-move kinds keep the heuristic's order.
+//
+// Only a STRICTLY POSITIVE delta ranks above END TURN. A zero or null delta
+// is "no better than ending", and END TURN goes ahead of every such item —
+// an earlier "END TURN loses every tie" rule looped: SET_ALERT_CARD is legal
+// as long as an ability card is in hand (a re-reveal replaces the last one)
+// and worth exactly nothing (the alert expires with the turn), so the driver
+// revealed it until BOT_ACTION_CAP, sixty menus and as many public log lines
+// per request. Above END TURN: score descending, menu order on ties. At or
+// below it: menu order, still offered in case END TURN is refused.
 export function rankByScore(menu: MenuItem[]): MenuItem[] {
   const value = (m: MenuItem): number => m.score ?? 0
-  return [...menu].sort((x, y) => {
-    const d = value(y) - value(x)
-    if (d !== 0) return d
-    // END TURN loses every tie: materials held at END TURN are lost anyway.
-    if (x.action.type === 'END_TURN') return 1
-    if (y.action.type === 'END_TURN') return -1
-    return x.id - y.id
-  })
+  const isEnd = (m: MenuItem): boolean => m.action.type === 'END_TURN'
+  const above = menu.filter((m) => !isEnd(m) && value(m) > 0).sort((x, y) => (value(y) - value(x)) || (x.id - y.id))
+  const end = menu.filter(isEnd)
+  const rest = menu.filter((m) => !isEnd(m) && !(value(m) > 0))
+  return [...above, ...end, ...rest]
 }
 
 export const scoredPolicy: BotPolicy & { readonly needsMenu: true; candidates(view: BotView, kind: OwedKind): GameAction[] } = {

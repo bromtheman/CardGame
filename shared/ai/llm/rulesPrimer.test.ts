@@ -3,7 +3,7 @@ import { KEYWORDS, MATERIALS_PER_TURN, SURVIVE_HP_PERCENT } from '../../gameSett
 import { shipProfilesForFaction } from '../../shipProfiles'
 import { FACTION_NOTES, GENERAL_TIPS } from './factionNotes'
 import { TEMPO_GUARD_TURNS } from './llmSettings'
-import { HOW_YOU_PLAY, KEYWORD_GLOSSARY, PRIMER_TEMPLATE, PRIMER_VALUES, renderPrimer } from './rulesPrimer'
+import { HOW_YOU_PLAY, KEYWORD_GLOSSARY, PRIMER_TEMPLATE, PRIMER_VALUES, renderPrimer, tempoGuardLine } from './rulesPrimer'
 
 describe('rules primer', () => {
   it('carries no literal number — every figure is a placeholder filled from gameSettings', () => {
@@ -42,7 +42,7 @@ describe('rules primer', () => {
     // Each block's own {{TEMPO_GUARD_LINE}} placeholder is resolved by render,
     // so the byte-for-byte check is against the block with that one swap made
     // — same block, same rule, its digit no longer literal.
-    const guardLine = String(PRIMER_VALUES.TEMPO_GUARD_LINE)
+    const guardLine = tempoGuardLine(TEMPO_GUARD_TURNS)
     expect(single).toContain(HOW_YOU_PLAY.single.replace('{{TEMPO_GUARD_LINE}}', guardLine))
     expect(single).not.toContain('"actions"')
     expect(sections).toContain(HOW_YOU_PLAY.sections.replace('{{TEMPO_GUARD_LINE}}', guardLine))
@@ -122,12 +122,31 @@ describe('rules primer', () => {
     for (const flow of ['single', 'sections'] as const) {
       const text = renderPrimer('DWG', flow)
       expect(text).toContain('tempo estimate in brackets')
-      expect(text).toContain(`A move worth ${TEMPO_GUARD_TURNS} turns or more less than the best move is not accepted`)
+      expect(text).toContain(`A move worth at least ${TEMPO_GUARD_TURNS} turn${TEMPO_GUARD_TURNS === 1 ? '' : 's'} of tempo less than the best move is not accepted — the best move is played instead.`)
       // renderPrimer must substitute in two passes: HOW_YOU_PLAY[flow] is
       // itself inserted from a placeholder, and carries one of its own.
       expect(text).not.toContain('{{')
     }
     expect(HOW_YOU_PLAY.single).toContain('{{TEMPO_GUARD_LINE}}')
     expect(HOW_YOU_PLAY.sections).toContain('{{TEMPO_GUARD_LINE}}')
+    expect(PRIMER_VALUES).not.toHaveProperty('TEMPO_GUARD_TURNS')   // the margin is a render argument, not a dictionary entry
+    expect(PRIMER_VALUES).not.toHaveProperty('TEMPO_GUARD_LINE')
+  })
+  it('renders the guard line from the margin it is given — the policy’s, not the constant — and drops it when the margin is not finite', () => {
+    // An advisory eval (--guard inf) must not tell the model a guard exists.
+    for (const flow of ['single', 'sections'] as const) {
+      const advisory = renderPrimer('DWG', flow, Infinity)
+      expect(advisory).not.toContain('is not accepted')
+      expect(advisory).not.toContain('the best move is played instead')
+      expect(advisory).toContain('treat it as a compass, not an order.\n')   // the sentence before the line still closes the bullet
+      expect(advisory).not.toContain('{{')
+      expect(renderPrimer('DWG', flow)).toContain(tempoGuardLine(TEMPO_GUARD_TURNS))   // the default is the constant
+      expect(renderPrimer('DWG', flow, 2.5)).toContain('A move worth at least 2.5 turns of tempo less than the best move is not accepted')
+    }
+    expect(tempoGuardLine(Infinity)).toBe('')
+    expect(tempoGuardLine(NaN)).toBe('')
+    expect(tempoGuardLine(1)).toBe(' A move worth at least 1 turn of tempo less than the best move is not accepted — the best move is played instead.')
+    expect(tempoGuardLine(2)).toContain('at least 2 turns of tempo')
+    expect(tempoGuardLine(0.5)).toContain('at least 0.5 turns of tempo')
   })
 })
