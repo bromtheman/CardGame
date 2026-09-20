@@ -26,7 +26,7 @@ question is recorded under §1 and §11 so it can be reversed on review.
 | What the model sees | Every turn-menu line carries its **tempo delta**: turns of tempo gained over doing nothing more (`[+2.4]`), END TURN at `[0.0]`, a losing fleet attack negative. The primer explains the number and its limits. |
 | What the model may not do | The **tempo guard**: a move (or a pass, or END TURN) worth `TEMPO_GUARD_TURNS` or more below the best available move is not accepted — the best move is played instead, and the row records it. The model keeps every choice inside that margin, its notes and its table talk. |
 | Who else uses the evaluator | `ScoredPolicy`: picks the best-scored move, no model. It is the third flow (`BOT_FLOW=scored`), the **fallback** inside both model flows (a failed call now plays the evaluator's move, not the heuristic's), and what plays when no key is set. `basicPolicy` stays the eval's opponent and the last-resort fallback. |
-| Pruning | Optional, off by default: `MENU_SCORE_WINDOW_TURNS` hides moves further below the best than the window (END TURN always stays). Measured by the eval (§10); the default follows the numbers. |
+| Pruning | Optional: `MENU_SCORE_WINDOW_TURNS` hides moves further below the best than the window (END TURN always stays); `Infinity` turns it off. Measured by the eval (§10): the matrix chose a window of **2** (§13). |
 | Where scoring runs | In `buildMenu`, beside the trial application it already does — the driver's side of the hidden-information boundary, like the annotations. Policies only read `MenuItem.score`. |
 | Opponent for the eval | Unchanged (`basicPolicy`) so numbers stay comparable; `--opponent scored` raises the bar when wanted. |
 
@@ -211,8 +211,10 @@ narrator.
 
 When `MENU_SCORE_WINDOW_TURNS` is finite, the turn menu shown to the model
 keeps only items scoring within the window of the best, **plus END TURN**;
-the guard still reads the full menu. Default `Infinity` until §10 says
-otherwise.
+the guard still reads the full menu. Default **2** — the §10.2 matrix's
+shipped variant (V3, §13; fewer items, fewer bad picks, fewer guard
+re-asks, at lower latency and cost than the unwindowed guard); `Infinity`
+turns pruning off.
 
 ### 6.4 Fallback
 
@@ -235,8 +237,8 @@ prints how often the guard fired and the mean gap, per flow.
 
 | Setting | Default | Where |
 |---|---|---|
-| `TEMPO_GUARD_TURNS` | 1.0 (§10 may move it) | llmSettings.ts |
-| `MENU_SCORE_WINDOW_TURNS` | Infinity | llmSettings.ts |
+| `TEMPO_GUARD_TURNS` | 1.0 (§13: the owner kept it) | llmSettings.ts |
+| `MENU_SCORE_WINDOW_TURNS` | 2 (§13 matrix; `Infinity` = off) | llmSettings.ts |
 | `EVALUATOR.capTurns` | 60 | evaluator.ts |
 | `EVALUATOR.battleSamples` | 6 | evaluator.ts |
 | `EVALUATOR.board / hand / baseHp / win` | 0.4 / 0.1 / 0.0005 / 1000 | evaluator.ts |
@@ -334,16 +336,82 @@ carry `guard` where it fired; the human's board is unchanged.
 - The DWG bot deck is far stronger than SS's and WF's in this engine
   (heuristic vs heuristic 90 % / 36 % / 24 %): a deck-curation note for the
   owner, not this spec.
+- A margin expressed relative to the position's scale, not flat turns: a
+  zone claim scores roughly 50 turns of tempo under the evaluator's cap
+  while a bombardment scores roughly 1, so one `TEMPO_GUARD_TURNS` value
+  cannot be fine-grained on one and decisive on the other — the guard is
+  all-or-nothing today (§13).
+- Re-measure after the enemy-profile braces (`a309e99`): they landed after
+  this matrix's pinned commit (`a53f337`) and were not measured by it (§13).
 
 ## 13. Closeout
 
-Filled in after the eval matrix runs: the baseline, the variant table, the
-shipped defaults.
+The §10.2 matrix ran after this branch's final review, from a checkout that
+carries the review's fixes (the pre-fix `scoredPolicy` looped on a
+zero-delta move, §5, which would have skewed every fallback path). Every
+run was 20 games, mirror pairing, seed 1, Mercury 2.5 at its default
+effort, opponent `basicPolicy`, the calibrated square-law resolver. V0 ran
+from `e8b9734` — the resolver change alone, before scores or the guard;
+V1 through V4 ran from `a53f337`, everything this spec describes.
 
-The §10.2 matrix runs **after** this branch's final review, from a checkout
-that carries the review's fixes (the pre-fix `scoredPolicy` looped on a
-zero-delta move, §5, which would have skewed every fallback path); its
-results are appended here when they are in. Pending them, the owner has set
-the guard margin at `TEMPO_GUARD_TURNS = 1.0` and kept `sections` as the
-default flow (`BOT_FLOW` unset), so what ships is V2 for the sectioned flow
-with the window off; the matrix still decides the window.
+| Variant | Single | Sections |
+|---|---|---|
+| V0 baseline (no scores, no guard) | 7/20 (35 %) · p50 6.2 s · $0.011 · DWG 3-4 SS 1-6 WF 3-3 | 13/20 (65 %) · p50 14.8 s · $0.033 · DWG 5-2 SS 4-3 WF 4-2 |
+| V1 advisory (scores shown, guard ∞) | 16/20 (80 %) · 6.2 s · $0.011 · DWG 5-2 SS 5-2 WF 6-0 | 14/20 (70 %) · 14.7 s · $0.027 · DWG 5-2 SS 6-1 WF 3-3 |
+| V2 scores + guard 1.0 | 17/20 (85 %) · 9.7 s · $0.015 · guard fired 172/399 turn rows, mean gap 32.7 · DWG 6-1 SS 5-2 WF 6-0 | 17/20 (85 %) · 16.6 s · $0.026 · guard 154/735, mean gap 114 · DWG 5-2 SS 6-1 WF 6-0 |
+| V3 scores + guard 1.0 + window 2 (SHIPPED) | 18/20 (90 %) · 8.0 s · $0.010 · guard 117/331 · DWG 7-0 SS 6-1 WF 5-1 | 19/20 (95 %) · 13.2 s · $0.020 · guard 100/693 · DWG 6-1 SS 7-0 WF 6-0 |
+| V4 evaluator alone (`scored`) | 19/20 (95 %) · 28 ms · $0 · DWG 7-0 SS 6-1 WF 6-0 | — |
+
+Goal A is met by far more than the 20 points asked: V3 beats V0 by 55
+points single (35 % → 90 %) and 30 points sections (65 % → 95 %). The
+numbers alone (V1) carry most of the single flow's gain — 45 of the 55
+points (35 % → 80 %) — but not the sectioned flow's — 5 of the 30 (65 % →
+70 %); most of sections' gain is the guard's (V2), not the numbers on
+their own.
+
+The guard's fire rate and mean gap say what it actually spends its margin
+on: at 1.0 it fired on 172 of 399 turn rows single and 154 of 735 sections
+(V2), with a mean gap of 32.7 and 114 turns — far past the margin itself.
+Read against a board where a zone-claiming deploy (worth roughly 50 turns
+of tempo under the evaluator's 60-turn cap) is sitting on the menu, that
+says the guard is firing almost entirely on a pass or an END TURN the
+model offered while the biggest move on the board went untaken, not on
+close calls between comparable moves. At margin 1.0 the model is a
+narrator in those states and a chooser everywhere else.
+
+The window's win over V2 is not accuracy: V3 leads V2 by 5 points single
+(85 % → 90 %) and 10 points sections (85 % → 95 %), both inside the ~11
+points of noise a 20-game run at temperature 0.7 carries, so this is a
+consistent direction across both flows rather than a proven gap. What the
+window does prove is fewer items — shorter prompts, fewer bad picks, fewer
+guard re-asks — and it lands faster and cheaper than V2 in both flows
+(single 8.0 s / $0.010 vs 9.7 s / $0.015; sections 13.2 s / $0.020 vs
+16.6 s / $0.026).
+
+V4, the evaluator alone with no model, scores 95 % single at 28 ms and $0 a
+game — the ceiling the model is measured against (§11 ruling 5), not the
+bar it has to clear.
+
+**Shipped**: the owner kept the guard at `TEMPO_GUARD_TURNS = 1.0` and
+`sections` as the default flow (`BOT_FLOW` unset); `MENU_SCORE_WINDOW_TURNS`
+ships at **2** (V3, this table).
+
+**Two eval lessons.** Mirror pairing: the cross-faction matrix the 2026-09-19
+rebuild replaced (§1) read roughly 90 % faction and 10 % policy — the
+stronger deck won almost regardless of which policy played it — which is
+why every run above pairs each faction against itself. New this matrix:
+with `scoredPolicy` as the fallback, a provider outage inflates the
+model's own number instead of suppressing it, because a tripped policy
+still plays by score rather than at random — one V1-sections run hit 104
+HTTP 429s mid-run and read 90 % before it was thrown out and re-run clean
+at 70 %. The fallback rate line is read before the win rate on every run
+from here on, not after.
+
+The enemy-profile braces (`a309e99`) landed after this matrix's pinned
+commit (`a53f337`) and were not measured by it; re-measuring once there is
+reason to expect they move the number is a follow-up (§12).
+
+For history, not as this matrix's baseline: the flows scored 55 % single
+and 65 % sections against the same opponent before the square-law
+resolver. V0 above — after the resolver change but before scores or the
+guard — is the number goal A is measured against.
