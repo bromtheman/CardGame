@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { SECTION_MARKERS } from '@shared/ai/llm/sections'
 import { formatTableTalk } from '@shared/ai/llm/tableTalk'
 import { latestTableTalk, tableTalkText } from './tableTalkDelta'
 
@@ -15,5 +16,13 @@ describe('latestTableTalk', () => {
   })
   it('unwraps the prefix and the quotes', () => {
     expect(tableTalkText(formatTableTalk('All hands'))).toBe('All hands')
+  })
+  it('prefers the newest spoken line over a section marker that arrived after it, and shows the marker when nothing was spoken', () => {
+    const prev = ['Turn 3 — player A to act']
+    const spoke = [...prev, 'Corsair deployed', formatTableTalk('Corsair, forward!'), SECTION_MARKERS.fight]
+    expect(latestTableTalk(prev, spoke)).toBe('Corsair, forward!')
+    const quiet = [...prev, SECTION_MARKERS.deploy]
+    expect(latestTableTalk(prev, quiet)).toBe('deploying…')
+    expect(latestTableTalk(prev, [...prev, SECTION_MARKERS.deploy, formatTableTalk('Steady.'), SECTION_MARKERS.finish])).toBe('Steady.')
   })
 })

@@ -1,15 +1,27 @@
 #!/usr/bin/env -S npx tsx
-// The strength bar for the model-backed PracticeAI (LLM spec §10.2): the
-// model policy against basicPolicy over N seeded games, seats alternated,
-// battles reported with rng-drawn HP by the harness. Never in CI.
+// The strength bar for the model-backed PracticeAI (LLM spec §10.2; scored
+// menu spec §8, §10.2): the model policy — or, under --flow scored, the
+// tempo evaluator alone with no model call — against the chosen opponent
+// over N seeded games, seats alternated, battles reported with rng-drawn HP
+// by the harness. Never in CI.
 //
-//   npm run bot:eval -- --games 20 --model inception/mercury-2.5 [--seed 1] [--reasoning high] [--providers streamlake]
+//   npm run bot:eval -- --games 20 --model inception/mercury-2.5 [--flow sections|single|scored] [--opponent heuristic|scored] [--pairing mirror|cross] [--factions DWG,SS,WF] [--seed 1] [--reasoning high] [--providers streamlake] [--guard 1|inf] [--window 2|inf]
+// --flow mirrors BOT_FLOW (default sections); scored plays scoredPolicy with no model call and needs no key — run flows on the same seeds for the same-model comparison.
+// --opponent is the non-model seat: heuristic (default, basicPolicy) or scored (scoredPolicy).
+// --factions picks the decks the games rotate through; the default is the factions with ship profiles, the only ones the
+// strength-based battle resolver (shared/ai/battleSim.ts) can judge — an unprofiled faction fights as bare cost.
+// --pairing mirror (default) seats the same deck on both sides, so the win rate is the policy's skill against a 50 % baseline;
+// cross rotates the decks one seat apart, under which the faction draw decides most games (selfPlayHarness.ts) — read its
+// "by model faction" line, never the aggregate.
 //
 // --reasoning and --providers take the same values as the BOT_REASONING_EFFORT
 // and BOT_PROVIDERS secrets and default the same way (the model's rows in
 // llmSettings.ts, else the model's own behaviour on any provider), so an
-// eval measures what production sends.
-// Needs OPENROUTER_API_KEY in the environment or ./.env.local (gitignored).
+// eval measures what production sends. --guard and --window override the
+// tempo guard's margin and the turn menu's score window (TEMPO_GUARD_TURNS /
+// MENU_SCORE_WINDOW_TURNS in llmSettings.ts) — a number or "inf" (case-insensitive).
+// Needs OPENROUTER_API_KEY in the environment or ./.env.local (gitignored),
+// except under --flow scored, which makes no model call.
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -19,14 +31,17 @@ import { applyAction } from '../shared/engine/index.ts'
 import type { EngineGame } from '../shared/engine/engineTypes.ts'
 import type { SnapshotCard } from '../shared/engine/gameInit.ts'
 import { basicPolicy } from '../shared/ai/basicPolicy.ts'
-import { BOT_FACTIONS } from '../shared/ai/botDecks.ts'
+import type { BotPolicy } from '../shared/ai/basicPolicy.ts'
 import { botOwes, runBotUntilIdle } from '../shared/ai/botDriver.ts'
+import { scoredPolicy } from '../shared/ai/scoredPolicy.ts'
 import { DEFAULT_LLM_POLICY_SETTINGS, LlmPolicy } from '../shared/ai/llm/llmPolicy.ts'
-import { DEFAULT_BOT_MODEL, LLM_REQUEST_BUDGET_MS } from '../shared/ai/llm/llmSettings.ts'
-import { reasoningEffortFor, routingFor } from '../shared/ai/llm/makePolicy.ts'
+import { DEFAULT_BOT_MODEL, LLM_REQUEST_BUDGET_MS, MENU_SCORE_WINDOW_TURNS, TEMPO_GUARD_TURNS } from '../shared/ai/llm/llmSettings.ts'
+import { botFlowFor, reasoningEffortFor, routingFor } from '../shared/ai/llm/makePolicy.ts'
+import type { ModelBackedPolicy } from '../shared/ai/llm/makePolicy.ts'
 import { OpenRouterClient } from '../shared/ai/llm/openRouterClient.ts'
+import { SectionedLlmPolicy } from '../shared/ai/llm/sectionedPolicy.ts'
 import type { TelemetryRow } from '../shared/ai/llm/telemetry.ts'
-import { newGame, reportBattle, STEP_CAP, TURN_CAP } from '../shared/ai/selfPlayHarness.ts'
+import { matchupFor, newGame, parseFactions, parsePairing, reportBattle, STEP_CAP, TURN_CAP } from '../shared/ai/selfPlayHarness.ts'
 
 // Same shape selfPlay.test.ts builds; the harness itself stays seed-free.
 function toSnapshot(card: SeedCard): SnapshotCard {
@@ -61,30 +76,51 @@ const arg = (name: string, fallback: string): string => {
   return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : fallback
 }
 
-const key = envValue('OPENROUTER_API_KEY')
-if (!key) { console.error('OPENROUTER_API_KEY is not set (environment or ./.env.local)'); process.exitCode = 1; throw new Error('no key') }
 const games = Number(arg('games', '20'))
 const model = arg('model', DEFAULT_BOT_MODEL)
 const firstSeed = Number(arg('seed', '1'))
+const pairing = parsePairing(arg('pairing', ''))
+const factions = parseFactions(arg('factions', ''), pairing)
+const flow = botFlowFor(arg('flow', 'sections'))
+const opponentName = arg('opponent', 'heuristic')
+if (opponentName !== 'heuristic' && opponentName !== 'scored') throw new Error(`--opponent must be heuristic or scored, not ${opponentName}`)
+const opponent: BotPolicy = opponentName === 'scored' ? scoredPolicy : basicPolicy
+// A number or "inf"; anything else is refused rather than read as NaN, which
+// the policies would treat as "off" (Number.isFinite(NaN) is false) — a
+// mistyped --guard would silently run the advisory variant.
+const num = (name: string, fallback: number): number => {
+  const raw = arg(name, '')
+  if (raw === '') return fallback
+  if (raw.toLowerCase() === 'inf') return Infinity
+  const n = Number(raw)
+  if (Number.isNaN(n)) throw new Error(`--${name} must be a number or "inf", not "${raw}"`)
+  return n
+}
 const settings = {
   ...DEFAULT_LLM_POLICY_SETTINGS,
   reasoningEffort: reasoningEffortFor(model, arg('reasoning', '')),
   routing: routingFor(model, arg('providers', '')),
+  tempoGuardTurns: num('guard', TEMPO_GUARD_TURNS),
+  menuScoreWindowTurns: num('window', MENU_SCORE_WINDOW_TURNS),
 }
+
+// Skip the key check and the client construction under --flow scored: the
+// evaluator alone makes no model call, so the eval needs no OpenRouter key.
+const key = flow === 'scored' ? 'unused' : envValue('OPENROUTER_API_KEY')
+if (!key) { console.error('OPENROUTER_API_KEY is not set (environment or ./.env.local)'); process.exitCode = 1; throw new Error('no key') }
 
 const { cards } = await loadSeedData()
 const catalog = cards.filter((c) => c.isBuiltIn).map(toSnapshot)
 const byName = new Map(catalog.map((c) => [`${c.faction}:${c.name}`, c]))
-const client = new OpenRouterClient(key, model)
+const client = flow === 'scored' ? null : new OpenRouterClient(key, model)
 
-interface Outcome { seed: number; modelSide: 'a' | 'b'; winner: 'model' | 'heuristic' | 'none'; turns: number; rows: TelemetryRow[]; requests: number; turnMs: number[] }
+interface Outcome { seed: number; modelSide: 'a' | 'b'; modelFaction: string; winner: 'model' | 'heuristic' | 'none'; turns: number; rows: TelemetryRow[]; requests: number; turnMs: number[] }
 const outcomes: Outcome[] = []
 
 for (let i = 0; i < games; i++) {
   const seed = firstSeed + i
   const modelSide: 'a' | 'b' = i % 2 === 0 ? 'b' : 'a'
-  const factionA = BOT_FACTIONS[i % BOT_FACTIONS.length]
-  const factionB = BOT_FACTIONS[(i + 1) % BOT_FACTIONS.length]
+  const { factionA, factionB } = matchupFor(factions, i, pairing)
   const { game: start, ctx, rng } = newGame({ seed, factionA, factionB, catalog, byName })
   let game: EngineGame = start
   const rows: TelemetryRow[] = []
@@ -94,10 +130,14 @@ for (let i = 0; i < games; i++) {
     const id = side === 'a' ? 'alice' : 'bot'
     if (!botOwes(game, side)) return
     // One policy instance per "request", as production builds one per call.
-    const policy = side === modelSide ? new LlmPolicy(client, basicPolicy, model, settings) : basicPolicy
+    const modelPolicy: ModelBackedPolicy | null = side === modelSide
+      ? (flow === 'scored' ? { ...scoredPolicy, rows: [], modelId: 'scored', settings }
+        : flow === 'single' ? new LlmPolicy(client, scoredPolicy, model, settings) : new SectionedLlmPolicy(client, scoredPolicy, model, settings))
+      : null
+    const policy: BotPolicy = modelPolicy ?? opponent
     const t0 = Date.now()
     game = (await runBotUntilIdle(game, id, ctx, policy)).game
-    if (policy instanceof LlmPolicy) { rows.push(...policy.rows); turnMs.push(Date.now() - t0); requests++ }
+    if (modelPolicy) { rows.push(...modelPolicy.rows); turnMs.push(Date.now() - t0); requests++ }
   }
   for (let step = 0; step < STEP_CAP; step++) {
     await act('a')
@@ -116,9 +156,9 @@ for (let i = 0; i < games; i++) {
   }
   const modelId = modelSide === 'a' ? 'alice' : 'bot'
   const winner: Outcome['winner'] = game.status === 'active' ? 'none' : game.winnerId === modelId ? 'model' : 'heuristic'
-  outcomes.push({ seed, modelSide, winner, turns: game.turnNumber, rows, requests, turnMs })
+  outcomes.push({ seed, modelSide, modelFaction: modelSide === 'a' ? factionA : factionB, winner, turns: game.turnNumber, rows, requests, turnMs })
   const cost = rows.reduce((s, r) => s + (r.costUsd ?? 0), 0)
-  console.log(`seed ${seed}: model as ${modelSide} vs heuristic → ${winner} in ${game.turnNumber} turns, ${rows.length} calls, $${cost.toFixed(4)}`)
+  console.log(`seed ${seed}: model as ${modelSide} (${factionA} vs ${factionB}) → ${winner} in ${game.turnNumber} turns, ${rows.length} calls, ${cost.toFixed(4)}`)
 }
 
 const pct = (n: number, d: number) => (d === 0 ? '–' : `${Math.round((100 * n) / d)}%`)
@@ -129,7 +169,7 @@ const decided = outcomes.filter((o) => o.winner !== 'none')
 const wins = outcomes.filter((o) => o.winner === 'model').length
 const fallbacks = allRows.filter((r) => r.fallbackReason !== null)
 console.log('')
-console.log(`model ${model} (reasoning ${settings.reasoningEffort ?? 'model default'}, routing ${settings.routing ? JSON.stringify(settings.routing) : 'default'}): ${wins}/${decided.length} decided games won (${pct(wins, decided.length)}), ${outcomes.length - decided.length} hit the ${TURN_CAP}-turn cap`)
+console.log(`flow ${flow}, opponent ${opponentName}, guard ${settings.tempoGuardTurns}, window ${settings.menuScoreWindowTurns}, ${pairing} ${factions.join('/')}, model ${model} (reasoning ${settings.reasoningEffort ?? 'model default'}, routing ${settings.routing ? JSON.stringify(settings.routing) : 'default'}): ${wins}/${decided.length} decided games won (${pct(wins, decided.length)}), ${outcomes.length - decided.length} hit the ${TURN_CAP}-turn cap`)
 console.log(`calls per model request: ${(allRows.length / Math.max(1, outcomes.reduce((s, o) => s + o.requests, 0))).toFixed(2)}`)
 console.log(`model time per turn: p50 ${p(allTurnMs, 0.5)} ms, p95 ${p(allTurnMs, 0.95)} ms (budget ${LLM_REQUEST_BUDGET_MS} ms)`)
 console.log(`tokens per call: prompt ${Math.round(allRows.reduce((s, r) => s + (r.promptTokens ?? 0), 0) / Math.max(1, allRows.length))}, cached ${Math.round(allRows.reduce((s, r) => s + (r.cachedTokens ?? 0), 0) / Math.max(1, allRows.length))}, completion ${Math.round(allRows.reduce((s, r) => s + (r.completionTokens ?? 0), 0) / Math.max(1, allRows.length))}`)
@@ -137,3 +177,10 @@ console.log(`cost per game: $${(allRows.reduce((s, r) => s + (r.costUsd ?? 0), 0
 const byReason = new Map<string, number>()
 for (const r of fallbacks) byReason.set(r.fallbackReason!, (byReason.get(r.fallbackReason!) ?? 0) + 1)
 console.log(`fallback rate: ${pct(fallbacks.length, allRows.length)}${byReason.size ? ` (${[...byReason].map(([k, v]) => `${k} ${v}`).join(', ')})` : ''}`)
+const turnRows = allRows.filter((r) => r.kind === 'turn')
+const guarded = turnRows.filter((r) => r.guard !== null)
+console.log(`tempo guard: fired on ${guarded.length} of ${turnRows.length} turn rows${guarded.length ? ` (mean gap ${(guarded.reduce((s, r) => s + r.guard!.gap, 0) / guarded.length).toFixed(1)} turns)` : ''}`)
+// Under cross pairing the faction the model held decides more games than the
+// model does (2026-09-19: WF vs DWG swung 0–6 to 5–1 under one resolver), so the
+// aggregate alone misleads; under mirror pairing this reads how each deck is played.
+console.log(`by model faction: ${factions.map((f) => { const g = decided.filter((o) => o.modelFaction === f); return `${f} ${g.filter((o) => o.winner === 'model').length}-${g.filter((o) => o.winner === 'heuristic').length}` }).join(', ')}`)

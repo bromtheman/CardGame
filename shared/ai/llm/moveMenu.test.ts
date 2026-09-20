@@ -1,10 +1,27 @@
-import { describe, expect, it } from 'vitest'
-import type { GameAction } from '../../engine/engineTypes'
+import { describe, expect, it, vi } from 'vitest'
+import type { EngineContext, EngineGame, GameAction } from '../../engine/engineTypes'
 import { applyAction, knownActionTypes } from '../../engine/index'
 import { inst, makeCtx, makeGame, zoneEntry } from '../../engine/testFixtures'
 import { FALLBACK } from '../botDriver'
-import { MENU_MAX_ITEMS, MENU_MAX_TRIALS } from './llmSettings'
-import { buildMenu, MENU_ACTION_TYPES, MENU_EXCLUDED_TYPES, sameAction } from './moveMenu'
+import { MENU_MAX_ITEMS, MENU_MAX_TRIALS, MENU_SCORE_WINDOW_TURNS } from './llmSettings'
+import { buildMenu, MENU_ACTION_TYPES, MENU_EXCLUDED_TYPES, sameAction, tempoTag, withinWindow } from './moveMenu'
+import type { MenuItem } from './moveMenu'
+
+import { sectionOf } from './sections'
+
+// The throw is gated on one sentinel instanceId ('boom-card', created only by
+// the "keeps other items scored when one item throws" test below), so every
+// other test in this file still exercises the real evaluator untouched.
+vi.mock('../evaluator', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../evaluator')>()
+  return {
+    ...actual,
+    scoreMove: (game: EngineGame, botId: string, action: GameAction, ctx: EngineContext, seed: number): number | null => {
+      if (action.type === 'PLAY_CARD_TO_ZONE' && action.instanceId === 'boom-card') throw new Error('scoring boom (test)')
+      return actual.scoreMove(game, botId, action, ctx, seed)
+    },
+  }
+})
 
 const BOT = 'bob'   // side 'b', as in every practice game
 
@@ -56,6 +73,20 @@ describe('buildMenu', () => {
     const menu = buildMenu(g, BOT, makeCtx(), 'turn')   // makeCtx() defaults catalog: []
     expect(menu.some((m) => m.action.type === 'END_TURN')).toBe(true)
     expect(menu.some((m) => m.action.type === 'USE_HERO_POWER' && m.action.power === 'drones')).toBe(false)
+  })
+
+  it("tags every item with its section — END TURN is finish, one-move kinds are none", () => {
+    const g = makeGame({ activePlayer: BOT, turnNumber: 3 })
+    g.state.zones[0].cards.b.push(zoneEntry({ instanceId: "mine-1", materialCost: 150000, keywords: ["mobile"], playedOnTurn: 1 }))
+    const menu = buildMenu(g, BOT, makeCtx(), "turn")
+    for (const item of menu) expect(item.section, item.text).toBe(sectionOf(item.action))
+    expect(menu.find((m) => m.action.type === "END_TURN")?.section).toBe("finish")
+    expect(menu.find((m) => m.action.type === "ATTACK_ENEMY_BASE")?.section).toBe("fight")
+    expect(menu.find((m) => m.action.type === "MOVE_VEHICLE")?.section).toBe("deploy")
+
+    const c = makeGame({ activePlayer: "alice", turnNumber: 3 })
+    c.state.pendingEffect = { effect: "e", side: "b", card: inst({}), kind: "choice", prompt: "Pick", options: [{ id: "x", label: "X" }] }
+    for (const item of buildMenu(c, BOT, makeCtx(), "choice")) expect(item.section).toBeNull()
   })
 
   it('enumerates responses, decisions and choices', () => {
@@ -112,7 +143,9 @@ describe('buildMenu', () => {
     const g = makeGame({ activePlayer: BOT, turnNumber: 3 })
     for (let i = 0; i < 8; i++) g.state.zones[0].cards.b.push(zoneEntry({ instanceId: `m-${i}`, keywords: ['mobile'], playedOnTurn: 1 }))
     const menu = buildMenu(g, BOT, makeCtx(), 'turn')
-    expect(menu.length).toBeLessThanOrEqual(MENU_MAX_ITEMS)
+    for (const section of ['deploy', 'activate', 'fight', 'finish', null] as const) {
+      expect(menu.filter((m) => m.section === section).length, String(section)).toBeLessThanOrEqual(MENU_MAX_ITEMS)
+    }
     expect(menu.length).toBeLessThanOrEqual(MENU_MAX_TRIALS)
     expect(menu.some((m) => sameAction(m.action, FALLBACK.turn))).toBe(true)
   })
@@ -131,5 +164,80 @@ describe('sameAction', () => {
     expect(sameAction({ type: 'MOVE_VEHICLE', instanceId: 'x', zoneId: 1 }, { zoneId: 1, instanceId: 'x', type: 'MOVE_VEHICLE' })).toBe(true)
     expect(sameAction({ type: 'ACTIVATE_VEHICLE', instanceId: 'x', zoneId: undefined }, { type: 'ACTIVATE_VEHICLE', instanceId: 'x' })).toBe(true)
     expect(sameAction({ type: 'MOVE_VEHICLE', instanceId: 'x', zoneId: 1 }, { type: 'MOVE_VEHICLE', instanceId: 'x', zoneId: 2 })).toBe(false)
+  })
+})
+
+describe('tempo deltas', () => {
+  it('scores every turn item against END TURN, which carries 0', () => {
+    const g = makeGame({ activePlayer: BOT, turnNumber: 3, privates: { a: { hand: [], deck: [] }, b: { hand: [inst({ instanceId: 'ship-100', materialCost: 100000 })], deck: [] } } })
+    g.state.resources.b.materials = 225000
+    g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'mine-1', materialCost: 150000, playedOnTurn: 1 }))
+    const menu = buildMenu(g, BOT, makeCtx(), 'turn')
+    const end = menu.find((m) => m.action.type === 'END_TURN')!
+    expect(end.score).toBe(0)
+    const deploy = menu.find((m) => m.action.type === 'PLAY_CARD_TO_ZONE')!
+    const bombard = menu.find((m) => m.action.type === 'ATTACK_ENEMY_BASE')!
+    expect(deploy.score).toBeGreaterThan(0)
+    expect(bombard.score).toBeGreaterThan(0)
+    for (const m of menu) expect(typeof m.score).toBe('number')
+  })
+  it('leaves the one-move kinds unscored', () => {
+    const g = makeGame({ activePlayer: BOT, turnNumber: 3 })
+    g.state.pendingEffect = { effect: 'e', side: 'b', card: inst({}), kind: 'choice', prompt: 'Pick', options: [{ id: 'x', label: 'X' }, { id: 'y', label: 'Y' }] }
+    for (const m of buildMenu(g, BOT, makeCtx(), 'choice')) expect(m.score).toBeNull()
+  })
+  it('still draws exactly one rng value with scoring on', () => {
+    const g = makeGame({ activePlayer: BOT, turnNumber: 3 })
+    g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'mine-1', keywords: ['mobile'], playedOnTurn: 1 }))
+    let draws = 0
+    buildMenu(g, BOT, makeCtx({ rng: () => { draws++; return 0.5 } }), 'turn')
+    expect(draws).toBe(1)
+  })
+  it('formats the tag to one decimal with a sign, and nothing for null', () => {
+    expect(tempoTag(2.44)).toBe(' [+2.4]')
+    expect(tempoTag(-1.26)).toBe(' [-1.3]')
+    expect(tempoTag(0)).toBe(' [0.0]')
+    expect(tempoTag(-0.04)).toBe(' [0.0]')
+    expect(tempoTag(null)).toBe('')
+  })
+  // scoreMove re-runs a verified action on its own seed, so a latent
+  // rng-dependent handler throw can clear the trial and then surface only
+  // during scoring — the mock above forces exactly that for one card's
+  // PLAY_CARD_TO_ZONE. The thrown item must keep null, same as an
+  // uncompletable trial, rather than taking the rest of the menu down with it.
+  it('keeps other items scored when one item throws while scoring', () => {
+    const g = makeGame({
+      activePlayer: BOT, turnNumber: 3,
+      privates: { a: { hand: [], deck: [] }, b: { hand: [inst({ instanceId: 'boom-card', materialCost: 40000 })], deck: [] } },
+    })
+    const menu = buildMenu(g, BOT, makeCtx(), 'turn')
+    const thrown = menu.filter((m) => m.action.type === 'PLAY_CARD_TO_ZONE' && m.action.instanceId === 'boom-card')
+    expect(thrown.length).toBeGreaterThan(0)
+    for (const m of thrown) expect(m.score).toBeNull()
+    const end = menu.find((m) => m.action.type === 'END_TURN')!
+    expect(typeof end.score).toBe('number')
+    const power = menu.find((m) => m.action.type === 'USE_HERO_POWER' && m.action.power === 'draw')!
+    expect(typeof power.score).toBe('number')
+  })
+})
+
+describe('withinWindow', () => {
+  it('keeps items within the window of the best, unscored items, and END TURN always', () => {
+    const menu: MenuItem[] = [
+      { id: 1, action: { type: 'END_TURN' }, text: 'end', section: 'finish', score: 0 },
+      { id: 2, action: { type: 'ATTACK_ENEMY_BASE', zoneId: 1 }, text: 'a', section: 'fight', score: 3 },
+      { id: 3, action: { type: 'ATTACK_ENEMY_BASE', zoneId: 2 }, text: 'b', section: 'fight', score: 1.5 },
+      { id: 4, action: { type: 'ATTACK_ENEMY_BASE', zoneId: 3 }, text: 'c', section: 'fight', score: null },
+    ]
+    expect(withinWindow(menu, 2).map((m) => m.id)).toEqual([1, 2, 3, 4])
+    expect(withinWindow(menu, 1).map((m) => m.id)).toEqual([1, 2, 4])
+    expect(withinWindow(menu, Infinity)).toEqual(menu)
+  })
+})
+
+describe('MENU_SCORE_WINDOW_TURNS', () => {
+  it('defaults to a finite window of 2 turns — the 2026-09-19 eval matrix\'s shipped variant (V3)', () => {
+    expect(Number.isFinite(MENU_SCORE_WINDOW_TURNS)).toBe(true)
+    expect(MENU_SCORE_WINDOW_TURNS).toBe(2)
   })
 })

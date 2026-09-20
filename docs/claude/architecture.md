@@ -531,35 +531,61 @@ one more caller of `applyAction`; nothing in the engine knows it exists.
   bot defending → response; a human-submitted `pendingReport` → decision; a
   locked battle → **nothing** (the human fights in FtD and reports; the bot
   never submits); the bot's own unfrozen turn → turn.
-- `runBotUntilIdle` asks `basicPolicy` for candidates best-first and applies
-  the first the engine accepts, then re-asks; every owed kind has a fallback
-  (`FALLBACK`) the engine always accepts. 60 accepted policy actions per
-  request, then fallbacks only, then a throw — which `game-action` answers as
-  **500 `AI opponent failed`** with nothing committed.
+- `runBotUntilIdle` asks the policy (`basicPolicy` is the heuristic; the
+  model policies and `scoredPolicy` are below) for candidates best-first and
+  applies the first the engine accepts, then re-asks; every owed kind has a
+  fallback (`FALLBACK`) the engine always accepts. 60 accepted policy actions
+  per request, then fallbacks only, then a throw — which `game-action`
+  answers as **500 `AI opponent failed`** with the sections already
+  committed standing.
 - **Hidden information by construction:** the policy receives a `BotView`
   (own hand + public state), never an `EngineGame`; `botView.test.ts`
   serialises one to prove it.
-- Where it runs: `game-action` after the human's action and before the one
-  `apply_action_tx` commit (bot games always load the catalog); `START` when
-  the bot is rolled first, before `start_game_tx` (which now reads
-  `turnNumber`/`status`/`winnerId` from `p_game`). `lobby-action` therefore
-  carries the full engine in the sync manifest.
+- Where it runs: `game-action` after the human's action, committing through
+  `apply_action_tx` at every checkpoint the bot's policy asks for (the
+  human's action rides the first) and once more at the end — a game without
+  a bot, or a bot that owes nothing, commits exactly once (bot games always
+  load the catalog); `START` when the bot is rolled first, before the one
+  `start_game_tx` (which now reads `turnNumber`/`status`/`winnerId` from
+  `p_game`). `lobby-action` therefore carries the full engine in the sync
+  manifest.
 - The bot's decks are curated lists in `botDecks.ts`, pinned to the seed
   source by `botDecks.test.ts`; `ADD_BOT` resolves them against the live
   `cards` table. `selfPlay.test.ts` plays every deck over seeded games — the
   first place a new card effect that wedges the bot shows up.
-- **The model policy (`shared/ai/llm/`, LLM spec 2026-09-16):** the driver
-  builds a verified, annotated move menu (`moveMenu.ts` — every action shape
-  enumerated, each applied on a clone, survivors described by public diff)
-  for a policy that declares `needsMenu`; `LlmPolicy` asks the model for a
-  plan of menu ids, re-verifies every planned move against the *current*
-  menu before offering it, and trips to `basicPolicy` on any failure. The
-  menu's `MENU_ACTION_TYPES` is pinned to `knownActionTypes()` — a new engine
-  action fails `moveMenu.test.ts` until the menu offers it. Table-talk enters
-  `state.log` only through the driver, after `guardTableTalk`, under
-  `TABLE_TALK_PREFIX`. The prompt is built from the `BotView` and the menu
-  alone; `prompt.test.ts` serialises the whole request body against known
-  opponent secrets.
+- **The model policies (`shared/ai/llm/`, LLM spec 2026-09-16 and the
+  2026-09-18 sectioned bot turn spec):** the driver builds a verified,
+  annotated move menu (`moveMenu.ts` — every action shape enumerated, each
+  applied on a clone, survivors described by public diff, each tagged with
+  its `section`) for a policy that declares `needsMenu`. `BOT_FLOW` picks
+  the policy: **`SectionedLlmPolicy`** (default) runs the turn as one
+  conversation per request in four sections — deploy → activate → fight →
+  finish (`sections.ts`) — showing the model only the current section's
+  items renumbered, taking ONE move per exchange, feeding back what the
+  engine really did (`describeOutcome`, via `onAccepted`'s third argument),
+  and asking the driver to checkpoint through `hooks.checkpoint(marker)` as
+  it enters a section; `game-action` commits at every checkpoint, so the
+  board redraws section by section, and the fixed marker lines
+  (`PracticeAI: fighting…`, prefix without quotes) ride the table-talk
+  styling. A turn after a decision in the same request resumes at activate.
+  `LlmPolicy` (`BOT_FLOW=single`) is the older single-shot plan of menu ids,
+  kept for the same-model eval (`npm run bot:eval -- --flow single`). Both
+  re-verify every move against the *current* menu before offering it —
+  including a plan head, which is guarded at the *current* menu's score, not
+  the one it was planned with — and trip to `scoredPolicy` (the evaluator,
+  below) on any failure; the heuristic `basicPolicy` no longer plays a
+  model flow's turn, it only supplies `scoredPolicy`'s one-move kinds and
+  the tail of its candidates, and the driver's `FALLBACK` action map is the
+  last resort. The menu's `MENU_ACTION_TYPES` is
+  pinned to `knownActionTypes()`, and `sectionOf` is pinned the same way —
+  a new engine action fails `moveMenu.test.ts` and `sections.test.ts` until
+  it is offered and placed. Table-talk enters `state.log` only through the
+  driver, after `guardTableTalk`, under `TABLE_TALK_PREFIX`. The prompts are
+  built from the `BotView` and the menu alone (`prompt.ts` blocks,
+  `conversation.ts` messages); `prompt.test.ts` and `conversation.test.ts`
+  serialise the whole request against known opponent secrets. Telemetry rows
+  carry `section` and `seq`; `passed` is the sectioned flow's empty answer
+  on a one-move kind.
   The system prefix is `rulesPrimer.ts` (rules templated from
   `gameSettings.ts`, no digit outside a placeholder) plus the owner's strategy
   prose in `factionNotes.ts` — `GENERAL_TIPS` for every faction, then a
@@ -584,3 +610,21 @@ one more caller of `applyAction`; nothing in the engine knows it exists.
   card-game number; the importer drops the report's FtD material cost for
   that reason. A new faction needs its export spread into `SHIP_PROFILES`,
   the generated file added to `shared-manifest.json`, and `functions:sync`.
+- **Evaluator and tempo guard (2026-09-19).** `shared/ai/evaluator.ts` scores
+  a position in turns of tempo (turns the enemy needs to fell the bot's
+  second base minus the bot's, plus board/hand/base-HP terms) and
+  `scoreMove` scores a move by trial-applying it, settling choices, sampling
+  a fleet attack through `battleSim.ts`, ending the turn and scoring.
+  `buildMenu` attaches the delta against END TURN to every turn item
+  (`MenuItem.score`); the model reads it as `[+2.4]`. `tempoGuard.ts`'s
+  `guardPick` replaces a pick, a pass or END TURN that sits
+  `TEMPO_GUARD_TURNS` or more below the best item and files `guard` on the
+  row; the primer's guard sentence is rendered from the margin the policy
+  runs with (`buildSystemPrompt(faction, flow, guardTurns)`) and left out
+  when it is `Infinity`. `scoredPolicy` plays the best item — only a
+  **strictly positive** delta ranks above END TURN, so a zero-delta move
+  that stays legal (an alert re-reveal) never loops — as `BOT_FLOW=scored`,
+  as what plays with no key, and as the fallback inside both model flows
+  after any mid-request failure. `battleSim.ts` ships in both functions for
+  the evaluator's battle samples. Spec:
+  `docs/superpowers/specs/2026-09-19-scored-menu-design.md`.

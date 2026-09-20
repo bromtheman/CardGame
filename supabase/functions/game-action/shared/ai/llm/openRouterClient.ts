@@ -36,8 +36,8 @@ export class OpenRouterClient implements LlmClient {
         },
         body: JSON.stringify({
           model: this.model,
-          messages: [{ role: 'system', content: req.system }, { role: 'user', content: req.user }],
-          response_format: { type: 'json_schema', json_schema: { name: 'plan', strict: true, schema: req.schema } },
+          messages: req.messages,
+          response_format: { type: 'json_schema', json_schema: { name: req.schemaName, strict: true, schema: req.schema } },
           max_tokens: req.maxTokens,
           temperature: req.temperature,
           usage: { include: true },

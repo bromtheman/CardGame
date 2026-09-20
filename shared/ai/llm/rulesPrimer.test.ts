@@ -2,13 +2,15 @@ import { describe, expect, it } from 'vitest'
 import { KEYWORDS, MATERIALS_PER_TURN, SURVIVE_HP_PERCENT } from '../../gameSettings'
 import { shipProfilesForFaction } from '../../shipProfiles'
 import { FACTION_NOTES, GENERAL_TIPS } from './factionNotes'
-import { KEYWORD_GLOSSARY, PRIMER_TEMPLATE, renderPrimer } from './rulesPrimer'
+import { TEMPO_GUARD_TURNS } from './llmSettings'
+import { HOW_YOU_PLAY, KEYWORD_GLOSSARY, PRIMER_TEMPLATE, PRIMER_VALUES, renderPrimer, tempoGuardLine } from './rulesPrimer'
 
 describe('rules primer', () => {
   it('carries no literal number — every figure is a placeholder filled from gameSettings', () => {
     const stripped = PRIMER_TEMPLATE.replace(/\{\{[A-Z_]+\}\}/g, '')
     expect(stripped).not.toMatch(/\d/)
     for (const text of Object.values(KEYWORD_GLOSSARY)) expect(text).not.toMatch(/\d/)
+    for (const block of Object.values(HOW_YOU_PLAY)) expect(block).not.toMatch(/\d/)
   })
   it('gives the economy its own rule: materials are overwritten each turn, never saved', () => {
     // One clause inside the turn-flow bullet lost to the model's "materials
@@ -22,12 +24,33 @@ describe('rules primer', () => {
   it('has a glossary line for every keyword the engine knows', () => {
     for (const keyword of Object.values(KEYWORDS)) expect(KEYWORD_GLOSSARY[keyword], keyword).toBeTruthy()
   })
-  it('shows the exact JSON object the model must answer with', () => {
-    const shape = PRIMER_TEMPLATE.slice(PRIMER_TEMPLATE.indexOf('HOW YOU PLAY'))
+  it('shows the exact JSON object the model must answer with, per flow', () => {
     for (const key of ['"plan"', '"expectation"', '"summary"', '"battle"', '"zoneId"', '"outcome"', '"confidence"', '"tableTalk"']) {
-      expect(shape, key).toContain(key)
+      expect(HOW_YOU_PLAY.single, key).toContain(key)
     }
-    expect(shape).toContain('ONE JSON object')
+    for (const key of ['"actions"', '"then"', '"note"', '"battle"', '"zoneId"', '"outcome"', '"confidence"', '"tableTalk"', '"continue"', '"next"']) {
+      expect(HOW_YOU_PLAY.sections, key).toContain(key)
+    }
+    for (const block of Object.values(HOW_YOU_PLAY)) {
+      expect(block.startsWith('HOW YOU PLAY\n')).toBe(true)
+      expect(block).toContain('ONE JSON object')
+    }
+  })
+  it('renders the single flow’s answer shape by default and the sectioned flow’s on request, after the same prefix', () => {
+    const single = renderPrimer('DWG')
+    const sections = renderPrimer('DWG', 'sections')
+    // Each block's own {{TEMPO_GUARD_LINE}} placeholder is resolved by render,
+    // so the byte-for-byte check is against the block with that one swap made
+    // — same block, same rule, its digit no longer literal.
+    const guardLine = tempoGuardLine(TEMPO_GUARD_TURNS)
+    expect(single).toContain(HOW_YOU_PLAY.single.replace('{{TEMPO_GUARD_LINE}}', guardLine))
+    expect(single).not.toContain('"actions"')
+    expect(sections).toContain(HOW_YOU_PLAY.sections.replace('{{TEMPO_GUARD_LINE}}', guardLine))
+    expect(sections).not.toContain('"plan"')
+    expect(sections).toContain('DEPLOY')
+    expect(sections).toContain('continues from ACTIVATE')
+    expect(single.slice(0, single.indexOf('HOW YOU PLAY'))).toBe(sections.slice(0, sections.indexOf('HOW YOU PLAY')))
+    expect(sections).not.toContain('{{')
   })
   it('renders every placeholder, the faction, and the glossary', () => {
     const text = renderPrimer('DWG')
@@ -94,5 +117,44 @@ describe('rules primer', () => {
     const text = renderPrimer('OW')
     expect(text).not.toContain('YOUR FLEET')
     expect(text).not.toMatch(/\n\n\n/)
+  })
+  it('explains the tempo tag in both flows and names the guard margin through its placeholder', () => {
+    for (const flow of ['single', 'sections'] as const) {
+      const text = renderPrimer('DWG', flow)
+      expect(text).toContain('tempo estimate in brackets')
+      expect(text).toContain(`A move worth at least ${TEMPO_GUARD_TURNS} turn${TEMPO_GUARD_TURNS === 1 ? '' : 's'} of tempo less than the best move is not accepted — the best move is played instead.`)
+      // renderPrimer must substitute in two passes: HOW_YOU_PLAY[flow] is
+      // itself inserted from a placeholder, and carries one of its own.
+      expect(text).not.toContain('{{')
+    }
+    expect(HOW_YOU_PLAY.single).toContain('{{TEMPO_GUARD_LINE}}')
+    expect(HOW_YOU_PLAY.sections).toContain('{{TEMPO_GUARD_LINE}}')
+    expect(PRIMER_VALUES).not.toHaveProperty('TEMPO_GUARD_TURNS')   // the margin is a render argument, not a dictionary entry
+    expect(PRIMER_VALUES).not.toHaveProperty('TEMPO_GUARD_LINE')
+  })
+  it('renders the guard line from the margin it is given — the policy’s, not the constant — and drops it when the margin is not finite', () => {
+    // An advisory eval (--guard inf) must not tell the model a guard exists.
+    for (const flow of ['single', 'sections'] as const) {
+      const advisory = renderPrimer('DWG', flow, Infinity)
+      expect(advisory).not.toContain('is not accepted')
+      expect(advisory).not.toContain('the best move is played instead')
+      expect(advisory).toContain('treat it as a compass, not an order.\n')   // the sentence before the line still closes the bullet
+      expect(advisory).not.toContain('{{')
+      expect(renderPrimer('DWG', flow)).toContain(tempoGuardLine(TEMPO_GUARD_TURNS))   // the default is the constant
+      expect(renderPrimer('DWG', flow, 2.5)).toContain('A move worth at least 2.5 turns of tempo less than the best move is not accepted')
+    }
+    expect(tempoGuardLine(Infinity)).toBe('')
+    expect(tempoGuardLine(NaN)).toBe('')
+    expect(tempoGuardLine(1)).toBe(' A move worth at least 1 turn of tempo less than the best move is not accepted — the best move is played instead.')
+    expect(tempoGuardLine(2)).toContain('at least 2 turns of tempo')
+    expect(tempoGuardLine(0.5)).toContain('at least 0.5 turns of tempo')
+  })
+  it('explains the board’s enemy-hull scoring braces in both flows, with no digit', () => {
+    const sentence = 'A hull on the board shows its fighting scores in braces when its faction has a profile — fire, toughness, then how it fares against ships, aircraft and submarines, each one weakest to five strongest — for the enemy\'s hulls as well as yours.'
+    expect(sentence).not.toMatch(/\d/)
+    for (const flow of ['single', 'sections'] as const) {
+      expect(HOW_YOU_PLAY[flow]).toContain(sentence)
+      expect(renderPrimer('DWG', flow)).toContain(sentence)
+    }
   })
 })

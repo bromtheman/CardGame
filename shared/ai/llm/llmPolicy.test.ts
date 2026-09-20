@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { applyAction } from '../../engine/index'
 import { inst, makeCtx, makeGame, zoneEntry } from '../../engine/testFixtures'
 import { basicPolicy } from '../basicPolicy'
 import { runBotUntilIdle } from '../botDriver'
@@ -6,6 +7,38 @@ import { viewFor } from '../botView'
 import { LlmHttpError, LlmTimeoutError } from './llmClient'
 import type { LlmClient, LlmRequest } from './llmClient'
 import { LlmPolicy } from './llmPolicy'
+import { buildMenu, withinWindow } from './moveMenu'
+import type { MenuItem } from './moveMenu'
+
+const userOf = (req: LlmRequest): string => req.messages[req.messages.length - 1].content
+
+// A menu number by predicate against the menu the LAST user message showed
+// (sectionedPolicy.test.ts's helper, ported here for the guard tests below,
+// which need to name one specific item rather than a whole plan).
+function idOf(user: string, want: string): number {
+  const menu = user.slice(user.indexOf('MENU'))
+  const line = menu.split('\n').find((l) => /^#\d+ /.test(l) && l.includes(want))
+  if (!line) throw new Error(`no menu line matching "${want}" in:\n${menu}`)
+  return Number(line.slice(1).split(' ')[0])
+}
+
+// A fake that always proposes END TURN alone, resolved from whatever menu
+// the request shows — the tempo guard tests plan around the model naming
+// only this move so the guard (or its absence) is the only thing at play.
+function endTurnOnlyClient(calls: LlmRequest[] = []): LlmClient & { calls: LlmRequest[] } {
+  return {
+    model: 'fake/model', calls,
+    async complete(req) {
+      calls.push(req)
+      const id = idOf(userOf(req), 'END TURN')
+      return {
+        text: JSON.stringify({ plan: [id], expectation: { summary: 's', battle: null }, tableTalk: null }),
+        usage: { promptTokens: 100, completionTokens: 10, cachedTokens: 50, costUsd: 0.00001 },
+        latencyMs: 1,
+      }
+    },
+  }
+}
 
 const BOT = 'bob'
 
@@ -45,7 +78,8 @@ function planningClient(plans: string[][], talk: (string | null)[] = []): LlmCli
     model: 'fake/model', calls,
     async complete(req) {
       calls.push(req)
-      const menuText = req.user.slice(req.user.indexOf('MENU'))
+      const user = userOf(req)
+      const menuText = user.slice(user.indexOf('MENU'))
       const n = Math.min(i, plans.length - 1)
       const text = answerFor(menuText, plans[n], { tableTalk: talk[i] ?? null })
       i++
@@ -98,8 +132,8 @@ describe('LlmPolicy', () => {
     const { applied } = await runBotUntilIdle(turnGame(), BOT, makeCtx(), policy)
     expect(applied.map((a) => a.type)).toEqual(['PLAY_CARD_TO_ZONE', 'END_TURN'])
     expect(client.calls.length).toBe(2)
-    expect(client.calls[1].user).toContain('SITUATION:')
-    expect(client.calls[1].user).toContain('Your plan so far: #')
+    expect(userOf(client.calls[1])).toContain('SITUATION:')
+    expect(userOf(client.calls[1])).toContain('Your plan so far: #')
     expect(policy.rows.length).toBe(2)
   })
 
@@ -112,7 +146,7 @@ describe('LlmPolicy', () => {
     const { applied } = await runBotUntilIdle(g, BOT, makeCtx(), policy)
     expect(applied.map((a) => a.type)).toEqual(['PLAY_CARD_TO_ZONE', 'END_TURN'])
     expect(client.calls.length).toBe(2)
-    expect(client.calls[1].user).toContain('no longer available')
+    expect(userOf(client.calls[1])).toContain('no longer available')
   })
 
   it('falls back to the heuristic and trips on malformed output', async () => {
@@ -122,7 +156,7 @@ describe('LlmPolicy', () => {
     expect(applied.map((a) => a.type)).toEqual(['PLAY_CARD_TO_ZONE', 'END_TURN'])   // basicPolicy played the turn
     expect(client.calls.length).toBe(1)                                                // tripped: no second call
     expect(policy.rows.map((r) => r.fallbackReason)).toEqual(['malformed'])
-    expect(policy.needsMenu).toBe(false)   // tripped: the driver must stop building a menu
+    expect(policy.needsMenu).toBe(true)   // tripped, but the scored fallback still reads the menu
     expect(policy.rows[0].error).toMatch(/^unparseable answer/)
   })
 
@@ -188,12 +222,115 @@ describe('LlmPolicy', () => {
     expect(r.applied[0]).toEqual({ type: 'RESOLVE_PENDING_EFFECT', choiceId: 'y' })
   })
 
-  it('starts tripped as disabled without a client, builds no menu, and files one disabled row', async () => {
+  it('starts tripped as disabled without a client, wants a menu for the scored fallback, and files one disabled row', async () => {
     const policy = new LlmPolicy(null, basicPolicy, 'inception/mercury-2.5')
-    expect(policy.needsMenu).toBe(false)
+    expect(policy.needsMenu).toBe(true)
     const { applied } = await runBotUntilIdle(turnGame(), BOT, makeCtx(), policy)
     expect(applied.map((a) => a.type)).toEqual(['PLAY_CARD_TO_ZONE', 'END_TURN'])
     expect(policy.rows).toHaveLength(1)
     expect(policy.rows[0]).toMatchObject({ kind: 'turn', model: 'inception/mercury-2.5', fallbackReason: 'disabled', menuSize: 0, latencyMs: 0, plan: [] })
+  })
+})
+
+describe('LlmPolicy — the tempo guard', () => {
+  // A deploy that scores well above END TURN; the model plans END TURN only.
+  const guardGame = () => {
+    const g = makeGame({ activePlayer: BOT, turnNumber: 3, privates: { a: { hand: [], deck: [] }, b: { hand: [inst({ instanceId: 'ship-100', materialCost: 100000 })], deck: [] } } })
+    g.state.resources.b.materials = 225000
+    return g
+  }
+
+  it('plays the best move instead of a plan that ends the turn a margin below it, and files the guard', async () => {
+    const client = endTurnOnlyClient()
+    const policy = new LlmPolicy(client, basicPolicy, 'fake/model', fast)
+    const { applied } = await runBotUntilIdle(guardGame(), BOT, makeCtx(), policy)
+    expect(applied[0].type).toBe('PLAY_CARD_TO_ZONE')
+    expect(policy.rows[0].guard).toEqual(expect.objectContaining({ picked: expect.any(Number), taken: expect.any(Number) }))
+    expect(policy.rows[0].guard!.gap).toBeGreaterThanOrEqual(1)
+    // The primer tells the model about the guard it actually runs under.
+    expect(client.calls[0].messages[0].content).toContain('A move worth at least 1 turn of tempo less than the best move is not accepted')
+  })
+
+  it('tells the model the margin its settings carry, not the constant', async () => {
+    const client = endTurnOnlyClient()
+    await runBotUntilIdle(guardGame(), BOT, makeCtx(), new LlmPolicy(client, basicPolicy, 'fake/model', { ...fast, tempoGuardTurns: 2.5 }))
+    expect(client.calls[0].messages[0].content).toContain('A move worth at least 2.5 turns of tempo less than the best move is not accepted')
+  })
+
+  it('guards a plan-head item against its CURRENT score, not the stale one it was planned with', async () => {
+    // Two 40k ships, 100k materials; the model plans both deploys into zone
+    // 1. On the first menu every deploy is worth the same (any empty zone
+    // threatens a second base), so Alpha to zone 1 clears the guard and
+    // lands. On the fresh menu Bravo to zone 1 merely halves zone 1's time,
+    // while Bravo to zone 2 threatens a second base — many turns apart. The
+    // plan's own Bravo item still carries the FIRST menu's score, equal to
+    // the new best, so a guard reading it never fires; only the item
+    // resolved from the CURRENT menu shows the drop.
+    const two = () => makeGame({ activePlayer: BOT, turnNumber: 3, privates: { a: { hand: [], deck: [] }, b: { hand: [inst({ instanceId: 's1', name: 'Alpha', materialCost: 40000 }), inst({ instanceId: 's2', name: 'Bravo', materialCost: 40000 })], deck: [] } } })
+    // The ids the guard record must carry come from the menu the driver
+    // builds after Alpha lands (numbering does not depend on the rng).
+    const landed = applyAction(two(), BOT, { type: 'PLAY_CARD_TO_ZONE', instanceId: 's1', zoneId: 1 }, makeCtx())
+    if (!landed.ok) throw new Error(landed.error)
+    const fresh = buildMenu(landed.game, BOT, makeCtx(), 'turn')
+    const bravoTo = (zoneId: number): MenuItem => {
+      const m = fresh.find((m) => m.action.type === 'PLAY_CARD_TO_ZONE' && m.action.instanceId === 's2' && m.action.zoneId === zoneId)
+      if (!m) throw new Error(`no Bravo deploy to zone ${zoneId}`)
+      return m
+    }
+    expect(bravoTo(1).score!).toBeLessThan(bravoTo(2).score! - 1)   // the fixture's drop clears the margin
+    const client = planningClient([['PLAY Alpha (40k) to zone 1', 'PLAY Bravo (40k) to zone 1'], ['END TURN']])
+    const policy = new LlmPolicy(client, basicPolicy, 'fake/model', fast)
+    const { applied } = await runBotUntilIdle(two(), BOT, makeCtx(), policy)
+    expect(applied).toEqual([
+      { type: 'PLAY_CARD_TO_ZONE', instanceId: 's1', zoneId: 1 },
+      { type: 'PLAY_CARD_TO_ZONE', instanceId: 's2', zoneId: 2 },   // the guard's substitute, not the plan's zone 1
+      { type: 'END_TURN' },
+    ])
+    expect(client.calls.length).toBe(2)   // the guarded move dropped the plan; END TURN took a fresh call
+    expect(policy.rows[0].guard).toEqual({ picked: bravoTo(1).id, taken: bravoTo(2).id, gap: expect.any(Number) })
+    expect(policy.rows[0].guard!.gap).toBeGreaterThanOrEqual(1)
+    expect(policy.rows[0].applied.map((a) => a.type)).toEqual(['PLAY_CARD_TO_ZONE', 'PLAY_CARD_TO_ZONE'])
+  })
+
+  it('never guards with TEMPO_GUARD_TURNS at Infinity, and the primer then names no guard', async () => {
+    const client = endTurnOnlyClient()
+    const policy = new LlmPolicy(client, basicPolicy, 'fake/model', { ...fast, tempoGuardTurns: Infinity })
+    const { applied } = await runBotUntilIdle(guardGame(), BOT, makeCtx(), policy)
+    expect(applied.map((a) => a.type)).toEqual(['END_TURN'])
+    expect(policy.rows[0].guard).toBeNull()
+    expect(client.calls[0].messages[0].content).toContain('tempo estimate in brackets')
+    expect(client.calls[0].messages[0].content).not.toContain('is not accepted')
+  })
+
+  it('drops a plan naming a menu number the window hid, filing it malformed so the fallback plays', async () => {
+    const g = makeGame({
+      activePlayer: BOT, turnNumber: 3,
+      privates: {
+        a: { hand: [], deck: [] },
+        b: {
+          hand: [
+            inst({ instanceId: 'ship-20', name: 'Skiff', materialCost: 20000 }),
+            inst({ instanceId: 'ship-100', name: 'Corsair', materialCost: 100000 }),
+          ],
+          deck: [],
+        },
+      },
+    })
+    g.state.resources.b.materials = 300000
+    // The same menu the driver's first call will build (same fixture, a
+    // fresh seeded ctx — buildMenu draws exactly one rng value, so a second,
+    // independent makeCtx() reproduces it) — so the hidden item's id below
+    // is a real menu number, not a guess.
+    const preview = buildMenu(g, BOT, makeCtx(), 'turn')
+    const weakest = preview
+      .filter((m) => m.action.type === 'PLAY_CARD_TO_ZONE' && m.action.instanceId === 'ship-20')
+      .sort((a, b) => (a.score ?? 0) - (b.score ?? 0))[0]
+    expect(weakest).toBeDefined()
+    expect(withinWindow(preview, 0.5).some((m) => m.id === weakest.id)).toBe(false)   // confirms the fixture hides it
+    const text = JSON.stringify({ plan: [weakest.id], expectation: { summary: 's', battle: null }, tableTalk: null })
+    const policy = new LlmPolicy(fakeClient([text]), basicPolicy, 'fake/model', { ...fast, menuScoreWindowTurns: 0.5 })
+    const { applied } = await runBotUntilIdle(g, BOT, makeCtx(), policy)
+    expect(policy.rows[0].fallbackReason).toBe('malformed')
+    expect(applied[applied.length - 1].type).toBe('END_TURN')   // basicPolicy fallback still plays the turn
   })
 })

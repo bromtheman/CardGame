@@ -3,7 +3,10 @@ import { LlmHttpError, LlmTimeoutError } from './llmClient'
 import { OPENROUTER_URL } from './llmSettings'
 import { OpenRouterClient } from './openRouterClient'
 
-const req = { system: 'sys', user: 'usr', schema: { type: 'object' }, maxTokens: 50, temperature: 0.5 }
+const req = {
+  messages: [{ role: 'system' as const, content: 'sys' }, { role: 'user' as const, content: 'usr' }],
+  schema: { type: 'object' }, schemaName: 'plan', maxTokens: 50, temperature: 0.5,
+}
 
 function fetchReturning(status: number, body: unknown, capture: { init?: RequestInit; url?: string } = {}): typeof fetch {
   return (async (url, init) => {
@@ -35,6 +38,18 @@ describe('OpenRouterClient', () => {
     expect(body.usage).toEqual({ include: true })
     expect(body).not.toHaveProperty('reasoning')
     expect(body).not.toHaveProperty('provider')
+  })
+  it('sends the whole message history and the schema name it is given', async () => {
+    const capture: { init?: RequestInit } = {}
+    const client = new OpenRouterClient('k', 'm', fetchReturning(200, { choices: [{ message: { content: '{}' } }] }, capture))
+    const messages = [
+      { role: 'system' as const, content: 'sys' }, { role: 'user' as const, content: 'u1' },
+      { role: 'assistant' as const, content: '{"actions":[1]}' }, { role: 'user' as const, content: 'u2' },
+    ]
+    await client.complete({ ...req, messages, schemaName: 'answer' }, new AbortController().signal)
+    const body = JSON.parse(capture.init!.body as string)
+    expect(body.messages).toEqual(messages)
+    expect(body.response_format.json_schema.name).toBe('answer')
   })
   it('sends the routing preferences as OpenRouter\'s provider object', async () => {
     const capture: { init?: RequestInit } = {}

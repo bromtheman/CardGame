@@ -40,26 +40,36 @@ export const MODEL_ROUTING: Readonly<Record<string, OpenRouterRouting>> = {
   'deepseek/deepseek-v4.1-flash': { sort: 'throughput', require_parameters: true },
 }
 // The caps are for a long think or a slow provider moment, and the owner
-// would rather wait than hand the turn to the heuristic (2026-09-17). The
-// frontend's "PracticeAI is thinking…" label covers the wait. DeepSeek V4.1
-// Flash measured 6–38 s per call on the fastest route (the think length
-// varies 8× on one prompt), so the call cap is 60 s; a Mercury call is ~2 s.
-// The budget admits another call only while the time already spent is under
-// it, so one request is bounded by budget + one call ≈ 120 s, inside the
-// runtime's 150 s wall clock — raising the budget to 120 s would let a
-// request run to 180 s and take the human's own action down with it.
-// LLM_MAX_CALLS_PER_REQUEST still bounds the count.
-export const LLM_CALL_TIMEOUT_MS = 60_000       // per call, via AbortController
-export const LLM_REQUEST_BUDGET_MS = 60_000     // model time already spent that still admits a call
-export const LLM_MAX_CALLS_PER_REQUEST = 4      // one plan + reactions
-export const LLM_MAX_PLAN_LENGTH = 12           // menu ids per answer; the schema's maxItems
+// would rather wait than hand the turn to the fallback (2026-09-17 — the
+// heuristic then; the evaluator, scoredPolicy, since 2026-09-19). The
+// frontend's "PracticeAI is thinking…" label covers the wait, and the
+// sectioned flow (2026-09-18 sectioned bot turn spec §8) commits after every
+// section so the board moves while the request runs. A Mercury call is ~5 s
+// at its default effort; the sectioned flow makes 4–6 of them on a typical
+// turn and up to LLM_MAX_CALLS_PER_REQUEST on a busy one. The budget admits
+// another call only while the time already spent is under it, so one
+// request is bounded by budget + one call = 125 s, inside the runtime's
+// 150 s wall clock with the commits and the engine in the rest. DeepSeek
+// V4.1 Flash at `high` (40–55 s a call) does not fit this many calls; the
+// budget hands the rest of its turn to the evaluator as designed.
+export const LLM_CALL_TIMEOUT_MS = 45_000       // per call, via AbortController
+export const LLM_REQUEST_BUDGET_MS = 80_000     // model time already spent that still admits a call
+export const LLM_MAX_CALLS_PER_REQUEST = 16     // sections, moves, passes, a choice
+export const LLM_MAX_PLAN_LENGTH = 12           // single flow: menu ids per answer; the schema's maxItems
+// Sectioned flow (spec §3.2, §8): moves the model may name per answer — the
+// answer schema's maxItems and the batching escape hatch; above one, later
+// moves are read from annotations the first move made stale — and moves per
+// section per request before the pointer advances without a call.
+export const ACTIONS_PER_ANSWER = 1
+export const SECTION_MAX_ACTIONS = 8
 // Mercury 2.5 REASONS before it answers, and the reasoning is spent inside
 // max_tokens: at 600 it ran out mid-thought and every answer came back empty
 // or garbled (2026-09-17 eval — 100% `http` fallbacks). 65 536 is the
 // provider's max_completion_tokens; a typical turn uses ~1k of it (~$0.00015,
 // ~2 s), and the owner wants the reasoning kept for stronger play and better
-// table-talk. A value above the provider's ceiling risks a 400 → silent
-// heuristic, so this is the ceiling itself, not the 260k context.
+// table-talk. A value above the provider's ceiling risks a 400 → the
+// evaluator playing every turn with only an `http` row to show for it, so
+// this is the ceiling itself, not the 260k context.
 export const LLM_MAX_OUTPUT_TOKENS = 65_536
 export const LLM_TEMPERATURE = 0.7
 export const EXPECTATION_MAX_CHARS = 400
@@ -68,3 +78,14 @@ export const MENU_MAX_ITEMS = 80                // items shown to the model (pro
 export const MENU_LOG_LINES_PER_ITEM = 4        // engine log lines quoted per menu item
 export const TABLE_TALK_MAX_CHARS = 140
 export const LOG_TAIL_LINES = 15                // public log lines quoted in the prompt
+
+// Scored menu (2026-09-19 spec §6, §8). The tempo guard: a move, a pass or
+// END TURN worth this many turns or more below the best available move is
+// replaced by the best; Infinity switches it off, 0 makes the model a
+// narrator. The window: turn items further below the best than this many
+// turns of tempo are not shown (END TURN always is); chosen by the
+// 2026-09-19 eval matrix — window 2 beat the unwindowed guard 90 % vs 85 %
+// single and 95 % vs 85 % sectioned, at lower latency and cost (fewer items,
+// fewer bad picks, fewer guard re-asks). Infinity shows everything.
+export const TEMPO_GUARD_TURNS = 1
+export const MENU_SCORE_WINDOW_TURNS = 2

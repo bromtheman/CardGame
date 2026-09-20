@@ -5,12 +5,14 @@ import { EMPTY_USAGE, LlmHttpError, LlmTimeoutError } from './llmClient.ts'
 import type { LlmClient, LlmUsage } from './llmClient.ts'
 import {
   LLM_CALL_TIMEOUT_MS, LLM_MAX_CALLS_PER_REQUEST, LLM_MAX_OUTPUT_TOKENS, LLM_REQUEST_BUDGET_MS, LLM_TEMPERATURE,
+  MENU_SCORE_WINDOW_TURNS, TEMPO_GUARD_TURNS,
 } from './llmSettings.ts'
 import type { OpenRouterRouting, ReasoningEffort } from './llmSettings.ts'
-import { sameAction } from './moveMenu.ts'
+import { sameAction, withinWindow } from './moveMenu.ts'
 import type { MenuItem } from './moveMenu.ts'
 import { parsePlanAnswer, PLAN_SCHEMA } from './planSchema.ts'
 import { buildSystemPrompt, buildUserPrompt } from './prompt.ts'
+import { guardPick } from './tempoGuard.ts'
 import type { FallbackReason, TelemetryRow } from './telemetry.ts'
 
 // reasoningEffort and routing ride on every call of the request;
@@ -22,9 +24,18 @@ export interface LlmPolicySettings {
   maxCalls: number
   reasoningEffort?: ReasoningEffort
   routing?: OpenRouterRouting
+  // Sectioned flow only: moves the model may name per answer. Defaults to
+  // ACTIONS_PER_ANSWER; a test sets 2 to exercise the plan path.
+  actionsPerAnswer?: number
+  // The tempo guard's margin and the turn menu's score window (2026-09-19
+  // scored menu spec §6.2, §6.3). Default to the llmSettings values so a
+  // test or the eval can vary them without editing settings.
+  tempoGuardTurns?: number
+  menuScoreWindowTurns?: number
 }
 export const DEFAULT_LLM_POLICY_SETTINGS: LlmPolicySettings = {
   callTimeoutMs: LLM_CALL_TIMEOUT_MS, requestBudgetMs: LLM_REQUEST_BUDGET_MS, maxCalls: LLM_MAX_CALLS_PER_REQUEST,
+  tempoGuardTurns: TEMPO_GUARD_TURNS, menuScoreWindowTurns: MENU_SCORE_WINDOW_TURNS,
 }
 
 // The model-backed policy (spec §3.3). One instance per request: it holds
@@ -33,10 +44,11 @@ export const DEFAULT_LLM_POLICY_SETTINGS: LlmPolicySettings = {
 //
 // The model only ever suggests. Every planned move is re-verified against
 // the CURRENT menu before it is offered (the menu is the legality oracle, so
-// this policy never touches an EngineGame), the heuristic's candidates trail
-// every answer, and any failure — timeout, HTTP, malformed, budget — trips
-// the policy for the rest of the request so failures cannot stack timeouts
-// on the human's click.
+// this policy never touches an EngineGame), the fallback's candidates trail
+// every answer (the evaluator in production — makePolicy.ts — so a tripped
+// or disabled policy still plays by score, not at random), and any failure —
+// timeout, HTTP, malformed, budget — trips the policy for the rest of the
+// request so failures cannot stack timeouts on the human's click.
 export class LlmPolicy implements BotPolicy {
   readonly rows: TelemetryRow[] = []
   private readonly client: LlmClient | null
@@ -69,12 +81,9 @@ export class LlmPolicy implements BotPolicy {
     if (client === null) this.tripped = 'disabled'
   }
 
-  // A getter, not a field set once at construction: once the policy trips
-  // (any failure reason, including the initial 'disabled'), the driver must
-  // stop asking for a verified menu — building one costs up to
-  // MENU_MAX_TRIALS clone-and-apply trials, and a tripped policy never reads
-  // it (candidates() returns the fallback's answer without touching view.menu).
-  get needsMenu(): boolean { return this.client !== null && this.tripped === null }
+  // Always: the scored fallback reads the menu, so a tripped or disabled
+  // policy still needs one built (2026-09-19 scored menu spec §6.4).
+  get needsMenu(): boolean { return true }
 
   get modelId(): string { return this.model }
 
@@ -89,8 +98,14 @@ export class LlmPolicy implements BotPolicy {
     // fallback handles it. No call, no row.
     if (menu.length === 0) return this.fallback.candidates(view, kind)
     const next = this.plan[0]
-    if (next && this.planKind === kind && menu.some((m) => sameAction(m.action, next.action))) {
-      return [next.action, ...(await this.fallback.candidates(view, kind))]
+    // The plan head is resolved against the CURRENT menu: `next` is the item
+    // of an earlier menu, and its score (and id) belong to that board. The
+    // guard must read the fresh delta — a deploy planned while a zone was
+    // empty is worth far less once the first deploy filled it — and the row
+    // records the ids of the menu the guard compared.
+    const current = next && this.planKind === kind ? menu.find((m) => sameAction(m.action, next.action)) : undefined
+    if (next && current) {
+      return [this.guarded(menu, current, kind).action, ...(await this.fallback.candidates(view, kind))]
     }
     const situation = this.situationFor(kind, next)
     this.plan = []
@@ -103,7 +118,18 @@ export class LlmPolicy implements BotPolicy {
     if (items === null) return this.fallback.candidates(view, kind)
     this.plan = items
     this.planKind = kind
-    return [items[0].action, ...(await this.fallback.candidates(view, kind))]
+    return [this.guarded(menu, items[0], kind).action, ...(await this.fallback.candidates(view, kind))]
+  }
+
+  // The tempo guard on a turn move (spec §6.2): a guarded pick replaces the
+  // plan — the board will change on a premise the plan did not hold.
+  private guarded(menu: MenuItem[], chosen: MenuItem, kind: OwedKind): MenuItem {
+    if (kind !== 'turn') return chosen
+    const { item, guard } = guardPick(menu, chosen, this.settings.tempoGuardTurns ?? TEMPO_GUARD_TURNS)
+    if (!guard || !item) return chosen
+    if (this.currentRow) this.currentRow.guard = guard
+    this.plan = [item]
+    return item
   }
 
   onAccepted(action: GameAction, _kind: OwedKind): string | null {
@@ -116,8 +142,9 @@ export class LlmPolicy implements BotPolicy {
       this.pendingTalk = null
       return talk
     }
-    // The engine took something else — a heuristic tail candidate or the
-    // driver's fallback. A verified move was refused: file it, drop the plan.
+    // The engine took something else — a candidate from the fallback's tail
+    // (the evaluator's ranking, then the heuristic's) or the driver's own
+    // fallback. A verified move was refused: file it, drop the plan.
     if (next && this.currentRow && this.currentRow.fallbackReason === null) this.currentRow.fallbackReason = 'plan_rejected'
     this.plan = []
     this.pendingTalk = null
@@ -147,8 +174,11 @@ export class LlmPolicy implements BotPolicy {
     let detail: string | null = null
     try {
       const res = await this.client!.complete({
-        system: buildSystemPrompt(view.state.factions[view.side]),
-        user: buildUserPrompt({ view, kind, menu, situation, planSoFar: this.appliedItems }),
+        messages: [
+          { role: 'system', content: buildSystemPrompt(view.state.factions[view.side], 'single', this.settings.tempoGuardTurns ?? TEMPO_GUARD_TURNS) },
+          { role: 'user', content: buildUserPrompt({ view, kind, menu, situation, planSoFar: this.appliedItems, window: this.settings.menuScoreWindowTurns }) },
+        ],
+        schemaName: 'plan',
         schema: PLAN_SCHEMA as unknown as Record<string, unknown>,
         maxTokens: LLM_MAX_OUTPUT_TOKENS,
         temperature: LLM_TEMPERATURE,
@@ -166,7 +196,11 @@ export class LlmPolicy implements BotPolicy {
     const latencyMs = Math.max(0, this.now() - started)
     this.spentMs += latencyMs
     const answer = reason === null && text !== null ? parsePlanAnswer(text) : null
-    const items = answer ? answer.plan.map((id) => menu.find((m) => m.id === id)).filter((m): m is MenuItem => m !== undefined) : []
+    // Ids resolve against the SHOWN menu (the same withinWindow(...) array
+    // the prompt printed), not the full one — an id the window hid was never
+    // presented, so naming it is a hallucination, not a move (ruling 2).
+    const shown = kind === 'turn' ? withinWindow(menu, this.settings.menuScoreWindowTurns) : menu
+    const items = answer ? answer.plan.map((id) => shown.find((m) => m.id === id)).filter((m): m is MenuItem => m !== undefined) : []
     if (reason === null && items.length === 0) {
       reason = 'malformed'
       detail = `unparseable answer: ${(text ?? '').slice(0, 160)}`
@@ -198,6 +232,7 @@ export class LlmPolicy implements BotPolicy {
       menuSize, plan: [], applied: [], expectation: null,
       report: kind === 'decision' && report ? { results: report.results, repairs: report.repairs } : null,
       tableTalk: null, fallbackReason: reason, error,
+      section: null, seq: null, guard: null,
     }
   }
 }

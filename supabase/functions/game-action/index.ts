@@ -26,6 +26,17 @@ function json(status: number, body: unknown): Response {
   })
 }
 
+// A checkpoint commit that failed: carries the response the human gets (the
+// 409 or the 500), thrown through the driver so the bot's turn stops there.
+class CommitFailed extends Error {
+  response: Response
+  constructor(response: Response) {
+    super('commit failed')
+    this.name = 'CommitFailed'
+    this.response = response
+  }
+}
+
 // Supabase's runtime keeps the isolate alive for a promise handed to
 // EdgeRuntime.waitUntil after the response is sent; `deno check` does not
 // know the global, so it is declared here. Absent (local tooling), the
@@ -221,14 +232,46 @@ Deno.serve(async (req) => {
   if (!result.ok) return json(result.status, { errors: [result.error] })
   let next = result.game
 
-  // A practice game: the bot acts until it owes nothing, in memory, and the
-  // single apply_action_tx below commits the human's action and the bot's
-  // reply together (spec §5.4). The policy is the model-backed one when
-  // OPENROUTER_API_KEY is set (LLM spec §3.4), the heuristic otherwise; a
-  // model failure never surfaces here — the policy falls back and files a
-  // telemetry row. A throw is an engine bug surfacing — answered as its own
-  // 500 with nothing committed. CONCEDE/ABANDON end the game first, so
-  // botOwes is null for them.
+  // One transaction per commit (apply_action_tx, Task 1's migration): public
+  // state + both private rows, guarded by the version the previous commit
+  // returned; null return = version conflict. A practice game commits the
+  // human's action with the bot's first checkpoint (its opening marker),
+  // then at every section boundary, then once more with the rest (2026-09-18
+  // sectioned bot turn spec §5.4) — so the human's board redraws as the bot
+  // plays. Any other game commits exactly once, below.
+  const commits = { version: row.version as number, last: null as EngineGame | null }
+  const commit = async (game: EngineGame): Promise<Response | null> => {
+    const { data: newVersion, error: txError } = await admin.rpc('apply_action_tx', {
+      p_game_id: gameId,
+      p_expected_version: commits.version,
+      p_game: {
+        status: game.status,
+        winnerId: game.winnerId ?? '',
+        turnNumber: game.turnNumber,
+        activePlayer: game.activePlayer,
+        playerA: game.playerA,
+        playerB: game.playerB,
+        state: game.state,
+      },
+      p_a_state: game.privates.a,
+      p_b_state: game.privates.b,
+    })
+    if (txError) return json(500, { errors: [txError.message] })
+    if (newVersion === null || newVersion === undefined) return json(409, { errors: ['Version conflict — refresh'] })
+    commits.version = newVersion as number
+    commits.last = game
+    return null
+  }
+
+  // A practice game: the bot acts until it owes nothing, in memory, committing
+  // at its checkpoints. The policy is the model-backed one when
+  // OPENROUTER_API_KEY is set (LLM spec §3.4), the evaluator (scoredPolicy)
+  // otherwise — and the evaluator is also what a model failure falls back
+  // to (2026-09-19 scored menu spec §6.4): it never surfaces here, the
+  // policy files a telemetry row and plays by score for the rest of the
+  // request. A throw is an engine bug surfacing — answered as its own 500
+  // with the sections already committed standing (sectioned spec §11).
+  // CONCEDE/ABANDON end the game first, so botOwes is null for them.
   const botId = botPlayerId(next)
   const policy = botId ? makeBotPolicy({
     OPENROUTER_API_KEY: Deno.env.get('OPENROUTER_API_KEY'),
@@ -236,36 +279,24 @@ Deno.serve(async (req) => {
     BOT_LLM_DISABLED: Deno.env.get('BOT_LLM_DISABLED'),
     BOT_REASONING_EFFORT: Deno.env.get('BOT_REASONING_EFFORT'),
     BOT_PROVIDERS: Deno.env.get('BOT_PROVIDERS'),
+    BOT_FLOW: Deno.env.get('BOT_FLOW'),
   }) : null
   if (botId && policy) {
     try {
-      next = (await runBotUntilIdle(next, botId, ctx, policy)).game
+      next = (await runBotUntilIdle(next, botId, ctx, policy, async (game) => {
+        const failed = await commit(game)
+        if (failed) throw new CommitFailed(failed)
+      })).game
     } catch (err) {
+      if (err instanceof CommitFailed) return err.response
       return json(500, { errors: [`AI opponent failed: ${err instanceof Error ? err.message : String(err)}`] })
     }
   }
 
-  // One transaction for public state + both private rows (apply_action_tx,
-  // Task 1's migration); null return = version conflict.
-  const { data: newVersion, error: txError } = await admin.rpc('apply_action_tx', {
-    p_game_id: gameId,
-    p_expected_version: row.version,
-    p_game: {
-      status: next.status,
-      winnerId: next.winnerId ?? '',
-      turnNumber: next.turnNumber,
-      activePlayer: next.activePlayer,
-      playerA: next.playerA,
-      playerB: next.playerB,
-      state: next.state,
-    },
-    p_a_state: next.privates.a,
-    p_b_state: next.privates.b,
-  })
-  if (txError) return json(500, { errors: [txError.message] })
-  if (newVersion === null || newVersion === undefined) {
-    return json(409, { errors: ['Version conflict — refresh'] })
+  if (commits.last !== next) {
+    const failed = await commit(next)
+    if (failed) return failed
   }
-  if (policy) afterResponse(recordBotDecisions(admin, gameId, newVersion as number, policy.rows))
-  return json(200, { version: newVersion })
+  if (policy) afterResponse(recordBotDecisions(admin, gameId, commits.version, policy.rows))
+  return json(200, { version: commits.version })
 })
