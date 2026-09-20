@@ -14,7 +14,7 @@ export const PLAYER_CARD_LIMIT = 4 // max custom cards per deck
 export const FLIER_COPY_LIMIT = 6 // max plane+airship copies per deck
 export const SUB_COPY_LIMIT = 6
 
-export const DEFAULT_BASE_HP = 1000
+export const DEFAULT_BASE_HP = 2000
 // × floor(turnNumber). The default only applies when the lobby carries no
 // `materialsPerTurn` override — read it through `materialsPerTurnOf`
 // (lobbySettings.ts), never straight from this constant.
@@ -32,20 +32,20 @@ export const HERO_POWER_DISTANCE_MOD_M = 600
 // Ongoing Attrition: "deal 40k damage to the enemy base ... for each vehicle
 // you have in the zone more than your opponent". Materials, like every other
 // base-damage figure — it converts through BASE_DAMAGE_DIVISOR (design spec
-// §3.4), so one surplus vehicle costs 40 of a default 1000 HP base.
+// §3.4), so one surplus vehicle costs 40 of a default 2000 HP base.
 export const ONGOING_ATTRITION_DAMAGE_PER_VEHICLE = 40_000
 
 // TG Vengeful: "deals 40k damage to the enemy base in this zone". Its OWN
 // constant rather than a reuse of ONGOING_ATTRITION_DAMAGE_PER_VEHICLE, which
 // it equals only by coincidence — the same reasoning AMBUSH_DISTANCE_M records
 // below against the hero power. Materials, so it converts through
-// BASE_DAMAGE_DIVISOR: 40k is 40 HP of a default 1000.
+// BASE_DAMAGE_DIVISOR: 40k is 40 HP of a default 2000.
 export const VENGEFUL_BASE_DAMAGE = 40_000
 
 // SS Bull Shark: "deal 200k damage to enemy base in this zone". Its OWN
 // constant, for the reason VENGEFUL_BASE_DAMAGE's comment records above — two
 // figures that are equal by coincidence must not share one. Materials, so it
-// converts through BASE_DAMAGE_DIVISOR: 200k is 200 HP of a default 1000.
+// converts through BASE_DAMAGE_DIVISOR: 200k is 200 HP of a default 2000.
 export const BULL_SHARK_BASE_DAMAGE = 200_000
 
 // Ambush: "position your ships 600m closer to the enemy". Its own constant

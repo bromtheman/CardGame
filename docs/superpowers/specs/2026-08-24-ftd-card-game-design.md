@@ -22,7 +22,7 @@ Reference material (read-only, do not port bugs):
 | Card data source | Seed from old BE `builtInCards/` files — all 6 factions (~120 cards), including LH (old seeder skipped it) |
 | Auth | Supabase email + password only; username chosen at signup |
 | Built-in card editing | Supabase Studio only (no admin UI) |
-| Rules defaults | Old BE numbers: 20-card decks, max 2 copies, 1000 base HP/zone |
+| Rules defaults | Old BE numbers: 20-card decks, max 2 copies; base HP/zone **2000** (amended 2026-09-17 — the old BE default was 1000) |
 | Configurable at game setup | Zone biomes (each of 3 zones: water/beach/land) and base HP per zone |
 | Play cadence | Persistent games + Supabase Realtime push; async-capable, feels live when both online |
 | Custom cards | In MVP: manual stats entry only (no blueprint file upload/parsing) |
@@ -75,7 +75,7 @@ overrides come from lobby settings. Nothing is hardcoded at usage sites.
 - 2 players. Roles `playerA` (host) / `playerB` (guest); first player rolled randomly at game start.
 - 3 zones, left to right, ids 1–3. Each zone has a biome from lobby settings
   (default: all water). Each player has a base in each zone with HP from lobby
-  settings (default **1000**).
+  settings (default **2000**, amended 2026-09-17 from 1000).
 - Every deck has a required **base faction**, chosen at deck creation from:
   **DWG, GT, LH, OW, SS, WF**. Built-in cards in the deck must belong to that
   faction or NEUTRAL; the deck's faction also determines which faction hero
