@@ -12,6 +12,7 @@ import { zoneCapFor } from './zoneCapacity.ts'
 import { costModifierFor, effectFor, effectName, noteUnimplemented } from '../effects/registry.ts'
 import { dispatchDeployWatchers } from './battleTriggers.ts'
 import { effectiveMaterialCostOf } from './costs.ts'
+import { chargeGateShortfall, chargeOf, dischargeFromOf, spendCharge } from './charge.ts'
 
 const BIOMES_BY_TYPE: Record<string, string[]> = {
   [VEHICLE_TYPES.SHIP]: [ZONE_TYPES.WATER, ZONE_TYPES.BEACH],
@@ -463,6 +464,14 @@ registerHandler('PLAY_CARD_TO_ZONE', (game, actor, action, ctx) => {
     return err(400, 'Ability cards are played without a zone')
   }
   if (!canAffordInGame(game, actor, card)) return err(400, 'You cannot afford that card')
+
+  // 2026-09-21 LH (spec §3.3): a play precondition on the board's pips, read at
+  // play time only and never spent. Spawns never come through here (§7.4).
+  const shortfall = chargeGateShortfall(game.state, actor, card)
+  if (shortfall) {
+    return err(400, `${card.name} requires ${shortfall.required} Charge on your board — you have ${shortfall.have}`)
+  }
+
   if (card.type === 'vehicle' && !legalZonesFor(game.state, actor, card, game.turnNumber).includes(action.zoneId)) {
     return err(400, 'That vehicle cannot deploy to that zone')
   }

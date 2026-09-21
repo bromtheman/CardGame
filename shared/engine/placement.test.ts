@@ -7,6 +7,7 @@ import { takeFromEnemyDeck } from '../effects/primitives.ts'
 import { ADDITIONAL_SPAWNS_CAP, KEYWORDS, MAX_VEHICLES_PER_ZONE_SIDE } from '../gameSettings.ts'
 import { inst, makeCtx, makeGame, snap, zoneEntry } from './testFixtures'
 import { baseDamageFrom } from './baseAttack.ts'
+import { chargeGateShortfall } from './charge.ts'
 
 function withHand(cardOver: Record<string, unknown>) {
   const g = makeGame()
@@ -1785,5 +1786,24 @@ describe('uniquePerZone (wave 8)', () => {
     g.state.zones[1].cards.a.push(zoneEntry(unique({ instanceId: 'ob2', keywords: [KEYWORDS.MOBILE] })))
     const r = applyAction(g, 'alice', { type: 'MOVE_VEHICLE', instanceId: 'ob2', zoneId: 1 })
     expect(r.ok).toBe(true)
+  })
+})
+
+describe('Requires N Charge (2026-09-21 LH spec §3.3)', () => {
+  const gated = () => inst({ instanceId: 'cap', name: 'Capital', faction: 'LH', materialCost: 40000, meta: { requiresCharge: 2 } })
+  const battery = (charge: number) => zoneEntry({ faction: 'LH', meta: { chargeMax: 2 }, charge })
+
+  it('refuses the play until the board carries the pips, anywhere, and never spends them', () => {
+    const game = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+    game.privates.a.hand = [gated()]
+    game.state.counts.a = { hand: 1, deck: 0 }
+    game.state.zones[2].cards.a.push(battery(1))
+    const short = applyAction(game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: 'cap', zoneId: 1 }, makeCtx())
+    expect(short).toMatchObject({ ok: false, status: 400 })
+    expect((short as { error: string }).error).toContain('requires 2 Charge')
+    game.state.zones[1].cards.a.push(battery(1))
+    const res = applyAction(game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: 'cap', zoneId: 1 }, makeCtx())
+    if (!res.ok) throw new Error(res.error)
+    expect(chargeGateShortfall(res.game.state, 'a', gated())).toBeNull()
   })
 })
