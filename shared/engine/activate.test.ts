@@ -2,6 +2,8 @@ import { beforeAll, describe, expect, it } from 'vitest'
 import { applyAction, drawCard } from './index.ts'
 import { registerEffect } from '../effects/registry.ts'
 import { inst, makeCtx, makeGame, zoneEntry } from './testFixtures.ts'
+import { chargeOf } from './charge.ts'
+import type { ZoneCardEntry } from './engineTypes.ts'
 
 beforeAll(() => {
   registerEffect('t_activateDraw', ({ game, actor, ctx }) => { drawCard(game, actor, ctx); return true })
@@ -246,5 +248,43 @@ describe('a free activated ability', () => {
     })
     expect(applyAction(game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: 'v1' }, makeCtx()))
       .toMatchObject({ ok: false, status: 409 })
+  })
+})
+
+describe('ACTIVATE_VEHICLE — dischargeCost (2026-09-21 LH)', () => {
+  const cannon = (over: Record<string, unknown> = {}) => zoneEntry({
+    name: 'Cannon', instanceId: 'c1', faction: 'LH',
+    meta: { onActivate: 't_activateDraw', activateCpCost: 0, dischargeCost: 2, chargeMax: 3 },
+    ...over,
+  })
+  const withHull = (entry: ZoneCardEntry) => {
+    const game = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+    game.privates.a.deck = [inst({ name: 'Spare' })]
+    game.state.counts.a = { hand: 0, deck: 1 }
+    game.state.zones[0].cards.a.push(entry)
+    return game
+  }
+  const act = (game: ReturnType<typeof makeGame>) =>
+    applyAction(game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: 'c1' }, makeCtx())
+
+  it('refuses below the discharge cost, and spends it before the effect on success', () => {
+    expect(act(withHull(cannon({ charge: 1 })))).toMatchObject({ ok: false, status: 400 })
+    const res = act(withHull(cannon({ charge: 3 })))
+    if (!res.ok) throw new Error(res.error)
+    expect(chargeOf(res.game.state.zones[0].cards.a[0] as ZoneCardEntry)).toBe(1)
+    expect(res.game.privates.a.hand).toHaveLength(1)
+  })
+
+  it('accepts dischargeCost as the only price, and refuses a malformed one', () => {
+    const only = withHull(cannon({ charge: 2, meta: { onActivate: 't_activateDraw', dischargeCost: 2, chargeMax: 3 } }))
+    expect(act(only).ok).toBe(true)
+    const bad = withHull(cannon({ charge: 2, meta: { onActivate: 't_activateDraw', activateCpCost: 0, dischargeCost: 'two', chargeMax: 3 } }))
+    expect(act(bad)).toMatchObject({ ok: false, status: 400 })
+  })
+
+  it('spends nothing when the effect fails', () => {
+    const game = withHull(cannon({ charge: 3, meta: { onActivate: 't_activateFails', activateCpCost: 0, dischargeCost: 2, chargeMax: 3 } }))
+    expect(act(game)).toMatchObject({ ok: false, status: 400 })
+    expect(chargeOf(game.state.zones[0].cards.a[0] as ZoneCardEntry)).toBe(3)
   })
 })

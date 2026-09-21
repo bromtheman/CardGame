@@ -1,5 +1,6 @@
 import { err, findVehicle, registerHandler } from './gameEngine.ts'
 import { effectFor, effectName } from '../effects/registry.ts'
+import { chargeOf, spendCharge } from './charge.ts'
 
 // The price of an activated ability is plain card data, in the same class as
 // additionalSpawns: a number in meta, with no registry entry (spec §4.3).
@@ -20,6 +21,12 @@ export function activateCpCostOf(card: { meta: Record<string, unknown> }): numbe
 // victoria into this zone" — an activated ability paid in materials, not CP.
 export function activateMaterialCostOf(card: { meta: Record<string, unknown> }): number | null {
   return parsePrice(card.meta.activateMaterialCost)
+}
+
+// 2026-09-21 LH: an activated ability paid in the hull's own charge
+// (spec §3.2). Parsed like the other two prices; null for absent or malformed.
+export function dischargeCostOf(card: { meta: Record<string, unknown> }): number | null {
+  return parsePrice(card.meta.dischargeCost)
 }
 
 function parsePrice(raw: unknown): number | null {
@@ -44,8 +51,9 @@ registerHandler('ACTIVATE_VEHICLE', (game, actor, action, ctx) => {
 
   const cpCost = activateCpCostOf(entry)
   const materialCost = activateMaterialCostOf(entry)
+  const dischargeCost = dischargeCostOf(entry)
   const name = effectName(entry, 'onActivate')
-  if (name === null || (cpCost === null && materialCost === null)) {
+  if (name === null || (cpCost === null && materialCost === null && dischargeCost === null)) {
     return err(400, `${entry.name} has no activated ability`)
   }
   // A price key that is PRESENT but not a usable number is a data bug, and
@@ -53,7 +61,8 @@ registerHandler('ACTIVATE_VEHICLE', (game, actor, action, ctx) => {
   // invisible — the blind spot docs/claude/card-effects.md warns about.
   if (
     (priceKeyPresent(entry, 'activateCpCost') && cpCost === null) ||
-    (priceKeyPresent(entry, 'activateMaterialCost') && materialCost === null)
+    (priceKeyPresent(entry, 'activateMaterialCost') && materialCost === null) ||
+    (priceKeyPresent(entry, 'dischargeCost') && dischargeCost === null)
   ) {
     return err(400, `${entry.name}'s activation price is not a valid number`)
   }
@@ -68,9 +77,13 @@ registerHandler('ACTIVATE_VEHICLE', (game, actor, action, ctx) => {
   if (materialCost !== null && game.state.resources[actor].materials < materialCost) {
     return err(400, 'Not enough materials')
   }
+  if (dischargeCost !== null && chargeOf(entry) < dischargeCost) {
+    return err(400, `${entry.name} needs ${dischargeCost} charge to discharge`)
+  }
 
   if (cpCost !== null) game.state.resources[actor].cp -= cpCost
   if (materialCost !== null) game.state.resources[actor].materials -= materialCost
+  if (dischargeCost !== null) spendCharge(entry, dischargeCost)
   entry.activatedOnTurn = game.turnNumber
   const resolved = fn({
     game,
