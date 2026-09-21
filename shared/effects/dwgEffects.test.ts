@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { CATALOG_EFFECTS, costModifierFor, effectFor } from './registry.ts'
 import { DOUBLE_UP_MAX_COST, KEYWORDS, MAX_VEHICLES_PER_ZONE_SIDE, RESERVES_CARD_COUNT } from '../gameSettings.ts'
+import { chargeOf } from '../engine/charge.ts'
 import { inst, makeCtx, makeGame, snap, zoneEntry } from '../engine/testFixtures.ts'
 import {
   HOME_SIDE_KEY, applyAction, autoRepairIds, baseStrikersIn, declareForcedBattle, findVehicle,
@@ -1608,6 +1609,22 @@ describe('sinnersLuckOnPlay (2026-09-16 M-5)', () => {
     expect(given.entry).toMatchObject({ playedOnTurn: 3, movedOnTurn: null, activatedOnTurn: null })
     expect(received.entry).toMatchObject({ playedOnTurn: 3, movedOnTurn: null, activatedOnTurn: null })
     expect(done.state.zones[0].cards.a.map((c) => c.name).sort()).toEqual(['Sinners Luck', 'Their Airship'])
+  })
+
+  // 2026-09-21 LH fix round 1: this swap is a third capture path alongside
+  // Boarding Party and Mutiny (spec §3.1.1 — a captured hull enters at 0).
+  // theirAir stands in for an LH airship arriving with pips already on the
+  // dial; myAir1 (the hull handed to the opponent) must lose its own pips the
+  // same way, mirroring heroPowers.ts's symmetric flippedMine/flippedTheirs.
+  it('a Sinner\'s Luck swap enters at 0 charge, like every other capture', () => {
+    const { game, card } = armed()
+    findVehicle(game.state, 'myAir1')!.entry.charge = 2
+    const theirs = findVehicle(game.state, 'theirAir')!.entry
+    theirs.faction = 'LH'
+    theirs.charge = 3
+    const done = answer(answer(play(game, card), 'myAir1'), 'theirAir')
+    expect(chargeOf(findVehicle(done.state, 'myAir1')!.entry)).toBe(0)
+    expect(chargeOf(findVehicle(done.state, 'theirAir')!.entry)).toBe(0)
   })
 
   // Q4: 100k given for 300k received — the opponent draws, discounted by 200k.

@@ -733,11 +733,14 @@ const sinnersLuckHop2 = (givenId: string): EffectFn => choice({
     if (!received || received.side !== enemy || !isFlier(received.entry)) return false
     given.zone.cards[actor] = given.zone.cards[actor].filter((c) => c.instanceId !== givenId)
     received.zone.cards[enemy] = received.zone.cards[enemy].filter((c) => c.instanceId !== receivedId)
+    // 2026-09-21 LH: a captured hull enters at 0 (spec §3.1.1), the same as
+    // Boarding Party and Mutiny — this swap is a third capture path the pips
+    // must not ride through.
     const toEnemy: ZoneCardEntry = {
-      ...given.entry, playedOnTurn: game.turnNumber, movedOnTurn: null, activatedOnTurn: null,
+      ...given.entry, playedOnTurn: game.turnNumber, movedOnTurn: null, activatedOnTurn: null, charge: 0,
     }
     const toActor: ZoneCardEntry = {
-      ...received.entry, playedOnTurn: game.turnNumber, movedOnTurn: null, activatedOnTurn: null,
+      ...received.entry, playedOnTurn: game.turnNumber, movedOnTurn: null, activatedOnTurn: null, charge: 0,
     }
     received.zone.cards[enemy].push(toEnemy)
     given.zone.cards[actor].push(toActor)
