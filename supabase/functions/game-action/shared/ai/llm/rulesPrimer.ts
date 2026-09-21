@@ -34,6 +34,8 @@ export const KEYWORD_GLOSSARY: Record<string, string> = {
   [KEYWORDS.MOBILE]: 'Mobile — may move to another legal zone once per turn, for free.',
   [KEYWORDS.ROBOTIC]: 'Robotic — in the fight it repairs without limit but dies if any sub-object is destroyed.',
   [KEYWORDS.UPKEEP_REQUIRED]: 'Upkeep Required — reduces your income each turn by a share of its cost.',
+  [KEYWORDS.SWIFT]: 'Swift — may attack the enemy base on the turn it is played; a Blocker still stops it.',
+  [KEYWORDS.DECOY]: 'Decoy — enemy effects that could target it must target it instead of another vehicle in its zone.',
 }
 
 export const PRIMER_TEMPLATE = `You are PracticeAI, a captain of the {{FACTION}} fleet, playing the From The Depths companion card game against one human. You play to win.

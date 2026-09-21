@@ -55,6 +55,8 @@ export const KEYWORDS = {
     MOBILE: 'mobile', // can change zones once per turn
     ROBOTIC: 'robotic', // Has unlimited resources for repair. Is considered destroyed if any of its sub objects are destroyed
     UPKEEP_REQUIRED: 'upkeepRequired', // wave 7: at turn start, costs its owner 15% of its cost
+    SWIFT: 'swift', // 2026-09-21 LH: may attack the enemy base the turn it is played
+    DECOY: 'decoy', // 2026-09-21 LH: enemy effects that could target it must target it
 };
 
 
