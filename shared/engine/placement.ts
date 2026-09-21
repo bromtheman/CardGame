@@ -1,5 +1,5 @@
 import {
-  ADDITIONAL_SPAWNS_CAP, KEYWORDS, PURIFIER_LOSS_WINDOW_TURNS,
+  ADDITIONAL_SPAWNS_CAP, FACTIONS, KEYWORDS, PURIFIER_LOSS_WINDOW_TURNS,
   VEHICLE_TYPES, ZONE_TYPES,
 } from '../gameSettings.ts'
 import type { CardInstance, PublicGameState } from './gameInit.ts'
@@ -560,7 +560,22 @@ registerHandler('PLAY_CARD_TARGETING_CARD_ON_FIELD', (game, actor, action, ctx) 
 
   const effectMeta = effectName(card, 'playOnVehicleEffect')
   if (effectMeta === null) return err(400, `${card.name} does not target a vehicle`)
-  if (!findVehicle(game.state, action.targetInstanceId)) return err(400, 'That target is not on the field')
+  const target = findVehicle(game.state, action.targetInstanceId)
+  if (!target) return err(400, 'That target is not on the field')
+  // 2026-09-21 LH (spec §3.2): "Discharge N from a friendly LH vehicle". The
+  // engine validates the host and spends the pips; the effect only makes its
+  // second pick. Spent after pay() and before resolvePlayEffects, so a
+  // declined prompt keeps the pips spent (R-24) and a failed effect — which
+  // rolls the whole clone back — spends nothing.
+  const dischargeFrom = dischargeFromOf(card)
+  if (dischargeFrom !== null) {
+    if (target.side !== actor || target.entry.faction !== FACTIONS.LH) {
+      return err(400, `${card.name} must discharge from one of your LH vehicles`)
+    }
+    if (chargeOf(target.entry) < dischargeFrom) {
+      return err(400, `${target.entry.name} needs ${dischargeFrom} charge to discharge`)
+    }
+  }
 
   if (!canAffordInGame(game, actor, card)) return err(400, 'You cannot afford that card')
 
@@ -568,6 +583,7 @@ registerHandler('PLAY_CARD_TARGETING_CARD_ON_FIELD', (game, actor, action, ctx) 
 
   takeFromHand(game, actor, action.instanceId)
   pay(game, actor, card)
+  if (dischargeFrom !== null) spendCharge(target.entry as ZoneCardEntry, dischargeFrom)
 
   const failure = resolvePlayEffects(
     game, actor, card, ctx, { targetInstanceId: action.targetInstanceId }, ['playOnVehicleEffect', 'onPlayEffect'],

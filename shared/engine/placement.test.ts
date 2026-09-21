@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it } from 'vitest'
 import {
   applyAction, effectFor, effectiveCostInGame, effectiveMaterialCostOf, legalZonesFor,
 } from './index'
@@ -7,7 +7,8 @@ import { takeFromEnemyDeck } from '../effects/primitives.ts'
 import { ADDITIONAL_SPAWNS_CAP, KEYWORDS, MAX_VEHICLES_PER_ZONE_SIDE } from '../gameSettings.ts'
 import { inst, makeCtx, makeGame, snap, zoneEntry } from './testFixtures'
 import { baseDamageFrom } from './baseAttack.ts'
-import { chargeGateShortfall } from './charge.ts'
+import { chargeGateShortfall, chargeOf } from './charge.ts'
+import type { ZoneCardEntry } from './engineTypes.ts'
 
 function withHand(cardOver: Record<string, unknown>) {
   const g = makeGame()
@@ -1805,5 +1806,30 @@ describe('Requires N Charge (2026-09-21 LH spec §3.3)', () => {
     const res = applyAction(game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: 'cap', zoneId: 1 }, makeCtx())
     if (!res.ok) throw new Error(res.error)
     expect(chargeGateShortfall(res.game.state, 'a', gated())).toBeNull()
+  })
+})
+
+describe('dischargeFrom on an ability card (2026-09-21 LH spec §3.2)', () => {
+  beforeAll(() => { registerEffect('t_lhNoop', () => true) })
+  const salvo = () => inst({ instanceId: 'salvo', name: 'Salvo', type: 'ability', vehicleType: null, faction: 'LH', materialCost: 0, meta: { playOnVehicleEffect: 't_lhNoop', dischargeFrom: 2 } })
+  const play = (game: ReturnType<typeof makeGame>, targetInstanceId: string) =>
+    applyAction(game, 'alice', { type: 'PLAY_CARD_TARGETING_CARD_ON_FIELD', instanceId: 'salvo', targetInstanceId }, makeCtx())
+  const setup = () => {
+    const game = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+    game.privates.a.hand = [salvo()]
+    game.state.counts.a = { hand: 1, deck: 0 }
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'host', faction: 'LH', meta: { chargeMax: 2 }, charge: 2 }))
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'low', faction: 'LH', meta: { chargeMax: 2 }, charge: 1 }))
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'enemy', faction: 'LH', meta: { chargeMax: 2 }, charge: 2 }))
+    return game
+  }
+
+  it('spends the pips from the friendly host and refuses a short or enemy host', () => {
+    expect(play(setup(), 'low')).toMatchObject({ ok: false, status: 400 })
+    expect(play(setup(), 'enemy')).toMatchObject({ ok: false, status: 400 })
+    const res = play(setup(), 'host')
+    if (!res.ok) throw new Error(res.error)
+    expect(chargeOf(res.game.state.zones[0].cards.a[0] as ZoneCardEntry)).toBe(0)
+    expect(res.game.privates.a.hand).toHaveLength(0)
   })
 })
