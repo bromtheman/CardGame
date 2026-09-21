@@ -310,7 +310,11 @@ export function discardSnapshotOf(card: CardInstance): SnapshotCard {
     // a deck, where SnapshotCard has no such field and nothing would notice.
     // Harmless in effect today (putInHand re-stamps on the way back in) and
     // named anyway, because "harmless" is not what this destructure promises.
-    handEnteredTurn: _h, ...snapshot
+    handEnteredTurn: _h,
+    // 2026-09-21 LH: the three optional stamps. Pips die with the hull, a stun
+    // ends with it, an afterburner was this turn's — none may ride into a deck.
+    charge: _charge, stunnedUntilTurn: _stunned, swiftOnTurn: _swift,
+    ...snapshot
   } = card as ZoneCardEntry
   // `factoryEscort` (wave 7) comes off for exactly costDelta's reason: it is a
   // per-INSTANCE grant, stamped onto one hull on the board by a Havoc/Mirth

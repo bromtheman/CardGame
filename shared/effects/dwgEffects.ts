@@ -657,6 +657,7 @@ registerEffect('mutinyEffect', ({ game, actor, card, targetInstanceId }) => {
     ...entry,
     meta: { ...entry.meta, [HOME_SIDE_KEY]: entry.meta[HOME_SIDE_KEY] ?? owner },
     playedOnTurn: game.turnNumber, movedOnTurn: null, activatedOnTurn: null,
+    charge: 0,
   }
   grantKeywordsTo(stolen, [KEYWORDS.TEMPORARY])
   zone.cards[actor].push(stolen)
