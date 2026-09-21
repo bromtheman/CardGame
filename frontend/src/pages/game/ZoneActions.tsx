@@ -1,8 +1,7 @@
 import { useState } from 'react'
 import type { PublicGameState, ZoneState } from '@shared/engine/gameInit'
 import type { GameAction, Side, ZoneCardEntry } from '@shared/engine/engineTypes'
-import { baseDamageFrom, fleetAttackRosters } from '@shared/engine/index'
-import { KEYWORDS } from '@shared/gameSettings'
+import { activeBlockersIn, baseDamageFrom, fleetAttackRosters } from '@shared/engine/index'
 import { FleetAttackDialog } from './FleetAttackDialog'
 
 // Own-side zone footer actions: bombard the enemy base, or declare a fleet
@@ -31,7 +30,7 @@ export function ZoneActions({
   const mine = zone.cards[mySide] as ZoneCardEntry[]
   const theirs = zone.cards[theirSide] as ZoneCardEntry[]
   const activated = zone.lastActivatedTurn === turnNumber
-  const enemyHasBlocker = theirs.some((c) => c.keywords.includes(KEYWORDS.BLOCKER))
+  const enemyHasBlocker = activeBlockersIn(theirs, turnNumber).length > 0
   const baseDestroyed = zone.baseHp[theirSide] <= 0
   const predictedDamage = baseDamageFrom(mine, turnNumber)
 
@@ -45,7 +44,7 @@ export function ZoneActions({
 
   // The engine's own derivation (spec §3.4 as amended 2026-09-16: no roster to
   // pick), so the button and ATTACK_ENEMY_FLEET agree on what "can attack" means.
-  const rosters = fleetAttackRosters(state, mySide, zone.id)
+  const rosters = fleetAttackRosters(state, mySide, zone.id, turnNumber)
   let fleetReason: string | null = null
   if (activated) fleetReason = 'This zone was already activated this turn'
   else if (!rosters || rosters.targets.length === 0) fleetReason = 'No enemy vehicles here'

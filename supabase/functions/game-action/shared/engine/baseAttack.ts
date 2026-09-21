@@ -3,6 +3,7 @@ import type { ZoneCardEntry } from './engineTypes.ts'
 import { checkVictory, err, otherSide, registerHandler, zoneById } from './gameEngine.ts'
 import { effectiveMaterialCostOf } from './placement.ts'
 import { dispatchBaseAttackVictory, dispatchZoneActivation, dispatchZoneInterception } from './battleTriggers.ts'
+import { isStunned } from './stun.ts'
 
 // Which hulls in a zone actually strike its enemy base: not subs, not
 // Inoffensive, not carrying meta.noBaseDamage, not deployed this turn. The
@@ -24,6 +25,7 @@ export function baseStrikersIn(entries: ZoneCardEntry[], turnNumber: number): Zo
       c.vehicleType !== VEHICLE_TYPES.SUB &&
       !c.keywords.includes(KEYWORDS.INOFFENSIVE) &&
       c.meta.noBaseDamage !== true &&
+      !isStunned(c, turnNumber) &&
       c.playedOnTurn < turnNumber,
   )
 }
@@ -31,6 +33,12 @@ export function baseStrikersIn(entries: ZoneCardEntry[], turnNumber: number): Zo
 export function baseDamageFrom(entries: ZoneCardEntry[], turnNumber: number): number {
   return baseStrikersIn(entries, turnNumber)
     .reduce((sum, c) => sum + Math.floor(effectiveMaterialCostOf(c) / BASE_DAMAGE_DIVISOR), 0)
+}
+
+// The Blockers that actually block right now — a stunned one does not (2026-09-21
+// LH spec §3.4). The handler, ZoneActions' button and the evaluator all read this.
+export function activeBlockersIn(entries: ZoneCardEntry[], turnNumber: number): ZoneCardEntry[] {
+  return entries.filter((c) => c.keywords.includes(KEYWORDS.BLOCKER) && !isStunned(c, turnNumber))
 }
 
 registerHandler('ATTACK_ENEMY_BASE', (game, actor, action, ctx) => {
@@ -41,7 +49,7 @@ registerHandler('ATTACK_ENEMY_BASE', (game, actor, action, ctx) => {
   if (zone.cards[actor].length === 0) return err(400, 'You have no vehicles in that zone')
   if (zone.lastActivatedTurn === game.turnNumber) return err(409, 'That zone was already activated this turn')
   if (zone.baseHp[enemy] <= 0) return err(400, 'That base is already destroyed')
-  if (zone.cards[enemy].some((c) => c.keywords.includes(KEYWORDS.BLOCKER))) {
+  if (activeBlockersIn(zone.cards[enemy] as ZoneCardEntry[], game.turnNumber).length > 0) {
     return err(400, 'An enemy Blocker protects that base')
   }
   const strikers = baseStrikersIn(zone.cards[actor] as ZoneCardEntry[], game.turnNumber)

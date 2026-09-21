@@ -9,6 +9,7 @@ import {
 import { biomeAllows, effectiveMaterialCostOf, uniquePerZoneBlocked } from './placement.ts'
 import { zoneCapFor } from './zoneCapacity.ts'
 import { catalogCard, spawnInto } from '../effects/primitives.ts'
+import { isStunned } from './stun.ts'
 
 // power → faction that alone may use it. Powers absent from this map (the
 // four universal ones) are open to any faction.
@@ -168,6 +169,7 @@ function flankingManeuver(game: EngineGame, actor: Side, zoneId: number | undefi
 export function moveEntry(game: EngineGame, actor: Side, instanceId: string, zoneId: number, stampMove: boolean) {
   const found = findVehicle(game.state, instanceId)
   if (!found || found.side !== actor) return err(400, 'That is not your vehicle')
+  if (isStunned(found.entry, game.turnNumber)) return err(400, `${found.entry.name} is stunned and cannot move`)
   const target = zoneById(game.state, zoneId)
   if (!target || target.id === found.zone.id) return err(400, 'Pick a different zone')
   if (!biomeAllows(found.entry.vehicleType, target.biome)) {

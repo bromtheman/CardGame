@@ -31,7 +31,7 @@ export function FleetAttackDialog({
   busy: boolean
   onClose: () => void
 }) {
-  const rosters = fleetAttackRosters(state, mySide, zone.id)
+  const rosters = fleetAttackRosters(state, mySide, zone.id, turnNumber)
   const force = rosters?.force ?? []
   const targets = rosters?.targets ?? []
   const benched = (zone.cards[mySide] as ZoneCardEntry[]).filter((c) => c.keywords.includes(KEYWORDS.INOFFENSIVE))

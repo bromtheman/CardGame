@@ -201,12 +201,12 @@ describe('ATTACK_ENEMY_FLEET commits every eligible hull (spec §3.4, 2026-09-16
     const buzz = zoneEntry({ name: 'Buzzsaw', meta: { defensiveOmission: OMISSION_UNLESS_SHIP_OR_TANK } })
     g.state.zones[0].cards.a.push(p1, ino, p2)
     g.state.zones[0].cards.b.push(plain, sneak, buzz)
-    const rosters = fleetAttackRosters(g.state, 'a', 1)
+    const rosters = fleetAttackRosters(g.state, 'a', 1, g.turnNumber)
     expect(rosters?.force.map((c) => c.instanceId)).toEqual([p1.instanceId, p2.instanceId])
     expect(rosters?.targets.map((c) => c.instanceId)).toEqual([plain.instanceId, sneak.instanceId, buzz.instanceId])
     expect(rosters?.stealthyIds).toEqual([sneak.instanceId])
     expect(rosters?.omissibleIds).toEqual([buzz.instanceId])
-    expect(fleetAttackRosters(g.state, 'a', 9)).toBeNull()
+    expect(fleetAttackRosters(g.state, 'a', 9, g.turnNumber)).toBeNull()
   })
 
   it('judges a printed omission condition against the whole attacking force', () => {

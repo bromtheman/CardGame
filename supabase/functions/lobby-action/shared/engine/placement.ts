@@ -9,6 +9,7 @@ import {
   registerHandler, zoneById,
 } from './gameEngine.ts'
 import { zoneCapFor } from './zoneCapacity.ts'
+import { isStunned } from './stun.ts'
 import { costModifierFor, effectFor, effectName, noteUnimplemented } from '../effects/registry.ts'
 import { dispatchDeployWatchers } from './battleTriggers.ts'
 import { effectiveMaterialCostOf } from './costs.ts'
@@ -29,10 +30,13 @@ export function biomeAllows(vehicleType: string | null, biome: string): boolean 
 const isAircraft = (vehicleType: string): boolean =>
   vehicleType === VEHICLE_TYPES.PLANE || vehicleType === VEHICLE_TYPES.AIRSHIP
 
-function screenBlocks(state: PublicGameState, side: Side, zoneId: number, vehicleType: string): boolean {
+function screenBlocks(
+  state: PublicGameState, side: Side, zoneId: number, vehicleType: string, turnNumber: number,
+): boolean {
   const zone = state.zones.find((z) => z.id === zoneId)
   if (!zone) return true
-  const enemy = zone.cards[otherSide(side)]
+  // A stunned Screen is switched off (2026-09-21 LH spec §3.4).
+  const enemy = zone.cards[otherSide(side)].filter((c) => !isStunned(c as ZoneCardEntry, turnNumber))
   if (isAircraft(vehicleType) && enemy.some((c) => c.keywords.includes(KEYWORDS.AIR_SCREEN))) return true
   if (vehicleType === VEHICLE_TYPES.SUB && enemy.some((c) => c.keywords.includes(KEYWORDS.SUB_SCREEN))) return true
   return false
@@ -191,7 +195,7 @@ export function legalZonesFor(
   return state.zones
     .filter((z) => (
       biomeAllows(card.vehicleType, z.biome) &&
-      !screenBlocks(state, side, z.id, card.vehicleType!) &&
+      !screenBlocks(state, side, z.id, card.vehicleType!, turnNumber) &&
       !aircraftLocked(state, side, z.id, card.vehicleType!) &&
       !riderBlocks(state, side, z.id, card.faction) &&
       !battleLossMissing(state, side, z.id, card, turnNumber) &&

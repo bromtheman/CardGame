@@ -4,6 +4,7 @@ import type { EngineGame } from './engineTypes.ts'
 import type { PublicGameState } from './gameInit.ts'
 import { err, findVehicle, otherSide, registerHandler, zoneById } from './gameEngine.ts'
 import { dispatchBattleLock, lockRoster } from './battleTriggers.ts'
+import { isStunned } from './stun.ts'
 
 // The one condition meta.defensiveOmission expresses (spec §4.8). A string
 // rather than a boolean so a second condition is expressible without a second
@@ -333,11 +334,15 @@ export interface FleetAttackRosters {
 // Null for an unknown zone; otherwise the lists may be empty, and the handler
 // decides what an empty list means.
 export function fleetAttackRosters(
-  state: PublicGameState, side: Side, zoneId: number,
+  state: PublicGameState, side: Side, zoneId: number, turnNumber: number,
 ): FleetAttackRosters | null {
   const zone = zoneById(state, zoneId)
   if (!zone) return null
-  const force = (zone.cards[side] as ZoneCardEntry[]).filter((c) => !c.keywords.includes(KEYWORDS.INOFFENSIVE))
+  // A stunned hull is out of the attacking force like an Inoffensive one, and a
+  // stunned Stealthy defender has no withdrawal (2026-09-21 LH spec §3.4).
+  const force = (zone.cards[side] as ZoneCardEntry[]).filter(
+    (c) => !c.keywords.includes(KEYWORDS.INOFFENSIVE) && !isStunned(c, turnNumber),
+  )
   const targets = zone.cards[otherSide(side)] as ZoneCardEntry[]
   // Spec §4.8: the omission condition reads the attacking FORCE — which since
   // the 2026-09-16 amendment is everything the aggressor owns in the zone bar
@@ -348,7 +353,7 @@ export function fleetAttackRosters(
   const stealthyIds: string[] = []
   const omissibleIds: string[] = []
   for (const card of targets) {
-    if (card.keywords.includes(KEYWORDS.STEALTHY)) stealthyIds.push(card.instanceId)
+    if (card.keywords.includes(KEYWORDS.STEALTHY) && !isStunned(card, turnNumber)) stealthyIds.push(card.instanceId)
     // Plain card data, not a registry name (spec §4.8) — an effect returns a
     // boolean meaning "resolved" and may mutate, so one cannot serve as a pure
     // eligibility predicate.
@@ -364,7 +369,7 @@ registerHandler('ATTACK_ENEMY_FLEET', (game, actor, action, ctx) => {
   const zone = zoneById(game.state, action.zoneId)
   if (!zone) return err(400, 'No such zone')
   if (zone.lastActivatedTurn === game.turnNumber) return err(409, 'That zone was already activated this turn')
-  const rosters = fleetAttackRosters(game.state, actor, action.zoneId)!
+  const rosters = fleetAttackRosters(game.state, actor, action.zoneId, game.turnNumber)!
   if (rosters.force.length === 0) return err(400, 'You have no vehicle able to attack in that zone')
   if (rosters.targets.length === 0) return err(400, 'There is no enemy vehicle in that zone')
   const attackerIds = rosters.force.map((c) => c.instanceId)
