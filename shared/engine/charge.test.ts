@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest'
 import {
   addCharge, boardChargeOf, chargeGateShortfall, chargeMaxOf, chargeOf, spendCharge, tickCharge,
 } from './charge.ts'
+import type { ZoneCardEntry } from './engineTypes.ts'
 import { discardSnapshotOf } from './gameEngine.ts'
-import { makeGame, zoneEntry } from './testFixtures.ts'
+import { applyAction } from './index.ts'
+import { makeCtx, makeGame, zoneEntry } from './testFixtures.ts'
 
 const lh = (over: Record<string, unknown> = {}) =>
   zoneEntry({ faction: 'LH', meta: { chargeMax: 2 }, ...over })
@@ -63,5 +65,22 @@ describe('charge', () => {
   it('strips the charge stamp on discard', () => {
     const snap = discardSnapshotOf(lh({ charge: 2 })) as Record<string, unknown>
     expect('charge' in snap).toBe(false)
+  })
+})
+
+describe('END_TURN charges the incoming side', () => {
+  it('after the Temporary cull and before the draw, on that side only', () => {
+    const game = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+    const plane = zoneEntry({ instanceId: 'plane', faction: 'LH', keywords: ['temporary'], meta: { chargeMax: 2 } })
+    const bobs = zoneEntry({ instanceId: 'bobs', faction: 'LH', meta: { chargeMax: 2 } })
+    const mine = zoneEntry({ instanceId: 'mine', faction: 'LH', meta: { chargeMax: 2 } })
+    game.state.zones[0].cards.b.push(plane, bobs)
+    game.state.zones[0].cards.a.push(mine)
+    const res = applyAction(game, 'alice', { type: 'END_TURN' }, makeCtx())
+    if (!res.ok) throw new Error(res.error)
+    const b = res.game.state.zones[0].cards.b as ZoneCardEntry[]
+    expect(b.map((c) => c.instanceId)).toEqual(['bobs'])
+    expect(chargeOf(b[0])).toBe(1)
+    expect(chargeOf(res.game.state.zones[0].cards.a[0] as ZoneCardEntry)).toBe(0)
   })
 })

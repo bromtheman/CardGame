@@ -2,6 +2,7 @@ import { KEYWORDS, LOG_MAX_ENTRIES, VEHICLE_TYPES } from '../gameSettings.ts'
 import { materialsPerTurnOf } from '../lobbySettings.ts'
 import { secureRng } from './gameInit.ts'
 import { upkeepOwedBy } from './costs.ts'
+import { tickCharge } from './charge.ts'
 import type { CardInstance, PublicGameState, SnapshotCard, ZoneEffect } from './gameInit.ts'
 import type {
   ApplyResult, EngineContext, EngineGame, GameAction, Side, ZoneCardEntry,
@@ -523,6 +524,10 @@ function endTurn(game: EngineGame, ctx: EngineContext): ApplyResult {
     // nothing; a total simply reads better.
     game.state.log.push(`Player ${side.toUpperCase()} pays ${upkeep} upkeep`)
   }
+
+  // 2026-09-21 LH Charge (spec §3.1.6): after the Temporary cull — a plane is
+  // never charged — and after income and upkeep, before the draw.
+  tickCharge(game, side)
 
   drawCard(game, side, ctx)
 
