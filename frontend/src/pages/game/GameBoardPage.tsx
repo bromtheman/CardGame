@@ -172,10 +172,15 @@ export function GameBoardPage() {
   // Every play of a hand card into a zone — the hand's one-legal-zone
   // shortcut and a zone click alike — comes through here, so a Drain card
   // whose split is a real choice stops at the dialog first (2026-09-22 spec
-  // §4). A board that cannot pay sends anyway: the server's refusal names why.
+  // §4). Only a play the server could take asks for a split: a board that
+  // cannot pay, a card the hand already rings as unaffordable (the same
+  // effectiveCostInGame test HandBar draws that ring with) and an off-turn
+  // click all send at once, and the server's refusal names why.
   function playToZone(card: CardInstance, zoneId: number) {
-    if (!state) return
-    if (drainNeedsChoice(state, mySide, card)) {
+    if (!state || !game) return
+    const affordable = state.resources[mySide].materials >= effectiveCostInGame(state, mySide, card, game.turn_number)
+      && state.resources[mySide].cp >= card.cpCost
+    if (isMyTurn && affordable && drainNeedsChoice(state, mySide, card)) {
       setDraining({ card, zoneId })
       return
     }
@@ -565,6 +570,9 @@ export function GameBoardPage() {
 
       {draining && (
         <DrainChargeDialog
+          // Keyed per card: a second Drain card reached behind the dialog
+          // must open on its OWN suggested split, not keep the first card's.
+          key={draining.card.instanceId}
           state={state}
           mySide={mySide}
           turnNumber={game.turn_number}

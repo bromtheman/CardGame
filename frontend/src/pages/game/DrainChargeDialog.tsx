@@ -97,8 +97,11 @@ export function DrainChargeDialog({
           {chosen} of {gate} chosen
         </p>
         <div className="mt-4 flex justify-end gap-2">
+          {/* Focus moves into the dialog on open, onto Cancel as ConfirmDialog
+              does, so the keyboard is not left on the hand behind it. */}
           <button
             type="button"
+            autoFocus
             onClick={onCancel}
             className="rounded border border-ocean-600 px-4 py-2 font-bold text-parchment-100"
           >
