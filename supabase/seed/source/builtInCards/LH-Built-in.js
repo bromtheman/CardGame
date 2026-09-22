@@ -679,5 +679,20 @@ export const lhVehicles = [
         blueprintId: null,
         meta: { [TRIGGERS.PLAY_ON_VEHICLE]: 'afterburnerEffect', dischargeFrom: 2 },
     },
+    {
+        name: 'Extended Sortie',
+        isBuiltIn: true,
+        cardText: 'Discharge 2 from a friendly LH vehicle: a friendly LH plane in that zone loses Temporary.',
+        materialCost: 100000,
+        blueprintCost: 0,
+        cpCost: 0,
+        imageUrl: 'extendedSortie.png',
+        playerId: null,
+        vehicleType: null,
+        type: 'ability',
+        faction: FACTIONS.LH,
+        blueprintId: null,
+        meta: { [TRIGGERS.PLAY_ON_VEHICLE]: 'extendedSortieEffect', dischargeFrom: 2 },
+    },
 
 ];

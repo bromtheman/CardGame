@@ -146,6 +146,11 @@ export const CARDS: Record<string, Expected> = {
     cardText: 'Discharge 2 from a friendly LH vehicle: a friendly LH vehicle played this turn in that zone may attack the base this turn.',
     meta: { playOnVehicleEffect: 'afterburnerEffect', dischargeFrom: 2 },
   },
+  'LH:Extended Sortie': {
+    materialCost: 100_000, blueprintCost: 0, cpCost: 0, keywords: [], vehicleType: null,
+    cardText: 'Discharge 2 from a friendly LH vehicle: a friendly LH plane in that zone loses Temporary.',
+    meta: { playOnVehicleEffect: 'extendedSortieEffect', dischargeFrom: 2 },
+  },
 }
 
 // Retired by this wave (spec §7): rows stay seeded, undraftable.

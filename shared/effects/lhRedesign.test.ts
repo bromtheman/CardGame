@@ -328,3 +328,36 @@ describe('Afterburner — afterburnerEffect', () => {
     expect(strike.game.state.zones[0].baseHp.b).toBe(200) // old 100 + afterburned 700; the fresh host still waits
   })
 })
+
+describe('Extended Sortie — extendedSortieEffect', () => {
+  it('keeps the chosen plane past the next turn start, and the discard makes it Temporary again', () => {
+    const game = lhGame(); game.state.resources.a.materials = 200000
+    game.privates.a.hand = [inst({
+      instanceId: 'es', name: 'Extended Sortie', type: 'ability', vehicleType: null, faction: 'LH', materialCost: 100000,
+      meta: { playOnVehicleEffect: 'extendedSortieEffect', dischargeFrom: 2 },
+    })]
+    game.state.counts.a = { hand: 1, deck: 1 }
+    game.state.zones[0].cards.a.push(
+      zoneEntry({ instanceId: 'host', faction: 'LH', meta: { chargeMax: 2 }, charge: 2 }),
+      zoneEntry({ instanceId: 'wing', faction: 'LH', vehicleType: 'plane', keywords: ['halfCost', 'temporary', 'fragile', 'swift'] }),
+      zoneEntry({ instanceId: 'ship', faction: 'LH' }),
+    )
+    const res = applyAction(game, 'alice', { type: 'PLAY_CARD_TARGETING_CARD_ON_FIELD', instanceId: 'es', targetInstanceId: 'host' }, makeCtx())
+    if (!res.ok) throw new Error(res.error)
+    expect(res.game.state.pendingEffect?.options.map((o) => o.id)).toEqual(['wing'])
+    const done = applyAction(res.game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'wing' }, makeCtx())
+    if (!done.ok) throw new Error(done.error)
+    // endTurn culls Temporary hulls on EVERY END_TURN call, from both sides —
+    // so one END_TURN alone cannot tell "the keyword was revoked" apart from
+    // "the cull simply has not reached this side yet". Ending both alice's and
+    // bob's turns drives a full round, which only a genuine revoke survives.
+    const endedAlice = applyAction(done.game, 'alice', { type: 'END_TURN' }, makeCtx())
+    if (!endedAlice.ok) throw new Error(endedAlice.error)
+    const ended = applyAction(endedAlice.game, 'bob', { type: 'END_TURN' }, makeCtx())
+    if (!ended.ok) throw new Error(ended.error)
+    const wing = ended.game.state.zones[0].cards.a.find((c) => c.instanceId === 'wing') as ZoneCardEntry
+    expect(wing).toBeDefined()
+    expect(wing.keywords).toEqual(['halfCost', 'fragile', 'swift'])
+    expect(discardSnapshotOf(wing).keywords).toContain('temporary')
+  })
+})

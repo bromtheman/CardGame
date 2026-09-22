@@ -572,3 +572,24 @@ registerEffect(AFTERBURNER, choice({
     return true
   },
 }))
+
+const EXTENDED_SORTIE = 'extendedSortieEffect'
+registerEffect(EXTENDED_SORTIE, choice({
+  effect: EXTENDED_SORTIE,
+  prompt: 'Extended Sortie — choose a friendly LH plane in that zone to keep',
+  options: ({ game, actor, targetInstanceId }) => {
+    const host = hostLane(game, targetInstanceId)
+    return host
+      ? friendlyVehicleOptions(game, actor, host.zone.id, (e) =>
+          isLh(e) && e.vehicleType === VEHICLE_TYPES.PLANE && e.keywords.includes(KEYWORDS.TEMPORARY))
+      : []
+  },
+  resolve: ({ game, actor, card }, choiceId) => {
+    if (choiceId === null) return false
+    const found = findVehicle(game.state, choiceId)
+    if (!found || found.side !== actor) return false
+    revokeKeywordsFrom(found.entry, [KEYWORDS.TEMPORARY])
+    game.state.log.push(`${card.name}: ${found.entry.name} stays on station — it is no longer Temporary`)
+    return true
+  },
+}))
