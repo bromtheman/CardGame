@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import type { ZoneState } from '@shared/engine/gameInit'
 import type { Side, ZoneCardEntry } from '@shared/engine/engineTypes'
+import { chargeOf } from '@shared/engine/index'
 import { KEYWORDS, VEHICLE_TYPES } from '@shared/gameSettings'
 import { shortHandNumber } from '@shared/format'
 import { MiniVehicle } from './MiniVehicle'
@@ -327,12 +328,14 @@ export function BoardZone({
           // gate must stay in step with ACTIVATE_VEHICLE's own: a card the
           // engine would activate but this rejects has a working ability with
           // no way to press it.
-          const meta = c.meta as { activateCpCost?: unknown; activateMaterialCost?: unknown; onActivate?: unknown }
+          const meta = c.meta as { activateCpCost?: unknown; activateMaterialCost?: unknown; dischargeCost?: unknown; onActivate?: unknown }
+          const dischargeCost = typeof meta.dischargeCost === 'number' ? meta.dischargeCost : null
           const activateEligible =
             !!canActivateVehicles &&
-            (typeof meta.activateCpCost === 'number' || typeof meta.activateMaterialCost === 'number') &&
+            (typeof meta.activateCpCost === 'number' || typeof meta.activateMaterialCost === 'number' || dischargeCost !== null) &&
             typeof meta.onActivate === 'string' &&
-            c.activatedOnTurn !== turnNumber
+            c.activatedOnTurn !== turnNumber &&
+            (dischargeCost === null || chargeOf(c) >= dischargeCost)
           const swapOwnEligible = !!swapPickOwnMode && c.faction === 'DWG' && c.vehicleType === VEHICLE_TYPES.SHIP
           return (
             <MiniVehicle
@@ -353,6 +356,7 @@ export function BoardZone({
               onMoveClick={mobileEligible ? () => onMobileMoveClick?.(c.instanceId) : undefined}
               activateAffordance={activateEligible}
               onActivateClick={activateEligible ? () => onActivateClick?.(c.instanceId) : undefined}
+              dischargeCost={dischargeCost}
             />
           )
         }}

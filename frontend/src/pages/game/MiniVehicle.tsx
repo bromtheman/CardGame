@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { shortHandNumber } from '@shared/format'
 import { effectiveMaterialCostOf } from '@shared/engine/index'
+import { chargeMaxOf, chargeOf, isStunned } from '@shared/engine/index'
 import type { ZoneCardEntry } from '@shared/engine/engineTypes'
 import { KeywordIcons } from '../../components/KeywordIcons'
 import { CardDetailsModal } from '../../components/CardDetailsModal'
@@ -22,6 +23,7 @@ export function MiniVehicle({
   onMoveClick,
   activateAffordance,
   onActivateClick,
+  dischargeCost,
 }: {
   entry: ZoneCardEntry
   turnNumber: number
@@ -34,10 +36,15 @@ export function MiniVehicle({
   /** Show the small "use" corner button (has an activated ability, unused this turn). */
   activateAffordance?: boolean
   onActivateClick?: () => void
+  /** The pips the "use" button spends, when the ability is a discharge. */
+  dischargeCost?: number | null
 }) {
   const [detailsOpen, setDetailsOpen] = useState(false)
   const icon = vehicleTypeIcon(entry.vehicleType)
   const fresh = entry.playedOnTurn === turnNumber
+  const pipMax = chargeMaxOf(entry)
+  const pips = chargeOf(entry)
+  const stunned = isStunned(entry, turnNumber)
 
   return (
     <div
@@ -59,6 +66,21 @@ export function MiniVehicle({
           new
         </span>
       )}
+      {pipMax > 0 && (
+        <span
+          title={`Charge ${pips} of ${pipMax}`}
+          className={`absolute -top-1 left-1/2 -translate-x-1/2 rounded-full px-1 text-[9px] font-bold ${
+            pips >= pipMax ? 'bg-brass-400 text-ocean-950' : 'bg-ocean-900 text-parchment-100'
+          }`}
+        >
+          {'⚡'}{pips}/{pipMax}
+        </span>
+      )}
+      {stunned && (
+        <span title="Stunned — cannot attack, move, Block or Screen until the end of its owner's next turn" className="absolute -bottom-1 left-1/2 -translate-x-1/2 rounded-full bg-red-700 px-1 text-[9px] font-bold text-parchment-100">
+          stunned
+        </span>
+      )}
       {moveAffordance && onMoveClick && (
         <button
           type="button"
@@ -75,14 +97,14 @@ export function MiniVehicle({
       {activateAffordance && onActivateClick && (
         <button
           type="button"
-          title="Use this vehicle's activated ability"
+          title={typeof dischargeCost === 'number' ? `Discharge ${dischargeCost} charge` : "Use this vehicle's activated ability"}
           onClick={(e) => {
             e.stopPropagation()
             onActivateClick()
           }}
           className="absolute -bottom-1 -left-1 rounded-full bg-brass-400 px-1 text-[9px] font-bold text-ocean-950"
         >
-          use
+          {typeof dischargeCost === 'number' ? 'fire' : 'use'}
         </button>
       )}
       {/* Every line box below is pinned with an explicit `leading-*`. The chip
