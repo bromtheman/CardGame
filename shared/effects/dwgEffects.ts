@@ -12,7 +12,7 @@ import {
 import { effectiveMaterialCostOf, uniquePerZoneBlocked } from '../engine/placement.ts'
 import { zoneCapFor } from '../engine/zoneCapacity.ts'
 import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
-import { baseDamageFrom, baseStrikersIn } from '../engine/baseAttack.ts'
+import { activeBlockersIn, baseDamageFrom, baseStrikersIn } from '../engine/baseAttack.ts'
 import { fireDeathEffect } from '../engine/battleTriggers.ts'
 import {
   catalogCard, choice, enemyVehicleOptions, friendlyVehicleOptions, grant, mintHull, poolEligible, summonHulls,
@@ -222,9 +222,10 @@ function ongoingAttritionStrike(payload: EffectPayload): boolean {
   if (surplus <= 0) return true
   // Every guard ATTACK_ENEMY_BASE itself applies (spec §7.3). Neither
   // consumes the rider: "if this card leaves play WITHOUT DEALING DAMAGE,
-  // draw a card" makes damage — not the activation — what spends it.
+  // draw a card" makes damage — not the activation — what spends it. The
+  // Blocker read is stun-aware, like the handler's own (2026-09-21 LH spec §3.4).
   if (zone.baseHp[enemy] <= 0) return true
-  if (zone.cards[enemy].some((c) => c.keywords.includes(KEYWORDS.BLOCKER))) {
+  if (activeBlockersIn(zone.cards[enemy] as ZoneCardEntry[], game.turnNumber).length > 0) {
     game.state.log.push(`Zone ${zone.id}: a Blocker shields the base — ${card.name} deals nothing`)
     return true
   }
@@ -503,9 +504,10 @@ function dwgWatersAftermath(payload: EffectPayload): boolean {
   const enemy = otherSide(actor)
   // Re-apply every guard ATTACK_ENEMY_BASE itself would, against the board as
   // it stands NOW: a base already destroyed takes nothing more, and a Blocker
-  // that reached the zone during the battle still protects it.
+  // that reached the zone during the battle still protects it — unless it's
+  // stunned, since that guard is stun-aware too (2026-09-21 LH spec §3.4).
   if (zone.baseHp[enemy] <= 0) return true
-  if (zone.cards[enemy].some((c) => c.keywords.includes(KEYWORDS.BLOCKER))) {
+  if (activeBlockersIn(zone.cards[enemy] as ZoneCardEntry[], game.turnNumber).length > 0) {
     game.state.log.push(`Zone ${zoneId}: a Blocker shields the base — the deferred bombardment is called off`)
     return true
   }

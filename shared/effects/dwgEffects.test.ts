@@ -1032,6 +1032,30 @@ describe('DWG Waters clauses 2 and 3', () => {
       expect(decided.game.state.log.join('\n')).toContain('Blocker shields the base')
     })
 
+    // Fix round 1: a STUNNED Blocker arriving during the battle does not
+    // shield the base — dwgWatersAftermath re-applies every guard
+    // ATTACK_ENEMY_BASE itself would, and that guard is stun-aware
+    // (2026-09-21 LH spec §3.4).
+    it('a stunned Blocker arriving during the battle does NOT shield the base', () => {
+      const out = bombard()
+      const battle = out.state.activeBattle
+      if (!battle) throw new Error('no interception')
+      const striker = battle.attackerIds[0]
+      const guardian = battle.summons[0].instanceId
+      out.state.zones[0].cards.b.push(
+        zoneEntry({ name: 'Wall', keywords: ['blocker'], stunnedUntilTurn: out.turnNumber + 1 }),
+      )
+      const ctx = makeCtx({ catalog: fullCatalog })
+      const submitted = applyAction(out, 'alice', {
+        type: 'SUBMIT_BATTLE_REPORT',
+        results: { [striker]: 95, [guardian]: 5 }, repairs: [],
+      }, ctx)
+      if (!submitted.ok) throw new Error(submitted.error)
+      const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, ctx)
+      if (!decided.ok) throw new Error(decided.error)
+      expect(decided.game.state.zones[0].baseHp.b).toBe(1000 - 40)
+    })
+
     it('picks the guardian deterministically under a seeded rng', () => {
       const first = bombard().state.activeBattle?.summons[0].name
       const second = bombard().state.activeBattle?.summons[0].name
@@ -1194,6 +1218,20 @@ describe('wave 5 — Ongoing Attrition', () => {
     expect(r.game.state.zones[0].baseHp.b).toBe(1000)
     expect(r.game.state.zoneEffects).toHaveLength(1)
     expect(r.game.state.log.some((l) => l.includes('Blocker'))).toBe(true)
+  })
+
+  // Fix round 1: a stunned Blocker does not shield the base — the same guard
+  // ATTACK_ENEMY_BASE itself applies is stun-aware (2026-09-21 LH spec §3.4),
+  // and this rider re-applies that guard, so it must be too.
+  it('is NOT blocked by a stunned enemy Blocker', () => {
+    const { game, mine, theirs } = claimed({ mine: 3, theirs: 1, theirKeywords: ['blocker'] })
+    theirs[0].stunnedUntilTurn = game.turnNumber + 1
+    const r = applyAction(game, 'alice', {
+      type: 'ATTACK_ENEMY_FLEET', zoneId: 1,
+    }, attritionCtx())
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.zones[0].baseHp.b).toBe(1000 - 2 * PER_SURPLUS_HP)
+    expect(r.game.state.zoneEffects).toEqual([])
   })
 
   it('does nothing against a base that has already fallen, and keeps the rider', () => {
