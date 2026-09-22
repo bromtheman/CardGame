@@ -286,7 +286,7 @@ registerEffect(AIR_STRAFE, choice({
       cause: card.name,
     })
   },
-}), { needsCatalog: true })
+}), { needsCatalog: true, enemyTarget: () => true })
 
 // "When played, pick one AI ship in hand and reduce its cost by 75k." (SS ->
 // AI, built-in any faction, in the 2026-09-16 pass, M-1.) Excalibur's

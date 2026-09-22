@@ -50,7 +50,7 @@ describe('Decoy (2026-09-21 LH spec §3.6)', () => {
   })
 
   it('every enemy-targeting ability in the game declares its filter', () => {
-    for (const name of ['flyingSquirrelAttackEffect', 'mutinyEffect', 'martyrAttackEffect', 'subStrikeEffect', 'subKillerEffect', 'sabotageEffect']) {
+    for (const name of ['flyingSquirrelAttackEffect', 'mutinyEffect', 'martyrAttackEffect', 'subStrikeEffect', 'subKillerEffect', 'sabotageEffect', 'gangUpEffect', 'airStrafeEffect']) {
       expect(enemyTargetFilterFor(name), name).not.toBeNull()
     }
   })

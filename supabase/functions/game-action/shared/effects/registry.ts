@@ -86,7 +86,7 @@ export const RESOLVE_BYSTANDER_EFFECTS: ReadonlySet<string> = resolveBystanderEf
 // Decoy (2026-09-21 LH spec §3.6) needs to know what an ability COULD target
 // without running it. Enemy-targeting abilities declare that filter here;
 // the field-target handler asks it. An effect with no filter is never
-// redirected — decoy.test.ts pins the six that must declare one.
+// redirected — decoy.test.ts pins the eight that must declare one.
 export type EnemyTargetFilter = (entry: ZoneCardEntry) => boolean
 const enemyTargetFilters = new Map<string, EnemyTargetFilter>()
 export const enemyTargetFilterFor = (name: string): EnemyTargetFilter | null =>

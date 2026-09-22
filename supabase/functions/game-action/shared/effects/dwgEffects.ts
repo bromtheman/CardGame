@@ -622,7 +622,7 @@ registerEffect('gangUpEffect', ({ game, actor, ctx, targetInstanceId, card }) =>
     defenderIds: [targetInstanceId],
     cause: card.name,
   })
-})
+}, { enemyTarget: () => true })
 
 // "Choose an enemy vehicle, gain control of it and give it temporary." (M-4,
 // 2026-09-16.) The engine's first CONTROL CHANGE: the entry is moved between
