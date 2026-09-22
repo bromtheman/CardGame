@@ -1,9 +1,11 @@
 import { useState, type ReactNode } from 'react'
 import { shortHandNumber } from '@shared/format'
+import { chargeGateOf, chargeMaxOf } from '@shared/engine/index'
 import type { CardRow } from '../lib/cards'
 import { cardImageOrFallback } from '../lib/cards'
 import { KeywordIcons } from './KeywordIcons'
 import { CardDetailsModal } from './CardDetailsModal'
+import { SegmentBar } from './SegmentBar'
 
 // The 280×430 card face (spec §11).
 //
@@ -45,6 +47,9 @@ export function PhysicalCard({
   const activate = onClick ?? (() => setDetailsOpen(true))
   const img = cardImageOrFallback(card)
   const keywords = Array.isArray(card.keywords) ? (card.keywords as string[]) : []
+  const meta = (card.meta ?? {}) as Record<string, unknown>
+  const chargeMax = chargeMaxOf({ meta })
+  const chargeGate = chargeGateOf({ meta })
   return (
     <div
       role="button"
@@ -89,16 +94,43 @@ export function PhysicalCard({
               {card.cp_cost} CP
             </span>
           )}
-          {typeof (card.meta as { chargeMax?: unknown }).chargeMax === 'number' && (
-            <span title="Charge — fills one pip at the start of each of your turns" className="rounded-full bg-ocean-700 px-2 py-1 text-sm font-bold text-parchment-100">
-              {'⚡'}{(card.meta as { chargeMax: number }).chargeMax}
+          {chargeMax > 0 && (
+            <span
+              title={`Stores up to ${chargeMax} charge — it gains charge at the start of each of your turns`}
+              className="flex items-center gap-1 rounded-full bg-ocean-900 px-2 py-1 text-sm font-bold text-parchment-100"
+            >
+              {'⚡'}{chargeMax}
+              {/* Capacity, not a live reading: a card in the collection or in
+                  hand has no charge yet, and the muted fill says so. */}
+              <SegmentBar
+                value={chargeMax}
+                max={chargeMax}
+                variant="capacity"
+                size="sm"
+                segmentWidth={10}
+                label={`Stores up to ${chargeMax} charge`}
+              />
             </span>
           )}
         </span>
         <KeywordIcons keywords={keywords} />
       </div>
       <div className="mt-1 flex min-h-7 items-center justify-between gap-2 text-xs text-ocean-600">
-        <span>{card.is_built_in ? card.faction : 'CUSTOM'}</span>
+        <span className="flex items-center gap-2">
+          {card.is_built_in ? card.faction : 'CUSTOM'}
+          {/* Down here, not in the cost row: beside the charge bar it pushed
+              a four-keyword hull's icons (Candela) into a stacked column that
+              ate the card text. The card text states the gate too; this is
+              the at-a-glance copy. */}
+          {chargeGate > 0 && (
+            <span
+              title={`Playable only while your LH vehicles hold ${chargeGate} charge in total across your board. The charge is not spent.`}
+              className="rounded bg-ocean-900 px-1.5 py-0.5 font-bold text-parchment-100"
+            >
+              Requires {chargeGate} Charge
+            </span>
+          )}
+        </span>
         {footer ?? (onClick && (
           <button
             type="button"

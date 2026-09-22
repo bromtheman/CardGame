@@ -1,14 +1,18 @@
 import type { Rated, ShipProfile } from '@shared/shipProfiles'
 
-// Display rows for a ShipProfile's nine ratings — labels, a five-pip meter
-// and a spoken form for the meter's aria-label — so CardDetailsModal only
-// renders. Frontend-only, like keywords.ts: UI copy stays out of shared/.
+// Display rows for a ShipProfile's nine ratings — labels, the 1–5 score the
+// SegmentBar draws, and a spoken form for that bar's aria-label — so
+// CardDetailsModal only renders. Frontend-only, like keywords.ts: UI copy
+// stays out of shared/.
+//
+// `why` is carried for every row but shown differently by each list: the four
+// matchups print it (it names the armament), while the five scores keep it as
+// a hover title only — the percentile wording was noise beside the bar.
 
 export interface ProfileRow {
   key: string
   label: string
   score: number
-  meter: string
   spoken: string
   why: string
 }
@@ -20,12 +24,8 @@ const MATCHUP_LABELS: [keyof ShipProfile['matchups'], string][] = [
   ['ships', 'vs Ships'], ['aircraft', 'vs Aircraft'], ['submarines', 'vs Submarines'], ['missiles', 'vs Missiles'],
 ]
 
-export function pips(score: number): string {
-  return '●'.repeat(score) + '○'.repeat(5 - score)
-}
-
 function row(key: string, label: string, rated: Rated): ProfileRow {
-  return { key, label, score: rated.score, meter: pips(rated.score), spoken: `${label} ${rated.score} of 5`, why: rated.why }
+  return { key, label, score: rated.score, spoken: `${label} ${rated.score} of 5`, why: rated.why }
 }
 
 export function shipProfileRows(profile: ShipProfile): { scores: ProfileRow[]; matchups: ProfileRow[] } {
