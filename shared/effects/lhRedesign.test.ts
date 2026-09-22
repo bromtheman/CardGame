@@ -304,3 +304,27 @@ describe('Overcharge — overchargeEffect', () => {
     expect(play(setup(), 'dwg')).toMatchObject({ ok: false, status: 400 })
   })
 })
+
+describe('Afterburner — afterburnerEffect', () => {
+  it('lets a hull played this turn bombard, the host itself included', () => {
+    const game = lhGame(); game.state.resources.a.materials = 100000
+    game.privates.a.hand = [inst({
+      instanceId: 'ab', name: 'Afterburner', type: 'ability', vehicleType: null, faction: 'LH', materialCost: 50000,
+      meta: { playOnVehicleEffect: 'afterburnerEffect', dischargeFrom: 2 },
+    })]
+    game.state.counts.a = { hand: 1, deck: 1 }
+    game.state.zones[0].cards.a.push(
+      zoneEntry({ instanceId: 'host', faction: 'LH', materialCost: 200000, meta: { chargeMax: 2 }, charge: 2, playedOnTurn: 4 }),
+      zoneEntry({ instanceId: 'old', faction: 'LH', materialCost: 100000, meta: { chargeMax: 2 }, playedOnTurn: 2 }),
+      zoneEntry({ instanceId: 'cap', faction: 'LH', materialCost: 700000, playedOnTurn: 4 }),
+    )
+    const res = applyAction(game, 'alice', { type: 'PLAY_CARD_TARGETING_CARD_ON_FIELD', instanceId: 'ab', targetInstanceId: 'host' }, makeCtx())
+    if (!res.ok) throw new Error(res.error)
+    expect(res.game.state.pendingEffect?.options.map((o) => o.id)).toEqual(['host', 'cap'])
+    const done = applyAction(res.game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'cap' }, makeCtx())
+    if (!done.ok) throw new Error(done.error)
+    const strike = applyAction(done.game, 'alice', { type: 'ATTACK_ENEMY_BASE', zoneId: 1 }, makeCtx())
+    if (!strike.ok) throw new Error(strike.error)
+    expect(strike.game.state.zones[0].baseHp.b).toBe(200) // old 100 + afterburned 700; the fresh host still waits
+  })
+})

@@ -552,3 +552,23 @@ registerEffect('overchargeEffect', ({ game, actor, card, targetInstanceId }) => 
   game.state.log.push(`${card.name}: ${entry.name} gains ${gained} charge`)
   return true
 })
+
+const AFTERBURNER = 'afterburnerEffect'
+registerEffect(AFTERBURNER, choice({
+  effect: AFTERBURNER,
+  prompt: 'Afterburner — choose a friendly LH vehicle played this turn in that zone',
+  options: ({ game, actor, targetInstanceId }) => {
+    const host = hostLane(game, targetInstanceId)
+    return host
+      ? friendlyVehicleOptions(game, actor, host.zone.id, (e) => isLh(e) && e.playedOnTurn === game.turnNumber)
+      : []
+  },
+  resolve: ({ game, actor, card }, choiceId) => {
+    if (choiceId === null) return false
+    const found = findVehicle(game.state, choiceId)
+    if (!found || found.side !== actor) return false
+    ;(found.entry as ZoneCardEntry).swiftOnTurn = game.turnNumber
+    game.state.log.push(`${card.name}: ${found.entry.name} may attack the base this turn`)
+    return true
+  },
+}))

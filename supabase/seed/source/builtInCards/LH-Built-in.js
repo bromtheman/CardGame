@@ -664,5 +664,20 @@ export const lhVehicles = [
         blueprintId: null,
         meta: { [TRIGGERS.PLAY_ON_VEHICLE]: 'overchargeEffect' },
     },
+    {
+        name: 'Afterburner',
+        isBuiltIn: true,
+        cardText: 'Discharge 2 from a friendly LH vehicle: a friendly LH vehicle played this turn in that zone may attack the base this turn.',
+        materialCost: 50000,
+        blueprintCost: 0,
+        cpCost: 0,
+        imageUrl: 'afterburner.png',
+        playerId: null,
+        vehicleType: null,
+        type: 'ability',
+        faction: FACTIONS.LH,
+        blueprintId: null,
+        meta: { [TRIGGERS.PLAY_ON_VEHICLE]: 'afterburnerEffect', dischargeFrom: 2 },
+    },
 
 ];
