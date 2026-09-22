@@ -576,5 +576,21 @@ export const lhVehicles = [
         keywords: [KEYWORDS.MOBILE],
         meta: { chargeMax: 2 },
     },
+    {
+        name: 'Penumbra',
+        isBuiltIn: true,
+        cardText: 'Discharge 3: stun every enemy vehicle in this zone.',
+        materialCost: 370000,
+        blueprintCost: 375279,
+        cpCost: 0,
+        imageUrl: 'penumbra.png',
+        playerId: null,
+        vehicleType: 'ship',
+        type: 'vehicle',
+        faction: FACTIONS.LH,
+        blueprintId: null,
+        keywords: [],
+        meta: { chargeMax: 3, [TRIGGERS.ON_ACTIVATE]: 'penumbraPulse', activateCpCost: 0, dischargeCost: 3 },
+    },
 
 ];

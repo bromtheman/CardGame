@@ -90,6 +90,11 @@ export const CARDS: Record<string, Expected> = {
     cardText: 'Discharge 2: this vehicle fights a 1v1 against target non-Stealthy enemy vehicle in this zone.',
     meta: { chargeMax: 2, onActivate: 'eclipseDuel', activateCpCost: 0, dischargeCost: 2 },
   },
+  'LH:Penumbra': {
+    materialCost: 370_000, blueprintCost: 375_279, cpCost: 0, keywords: [], vehicleType: 'ship',
+    cardText: 'Discharge 3: stun every enemy vehicle in this zone.',
+    meta: { chargeMax: 3, onActivate: 'penumbraPulse', activateCpCost: 0, dischargeCost: 3 },
+  },
 }
 
 // Retired by this wave (spec §7): rows stay seeded, undraftable.

@@ -462,3 +462,15 @@ function duel(id: string, prompt: string, targetable: (e: ZoneCardEntry) => bool
   })
 }
 registerEffect('eclipseDuel', duel('eclipseDuel', 'Choose a non-Stealthy enemy vehicle for Eclipse to fight', () => true, false))
+
+// Penumbra — "Discharge 3: stun every enemy vehicle in this zone." Every hull,
+// already-stunned ones included (they get the same expiry). An empty lane is
+// the player's own choice of timing: the charge is spent regardless.
+registerEffect('penumbraPulse', ({ game, actor, card }) => {
+  const found = findVehicle(game.state, card.instanceId)
+  if (!found || found.side !== actor) return false
+  const enemies = found.zone.cards[otherSide(actor)] as ZoneCardEntry[]
+  for (const e of enemies) stunHull(game, e)
+  game.state.log.push(`${card.name} pulses — ${enemies.length} enemy vehicle(s) in zone ${found.zone.id} stunned`)
+  return true
+})

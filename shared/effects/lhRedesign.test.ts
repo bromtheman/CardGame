@@ -147,3 +147,21 @@ describe('Eclipse — eclipseDuel', () => {
     expect((done.game.state.zones[0].cards.a[0] as ZoneCardEntry).keywords).toContain('stealthy')
   })
 })
+
+describe('Penumbra — penumbraPulse', () => {
+  it('stuns every enemy in its lane and nothing elsewhere', () => {
+    const game = lhGame()
+    game.state.zones[0].cards.a.push(zoneEntry({
+      instanceId: 'pen', name: 'Penumbra', faction: 'LH',
+      meta: { chargeMax: 3, onActivate: 'penumbraPulse', activateCpCost: 0, dischargeCost: 3 }, charge: 3,
+    }))
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'b1' }), zoneEntry({ instanceId: 'b2', keywords: ['stealthy'] }))
+    game.state.zones[1].cards.b.push(zoneEntry({ instanceId: 'far' }))
+    const res = activate(game, 'pen')
+    if (!res.ok) throw new Error(res.error)
+    const lane = res.game.state.zones[0].cards.b as ZoneCardEntry[]
+    expect(lane.map((c) => c.stunnedUntilTurn)).toEqual([5, 5])
+    expect((res.game.state.zones[1].cards.b[0] as ZoneCardEntry).stunnedUntilTurn).toBeUndefined()
+    expect(res.game.state.log).toContain('Penumbra pulses — 2 enemy vehicle(s) in zone 1 stunned')
+  })
+})
