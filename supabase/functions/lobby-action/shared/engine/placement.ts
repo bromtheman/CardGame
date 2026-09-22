@@ -32,13 +32,15 @@ const isAircraft = (vehicleType: string): boolean =>
   vehicleType === VEHICLE_TYPES.PLANE || vehicleType === VEHICLE_TYPES.AIRSHIP
 
 function screenBlocks(
-  state: PublicGameState, side: Side, zoneId: number, vehicleType: string, turnNumber: number,
+  state: PublicGameState, side: Side, zoneId: number, card: CardInstance, turnNumber: number,
 ): boolean {
   const zone = state.zones.find((z) => z.id === zoneId)
   if (!zone) return true
   // A stunned Screen is switched off (2026-09-21 LH spec §3.4).
   const enemy = zone.cards[otherSide(side)].filter((c) => !isStunned(c as ZoneCardEntry, turnNumber))
-  if (isAircraft(vehicleType) && enemy.some((c) => c.keywords.includes(KEYWORDS.AIR_SCREEN))) return true
+  const vehicleType = card.vehicleType!
+  // Caspian's sea-skimmer (2026-09-21 LH spec §3.10): under the Air Screen.
+  if (isAircraft(vehicleType) && card.meta.ignoresAirScreen !== true && enemy.some((c) => c.keywords.includes(KEYWORDS.AIR_SCREEN))) return true
   if (vehicleType === VEHICLE_TYPES.SUB && enemy.some((c) => c.keywords.includes(KEYWORDS.SUB_SCREEN))) return true
   return false
 }
@@ -134,6 +136,17 @@ function aiVehicleMissing(
   return !zone?.cards[side].some((c) => c.isBuiltIn)
 }
 
+// LH Luxon: "can only be played into a zone where you control an LH vehicle"
+// (2026-09-21 spec §3.10, R-7). Alarmed's shape; any friendly LH hull spots,
+// planes included. "LH" is faction === 'LH' — player-made cards are NEUTRAL.
+function lhVehicleMissing(
+  state: PublicGameState, side: Side, zoneId: number, card: CardInstance,
+): boolean {
+  if (card.meta.deployRequiresLhVehicle !== true) return false
+  const zone = state.zones.find((z) => z.id === zoneId)
+  return !zone?.cards[side].some((c) => c.faction === FACTIONS.LH)
+}
+
 // TG Obelisk: at most one copy of this card per zone, PER SIDE (wave 8).
 //
 // Obelisk is a 40k Stealthy ship that summons a free Mirth Swarm into every
@@ -196,11 +209,12 @@ export function legalZonesFor(
   return state.zones
     .filter((z) => (
       biomeAllows(card.vehicleType, z.biome) &&
-      !screenBlocks(state, side, z.id, card.vehicleType!, turnNumber) &&
+      !screenBlocks(state, side, z.id, card, turnNumber) &&
       !aircraftLocked(state, side, z.id, card.vehicleType!) &&
       !riderBlocks(state, side, z.id, card.faction) &&
       !battleLossMissing(state, side, z.id, card, turnNumber) &&
       !aiVehicleMissing(state, side, z.id, card) &&
+      !lhVehicleMissing(state, side, z.id, card) &&
       !uniquePerZoneBlocked(state, side, z.id, card) &&
       !zoneFull(state, side, z.id)
     ))

@@ -1833,3 +1833,22 @@ describe('dischargeFrom on an ability card (2026-09-21 LH spec §3.2)', () => {
     expect(res.game.privates.a.hand).toHaveLength(0)
   })
 })
+
+describe('LH placement keys (2026-09-21 spec §3.10)', () => {
+  it('deployRequiresLhVehicle needs a friendly LH hull in the lane, of any type', () => {
+    const game = makeGame({ turnNumber: 2 })
+    const luxon = inst({ vehicleType: 'plane', faction: 'LH', meta: { deployRequiresLhVehicle: true } })
+    game.state.zones[1].cards.a.push(zoneEntry({ faction: 'LH', vehicleType: 'plane' }))
+    game.state.zones[2].cards.a.push(zoneEntry({ faction: 'DWG' }))
+    expect(legalZonesFor(game.state, 'a', luxon, 2)).toEqual([2])
+  })
+
+  it('ignoresAirScreen lets a plane into a screened lane', () => {
+    const game = makeGame({ turnNumber: 2 })
+    game.state.zones[0].cards.b.push(zoneEntry({ keywords: ['airScreen'] }))
+    const plain = inst({ vehicleType: 'plane' })
+    const skimmer = inst({ vehicleType: 'plane', meta: { ignoresAirScreen: true } })
+    expect(legalZonesFor(game.state, 'a', plain, 2)).toEqual([2, 3])
+    expect(legalZonesFor(game.state, 'a', skimmer, 2)).toEqual([1, 2, 3])
+  })
+})

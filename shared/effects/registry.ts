@@ -170,10 +170,18 @@ const ALL_META_KEYS = [...Object.values(TRIGGERS), 'costModifier']
 // at all — its whole rewritten text ("you may not play another Albacore into
 // this zone") IS uniquePerZoneBlocked's rule (shared/engine/placement.ts) —
 // so it joins the list for the same reason aircraftLock did.
+// 2026-09-21 LH redesign (spec §3.10): five more whose whole card text IS the
+// rule and which name no effect — Conduit's `chargeRelay`, Terawatt's
+// `chargeRate` (its transfer names an effect, the Generators line does not),
+// the `requiresCharge` gates (Dynamo, Quadrupole, Candela), Luxon's
+// `deployRequiresLhVehicle`, Caspian's `ignoresAirScreen`. Each value is
+// pinned in supabase/seed/balance/lh.balance.test.ts, because G2 tests
+// presence, never value.
 export const DATA_EFFECT_KEYS = [
   'additionalSpawns', 'resourceSurge', 'defensiveOmission', 'aircraftLock',
   'deployRequiresBattleLoss', 'noBaseDamage', 'deployRequiresAiVehicle',
   'deployOrder', 'slotDenial', 'battleCap', 'uniquePerZone',
+  'chargeRelay', 'chargeRate', 'requiresCharge', 'deployRequiresLhVehicle', 'ignoresAirScreen',
 ] as const
 
 // Spec §3.9: cards referencing unimplemented effects play as vanilla, with a

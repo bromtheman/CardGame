@@ -1,5 +1,5 @@
 import { BASE_DAMAGE_DIVISOR, KEYWORDS, VEHICLE_TYPES } from '../gameSettings.ts'
-import type { ZoneCardEntry } from './engineTypes.ts'
+import type { EngineGame, Side, ZoneCardEntry } from './engineTypes.ts'
 import { checkVictory, err, otherSide, registerHandler, zoneById } from './gameEngine.ts'
 import { effectiveMaterialCostOf } from './placement.ts'
 import { dispatchBaseAttackVictory, dispatchZoneActivation, dispatchZoneInterception } from './battleTriggers.ts'
@@ -35,6 +35,28 @@ export function baseStrikersIn(entries: ZoneCardEntry[], turnNumber: number): Zo
 export function baseDamageFrom(entries: ZoneCardEntry[], turnNumber: number): number {
   return baseStrikersIn(entries, turnNumber)
     .reduce((sum, c) => sum + Math.floor(effectiveMaterialCostOf(c) / BASE_DAMAGE_DIVISOR), 0)
+}
+
+// Effect damage to a base (2026-09-21 LH spec §3.8): Umbra, Superradiance and
+// Impedance. Bull Shark's shape — materials through the divisor, Blocker
+// ignored, checkVictory after — with the fallen-base case made a clean no-op
+// rather than a re-announced fall. Never spends the lane's activation.
+export function dealBaseDamage(
+  game: EngineGame, actor: Side, zoneId: number, materials: number, cardName: string,
+): boolean {
+  const zone = zoneById(game.state, zoneId)
+  if (!zone) return false
+  const enemy = otherSide(actor)
+  if (zone.baseHp[enemy] <= 0) {
+    game.state.log.push(`${cardName}: the enemy base in zone ${zoneId} has already fallen`)
+    return true
+  }
+  const damage = Math.floor(materials / BASE_DAMAGE_DIVISOR)
+  zone.baseHp[enemy] = Math.max(0, zone.baseHp[enemy] - damage)
+  game.state.log.push(`${cardName} shells the enemy base in zone ${zoneId} for ${damage} (${zone.baseHp[enemy]} HP remains)`)
+  if (zone.baseHp[enemy] === 0) game.state.log.push(`Zone ${zoneId} has fallen`)
+  checkVictory(game)
+  return true
 }
 
 // The Blockers that actually block right now — a stunned one does not (2026-09-21

@@ -1,5 +1,5 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import { applyAction, baseDamageFrom, baseStrikersIn, discardSnapshotOf } from './index'
+import { applyAction, baseDamageFrom, baseStrikersIn, dealBaseDamage, discardSnapshotOf } from './index'
 import { registerEffect } from '../effects/registry'
 import type { ZoneCardEntry } from './engineTypes'
 import { makeCtx, makeGame, zoneEntry } from './testFixtures'
@@ -214,5 +214,27 @@ describe('Swift (2026-09-21 LH spec §3.5)', () => {
   it('strips swiftOnTurn on discard', () => {
     const snap = discardSnapshotOf(zoneEntry({ swiftOnTurn: 5 })) as Record<string, unknown>
     expect('swiftOnTurn' in snap).toBe(false)
+  })
+})
+
+describe('dealBaseDamage (2026-09-21 LH spec §3.8)', () => {
+  it('ignores a Blocker, converts through the divisor, and ends the game when a second zone falls', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zones[0].cards.b.push(zoneEntry({ keywords: ['blocker'] }))
+    expect(dealBaseDamage(game, 'a', 1, 300_000, 'Beam')).toBe(true)
+    expect(game.state.zones[0].baseHp.b).toBe(700)
+    expect(game.state.log.at(-1)).toBe('Beam shells the enemy base in zone 1 for 300 (700 HP remains)')
+  })
+
+  it('does nothing to a fallen base and says so', () => {
+    const game = makeGame({ turnNumber: 3 })
+    game.state.zones[0].baseHp.b = 0
+    expect(dealBaseDamage(game, 'a', 1, 300_000, 'Beam')).toBe(true)
+    expect(game.state.zones[0].baseHp.b).toBe(0)
+    expect(game.state.log).toEqual(['Beam: the enemy base in zone 1 has already fallen'])
+  })
+
+  it('refuses an unknown zone', () => {
+    expect(dealBaseDamage(makeGame(), 'a', 9, 100_000, 'Beam')).toBe(false)
   })
 })
