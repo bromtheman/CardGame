@@ -588,5 +588,21 @@ export const lhVehicles = [
         keywords: [],
         meta: { chargeMax: 3, [TRIGGERS.ON_ACTIVATE]: 'penumbraPulse', activateCpCost: 0, dischargeCost: 3 },
     },
+    {
+        name: 'Cathode',
+        isBuiltIn: true,
+        cardText: 'Requires 3 Charge. Discharge 2: this vehicle fights a 1v1 against target enemy ship or submarine in this zone, then this surfaces — it loses Stealthy for the rest of the game.',
+        materialCost: 600000,
+        blueprintCost: 726398,
+        cpCost: 0,
+        imageUrl: 'cathode.png',
+        playerId: null,
+        vehicleType: VEHICLE_TYPES.SUB,
+        type: 'vehicle',
+        faction: FACTIONS.LH,
+        blueprintId: null,
+        keywords: [KEYWORDS.STEALTHY, KEYWORDS.SUB_SCREEN],
+        meta: { chargeMax: 2, requiresCharge: 3, [TRIGGERS.ON_ACTIVATE]: 'cathodeDuel', activateCpCost: 0, dischargeCost: 2 },
+    },
 
 ];

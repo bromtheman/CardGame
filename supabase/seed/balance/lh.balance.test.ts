@@ -111,6 +111,11 @@ export const CARDS: Record<string, Expected> = {
     materialCost: 700_000, blueprintCost: 734_617, cpCost: 0, keywords: ['halfCost', 'temporary', 'fragile', 'swift'], vehicleType: 'plane',
     cardText: '', meta: {},
   },
+  'LH:Cathode': {
+    materialCost: 600_000, blueprintCost: 726_398, cpCost: 0, keywords: ['stealthy', 'subScreen'], vehicleType: 'sub',
+    cardText: 'Requires 3 Charge. Discharge 2: this vehicle fights a 1v1 against target enemy ship or submarine in this zone, then this surfaces — it loses Stealthy for the rest of the game.',
+    meta: { chargeMax: 2, requiresCharge: 3, onActivate: 'cathodeDuel', activateCpCost: 0, dischargeCost: 2 },
+  },
 }
 
 // Retired by this wave (spec §7): rows stay seeded, undraftable.

@@ -1,7 +1,9 @@
 import { effectiveCostInGame } from '../engine/placement.ts'
 import { addCharge, hasChargeRoom } from '../engine/charge.ts'
 import { dealBaseDamage } from '../engine/baseAttack.ts'
-import { FACTIONS, KEYWORDS, UMBRA_SALVO_DAMAGE, VOLTA_JUMP_START_CHARGE } from '../gameSettings.ts'
+import {
+  FACTIONS, KEYWORDS, UMBRA_SALVO_DAMAGE, VEHICLE_TYPES, VOLTA_JUMP_START_CHARGE,
+} from '../gameSettings.ts'
 import {
   choice, drawFromPool, enemyVehicleOptions, friendlyVehicleOptions, grant, poolEligible, sequence,
   spawnVehicles, summonHulls, whenPlayed, zoneOccupants,
@@ -462,6 +464,16 @@ function duel(id: string, prompt: string, targetable: (e: ZoneCardEntry) => bool
   })
 }
 registerEffect('eclipseDuel', duel('eclipseDuel', 'Choose a non-Stealthy enemy vehicle for Eclipse to fight', () => true, false))
+
+// Cathode — "Discharge 2: this vehicle fights a 1v1 against target enemy ship
+// or submarine in this zone, then this surfaces." Same duel() shape as
+// Eclipse, restricted to ship/sub targets and with surfaces: true (R-18).
+registerEffect('cathodeDuel', duel(
+  'cathodeDuel',
+  'Choose an enemy ship or submarine for Cathode to fight — it will surface',
+  (e) => e.vehicleType === VEHICLE_TYPES.SHIP || e.vehicleType === VEHICLE_TYPES.SUB,
+  true,
+))
 
 // Penumbra — "Discharge 3: stun every enemy vehicle in this zone." Every hull,
 // already-stunned ones included (they get the same expiry). An empty lane is

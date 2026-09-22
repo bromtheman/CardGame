@@ -165,3 +165,26 @@ describe('Penumbra — penumbraPulse', () => {
     expect(res.game.state.log).toContain('Penumbra pulses — 2 enemy vehicle(s) in zone 1 stunned')
   })
 })
+
+describe('Cathode — cathodeDuel', () => {
+  it('offers ships and subs only, surfaces at declaration, and declares the 1v1', () => {
+    const game = lhGame()
+    game.state.zones[0].cards.a.push(zoneEntry({
+      instanceId: 'cat', name: 'Cathode', faction: 'LH', vehicleType: 'sub', keywords: ['stealthy', 'subScreen'],
+      meta: { chargeMax: 2, requiresCharge: 3, onActivate: 'cathodeDuel', activateCpCost: 0, dischargeCost: 2 }, charge: 2,
+    }))
+    game.state.zones[0].cards.b.push(
+      zoneEntry({ instanceId: 'ship' }),
+      zoneEntry({ instanceId: 'sub', vehicleType: 'sub' }),
+      zoneEntry({ instanceId: 'plane', vehicleType: 'plane' }),
+    )
+    const res = activate(game, 'cat')
+    if (!res.ok) throw new Error(res.error)
+    expect(res.game.state.pendingEffect?.options.map((o) => o.id)).toEqual(['ship', 'sub'])
+    const done = applyAction(res.game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'sub' }, makeCtx())
+    if (!done.ok) throw new Error(done.error)
+    const cat = done.game.state.zones[0].cards.a[0] as ZoneCardEntry
+    expect(cat.keywords).toEqual(['subScreen'])
+    expect(done.game.state.activeBattle?.defenderIds).toEqual(['sub'])
+  })
+})
