@@ -47,7 +47,7 @@ describe('sectionOf', () => {
   })
   it('splits the hero powers: Flanking Maneuver and Tactical Positioning fight, the rest deploy', () => {
     const power = (p: Extract<GameAction, { type: 'USE_HERO_POWER' }>['power']): GameAction => ({ type: 'USE_HERO_POWER', power: p })
-    for (const p of ['salvage', 'draw', 'rapidRedeployment', 'boardingParty', 'changeOrder', 'flyby', 'counterIntelligence', 'drones'] as const) {
+    for (const p of ['salvage', 'draw', 'rapidRedeployment', 'boardingParty', 'changeOrder', 'flyby', 'counterIntelligence', 'drones', 'surge'] as const) {
       expect(sectionOf(power(p)), p).toBe('deploy')
     }
     expect(sectionOf(power('flankingManeuver'))).toBe('fight')

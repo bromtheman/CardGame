@@ -14,6 +14,14 @@ export interface ZoneCardEntry extends CardInstance {
   // Half-turn number of the last ACTIVATE_VEHICLE on this hull, null if never.
   // Enforces once-per-turn for onActivate (spec §4.3, DP1).
   activatedOnTurn: number | null
+  // 2026-09-21 LH redesign. All three are OPTIONAL, unlike the stamps above:
+  // absent already means what every hull dealt before this wave means — no
+  // charge, never stunned, no afterburner — so no normalizeState default and
+  // no literal needs touching. Read them through shared/engine/charge.ts and
+  // stun.ts, never directly. Each is named in discardSnapshotOf.
+  charge?: number
+  stunnedUntilTurn?: number
+  swiftOnTurn?: number
 }
 
 // One hull DECIDE_BATTLE_REPORT destroyed, carried on the resolve context
@@ -175,7 +183,7 @@ export type GameAction =
       power:
         | 'salvage' | 'tacticalPositioning' | 'draw' | 'rapidRedeployment'
         | 'boardingParty' | 'changeOrder' | 'flyby'
-        | 'counterIntelligence' | 'drones' | 'flankingManeuver'
+        | 'counterIntelligence' | 'drones' | 'flankingManeuver' | 'surge'
       cardId?: string       // salvage: which destroyed card
       instanceId?: string   // rapidRedeployment/boardingParty(mine)/changeOrder/flyby/counterIntelligence: which card
       targetInstanceId?: string // boardingParty: the enemy ship being traded for

@@ -139,7 +139,7 @@ function attackCandidates(view: BotView, zones: ZoneState[]): GameAction[] {
     const mine = zone.cards[view.side]
     if (mine.length === 0 || zone.lastActivatedTurn === view.turnNumber) continue
     if (zone.baseHp[enemy] > 0) out.push({ type: 'ATTACK_ENEMY_BASE', zoneId: zone.id })
-    const rosters = fleetAttackRosters(view.state, view.side, zone.id)
+    const rosters = fleetAttackRosters(view.state, view.side, zone.id, view.turnNumber)
     if (!rosters || rosters.force.length === 0 || rosters.targets.length === 0) continue
     const withdrawable = new Set([...rosters.stealthyIds, ...rosters.omissibleIds])
     if (rosters.targets.every((t) => withdrawable.has(t.instanceId))) continue

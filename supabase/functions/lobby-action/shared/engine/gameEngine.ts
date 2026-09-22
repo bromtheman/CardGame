@@ -2,6 +2,7 @@ import { KEYWORDS, LOG_MAX_ENTRIES, VEHICLE_TYPES } from '../gameSettings.ts'
 import { materialsPerTurnOf } from '../lobbySettings.ts'
 import { secureRng } from './gameInit.ts'
 import { upkeepOwedBy } from './costs.ts'
+import { tickCharge } from './charge.ts'
 import type { CardInstance, PublicGameState, SnapshotCard, ZoneEffect } from './gameInit.ts'
 import type {
   ApplyResult, EngineContext, EngineGame, GameAction, Side, ZoneCardEntry,
@@ -270,6 +271,31 @@ export function grantSpawnsTo(card: CardInstance, count: number): void {
   card.meta = { ...card.meta, grantedSpawns: current + count }
 }
 
+// The mirror of grantKeywordsTo (2026-09-21 LH spec §3.7): THE single way an
+// effect takes a keyword OFF one hull for the rest of its life — Umbra and
+// Cathode surface (Stealthy), Extended Sortie keeps a plane (Temporary).
+//
+// A PRINTED keyword removed here is recorded in meta.revokedKeywords so
+// discardSnapshotOf can put it back when the hull leaves play: the deck hands
+// the card out again as printed, never as surfaced. A keyword the hull only
+// ever had by GRANT is simply un-granted — the grant record shrinks and
+// nothing is recorded, or the snapshot would restore a keyword the card never
+// printed.
+export function revokeKeywordsFrom(card: CardInstance, keywords: string[]): void {
+  const removed = keywords.filter((k) => card.keywords.includes(k))
+  if (removed.length === 0) return
+  card.keywords = card.keywords.filter((k) => !removed.includes(k))
+  const granted = Array.isArray(card.meta.grantedKeywords) ? card.meta.grantedKeywords as string[] : []
+  const printedRemoved = removed.filter((k) => !granted.includes(k))
+  const meta: Record<string, unknown> = { ...card.meta }
+  if (granted.length > 0) meta.grantedKeywords = granted.filter((k) => !removed.includes(k))
+  if (printedRemoved.length > 0) {
+    const already = Array.isArray(card.meta.revokedKeywords) ? card.meta.revokedKeywords as string[] : []
+    meta.revokedKeywords = [...already, ...printedRemoved.filter((k) => !already.includes(k))]
+  }
+  card.meta = meta
+}
+
 // The total number of EXTRA copies a play of this card puts down: what the
 // card prints, plus what Double Up granted this instance. One derivation, read
 // by deployVehicle — so a card that is both printed-multi and Double Up'd
@@ -310,7 +336,11 @@ export function discardSnapshotOf(card: CardInstance): SnapshotCard {
     // a deck, where SnapshotCard has no such field and nothing would notice.
     // Harmless in effect today (putInHand re-stamps on the way back in) and
     // named anyway, because "harmless" is not what this destructure promises.
-    handEnteredTurn: _h, ...snapshot
+    handEnteredTurn: _h,
+    // 2026-09-21 LH: the three optional stamps. Pips die with the hull, a stun
+    // ends with it, an afterburner was this turn's — none may ride into a deck.
+    charge: _charge, stunnedUntilTurn: _stunned, swiftOnTurn: _swift,
+    ...snapshot
   } = card as ZoneCardEntry
   // `factoryEscort` (wave 7) comes off for exactly costDelta's reason: it is a
   // per-INSTANCE grant, stamped onto one hull on the board by a Havoc/Mirth
@@ -358,9 +388,15 @@ export function discardSnapshotOf(card: CardInstance): SnapshotCard {
   // `homeSide` (2026-09-16 M-4) comes off for factoryEscort's reason: it is a
   // per-INSTANCE stamp for one theft, and the card it rode in on belongs to the
   // deck it is about to reshuffle into.
+  //
+  // `revokedKeywords` (2026-09-21 LH spec §3.7) is revokeKeywordsFrom's own
+  // stamp, and the inverse of the pair above: grantedKeywords strips a
+  // keyword this instance gained, revokedKeywords restores one this instance
+  // lost — a surfaced sub or a spent Extended Sortie plane goes back to its
+  // deck exactly as printed, never permanently altered.
   const {
     costDelta: _costDelta, factoryEscort: _factoryEscort, homeSide: _homeSide, scrappyOnLoan,
-    grantedKeywords, grantedSpawns: _grantedSpawns, ...withoutCostDelta
+    grantedKeywords, grantedSpawns: _grantedSpawns, revokedKeywords, ...withoutCostDelta
   } = snapshot.meta
   snapshot.meta = withoutCostDelta
   if (scrappyOnLoan === true) {
@@ -372,6 +408,13 @@ export function discardSnapshotOf(card: CardInstance): SnapshotCard {
     // the marker gone nothing could ever find it again.
     const granted = new Set(grantedKeywords as unknown[])
     snapshot.keywords = snapshot.keywords.filter((k) => !granted.has(k))
+  }
+  // Revocation's second half (2026-09-21 LH spec §3.7): a printed keyword
+  // taken off THIS hull goes back on the card the deck will hand out again.
+  if (Array.isArray(revokedKeywords)) {
+    for (const k of revokedKeywords as unknown[]) {
+      if (typeof k === 'string' && !snapshot.keywords.includes(k)) snapshot.keywords = [...snapshot.keywords, k]
+    }
   }
   return snapshot as SnapshotCard
 }
@@ -519,6 +562,10 @@ function endTurn(game: EngineGame, ctx: EngineContext): ApplyResult {
     // nothing; a total simply reads better.
     game.state.log.push(`Player ${side.toUpperCase()} pays ${upkeep} upkeep`)
   }
+
+  // 2026-09-21 LH Charge (spec §3.1.6): after the Temporary cull — a plane is
+  // never charged — and after income and upkeep, before the draw.
+  tickCharge(game, side)
 
   drawCard(game, side, ctx)
 

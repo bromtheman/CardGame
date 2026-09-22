@@ -1,13 +1,19 @@
 import { effectiveCostInGame } from '../engine/placement.ts'
-import { KEYWORDS } from '../gameSettings.ts'
+import { addCharge, hasChargeRoom } from '../engine/charge.ts'
+import { dealBaseDamage } from '../engine/baseAttack.ts'
 import {
-  choice, drawFromPool, enemyVehicleOptions, grant, poolEligible, sequence, spawnVehicles, summonHulls,
-  whenPlayed, zoneOccupants,
+  FACTIONS, IMPEDANCE_BEAM_DAMAGE, KEYWORDS, OVERCHARGE_CHARGE, SUPERRADIANCE_BEAM_DAMAGE, TERAWATT_TRANSFER_CHARGE,
+  UMBRA_SALVO_DAMAGE, VEHICLE_TYPES, VOLTA_JUMP_START_CHARGE,
+} from '../gameSettings.ts'
+import {
+  choice, drawFromPool, enemyVehicleOptions, friendlyVehicleOptions, grant, poolEligible, sequence,
+  spawnVehicles, summonHulls, whenPlayed, zoneOccupants,
 } from './primitives.ts'
 import type { EffectFn } from './registry.ts'
 import { registerEffect } from './registry.ts'
-import { findVehicle, otherSide, putInHand } from '../engine/gameEngine.ts'
+import { findVehicle, otherSide, putInHand, revokeKeywordsFrom } from '../engine/gameEngine.ts'
 import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
+import { isStunned, stunHull } from '../engine/stun.ts'
 import type { EngineGame, Side, ZoneCardEntry } from '../engine/engineTypes.ts'
 
 // LH built-in card effects.
@@ -344,3 +350,246 @@ registerEffect(TERAWATT, (payload) => {
   if (!active || active.defenderIds.length !== 1) return true
   return terawattChoice(payload)
 }, { battleBystander: true })
+
+// ---------------------------------------------------------------------------
+// 2026-09-21 redesign (docs/superpowers/specs/2026-09-21-lh-faction-redesign-design.md).
+// Every id below is NEW: the pre-redesign ids above stay registered for the
+// frozen snapshots of games dealt before the deploy (spec §7) and are never
+// reused (the Kraken/Paddlegun rule).
+// ---------------------------------------------------------------------------
+
+const isLh = (e: { faction: string }): boolean => e.faction === FACTIONS.LH
+
+// Byte — "Discharge 1: draw a card." The engine has already checked and spent
+// the pip (ACTIVATE_VEHICLE, spec §3.2); this is the draw and nothing else.
+registerEffect('byteDraw', grant({ draw: 1 }))
+
+// Volta — "When played, a friendly LH vehicle in this zone gains 1 charge."
+// The player picks (R-3): which timer to accelerate is the whole decision.
+// The prompt excludes what this play just placed (Volta itself) and anything
+// already full; no candidate → a log line, never a refusal.
+const VOLTA = 'voltaJumpStart'
+registerEffect(VOLTA, choice({
+  effect: VOLTA,
+  prompt: 'Volta jump-starts a friendly LH vehicle in this zone — choose which gains 1 charge',
+  options: ({ game, actor, targetZoneId, placedInstanceIds }) => (
+    typeof targetZoneId === 'number'
+      ? friendlyVehicleOptions(game, actor, targetZoneId, (e) =>
+          isLh(e) && hasChargeRoom(e) && !(placedInstanceIds ?? []).includes(e.instanceId))
+      : []
+  ),
+  resolve: ({ game, actor, card }, choiceId) => {
+    if (choiceId === null) {
+      game.state.log.push(`${card.name}: nothing in this zone can take a charge`)
+      return true
+    }
+    const found = findVehicle(game.state, choiceId)
+    if (!found || found.side !== actor) return false
+    const gained = addCharge(found.entry as ZoneCardEntry, VOLTA_JUMP_START_CHARGE)
+    game.state.log.push(`${card.name} jump-starts ${found.entry.name} (+${gained} charge)`)
+    return true
+  },
+}))
+
+// The three beams (spec §3.8): effect damage in the hull's own lane, Blocker
+// ignored, a fallen base a no-op. dealBaseDamage owns the rule; this only
+// finds the lane and, for Umbra, surfaces the sub afterwards (R-8).
+function beam(materials: number, surfaces: boolean): EffectFn {
+  return ({ game, actor, card }) => {
+    const found = findVehicle(game.state, card.instanceId)
+    if (!found || found.side !== actor) return false
+    if (!dealBaseDamage(game, actor, found.zone.id, materials, card.name)) return false
+    if (surfaces) {
+      revokeKeywordsFrom(found.entry, [KEYWORDS.STEALTHY])
+      game.state.log.push(`${card.name} surfaces — it is no longer Stealthy`)
+    }
+    return true
+  }
+}
+registerEffect('umbraSalvo', beam(UMBRA_SALVO_DAMAGE, true))
+registerEffect('superradianceBeam', beam(SUPERRADIANCE_BEAM_DAMAGE, false))
+registerEffect('impedanceBeam', beam(IMPEDANCE_BEAM_DAMAGE, false))
+
+// Ampere — "When played, stun target enemy vehicle in this zone." On play
+// only (R-10); enemyVehicleOptions applies Decoy in a mirror. No enemy in the
+// lane: the play resolves with no stun and no refund.
+const AMPERE = 'ampereStun'
+registerEffect(AMPERE, choice({
+  effect: AMPERE,
+  prompt: "Ampere's EMP salvo — choose an enemy vehicle in this zone to stun",
+  options: ({ game, actor, targetZoneId }) => (
+    typeof targetZoneId === 'number' ? enemyVehicleOptions(game, actor, targetZoneId) : []
+  ),
+  resolve: ({ game, actor, card }, choiceId) => {
+    if (choiceId === null) {
+      game.state.log.push(`${card.name}: no enemy vehicle in this zone to stun`)
+      return true
+    }
+    const found = findVehicle(game.state, choiceId)
+    if (!found || found.side !== otherSide(actor)) return false
+    stunHull(game, found.entry as ZoneCardEntry)
+    return true
+  },
+}))
+
+// A charged 1v1 (spec §3.9): the old Eclipse's shape with a new id, the charge
+// as its cost, and NO zone activation spent — "a forced battle is not a zone
+// activation" holds for these as for every other forced battle. "Non-Stealthy"
+// is read at declaration, so a hull Ampere stunned this turn qualifies.
+// `surfaces` is Cathode's (R-18): Stealthy comes off the moment the duel is
+// declared, and a refused declaration rolls the whole clone back.
+function duel(id: string, prompt: string, targetable: (e: ZoneCardEntry) => boolean, surfaces: boolean): EffectFn {
+  const canTarget = (game: EngineGame, e: ZoneCardEntry) =>
+    !(e.keywords.includes(KEYWORDS.STEALTHY) && !isStunned(e, game.turnNumber)) && targetable(e)
+  return choice({
+    effect: id,
+    prompt,
+    options: ({ game, actor, card }) => {
+      const self = findVehicle(game.state, card.instanceId)
+      return self ? enemyVehicleOptions(game, actor, self.zone.id, (e) => canTarget(game, e)) : []
+    },
+    resolve: ({ game, actor, card, ctx }, choiceId) => {
+      if (choiceId === null) return false
+      const self = findVehicle(game.state, card.instanceId)
+      if (!self || self.side !== actor) return false
+      const stillLegal = enemyVehicleOptions(game, actor, self.zone.id, (e) => canTarget(game, e)).some((o) => o.id === choiceId)
+      if (!stillLegal) return false
+      if (surfaces) {
+        revokeKeywordsFrom(self.entry, [KEYWORDS.STEALTHY])
+        game.state.log.push(`${card.name} surfaces — it is no longer Stealthy`)
+      }
+      return declareForcedBattle(game, ctx, {
+        zoneId: self.zone.id, aggressor: actor,
+        attackerIds: [card.instanceId], defenderIds: [choiceId],
+        cause: card.name, activatesZone: false,
+      })
+    },
+  })
+}
+registerEffect('eclipseDuel', duel('eclipseDuel', 'Choose a non-Stealthy enemy vehicle for Eclipse to fight', () => true, false))
+
+// Cathode — "Discharge 2: this vehicle fights a 1v1 against target enemy ship
+// or submarine in this zone, then this surfaces." Same duel() shape as
+// Eclipse, restricted to ship/sub targets and with surfaces: true (R-18).
+registerEffect('cathodeDuel', duel(
+  'cathodeDuel',
+  'Choose an enemy ship or submarine for Cathode to fight — it will surface',
+  (e) => e.vehicleType === VEHICLE_TYPES.SHIP || e.vehicleType === VEHICLE_TYPES.SUB,
+  true,
+))
+
+// Penumbra — "Discharge 3: stun every enemy vehicle in this zone." Every hull,
+// already-stunned ones included (they get the same expiry). An empty lane is
+// the player's own choice of timing: the charge is spent regardless.
+registerEffect('penumbraPulse', ({ game, actor, card }) => {
+  const found = findVehicle(game.state, card.instanceId)
+  if (!found || found.side !== actor) return false
+  const enemies = found.zone.cards[otherSide(actor)] as ZoneCardEntry[]
+  for (const e of enemies) stunHull(game, e)
+  game.state.log.push(`${card.name} pulses — ${enemies.length} enemy vehicle(s) in zone ${found.zone.id} stunned`)
+  return true
+})
+
+// Terawatt — "Discharge 2: another friendly LH vehicle in this zone gains 2
+// charge." No candidate with room → refuse, so the activation rolls back and
+// the pips stay (the engine spent them before the effect ran).
+const TERAWATT_TRANSFER = 'terawattTransfer'
+registerEffect(TERAWATT_TRANSFER, choice({
+  effect: TERAWATT_TRANSFER,
+  prompt: 'Terawatt discharges into a friendly LH vehicle in this zone — choose which gains 2 charge',
+  options: ({ game, actor, card }) => {
+    const self = findVehicle(game.state, card.instanceId)
+    return self
+      ? friendlyVehicleOptions(game, actor, self.zone.id, (e) => isLh(e) && e.instanceId !== card.instanceId && hasChargeRoom(e))
+      : []
+  },
+  resolve: ({ game, actor, card }, choiceId) => {
+    if (choiceId === null) return false
+    const found = findVehicle(game.state, choiceId)
+    if (!found || found.side !== actor) return false
+    const gained = addCharge(found.entry as ZoneCardEntry, TERAWATT_TRANSFER_CHARGE)
+    game.state.log.push(`${card.name} discharges into ${found.entry.name} (+${gained} charge)`)
+    return true
+  },
+}))
+
+// The three "Discharge 2 from a friendly LH vehicle" abilities (spec §3.2,
+// R-24). PLAY_CARD_TARGETING_CARD_ON_FIELD has validated the host and spent
+// the pips; each effect makes its second pick in the HOST'S lane through
+// `choice`. An empty option list resolves with null → false → the play is
+// refused and the clone rolled back, so nothing was spent (R-24's "greyed in
+// hand" is the engine refusing; the UI shows the reason).
+function hostLane(game: EngineGame, targetInstanceId: string | undefined) {
+  return typeof targetInstanceId === 'string' ? findVehicle(game.state, targetInstanceId) : null
+}
+
+const EMP_SALVO = 'empSalvoEffect'
+registerEffect(EMP_SALVO, choice({
+  effect: EMP_SALVO,
+  prompt: 'EMP Salvo — choose an enemy vehicle in that zone to stun',
+  options: ({ game, actor, targetInstanceId }) => {
+    const host = hostLane(game, targetInstanceId)
+    return host ? enemyVehicleOptions(game, actor, host.zone.id) : []
+  },
+  resolve: ({ game, actor }, choiceId) => {
+    if (choiceId === null) return false
+    const found = findVehicle(game.state, choiceId)
+    if (!found || found.side !== otherSide(actor)) return false
+    stunHull(game, found.entry as ZoneCardEntry)
+    return true
+  },
+}))
+
+// Overcharge — "Target friendly LH vehicle gains 2 charge." A fresh hull is a
+// legal target (R-25); a full one, or a non-LH one, is not.
+registerEffect('overchargeEffect', ({ game, actor, card, targetInstanceId }) => {
+  if (typeof targetInstanceId !== 'string') return false
+  const found = findVehicle(game.state, targetInstanceId)
+  if (!found || found.side !== actor) return false
+  const entry = found.entry as ZoneCardEntry
+  if (!isLh(entry) || !hasChargeRoom(entry)) return false
+  const gained = addCharge(entry, OVERCHARGE_CHARGE)
+  game.state.log.push(`${card.name}: ${entry.name} gains ${gained} charge`)
+  return true
+})
+
+const AFTERBURNER = 'afterburnerEffect'
+registerEffect(AFTERBURNER, choice({
+  effect: AFTERBURNER,
+  prompt: 'Afterburner — choose a friendly LH vehicle played this turn in that zone',
+  options: ({ game, actor, targetInstanceId }) => {
+    const host = hostLane(game, targetInstanceId)
+    return host
+      ? friendlyVehicleOptions(game, actor, host.zone.id, (e) => isLh(e) && e.playedOnTurn === game.turnNumber)
+      : []
+  },
+  resolve: ({ game, actor, card }, choiceId) => {
+    if (choiceId === null) return false
+    const found = findVehicle(game.state, choiceId)
+    if (!found || found.side !== actor) return false
+    ;(found.entry as ZoneCardEntry).swiftOnTurn = game.turnNumber
+    game.state.log.push(`${card.name}: ${found.entry.name} may attack the base this turn`)
+    return true
+  },
+}))
+
+const EXTENDED_SORTIE = 'extendedSortieEffect'
+registerEffect(EXTENDED_SORTIE, choice({
+  effect: EXTENDED_SORTIE,
+  prompt: 'Extended Sortie — choose a friendly LH plane in that zone to keep',
+  options: ({ game, actor, targetInstanceId }) => {
+    const host = hostLane(game, targetInstanceId)
+    return host
+      ? friendlyVehicleOptions(game, actor, host.zone.id, (e) =>
+          isLh(e) && e.vehicleType === VEHICLE_TYPES.PLANE && e.keywords.includes(KEYWORDS.TEMPORARY))
+      : []
+  },
+  resolve: ({ game, actor, card }, choiceId) => {
+    if (choiceId === null) return false
+    const found = findVehicle(game.state, choiceId)
+    if (!found || found.side !== actor) return false
+    revokeKeywordsFrom(found.entry, [KEYWORDS.TEMPORARY])
+    game.state.log.push(`${card.name}: ${found.entry.name} stays on station — it is no longer Temporary`)
+    return true
+  },
+}))

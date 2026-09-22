@@ -2,13 +2,15 @@ import { describe, expect, it } from 'vitest'
 import { KEYWORDS } from '../gameSettings'
 import { inst, makeCtx, makeGame, snap, zoneEntry } from '../engine/testFixtures'
 import { applyAction, sideOf } from '../engine/index'
+import type { ZoneCardEntry } from '../engine/engineTypes.ts'
+import { boardChargeOf } from '../engine/index.ts'
 import { EVALUATOR, positionScore, scoreMove, strikePower, turnsToWin } from './evaluator'
 
 const hull = (cost: number, over: Parameters<typeof zoneEntry>[0] = {}) => zoneEntry({ materialCost: cost, vehicleType: 'ship', ...over })
 
 describe('strikePower', () => {
   it('sums floor(cost / divisor) over hulls that can strike, fresh deployments included', () => {
-    expect(strikePower([hull(150000, { playedOnTurn: 5 }), hull(40999)])).toBe(150 + 40)
+    expect(strikePower([hull(150000, { playedOnTurn: 5 }), hull(40999)], 1)).toBe(150 + 40)
   })
   it('skips submarines, Inoffensive, noBaseDamage and Temporary hulls', () => {
     expect(strikePower([
@@ -16,7 +18,7 @@ describe('strikePower', () => {
       hull(100000, { keywords: [KEYWORDS.INOFFENSIVE] }),
       hull(100000, { meta: { noBaseDamage: true } }),
       hull(100000, { keywords: [KEYWORDS.TEMPORARY] }),
-    ])).toBe(0)
+    ], 1)).toBe(0)
   })
 })
 
@@ -166,5 +168,25 @@ describe('scoreMove', () => {
     const trial = applyAction(g, BOT, action, ctx)
     const unsampled = trial.ok ? positionScore(trial.game, sideOf(g, BOT)!) : null
     expect(sampled).not.toBe(unsampled)
+  })
+})
+
+describe('evaluator — 2026-09-21 LH', () => {
+  it('a stunned Blocker does not stall the zone and a stunned striker does not count', () => {
+    const g = makeGame({ turnNumber: 3 })
+    g.state.zones[0].cards.a.push(hull(200000, { playedOnTurn: 1 }), hull(300000, { playedOnTurn: 1, stunnedUntilTurn: 4 }))
+    g.state.zones[0].cards.b.push(hull(40000, { keywords: [KEYWORDS.BLOCKER], stunnedUntilTurn: 4 }))
+    expect(strikePower(g.state.zones[0].cards.a as ZoneCardEntry[], 3)).toBe(200)
+    // Zone 1 is 1000 / 200 = 5 turns instead of the cap; the other two zones still stall.
+    expect(turnsToWin(g, 'a')).toBe(5 + EVALUATOR.capTurns)
+  })
+
+  it('values pips on its own board over the enemy\'s', () => {
+    const g = makeGame({ turnNumber: 3 })
+    const base = positionScore(g, 'a')
+    // A sub, so the strike term stays put and only the board and charge terms move.
+    g.state.zones[0].cards.a.push(hull(40000, { faction: 'LH', vehicleType: 'sub', meta: { chargeMax: 2 }, charge: 2 }))
+    expect(positionScore(g, 'a') - base).toBeCloseTo(EVALUATOR.charge * 2 + EVALUATOR.board * 40000 / (75000 * 3), 5)
+    expect(boardChargeOf(g.state, 'a')).toBe(2)
   })
 })

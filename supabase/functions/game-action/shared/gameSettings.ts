@@ -105,6 +105,11 @@ export const KEYWORDS = {
   // Wave 7 (TG): "at turn start, reduce your resources this turn by 15% of
   // this card's cost". Ten TG cards carry it.
   UPKEEP_REQUIRED: 'upkeepRequired',
+  // 2026-09-21 LH redesign (spec §3.5, §3.6). Swift: may attack the enemy base
+  // the turn it is played. Decoy: enemy effects that could target this must
+  // target it instead of another vehicle in its zone.
+  SWIFT: 'swift',
+  DECOY: 'decoy',
 } as const
 
 // UPKEEP_REQUIRED's rate. Charged in endTurn against the income that was just
@@ -273,7 +278,30 @@ export const SACRILEGO_COST_DELTA = -30_000
 // this pass.
 export const ARGONAUT_COST_DELTA = -50_000
 
-// Human-readable names for the ten hero powers, used wherever a power id
+// 2026-09-21 LH redesign — Charge (spec §3.1). A hull with meta.chargeMax
+// gains this many pips at the start of its owner's turn unless the card prints
+// its own meta.chargeRate (Terawatt's Generators print 2).
+export const CHARGE_TICK = 1
+// Volta: "a friendly LH vehicle in this zone gains 1 charge" — on play.
+export const VOLTA_JUMP_START_CHARGE = 1
+// Terawatt: "another friendly LH vehicle in this zone gains 2 charge".
+export const TERAWATT_TRANSFER_CHARGE = 2
+// Overcharge: "Target friendly LH vehicle gains 2 charge."
+export const OVERCHARGE_CHARGE = 2
+// Surge (LH hero power): "Every friendly LH vehicle gains 1 charge."
+export const SURGE_CHARGE = 1
+// Stun (spec §3.4): stunned until the end of its owner's next turn. Turn
+// numbers advance in half steps, so 1.0 is exactly one enemy turn when the
+// stun lands on the stunner's own turn — the only case the roster produces.
+export const STUN_DURATION_TURNS = 1
+// The three LH beams — effect damage to a base, ignoring Blocker like Bull
+// Shark's (spec §3.8). Three constants for three figures: two equal figures
+// never share one (VENGEFUL_BASE_DAMAGE's rule).
+export const UMBRA_SALVO_DAMAGE = 150_000
+export const SUPERRADIANCE_BEAM_DAMAGE = 300_000
+export const IMPEDANCE_BEAM_DAMAGE = 400_000
+
+// Human-readable names for the eleven hero powers, used wherever a power id
 // is shown to a player (Kraken's refresh choice).
 export const HERO_POWER_LABELS: Record<string, string> = {
   salvage: 'Salvage',
@@ -286,4 +314,5 @@ export const HERO_POWER_LABELS: Record<string, string> = {
   counterIntelligence: 'Counter Intelligence',
   drones: 'Drones',
   flankingManeuver: 'Flanking Maneuver',
+  surge: 'Surge',
 }

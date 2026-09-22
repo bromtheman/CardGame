@@ -39,8 +39,8 @@ export const allHeroPowers = [
     },
     {
         faction: FACTIONS.LH,
-        name: 'Flyby',
-        text: 'Choose a LH vehicle card in hand. Give it the HALFCOST and TEMPORARY keywords.',
+        name: 'Surge',
+        text: 'Every friendly LH vehicle gains 1 charge.',
         cpCost: 1
     },
     {

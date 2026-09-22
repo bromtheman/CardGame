@@ -29,7 +29,7 @@ export type SwapMode = { phase: 'pickOwn' } | { phase: 'pickEnemy'; ownInstanceI
 
 type UniversalPower = 'salvage' | 'tacticalPositioning' | 'draw' | 'rapidRedeployment'
 type FactionPower =
-  | 'boardingParty' | 'changeOrder' | 'flyby'
+  | 'boardingParty' | 'changeOrder' | 'surge'
   | 'counterIntelligence' | 'drones' | 'flankingManeuver'
 
 // power → faction that alone may use it, plus display info. Matches the
@@ -39,7 +39,7 @@ type FactionPower =
 const FACTION_POWER_INFO: Record<string, { power: FactionPower; label: string; blurb: string }> = {
   DWG: { power: 'boardingParty', label: 'Boarding Party', blurb: 'Exchange a friendly DWG ship with an enemy ship of equal or lesser cost in the same zone' },
   OW: { power: 'changeOrder', label: 'Change Order', blurb: 'Discard an OW vehicle; draw a player-made ship or tank from your deck in two turns' },
-  LH: { power: 'flyby', label: 'Flyby', blurb: 'Give an LH vehicle card in hand Half-Cost and Temporary' },
+  LH: { power: 'surge', label: 'Surge', blurb: 'Every friendly LH vehicle gains 1 charge' },
   SS: { power: 'counterIntelligence', label: 'Counter Intelligence', blurb: 'Give one of your vehicles on the board Air Screen and Sub Screen' },
   TG: { power: 'drones', label: 'Drones', blurb: 'Spawn a Temporary Mirth Swarm into every zone' },
   WF: { power: 'flankingManeuver', label: 'Flanking Maneuver', blurb: 'Choose a zone: your next fleet attack there this turn deploys after the defender, and every enemy vehicle counts as Fragile for that battle' },
@@ -108,28 +108,24 @@ export function HeroPowerBar({
 
   // Faction power: absent for NEUTRAL/GT (nothing renders). boardingParty and
   // counterIntelligence pick on the board (swapMode / moveMode); flanking picks
-  // a zone (flankMode); drones sends at once like Draw; changeOrder/flyby pick
-  // from an inline hand-card dropdown, same pattern as Salvage's.
+  // a zone (flankMode); drones and surge send at once like Draw; changeOrder
+  // picks from an inline hand-card dropdown, same pattern as Salvage's.
   const factionPowerInfo = FACTION_POWER_INFO[state.factions[mySide]]
   const hasOwnDwgShip = state.zones.some((z) => z.cards[mySide].some((c) => c.faction === 'DWG' && c.vehicleType === VEHICLE_TYPES.SHIP))
   const hasOwnVehicle = state.zones.some((z) => z.cards[mySide].length > 0)
   const eligibleFactionCards: CardInstance[] =
     factionPowerInfo?.power === 'changeOrder'
       ? hand.filter((c) => c.faction === 'OW' && c.type === 'vehicle')
-      : factionPowerInfo?.power === 'flyby'
-        ? hand.filter((c) => c.faction === 'LH' && c.type === 'vehicle')
-        : []
+      : []
   const factionReason = factionPowerInfo
     ? (reasonFor(factionPowerInfo.power) ??
         (factionPowerInfo.power === 'boardingParty' && !hasOwnDwgShip
           ? 'No DWG ship on the board'
           : factionPowerInfo.power === 'changeOrder' && eligibleFactionCards.length === 0
             ? 'No OW vehicle in hand'
-            : factionPowerInfo.power === 'flyby' && eligibleFactionCards.length === 0
-              ? 'No LH vehicle in hand'
-              : factionPowerInfo.power === 'counterIntelligence' && !hasOwnVehicle
-                ? 'No vehicle of yours on the board'
-                : null))
+            : factionPowerInfo.power === 'counterIntelligence' && !hasOwnVehicle
+              ? 'No vehicle of yours on the board'
+              : null))
     : null
   // A board-pick power stays clickable while its own mode is armed, so the
   // same button cancels it.
@@ -182,8 +178,8 @@ export function HeroPowerBar({
         if (flankMode) onCancelFlank()
         else onStartFlankingManeuver()
         return
-      case 'drones':
-        void send({ type: 'USE_HERO_POWER', power: 'drones' })
+      case 'drones': case 'surge':
+        void send({ type: 'USE_HERO_POWER', power: factionPowerInfo.power })
         return
       default:
         setFactionPickerOpen((v) => !v)
@@ -272,7 +268,7 @@ export function HeroPowerBar({
           >
             {factionPowerInfo.label} (1 CP)
           </button>
-          {factionPickerOpen && (factionPowerInfo.power === 'changeOrder' || factionPowerInfo.power === 'flyby') && (
+          {factionPickerOpen && (factionPowerInfo.power === 'changeOrder') && (
             <div className="absolute bottom-full left-0 z-30 mb-1 max-h-64 w-64 overflow-y-auto rounded border border-brass-400 bg-ocean-900 p-2 shadow-plank">
               {eligibleFactionCards.length === 0 && <p className="text-xs text-ocean-300">No eligible cards in hand.</p>}
               {eligibleFactionCards.map((c) => (

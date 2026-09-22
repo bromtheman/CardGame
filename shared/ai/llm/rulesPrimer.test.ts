@@ -113,6 +113,11 @@ describe('rules primer', () => {
       '- Martyr (kamikaze nuke drone): fire 1, tough 1, speed 5, range 1; vs ships 3, aircraft 1, subs 1, missiles 1. Suicide glass cannon.',
     )
   })
+  it('rosters the LH hulls the same way', () => {
+    const text = renderPrimer('LH')
+    const fleet = text.slice(text.indexOf('YOUR FLEET'), text.indexOf('HOW YOU PLAY'))
+    for (const { name } of shipProfilesForFaction('LH')) expect(fleet).toContain(`\n- ${name} (`)
+  })
   it('leaves the fleet section out entirely for a faction with no profiles yet', () => {
     const text = renderPrimer('OW')
     expect(text).not.toContain('YOUR FLEET')

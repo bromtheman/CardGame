@@ -89,6 +89,11 @@ export function PhysicalCard({
               {card.cp_cost} CP
             </span>
           )}
+          {typeof (card.meta as { chargeMax?: unknown }).chargeMax === 'number' && (
+            <span title="Charge — fills one pip at the start of each of your turns" className="rounded-full bg-ocean-700 px-2 py-1 text-sm font-bold text-parchment-100">
+              {'⚡'}{(card.meta as { chargeMax: number }).chargeMax}
+            </span>
+          )}
         </span>
         <KeywordIcons keywords={keywords} />
       </div>

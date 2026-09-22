@@ -18,6 +18,8 @@ import subIcon from '../assets/icons/submarineSVG.svg'
 import tankIcon from '../assets/icons/tankSVG.svg'
 import airshipIcon from '../assets/icons/airShield1SVG.svg'
 import anchorIcon from '../assets/icons/anchorSVG.svg'
+import plane2 from '../assets/icons/plane2SVG.svg'
+import iron2 from '../assets/icons/iron2SVG.svg'
 
 // Player-facing glossary — icon, label and plain-English rule for every
 // keyword and vehicle type. The wording tracks spec §3.7 (keywords) and
@@ -105,6 +107,18 @@ export const KEYWORD_INFO: Record<string, Attribute> = {
     label: 'Upkeep Required',
     icon: iron,
     description: 'At the start of each of your turns, this vehicle takes 15% of its material cost out of that turn’s income before you spend anything. A Half-Cost vehicle pays 15% of its halved cost. It costs nothing on the turn you deploy it, and nothing at all once it leaves the board.',
+  },
+  [KEYWORDS.SWIFT]: {
+    key: KEYWORDS.SWIFT,
+    label: 'Swift',
+    icon: plane2,
+    description: 'May attack the enemy base on the turn it is played — the usual one-turn deploy delay does not apply. Blockers still stop it, and the zone still activates only once.',
+  },
+  [KEYWORDS.DECOY]: {
+    key: KEYWORDS.DECOY,
+    label: 'Decoy',
+    icon: iron2,
+    description: 'Enemy card effects that could target this vehicle must target it instead of another vehicle in its zone. It only redirects: an effect this vehicle is not a legal target of is unaffected.',
   },
 }
 

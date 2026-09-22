@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it } from 'vitest'
 import {
   applyAction, effectFor, effectiveCostInGame, effectiveMaterialCostOf, legalZonesFor,
 } from './index'
@@ -7,6 +7,8 @@ import { takeFromEnemyDeck } from '../effects/primitives.ts'
 import { ADDITIONAL_SPAWNS_CAP, KEYWORDS, MAX_VEHICLES_PER_ZONE_SIDE } from '../gameSettings.ts'
 import { inst, makeCtx, makeGame, snap, zoneEntry } from './testFixtures'
 import { baseDamageFrom } from './baseAttack.ts'
+import { chargeGateShortfall, chargeOf } from './charge.ts'
+import type { ZoneCardEntry } from './engineTypes.ts'
 
 function withHand(cardOver: Record<string, unknown>) {
   const g = makeGame()
@@ -1785,5 +1787,86 @@ describe('uniquePerZone (wave 8)', () => {
     g.state.zones[1].cards.a.push(zoneEntry(unique({ instanceId: 'ob2', keywords: [KEYWORDS.MOBILE] })))
     const r = applyAction(g, 'alice', { type: 'MOVE_VEHICLE', instanceId: 'ob2', zoneId: 1 })
     expect(r.ok).toBe(true)
+  })
+})
+
+describe('Requires N Charge (2026-09-21 LH spec §3.3)', () => {
+  const gated = () => inst({ instanceId: 'cap', name: 'Capital', faction: 'LH', materialCost: 40000, meta: { requiresCharge: 2 } })
+  const battery = (charge: number) => zoneEntry({ faction: 'LH', meta: { chargeMax: 2 }, charge })
+
+  it('refuses the play until the board carries the pips, anywhere, and never spends them', () => {
+    const game = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+    game.privates.a.hand = [gated()]
+    game.state.counts.a = { hand: 1, deck: 0 }
+    game.state.zones[2].cards.a.push(battery(1))
+    const short = applyAction(game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: 'cap', zoneId: 1 }, makeCtx())
+    expect(short).toMatchObject({ ok: false, status: 400 })
+    expect((short as { error: string }).error).toContain('requires 2 Charge')
+    game.state.zones[1].cards.a.push(battery(1))
+    const res = applyAction(game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: 'cap', zoneId: 1 }, makeCtx())
+    if (!res.ok) throw new Error(res.error)
+    expect(chargeGateShortfall(res.game.state, 'a', gated())).toBeNull()
+  })
+})
+
+describe('dischargeFrom on an ability card (2026-09-21 LH spec §3.2)', () => {
+  beforeAll(() => { registerEffect('t_lhNoop', () => true) })
+  const salvo = () => inst({ instanceId: 'salvo', name: 'Salvo', type: 'ability', vehicleType: null, faction: 'LH', materialCost: 0, meta: { playOnVehicleEffect: 't_lhNoop', dischargeFrom: 2 } })
+  const play = (game: ReturnType<typeof makeGame>, targetInstanceId: string) =>
+    applyAction(game, 'alice', { type: 'PLAY_CARD_TARGETING_CARD_ON_FIELD', instanceId: 'salvo', targetInstanceId }, makeCtx())
+  const setup = () => {
+    const game = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+    game.privates.a.hand = [salvo()]
+    game.state.counts.a = { hand: 1, deck: 0 }
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'host', faction: 'LH', meta: { chargeMax: 2 }, charge: 2 }))
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'low', faction: 'LH', meta: { chargeMax: 2 }, charge: 1 }))
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'enemy', faction: 'LH', meta: { chargeMax: 2 }, charge: 2 }))
+    return game
+  }
+
+  it('spends the pips from the friendly host and refuses a short or enemy host', () => {
+    expect(play(setup(), 'low')).toMatchObject({ ok: false, status: 400 })
+    expect(play(setup(), 'enemy')).toMatchObject({ ok: false, status: 400 })
+    const res = play(setup(), 'host')
+    if (!res.ok) throw new Error(res.error)
+    expect(chargeOf(res.game.state.zones[0].cards.a[0] as ZoneCardEntry)).toBe(0)
+    expect(res.game.privates.a.hand).toHaveLength(0)
+  })
+
+  // R-20: "The transfer is an activated ability, so Terawatt cannot both
+  // transfer and be an ability card's discharge host in one turn." Hosting IS
+  // the hull's activation for the turn, so a host already activated refuses,
+  // and a successful host is stamped just like ACTIVATE_VEHICLE stamps one.
+  it('refuses a host already activated this turn, and its pips are untouched (R-20)', () => {
+    const game = setup()
+    ;(game.state.zones[0].cards.a[0] as ZoneCardEntry).activatedOnTurn = game.turnNumber
+    const res = play(game, 'host')
+    expect(res).toMatchObject({ ok: false, status: 409 })
+    expect(chargeOf(game.state.zones[0].cards.a[0] as ZoneCardEntry)).toBe(2)
+  })
+
+  it('stamps the host\'s activatedOnTurn on a successful discharge (R-20)', () => {
+    const res = play(setup(), 'host')
+    if (!res.ok) throw new Error(res.error)
+    expect((res.game.state.zones[0].cards.a[0] as ZoneCardEntry).activatedOnTurn).toBe(res.game.turnNumber)
+  })
+})
+
+describe('LH placement keys (2026-09-21 spec §3.10)', () => {
+  it('deployRequiresLhVehicle needs a friendly LH hull in the lane, of any type', () => {
+    const game = makeGame({ turnNumber: 2 })
+    const luxon = inst({ vehicleType: 'plane', faction: 'LH', meta: { deployRequiresLhVehicle: true } })
+    game.state.zones[1].cards.a.push(zoneEntry({ faction: 'LH', vehicleType: 'plane' }))
+    game.state.zones[2].cards.a.push(zoneEntry({ faction: 'DWG' }))
+    expect(legalZonesFor(game.state, 'a', luxon, 2)).toEqual([2])
+  })
+
+  it('ignoresAirScreen lets a plane into a screened lane', () => {
+    const game = makeGame({ turnNumber: 2 })
+    game.state.zones[0].cards.b.push(zoneEntry({ keywords: ['airScreen'] }))
+    const plain = inst({ vehicleType: 'plane' })
+    const skimmer = inst({ vehicleType: 'plane', meta: { ignoresAirScreen: true } })
+    expect(legalZonesFor(game.state, 'a', plain, 2)).toEqual([2, 3])
+    expect(legalZonesFor(game.state, 'a', skimmer, 2)).toEqual([1, 2, 3])
   })
 })

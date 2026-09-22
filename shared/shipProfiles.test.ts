@@ -20,7 +20,7 @@ describe('ship profiles', () => {
     expect(shipProfileOf('DWG', 'Tyr')).toBeNull()
   })
 
-  it('lists one faction’s profiles in report order (cheapest first), by card name', () => {
+  it('lists one faction’s profiles in report order — cheapest first, except LH, which the report groups by type then name — by card name', () => {
     const dwg = shipProfilesForFaction('DWG')
     expect(dwg.map((p) => p.name).slice(0, 3)).toEqual(['Corsair', 'Marauder', 'Loggerhead'])
     expect(dwg.at(-1)?.name).toBe('Tarpon')
@@ -31,6 +31,10 @@ describe('ship profiles', () => {
     const wf = shipProfilesForFaction('WF')
     expect(wf.map((p) => p.name).slice(0, 3)).toEqual(['Martyr', 'Earth Raker', 'Buzzsaw'])
     expect(wf.at(-1)?.name).toBe('Purifier')
+    const lh = shipProfilesForFaction('LH')
+    expect(lh.map((p) => p.name).slice(0, 3)).toEqual(['Ampere', 'Angstrom', 'Byte'])
+    expect(lh.at(-1)?.name).toBe('Quadrupole')
+    expect(lh).toHaveLength(24)
     expect(shipProfilesForFaction('OW')).toEqual([])
   })
 
@@ -43,9 +47,9 @@ describe('ship profiles', () => {
     expect(shipProfileOf('SS', 'Sacrilego')?.escort).toBeUndefined()
   })
 
-  it('flags the WF craft FtD scores 0 as sharing their rank, and no other', () => {
+  it('flags the LH and WF craft FtD scores 0 as sharing their rank, and no other', () => {
     const tied = Object.entries(SHIP_PROFILES).filter(([, p]) => p.rankTied).map(([key]) => key)
-    expect(tied).toEqual(['WF:Martyr', 'WF:Earth Raker', 'WF:Pontus', 'WF:Pulverizer'])
+    expect(tied).toEqual(['LH:Conduit', 'LH:Kilowatt', 'LH:Volta', 'WF:Martyr', 'WF:Earth Raker', 'WF:Pontus', 'WF:Pulverizer'])
     for (const key of tied) expect(SHIP_PROFILES[key].strength, key).toBe(0)
   })
 

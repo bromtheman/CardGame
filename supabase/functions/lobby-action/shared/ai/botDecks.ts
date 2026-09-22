@@ -7,8 +7,9 @@
 // deck rules, ≤ 3 tank copies (the default board is all water), ≥ 12
 // vehicles, and cheap enough that turns 1 and 2 have a play.
 //
-// GT and LH are deliberately absent (owner decision 2026-09-16: neither is
-// fully implemented; GT is also all-flier and cannot meet the flier cap).
+// GT is deliberately absent (owner decision 2026-09-16: not fully
+// implemented, and all-flier, so it cannot meet the flier cap). LH was added
+// 2026-09-21, once the redesign's engine, cards and ship profiles shipped.
 // Adding a faction later is a new list here plus a BOT_FACTIONS entry.
 //
 // Curation notes: no `upkeepRequired` hulls (TG), because a greedy bot would
@@ -16,9 +17,9 @@
 // because the policy aims them by trial; Scrappy/Blocker hulls preferred,
 // because the bot never repairs a Fragile hull and never dodges a battle.
 
-export type BotFaction = 'DWG' | 'OW' | 'SS' | 'WF' | 'TG'
+export type BotFaction = 'DWG' | 'OW' | 'SS' | 'WF' | 'TG' | 'LH'
 
-export const BOT_FACTIONS: readonly BotFaction[] = ['DWG', 'OW', 'SS', 'WF', 'TG']
+export const BOT_FACTIONS: readonly BotFaction[] = ['DWG', 'OW', 'SS', 'WF', 'TG', 'LH']
 
 export function isBotFaction(x: unknown): x is BotFaction {
   return typeof x === 'string' && (BOT_FACTIONS as readonly string[]).includes(x)
@@ -99,6 +100,16 @@ export const BOT_DECKS: Record<BotFaction, Record<string, number>> = {
   // in the deck, so the bot's behaviour with them is self-play-proven, and
   // neither needs a choice — Frustration is a plain Stealthy hull and Vengeful's
   // trigger is passive. Fliers land exactly on the six-copy cap.
+  //
+  // '[TG] Obsession' and '[TG] Hysteria' (the borrowed LH robotics-pool rows,
+  // both ship-type) left this list when the 2026-09-21 LH redesign retired all
+  // four pool cards (spec §7) — the pool draw was their only reader. Unlike
+  // Horror, their two slots could NOT go to already-included cards: every
+  // non-flier already sits at the two-copy cap, and Jealousy/Optimism are
+  // fliers already at the six-copy FLIER_COPY_LIMIT, so bumping either
+  // overflows it. Agony (sub, Blocker) and Wonder (ship) are the replacements
+  // instead — neither upkeepRequired, retired, nor summon-only, and both
+  // ship/sub so the flier count stays at exactly six. Subs land at 5 of 6.
   TG: {
     'Curiosity': 2,
     'Obelisk': 2,
@@ -108,9 +119,31 @@ export const BOT_DECKS: Record<BotFaction, Record<string, number>> = {
     'Vengeful': 2,
     'Ecstasy': 2,
     'Loathing': 2,
-    '[TG] Obsession': 1,
-    '[TG] Hysteria': 1,
     'Jealousy': 1,
     'Optimism': 1,
+    'Agony': 1,
+    'Wonder': 1,
+  },
+  // 2026-09-21 LH redesign. Curated for the bot: batteries it can protect,
+  // three Blockers, one timer, one beam, and the two ability cards whose
+  // second pick the policy aims by trial. No Requires-4+ capitals — a greedy
+  // bot would hold them all game.
+  LH: {
+    'Chrysoprase': 2,
+    'Byte': 2,
+    'Volta': 1,
+    'Conduit': 1,
+    'Watt': 2,
+    'Dipole': 1,
+    'Umbra': 1,
+    'Kilowatt': 2,
+    'Ampere': 1,
+    'Eclipse': 1,
+    'Hydrovolt': 1,
+    'Megawatt': 1,
+    'Penumbra': 1,
+    'Angstrom': 1,
+    'EMP Salvo': 1,
+    'Overcharge': 1,
   },
 }

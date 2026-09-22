@@ -188,6 +188,9 @@ export function CardDetailsModal({
               }
             />
             {card.cp_cost > 0 && <CostChip label="CP" value={String(card.cp_cost)} />}
+            {typeof (card.meta as { chargeMax?: unknown }).chargeMax === 'number' && (
+              <CostChip label="Charge" value={'⚡' + String((card.meta as { chargeMax: number }).chargeMax)} />
+            )}
             {card.blueprint_cost > 0 && (
               <CostChip label="Blueprint" value={shortHandNumber(card.blueprint_cost)} muted />
             )}

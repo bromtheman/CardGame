@@ -120,7 +120,7 @@ registerEffect('subStrikeEffect', ({ game, actor, targetInstanceId }) => {
   // The hull was public on the board a moment ago, so naming it leaks nothing.
   game.state.log.push(`${found.entry.name} is removed from play in zone ${found.zone.id}`)
   return true
-})
+}, { enemyTarget: (e) => e.vehicleType === VEHICLE_TYPES.SUB })
 
 // "When played, put an ambush card into your hand."
 //
@@ -350,7 +350,7 @@ registerEffect('martyrAttackEffect', ({ game, actor, ctx, targetInstanceId, card
     summons,
     cause: card.name,
   })
-}, { needsCatalog: true })
+}, { needsCatalog: true, enemyTarget: () => true })
 
 const HARBRINGER = 'harbringerBattle'
 

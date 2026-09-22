@@ -1,13 +1,14 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import type { CardInstance, PublicGameState } from '@shared/engine/gameInit'
 import type { GameAction, Side } from '@shared/engine/engineTypes'
-import { effectiveCostInGame, effectName, legalZonesFor } from '@shared/engine/index'
+import { chargeGateShortfall, dischargeFromOf, effectiveCostInGame, effectName, legalZonesFor } from '@shared/engine/index'
 import { isAiShip } from '@shared/effects/primitives'
 import { TRIGGERS } from '@shared/gameSettings'
 import { shortHandNumber } from '@shared/format'
 import { cardInstanceToRow } from '../../lib/cards'
 import { PhysicalCard } from '../../components/PhysicalCard'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
+import { dischargeHostAvailable } from './dischargeHostAvailable'
 import type { MoveMode, SwapMode } from './HeroPowerBar'
 import {
   CARD_H, CARD_W, HAND_RAIL_H, REST_SCALE, fanLayout,
@@ -283,6 +284,13 @@ export function HandBar({
           const c = hand[i]
           const effectiveCost = effectiveCostInGame(state, mySide, c, turnNumber)
           const affordable = state.resources[mySide].materials >= effectiveCost && state.resources[mySide].cp >= c.cpCost
+          const gate = c.type === 'vehicle' ? chargeGateShortfall(state, mySide, c) : null
+          // §3.2 / R-20: an ability card's own "Discharge N from a friendly LH
+          // vehicle" cost, greyed out with no legal host — vehicles never
+          // carry dischargeFrom, so this only ever narrows an ability.
+          const dischargeFrom = c.type === 'ability' ? dischargeFromOf(c) : null
+          const dischargeUnmet = dischargeFrom !== null && !dischargeHostAvailable(state, mySide, dischargeFrom, turnNumber)
+          const playable = affordable && gate === null && !dischargeUnmet
           const selected =
             placingCard?.instanceId === c.instanceId ||
             fieldTargeting?.instanceId === c.instanceId ||
@@ -343,7 +351,7 @@ export function HandBar({
               // Selection wins the ring — a vehicle can enter placing mode
               // while unaffordable, and the server rejects it on play.
               className={`absolute rounded-xl transition-all duration-150 ease-out focus:outline-none ${
-                selected ? 'ring-4 ring-brass-400' : affordable ? '' : 'ring-2 ring-red-400'
+                selected ? 'ring-4 ring-brass-400' : playable ? '' : 'ring-2 ring-red-400'
               }`}
             >
               {/* In an active game a card press ACTS — deploy the vehicle, play
@@ -381,6 +389,16 @@ export function HandBar({
                   <span>{shortHandNumber(effectiveCost)}</span>
                 </span>
               )}
+              {gate && (
+                <span className="absolute inset-x-3 top-3 rounded bg-red-700/90 px-2 py-1 text-center text-xs font-bold text-parchment-100">
+                  Requires {gate.required} Charge — you have {gate.have}
+                </span>
+              )}
+              {dischargeUnmet && (
+                <span className="absolute inset-x-3 top-3 rounded bg-red-700/90 px-2 py-1 text-center text-xs font-bold text-parchment-100">
+                  Discharge {dischargeFrom} from an LH vehicle — none has {dischargeFrom} charge
+                </span>
+              )}
               {/* Actions render only on the lifted card: in a fan every other
                   card's buttons are covered by its neighbour, and rendering
                   them anyway would put unreachable controls in the tab order. */}
@@ -399,7 +417,7 @@ export function HandBar({
               )}
               {lifted && c.type === 'ability' && (
                 <button
-                  disabled={busy || !affordable}
+                  disabled={busy || !playable}
                   onClick={() => handleAbilityPlay(c)}
                   className="absolute inset-x-6 bottom-6 rounded bg-brass-400 px-2 py-2 font-bold text-ocean-950 shadow-plank disabled:opacity-50"
                 >

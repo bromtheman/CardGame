@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { KEYWORDS, LOG_MAX_ENTRIES } from '../gameSettings'
 import {
-  applyAction, copyMeta, discardCard, discardSnapshotOf, effectiveCostInGame, grantKeywordsTo,
-  grantSpawnsTo, HOME_SIDE_KEY, homeSideOf, normalizeState,
+  applyAction, copyMeta, discardCard, discardSnapshotOf, effectiveCostInGame, fleetAttackRosters,
+  grantKeywordsTo, grantSpawnsTo, HOME_SIDE_KEY, homeSideOf, normalizeState, revokeKeywordsFrom,
 } from './index'
 import { takeFromEnemyDeck } from '../effects/primitives.ts'
 import type { PublicGameState } from './gameInit.ts'
@@ -1049,5 +1049,44 @@ describe('discardCard files a hull under its homeSide (2026-09-16 M-4)', () => {
     const snapshot = discardSnapshotOf(zoneEntry({ meta: { [HOME_SIDE_KEY]: 'b', additionalSpawns: 1 } }))
     expect((snapshot.meta as Record<string, unknown>)[HOME_SIDE_KEY]).toBeUndefined()
     expect(snapshot.meta.additionalSpawns).toBe(1) // printed data stays
+  })
+})
+
+describe('revokeKeywordsFrom (2026-09-21 LH spec §3.7)', () => {
+  it('removes a printed keyword for this hull only, and the discard restores it', () => {
+    const sub = zoneEntry({ keywords: ['stealthy'] })
+    revokeKeywordsFrom(sub, ['stealthy'])
+    expect(sub.keywords).toEqual([])
+    expect(sub.meta.revokedKeywords).toEqual(['stealthy'])
+    const snap = discardSnapshotOf(sub)
+    expect(snap.keywords).toEqual(['stealthy'])
+    expect('revokedKeywords' in snap.meta).toBe(false)
+  })
+
+  it('un-grants a granted keyword without recording it', () => {
+    const plane = zoneEntry({ keywords: ['halfCost'] })
+    grantKeywordsTo(plane, ['temporary'])
+    revokeKeywordsFrom(plane, ['temporary'])
+    expect(plane.keywords).toEqual(['halfCost'])
+    expect(plane.meta.revokedKeywords).toBeUndefined()
+    expect(plane.meta.grantedKeywords).toEqual([])
+    expect(discardSnapshotOf(plane).keywords).toEqual(['halfCost'])
+  })
+
+  it('is a no-op for a keyword the hull does not carry', () => {
+    const hull = zoneEntry({ keywords: ['blocker'] })
+    revokeKeywordsFrom(hull, ['stealthy'])
+    expect(hull.keywords).toEqual(['blocker'])
+    expect(hull.meta.revokedKeywords).toBeUndefined()
+  })
+
+  it('takes a surfaced sub off the withdrawal list', () => {
+    const game = makeGame({ turnNumber: 3 })
+    const sub = zoneEntry({ instanceId: 'sub', keywords: ['stealthy'] })
+    game.state.zones[0].cards.b.push(sub)
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'a1' }))
+    expect(fleetAttackRosters(game.state, 'a', 1, 3)!.stealthyIds).toEqual(['sub'])
+    revokeKeywordsFrom(sub, ['stealthy'])
+    expect(fleetAttackRosters(game.state, 'a', 1, 3)!.stealthyIds).toEqual([])
   })
 })

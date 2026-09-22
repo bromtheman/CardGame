@@ -1,6 +1,6 @@
 import { TRIGGERS } from '../gameSettings.ts'
 import type {
-  BattleContext, BattleContinuation, EngineContext, EngineGame, Side,
+  BattleContext, BattleContinuation, EngineContext, EngineGame, Side, ZoneCardEntry,
 } from '../engine/engineTypes.ts'
 import type { CardInstance, PendingEffect, PublicGameState } from '../engine/gameInit.ts'
 
@@ -83,6 +83,15 @@ export const DEPLOY_WATCHER_EFFECTS: ReadonlySet<string> = deployWatcherEffects
 const resolveBystanderEffects = new Set<string>()
 export const RESOLVE_BYSTANDER_EFFECTS: ReadonlySet<string> = resolveBystanderEffects
 
+// Decoy (2026-09-21 LH spec §3.6) needs to know what an ability COULD target
+// without running it. Enemy-targeting abilities declare that filter here;
+// the field-target handler asks it. An effect with no filter is never
+// redirected — decoy.test.ts pins the eight that must declare one.
+export type EnemyTargetFilter = (entry: ZoneCardEntry) => boolean
+const enemyTargetFilters = new Map<string, EnemyTargetFilter>()
+export const enemyTargetFilterFor = (name: string): EnemyTargetFilter | null =>
+  enemyTargetFilters.get(name) ?? null
+
 export function registerEffect(
   name: string,
   fn: EffectFn,
@@ -91,6 +100,7 @@ export function registerEffect(
     battleBystander?: boolean
     deployWatcher?: boolean
     resolveBystander?: boolean
+    enemyTarget?: EnemyTargetFilter
   },
 ): void {
   effects.set(name, fn)
@@ -98,6 +108,7 @@ export function registerEffect(
   if (opts?.battleBystander) bystanderEffects.add(name)
   if (opts?.deployWatcher) deployWatcherEffects.add(name)
   if (opts?.resolveBystander) resolveBystanderEffects.add(name)
+  if (opts?.enemyTarget) enemyTargetFilters.set(name, opts.enemyTarget)
 }
 export function registerCostModifier(name: string, fn: CostModifierFn): void { costModifiers.set(name, fn) }
 export const effectFor = (name: string): EffectFn | null => effects.get(name) ?? null
@@ -159,10 +170,18 @@ const ALL_META_KEYS = [...Object.values(TRIGGERS), 'costModifier']
 // at all — its whole rewritten text ("you may not play another Albacore into
 // this zone") IS uniquePerZoneBlocked's rule (shared/engine/placement.ts) —
 // so it joins the list for the same reason aircraftLock did.
+// 2026-09-21 LH redesign (spec §3.10): five more whose whole card text IS the
+// rule and which name no effect — Conduit's `chargeRelay`, Terawatt's
+// `chargeRate` (its transfer names an effect, the Generators line does not),
+// the `requiresCharge` gates (Dynamo, Quadrupole, Candela), Luxon's
+// `deployRequiresLhVehicle`, Caspian's `ignoresAirScreen`. Each value is
+// pinned in supabase/seed/balance/lh.balance.test.ts, because G2 tests
+// presence, never value.
 export const DATA_EFFECT_KEYS = [
   'additionalSpawns', 'resourceSurge', 'defensiveOmission', 'aircraftLock',
   'deployRequiresBattleLoss', 'noBaseDamage', 'deployRequiresAiVehicle',
   'deployOrder', 'slotDenial', 'battleCap', 'uniquePerZone',
+  'chargeRelay', 'chargeRate', 'requiresCharge', 'deployRequiresLhVehicle', 'ignoresAirScreen',
 ] as const
 
 // Spec §3.9: cards referencing unimplemented effects play as vanilla, with a

@@ -12,7 +12,7 @@ import {
 import { effectiveMaterialCostOf, uniquePerZoneBlocked } from '../engine/placement.ts'
 import { zoneCapFor } from '../engine/zoneCapacity.ts'
 import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
-import { baseDamageFrom, baseStrikersIn } from '../engine/baseAttack.ts'
+import { activeBlockersIn, baseDamageFrom, baseStrikersIn } from '../engine/baseAttack.ts'
 import { fireDeathEffect } from '../engine/battleTriggers.ts'
 import {
   catalogCard, choice, enemyVehicleOptions, friendlyVehicleOptions, grant, mintHull, poolEligible, summonHulls,
@@ -222,9 +222,10 @@ function ongoingAttritionStrike(payload: EffectPayload): boolean {
   if (surplus <= 0) return true
   // Every guard ATTACK_ENEMY_BASE itself applies (spec §7.3). Neither
   // consumes the rider: "if this card leaves play WITHOUT DEALING DAMAGE,
-  // draw a card" makes damage — not the activation — what spends it.
+  // draw a card" makes damage — not the activation — what spends it. The
+  // Blocker read is stun-aware, like the handler's own (2026-09-21 LH spec §3.4).
   if (zone.baseHp[enemy] <= 0) return true
-  if (zone.cards[enemy].some((c) => c.keywords.includes(KEYWORDS.BLOCKER))) {
+  if (activeBlockersIn(zone.cards[enemy] as ZoneCardEntry[], game.turnNumber).length > 0) {
     game.state.log.push(`Zone ${zone.id}: a Blocker shields the base — ${card.name} deals nothing`)
     return true
   }
@@ -503,9 +504,10 @@ function dwgWatersAftermath(payload: EffectPayload): boolean {
   const enemy = otherSide(actor)
   // Re-apply every guard ATTACK_ENEMY_BASE itself would, against the board as
   // it stands NOW: a base already destroyed takes nothing more, and a Blocker
-  // that reached the zone during the battle still protects it.
+  // that reached the zone during the battle still protects it — unless it's
+  // stunned, since that guard is stun-aware too (2026-09-21 LH spec §3.4).
   if (zone.baseHp[enemy] <= 0) return true
-  if (zone.cards[enemy].some((c) => c.keywords.includes(KEYWORDS.BLOCKER))) {
+  if (activeBlockersIn(zone.cards[enemy] as ZoneCardEntry[], game.turnNumber).length > 0) {
     game.state.log.push(`Zone ${zoneId}: a Blocker shields the base — the deferred bombardment is called off`)
     return true
   }
@@ -598,7 +600,7 @@ registerEffect('flyingSquirrelAttackEffect', ({ game, actor, ctx, targetInstance
     summons,
     cause: card.name,
   })
-}, { needsCatalog: true })
+}, { needsCatalog: true, enemyTarget: () => true })
 
 // "Choose an enemy vehicle. Start a battle with that vehicle vs all your
 // vehicles from the same zone." DP3: the target is the sole defender (§7.3);
@@ -620,7 +622,7 @@ registerEffect('gangUpEffect', ({ game, actor, ctx, targetInstanceId, card }) =>
     defenderIds: [targetInstanceId],
     cause: card.name,
   })
-})
+}, { enemyTarget: () => true })
 
 // "Choose an enemy vehicle, gain control of it and give it temporary." (M-4,
 // 2026-09-16.) The engine's first CONTROL CHANGE: the entry is moved between
@@ -657,6 +659,7 @@ registerEffect('mutinyEffect', ({ game, actor, card, targetInstanceId }) => {
     ...entry,
     meta: { ...entry.meta, [HOME_SIDE_KEY]: entry.meta[HOME_SIDE_KEY] ?? owner },
     playedOnTurn: game.turnNumber, movedOnTurn: null, activatedOnTurn: null,
+    charge: 0,
   }
   grantKeywordsTo(stolen, [KEYWORDS.TEMPORARY])
   zone.cards[actor].push(stolen)
@@ -665,7 +668,7 @@ registerEffect('mutinyEffect', ({ game, actor, card, targetInstanceId }) => {
     `${card.name}: ${entry.name} mutinies and joins player ${actor.toUpperCase()} in zone ${zone.id} for this turn`,
   )
   return true
-})
+}, { enemyTarget: () => true })
 
 // "When this is destroyed, draw a copy of Mutiny." (2026-09-16.) slasherOnPlay's
 // shape: a named catalog mint through poolEligible into the hand via putInHand.
@@ -732,11 +735,14 @@ const sinnersLuckHop2 = (givenId: string): EffectFn => choice({
     if (!received || received.side !== enemy || !isFlier(received.entry)) return false
     given.zone.cards[actor] = given.zone.cards[actor].filter((c) => c.instanceId !== givenId)
     received.zone.cards[enemy] = received.zone.cards[enemy].filter((c) => c.instanceId !== receivedId)
+    // 2026-09-21 LH: a captured hull enters at 0 (spec §3.1.1), the same as
+    // Boarding Party and Mutiny — this swap is a third capture path the pips
+    // must not ride through.
     const toEnemy: ZoneCardEntry = {
-      ...given.entry, playedOnTurn: game.turnNumber, movedOnTurn: null, activatedOnTurn: null,
+      ...given.entry, playedOnTurn: game.turnNumber, movedOnTurn: null, activatedOnTurn: null, charge: 0,
     }
     const toActor: ZoneCardEntry = {
-      ...received.entry, playedOnTurn: game.turnNumber, movedOnTurn: null, activatedOnTurn: null,
+      ...received.entry, playedOnTurn: game.turnNumber, movedOnTurn: null, activatedOnTurn: null, charge: 0,
     }
     received.zone.cards[enemy].push(toEnemy)
     given.zone.cards[actor].push(toActor)

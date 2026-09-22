@@ -1,5 +1,5 @@
 import {
-  ADDITIONAL_SPAWNS_CAP, KEYWORDS, PURIFIER_LOSS_WINDOW_TURNS,
+  ADDITIONAL_SPAWNS_CAP, FACTIONS, KEYWORDS, PURIFIER_LOSS_WINDOW_TURNS,
   VEHICLE_TYPES, ZONE_TYPES,
 } from '../gameSettings.ts'
 import type { CardInstance, PublicGameState } from './gameInit.ts'
@@ -9,9 +9,12 @@ import {
   registerHandler, zoneById,
 } from './gameEngine.ts'
 import { zoneCapFor } from './zoneCapacity.ts'
-import { costModifierFor, effectFor, effectName, noteUnimplemented } from '../effects/registry.ts'
+import { isStunned } from './stun.ts'
+import { costModifierFor, effectFor, effectName, enemyTargetFilterFor, noteUnimplemented } from '../effects/registry.ts'
 import { dispatchDeployWatchers } from './battleTriggers.ts'
 import { effectiveMaterialCostOf } from './costs.ts'
+import { chargeGateShortfall, chargeOf, dischargeFromOf, spendCharge } from './charge.ts'
+import { decoyFor } from './decoy.ts'
 
 const BIOMES_BY_TYPE: Record<string, string[]> = {
   [VEHICLE_TYPES.SHIP]: [ZONE_TYPES.WATER, ZONE_TYPES.BEACH],
@@ -28,11 +31,16 @@ export function biomeAllows(vehicleType: string | null, biome: string): boolean 
 const isAircraft = (vehicleType: string): boolean =>
   vehicleType === VEHICLE_TYPES.PLANE || vehicleType === VEHICLE_TYPES.AIRSHIP
 
-function screenBlocks(state: PublicGameState, side: Side, zoneId: number, vehicleType: string): boolean {
+function screenBlocks(
+  state: PublicGameState, side: Side, zoneId: number, card: CardInstance, turnNumber: number,
+): boolean {
   const zone = state.zones.find((z) => z.id === zoneId)
   if (!zone) return true
-  const enemy = zone.cards[otherSide(side)]
-  if (isAircraft(vehicleType) && enemy.some((c) => c.keywords.includes(KEYWORDS.AIR_SCREEN))) return true
+  // A stunned Screen is switched off (2026-09-21 LH spec §3.4).
+  const enemy = zone.cards[otherSide(side)].filter((c) => !isStunned(c as ZoneCardEntry, turnNumber))
+  const vehicleType = card.vehicleType!
+  // Caspian's sea-skimmer (2026-09-21 LH spec §3.10): under the Air Screen.
+  if (isAircraft(vehicleType) && card.meta.ignoresAirScreen !== true && enemy.some((c) => c.keywords.includes(KEYWORDS.AIR_SCREEN))) return true
   if (vehicleType === VEHICLE_TYPES.SUB && enemy.some((c) => c.keywords.includes(KEYWORDS.SUB_SCREEN))) return true
   return false
 }
@@ -128,6 +136,17 @@ function aiVehicleMissing(
   return !zone?.cards[side].some((c) => c.isBuiltIn)
 }
 
+// LH Luxon: "can only be played into a zone where you control an LH vehicle"
+// (2026-09-21 spec §3.10, R-7). Alarmed's shape; any friendly LH hull spots,
+// planes included. "LH" is faction === 'LH' — player-made cards are NEUTRAL.
+function lhVehicleMissing(
+  state: PublicGameState, side: Side, zoneId: number, card: CardInstance,
+): boolean {
+  if (card.meta.deployRequiresLhVehicle !== true) return false
+  const zone = state.zones.find((z) => z.id === zoneId)
+  return !zone?.cards[side].some((c) => c.faction === FACTIONS.LH)
+}
+
 // TG Obelisk: at most one copy of this card per zone, PER SIDE (wave 8).
 //
 // Obelisk is a 40k Stealthy ship that summons a free Mirth Swarm into every
@@ -190,11 +209,12 @@ export function legalZonesFor(
   return state.zones
     .filter((z) => (
       biomeAllows(card.vehicleType, z.biome) &&
-      !screenBlocks(state, side, z.id, card.vehicleType!) &&
+      !screenBlocks(state, side, z.id, card, turnNumber) &&
       !aircraftLocked(state, side, z.id, card.vehicleType!) &&
       !riderBlocks(state, side, z.id, card.faction) &&
       !battleLossMissing(state, side, z.id, card, turnNumber) &&
       !aiVehicleMissing(state, side, z.id, card) &&
+      !lhVehicleMissing(state, side, z.id, card) &&
       !uniquePerZoneBlocked(state, side, z.id, card) &&
       !zoneFull(state, side, z.id)
     ))
@@ -463,6 +483,14 @@ registerHandler('PLAY_CARD_TO_ZONE', (game, actor, action, ctx) => {
     return err(400, 'Ability cards are played without a zone')
   }
   if (!canAffordInGame(game, actor, card)) return err(400, 'You cannot afford that card')
+
+  // 2026-09-21 LH (spec §3.3): a play precondition on the board's pips, read at
+  // play time only and never spent. Spawns never come through here (§7.4).
+  const shortfall = chargeGateShortfall(game.state, actor, card)
+  if (shortfall) {
+    return err(400, `${card.name} requires ${shortfall.required} Charge on your board — you have ${shortfall.have}`)
+  }
+
   if (card.type === 'vehicle' && !legalZonesFor(game.state, actor, card, game.turnNumber).includes(action.zoneId)) {
     return err(400, 'That vehicle cannot deploy to that zone')
   }
@@ -551,7 +579,37 @@ registerHandler('PLAY_CARD_TARGETING_CARD_ON_FIELD', (game, actor, action, ctx) 
 
   const effectMeta = effectName(card, 'playOnVehicleEffect')
   if (effectMeta === null) return err(400, `${card.name} does not target a vehicle`)
-  if (!findVehicle(game.state, action.targetInstanceId)) return err(400, 'That target is not on the field')
+  const target = findVehicle(game.state, action.targetInstanceId)
+  if (!target) return err(400, 'That target is not on the field')
+  // 2026-09-21 LH (spec §3.2): "Discharge N from a friendly LH vehicle". The
+  // engine validates the host and spends the pips; the effect only makes its
+  // second pick. Spent after pay() and before resolvePlayEffects, so a
+  // declined prompt keeps the pips spent (R-24) and a failed effect — which
+  // rolls the whole clone back — spends nothing.
+  const dischargeFrom = dischargeFromOf(card)
+  if (dischargeFrom !== null) {
+    if (target.side !== actor || target.entry.faction !== FACTIONS.LH) {
+      return err(400, `${card.name} must discharge from one of your LH vehicles`)
+    }
+    if (chargeOf(target.entry) < dischargeFrom) {
+      return err(400, `${target.entry.name} needs ${dischargeFrom} charge to discharge`)
+    }
+    // R-20: hosting a discharge-from ability IS the hull's activation for the
+    // turn, so a Terawatt cannot both transfer (ACTIVATE_VEHICLE) and host an
+    // ability card's discharge, or host twice, in one turn. Overcharge has no
+    // dischargeFrom (it targets a card in hand's meta, not a field host), so
+    // it never reaches this branch and is unaffected.
+    if (target.entry.activatedOnTurn === game.turnNumber) {
+      return err(409, `${target.entry.name} was already activated this turn`)
+    }
+  }
+
+  // Decoy (spec §3.6): an enemy target beside a Decoy the effect could have hit.
+  const couldTarget = enemyTargetFilterFor(effectMeta)
+  if (couldTarget && target.side === otherSide(actor)) {
+    const decoy = decoyFor(target.zone.cards[target.side] as ZoneCardEntry[], target.entry as ZoneCardEntry, couldTarget)
+    if (decoy) return err(400, `${decoy.name} draws the attack — ${card.name} must target it instead`)
+  }
 
   if (!canAffordInGame(game, actor, card)) return err(400, 'You cannot afford that card')
 
@@ -559,6 +617,13 @@ registerHandler('PLAY_CARD_TARGETING_CARD_ON_FIELD', (game, actor, action, ctx) 
 
   takeFromHand(game, actor, action.instanceId)
   pay(game, actor, card)
+  if (dischargeFrom !== null) {
+    spendCharge(target.entry as ZoneCardEntry, dischargeFrom)
+    // Stamped alongside the spend, not only checked above: hosting spends the
+    // hull's activation for the turn (R-20), same as ACTIVATE_VEHICLE's own
+    // stamp, so a second host or a later ACTIVATE_VEHICLE this turn refuses.
+    ;(target.entry as ZoneCardEntry).activatedOnTurn = game.turnNumber
+  }
 
   const failure = resolvePlayEffects(
     game, actor, card, ctx, { targetInstanceId: action.targetInstanceId }, ['playOnVehicleEffect', 'onPlayEffect'],

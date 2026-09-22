@@ -18,6 +18,8 @@ export const TG_ROBOTICS = [
         keywords: [KEYWORDS.ROBOTIC, KEYWORDS.MOBILE],
         meta: {
             lhRoboticsPool: true,
+            // Retired by the 2026-09-21 LH redesign (spec §7): the pool draw was its only reader.
+            retired: true,
         }
     },
     {
@@ -36,6 +38,8 @@ export const TG_ROBOTICS = [
         keywords: [KEYWORDS.ROBOTIC],
         meta: {
             lhRoboticsPool: true,
+            // Retired by the 2026-09-21 LH redesign (spec §7): the pool draw was its only reader.
+            retired: true,
         }
     },
     {
@@ -54,6 +58,8 @@ export const TG_ROBOTICS = [
         keywords: [KEYWORDS.ROBOTIC],
         meta: {
             lhRoboticsPool: true,
+            // Retired by the 2026-09-21 LH redesign (spec §7): the pool draw was its only reader.
+            retired: true,
         }
     },
     {
@@ -72,6 +78,8 @@ export const TG_ROBOTICS = [
         keywords: [KEYWORDS.ROBOTIC],
         meta: {
             lhRoboticsPool: true,
+            // Retired by the 2026-09-21 LH redesign (spec §7): the pool draw was its only reader.
+            retired: true,
         }
     },
 ];
@@ -81,9 +89,9 @@ export const lhVehicles = [
     {
         name: 'Ampere',
         isBuiltIn: true,
-        cardText: 'When played draw a random card from the [TG] robotics pool',
+        cardText: 'When played, stun target enemy vehicle in this zone.',
         materialCost: 200000,
-        blueprintCost: 206000,
+        blueprintCost: 206645,
         cpCost: 0,
         imageUrl: 'ampere.png',
         playerId: null,
@@ -91,10 +99,8 @@ export const lhVehicles = [
         type: 'vehicle',
         faction: FACTIONS.LH,
         blueprintId: null,
-        keywords: [],
-        meta: {
-            [TRIGGERS.ON_PLAY]: 'ampereOnPlay',
-        }
+        keywords: [KEYWORDS.MOBILE],
+        meta: { chargeMax: 2, [TRIGGERS.ON_PLAY]: 'ampereStun' },
     },
     {
         name: 'Coulomb',
@@ -111,15 +117,17 @@ export const lhVehicles = [
         blueprintId: null,
         keywords: [],
         meta: {
-            [TRIGGERS.ON_DEATH]: 'coulombEffect'
+            [TRIGGERS.ON_DEATH]: 'coulombEffect',
+            // Retired by the 2026-09-21 LH redesign (spec §7).
+            retired: true,
         }
     },
     {
         name: 'Umbra',
         isBuiltIn: true,
-        cardText: '',
-        materialCost: 148000,
-        blueprintCost: 148000,
+        cardText: 'Discharge 2: deal 150k damage to the enemy base in this zone, then this surfaces — it loses Stealthy for the rest of the game.',
+        materialCost: 150000,
+        blueprintCost: 148479,
         cpCost: 0,
         imageUrl: 'umbra.png',
         playerId: null,
@@ -128,15 +136,14 @@ export const lhVehicles = [
         faction: FACTIONS.LH,
         blueprintId: null,
         keywords: [KEYWORDS.STEALTHY],
-        meta: {
-        }
+        meta: { chargeMax: 2, [TRIGGERS.ON_ACTIVATE]: 'umbraSalvo', activateCpCost: 0, dischargeCost: 2 },
     },
     {
         name: 'Conduit',
         isBuiltIn: true,
-        cardText: 'When this vehicle is destroyed, draw a player made ship or tank card',
-        materialCost: 100000,
-        blueprintCost: 98000,
+        cardText: 'Relay: at the start of your turn, other friendly LH vehicles in this zone gain 1 additional charge. This does not stack.',
+        materialCost: 70000,
+        blueprintCost: 54077,
         cpCost: 0,
         imageUrl: 'conduit.png',
         playerId: null,
@@ -144,10 +151,10 @@ export const lhVehicles = [
         type: 'vehicle',
         faction: FACTIONS.LH,
         blueprintId: null,
-        keywords: [],
-        meta: {
-            [TRIGGERS.ON_DEATH]: 'conduitEffect'
-        }
+        keywords: [KEYWORDS.INOFFENSIVE, KEYWORDS.SCRAPPY],
+        // 2026-09-21 redesign (spec §3.1.5, R-4). A rule, not an effect —
+        // read by tickCharge; `max` over relays, so two never stack.
+        meta: { chargeRelay: 1 },
     },
     {
         name: 'Thunderbird',
@@ -164,14 +171,16 @@ export const lhVehicles = [
         blueprintId: null,
         keywords: [KEYWORDS.TEMPORARY, KEYWORDS.HALF_COST],
         meta: {
+            // Retired by the 2026-09-21 LH redesign (spec §7).
+            retired: true,
         }
     },
     {
         name: 'Quadrupole',
         isBuiltIn: true,
-        cardText: 'When played, draw one card from the [TG] Robotics pool',
-        materialCost: 540000,
-        blueprintCost: 545000,
+        cardText: 'Requires 3 Charge.',
+        materialCost: 560000,
+        blueprintCost: 685159,
         cpCost: 0,
         imageUrl: 'quadrupole.png',
         playerId: null,
@@ -179,17 +188,15 @@ export const lhVehicles = [
         type: 'vehicle',
         faction: FACTIONS.LH,
         blueprintId: null,
-        keywords: [KEYWORDS.BLOCKER, KEYWORDS.SCRAPPY],
-        meta: {
-            [TRIGGERS.ON_PLAY]: 'quadrupoleOnPlay',
-        }
+        keywords: [KEYWORDS.BLOCKER, KEYWORDS.MOBILE],
+        meta: { chargeMax: 2, requiresCharge: 3 },
     },
     {
         name: 'Terawatt',
         isBuiltIn: true,
-        cardText: 'Whenever a friendly vehicle would be made to fight in battle alone due to enemy card effect, you may add this vehicle to the combat.',
-        materialCost: 680000,
-        blueprintCost: 687000,
+        cardText: 'Requires 3 Charge. Generators: this gains 2 charge at the start of your turn instead of 1. Discharge 2: another friendly LH vehicle in this zone gains 2 charge.',
+        materialCost: 640000,
+        blueprintCost: 725002,
         cpCost: 0,
         imageUrl: 'terawatt.png',
         playerId: null,
@@ -197,17 +204,15 @@ export const lhVehicles = [
         type: 'vehicle',
         faction: FACTIONS.LH,
         blueprintId: null,
-        keywords: [],
-        meta: {
-            [TRIGGERS.ON_BATTLE_EFFECT]: 'terawattJoin',
-        }
+        keywords: [KEYWORDS.BLOCKER, KEYWORDS.SCRAPPY, KEYWORDS.MOBILE],
+        meta: { chargeMax: 4, chargeRate: 2, requiresCharge: 3, [TRIGGERS.ON_ACTIVATE]: 'terawattTransfer', activateCpCost: 0, dischargeCost: 2 },
     },
     {
         name: 'Angstrom',
         isBuiltIn: true,
         cardText: '',
         materialCost: 540000,
-        blueprintCost: 543000,
+        blueprintCost: 545846,
         cpCost: 0,
         imageUrl: 'angstrom.png',
         playerId: null,
@@ -215,16 +220,15 @@ export const lhVehicles = [
         type: 'vehicle',
         faction: FACTIONS.LH,
         blueprintId: null,
-        keywords: [],
-        meta: {
-        }
+        keywords: [KEYWORDS.BLOCKER, KEYWORDS.AIR_SCREEN, KEYWORDS.MOBILE],
+        meta: { chargeMax: 2 },
     },
     {
         name: 'Candela',
         isBuiltIn: true,
-        cardText: 'When played, draw one card from the [TG] Robotics pool',
-        materialCost: 800000,
-        blueprintCost: 878000,
+        cardText: 'Requires 4 Charge.',
+        materialCost: 700000,
+        blueprintCost: 1021169,
         cpCost: 0,
         imageUrl: 'candela.png',
         playerId: null,
@@ -232,17 +236,15 @@ export const lhVehicles = [
         type: 'vehicle',
         faction: FACTIONS.LH,
         blueprintId: null,
-        keywords: [KEYWORDS.BLOCKER, KEYWORDS.SUB_SCREEN],
-        meta: {
-            [TRIGGERS.ON_PLAY]: 'candelaOnPlay',
-        }
+        keywords: [KEYWORDS.BLOCKER, KEYWORDS.SUB_SCREEN, KEYWORDS.SCRAPPY, KEYWORDS.MOBILE],
+        meta: { chargeMax: 2, requiresCharge: 4 },
     },
     {
         name: 'Hydrovolt',
         isBuiltIn: true,
         cardText: '',
         materialCost: 260000,
-        blueprintCost: 268000,
+        blueprintCost: 257641,
         cpCost: 0,
         imageUrl: 'hydrovolt.png',
         playerId: null,
@@ -250,16 +252,15 @@ export const lhVehicles = [
         type: 'vehicle',
         faction: FACTIONS.LH,
         blueprintId: null,
-        keywords: [KEYWORDS.SUB_SCREEN],
-        meta: {
-        }
+        keywords: [KEYWORDS.BLOCKER, KEYWORDS.SUB_SCREEN],
+        meta: { chargeMax: 2 },
     },
     {
         name: 'Rectifier',
         isBuiltIn: true,
         cardText: '',
         materialCost: 700000,
-        blueprintCost: 734000,
+        blueprintCost: 734617,
         cpCost: 0,
         imageUrl: 'rectifier.png',
         playerId: null,
@@ -267,9 +268,10 @@ export const lhVehicles = [
         type: 'vehicle',
         faction: FACTIONS.LH,
         blueprintId: null,
-        keywords: [KEYWORDS.HALF_COST, KEYWORDS.TEMPORARY],
-        meta: {
-        }
+        // Fragile is moot while Temporary and live once Extended Sortie keeps it
+        // (R-22) — TG Audacious prints the same set for Spawn Audacious.
+        keywords: [KEYWORDS.HALF_COST, KEYWORDS.TEMPORARY, KEYWORDS.FRAGILE, KEYWORDS.SWIFT],
+        meta: {},
     },
     {
         name: 'Sapphire',
@@ -286,15 +288,17 @@ export const lhVehicles = [
         blueprintId: null,
         keywords: [KEYWORDS.MOBILE, KEYWORDS.STEALTHY],
         meta: {
-            [TRIGGERS.ON_PLAY]: 'sapphireEffect'
+            [TRIGGERS.ON_PLAY]: 'sapphireEffect',
+            // Retired by the 2026-09-21 LH redesign (spec §7).
+            retired: true,
         }
     },
     {
         name: 'Eclipse',
         isBuiltIn: true,
-        cardText: 'Once per turn this vehicle may target one non-stealthy enemy vehicle in its zone to have a 1v1 battle. If you do so, you may not declare a fleet battle in this zone this turn.',
+        cardText: 'Discharge 2: this vehicle fights a 1v1 against target non-Stealthy enemy vehicle in this zone.',
         materialCost: 220000,
-        blueprintCost: 223000,
+        blueprintCost: 215980,
         cpCost: 0,
         imageUrl: 'eclipse.png',
         playerId: null,
@@ -302,11 +306,8 @@ export const lhVehicles = [
         type: 'vehicle',
         faction: FACTIONS.LH,
         blueprintId: null,
-        keywords: [],
-        meta: {
-            [TRIGGERS.ON_ACTIVATE]: 'eclipseEffect',
-            activateCpCost: 0
-        }
+        keywords: [KEYWORDS.STEALTHY],
+        meta: { chargeMax: 2, [TRIGGERS.ON_ACTIVATE]: 'eclipseDuel', activateCpCost: 0, dischargeCost: 2 },
     },
     {
         name: 'Spectrum',
@@ -324,7 +325,9 @@ export const lhVehicles = [
         keywords: [KEYWORDS.HALF_COST, KEYWORDS.TEMPORARY],
         meta: {
             [TRIGGERS.ON_ACTIVATE]: 'spectrumEffect',
-            activateCpCost: 1
+            activateCpCost: 1,
+            // Retired by the 2026-09-21 LH redesign (spec §7).
+            retired: true,
         }
     },
     {
@@ -341,7 +344,9 @@ export const lhVehicles = [
         faction: FACTIONS.LH,
         blueprintId: null,
         meta: {
-            [TRIGGERS.ON_PLAY]: 'sapphireScreenEffect'
+            [TRIGGERS.ON_PLAY]: 'sapphireScreenEffect',
+            // Retired by the 2026-09-21 LH redesign (spec §7).
+            retired: true,
         }
     },
      {
@@ -360,6 +365,8 @@ export const lhVehicles = [
         keywords: [KEYWORDS.HALF_COST, KEYWORDS.TEMPORARY],
         meta: {
             resourceSurge: { materialsAtLeast: 140000, extraSpawns: 1 },
+            // Retired by the 2026-09-21 LH redesign (spec §7).
+            retired: true,
         }
     },
     {
@@ -376,7 +383,9 @@ export const lhVehicles = [
         faction: FACTIONS.LH,
         blueprintId: null,
         meta: {
-            [TRIGGERS.ON_PLAY]: 'orbitFlankEffect'
+            [TRIGGERS.ON_PLAY]: 'orbitFlankEffect',
+            // Retired by the 2026-09-21 LH redesign (spec §7).
+            retired: true,
         }
     },
     {
@@ -393,8 +402,297 @@ export const lhVehicles = [
         faction: FACTIONS.LH,
         blueprintId: null,
         meta: {
-            [TRIGGERS.ON_PLAY]: 'roboticAssemblersEffect'
+            [TRIGGERS.ON_PLAY]: 'roboticAssemblersEffect',
+            // Retired by the 2026-09-21 LH redesign (spec §7).
+            retired: true,
         }
+    },
+    {
+        name: 'Chrysoprase',
+        isBuiltIn: true,
+        cardText: '',
+        materialCost: 40000,
+        blueprintCost: 39571,
+        cpCost: 0,
+        imageUrl: 'chrysoprase.png',
+        playerId: null,
+        vehicleType: 'ship',
+        type: 'vehicle',
+        faction: FACTIONS.LH,
+        blueprintId: null,
+        keywords: [KEYWORDS.SCRAPPY],
+        meta: { chargeMax: 2 },
+    },
+    {
+        name: 'Dipole',
+        isBuiltIn: true,
+        cardText: '',
+        materialCost: 70000,
+        blueprintCost: 65069,
+        cpCost: 0,
+        imageUrl: 'dipole.png',
+        playerId: null,
+        vehicleType: VEHICLE_TYPES.AIRSHIP,
+        type: 'vehicle',
+        faction: FACTIONS.LH,
+        blueprintId: null,
+        keywords: [KEYWORDS.MOBILE],
+        meta: { chargeMax: 2 },
+    },
+    {
+        name: 'Watt',
+        isBuiltIn: true,
+        cardText: '',
+        materialCost: 90000,
+        blueprintCost: 90797,
+        cpCost: 0,
+        imageUrl: 'watt.png',
+        playerId: null,
+        vehicleType: 'ship',
+        type: 'vehicle',
+        faction: FACTIONS.LH,
+        blueprintId: null,
+        // Decoy's rule lives in the glossary, like every keyword's — no card text (R-6).
+        keywords: [KEYWORDS.SCRAPPY, KEYWORDS.MOBILE, KEYWORDS.DECOY],
+        meta: { chargeMax: 1 },
+    },
+    {
+        name: 'Luxon',
+        isBuiltIn: true,
+        cardText: 'Blind on its own: can only be played into a zone where you control an LH vehicle.',
+        materialCost: 60000,
+        blueprintCost: 59142,
+        cpCost: 0,
+        imageUrl: 'luxon.png',
+        playerId: null,
+        vehicleType: 'plane',
+        type: 'vehicle',
+        faction: FACTIONS.LH,
+        blueprintId: null,
+        keywords: [KEYWORDS.HALF_COST, KEYWORDS.TEMPORARY],
+        meta: { deployRequiresLhVehicle: true },
+    },
+    {
+        name: 'Byte',
+        isBuiltIn: true,
+        cardText: 'Discharge 1: draw a card.',
+        materialCost: 40000,
+        blueprintCost: 43301,
+        cpCost: 0,
+        imageUrl: 'byte.png',
+        playerId: null,
+        vehicleType: 'ship',
+        type: 'vehicle',
+        faction: FACTIONS.LH,
+        blueprintId: null,
+        keywords: [KEYWORDS.MOBILE],
+        // An activated ability needs onActivate AND a price; the CP price of 0
+        // keeps BoardZone's button gate and the bot menu in step (spec §3.2).
+        meta: { chargeMax: 1, [TRIGGERS.ON_ACTIVATE]: 'byteDraw', activateCpCost: 0, dischargeCost: 1 },
+    },
+    {
+        name: 'Volta',
+        isBuiltIn: true,
+        cardText: 'When played, a friendly LH vehicle in this zone gains 1 charge.',
+        materialCost: 40000,
+        blueprintCost: 37207,
+        cpCost: 0,
+        imageUrl: 'volta.png',
+        playerId: null,
+        vehicleType: 'ship',
+        type: 'vehicle',
+        faction: FACTIONS.LH,
+        blueprintId: null,
+        keywords: [KEYWORDS.FRAGILE],
+        meta: { chargeMax: 1, [TRIGGERS.ON_PLAY]: 'voltaJumpStart' },
+    },
+    {
+        name: 'Kilowatt',
+        isBuiltIn: true,
+        cardText: '',
+        materialCost: 180000,
+        blueprintCost: 180583,
+        cpCost: 0,
+        imageUrl: 'kilowatt.png',
+        playerId: null,
+        vehicleType: 'ship',
+        type: 'vehicle',
+        faction: FACTIONS.LH,
+        blueprintId: null,
+        keywords: [KEYWORDS.BLOCKER],
+        meta: { chargeMax: 2 },
+    },
+    {
+        name: 'Caspian',
+        isBuiltIn: true,
+        cardText: 'Sea-skimmer: may be played into a zone with enemy Air Screen.',
+        materialCost: 230000,
+        blueprintCost: 230226,
+        cpCost: 0,
+        imageUrl: 'caspian.png',
+        playerId: null,
+        vehicleType: 'plane',
+        type: 'vehicle',
+        faction: FACTIONS.LH,
+        blueprintId: null,
+        keywords: [KEYWORDS.HALF_COST, KEYWORDS.TEMPORARY],
+        meta: { ignoresAirScreen: true },
+    },
+    {
+        name: 'Dynamo',
+        isBuiltIn: true,
+        cardText: 'Requires 2 Charge.',
+        materialCost: 350000,
+        blueprintCost: 346346,
+        cpCost: 0,
+        imageUrl: 'dynamo.png',
+        playerId: null,
+        vehicleType: VEHICLE_TYPES.AIRSHIP,
+        type: 'vehicle',
+        faction: FACTIONS.LH,
+        blueprintId: null,
+        keywords: [KEYWORDS.MOBILE, KEYWORDS.SWIFT],
+        meta: { chargeMax: 1, requiresCharge: 2 },
+    },
+    {
+        name: 'Megawatt',
+        isBuiltIn: true,
+        cardText: '',
+        materialCost: 360000,
+        blueprintCost: 361751,
+        cpCost: 0,
+        imageUrl: 'megawatt.png',
+        playerId: null,
+        vehicleType: 'ship',
+        type: 'vehicle',
+        faction: FACTIONS.LH,
+        blueprintId: null,
+        keywords: [KEYWORDS.MOBILE],
+        meta: { chargeMax: 2 },
+    },
+    {
+        name: 'Penumbra',
+        isBuiltIn: true,
+        cardText: 'Discharge 3: stun every enemy vehicle in this zone.',
+        materialCost: 370000,
+        blueprintCost: 375279,
+        cpCost: 0,
+        imageUrl: 'penumbra.png',
+        playerId: null,
+        vehicleType: 'ship',
+        type: 'vehicle',
+        faction: FACTIONS.LH,
+        blueprintId: null,
+        keywords: [],
+        meta: { chargeMax: 3, [TRIGGERS.ON_ACTIVATE]: 'penumbraPulse', activateCpCost: 0, dischargeCost: 3 },
+    },
+    {
+        name: 'Cathode',
+        isBuiltIn: true,
+        cardText: 'Requires 3 Charge. Discharge 2: this vehicle fights a 1v1 against target enemy ship or submarine in this zone, then this surfaces — it loses Stealthy for the rest of the game.',
+        materialCost: 600000,
+        blueprintCost: 726398,
+        cpCost: 0,
+        imageUrl: 'cathode.png',
+        playerId: null,
+        vehicleType: VEHICLE_TYPES.SUB,
+        type: 'vehicle',
+        faction: FACTIONS.LH,
+        blueprintId: null,
+        keywords: [KEYWORDS.STEALTHY, KEYWORDS.SUB_SCREEN],
+        meta: { chargeMax: 2, requiresCharge: 3, [TRIGGERS.ON_ACTIVATE]: 'cathodeDuel', activateCpCost: 0, dischargeCost: 2 },
+    },
+    {
+        name: 'Superradiance',
+        isBuiltIn: true,
+        cardText: 'Discharge 3: deal 300k damage to the enemy base in this zone.',
+        materialCost: 620000,
+        blueprintCost: 625766,
+        cpCost: 0,
+        imageUrl: 'superradiance.png',
+        playerId: null,
+        vehicleType: 'ship',
+        type: 'vehicle',
+        faction: FACTIONS.LH,
+        blueprintId: null,
+        keywords: [],
+        meta: { chargeMax: 3, [TRIGGERS.ON_ACTIVATE]: 'superradianceBeam', activateCpCost: 0, dischargeCost: 3 },
+    },
+    {
+        name: 'Impedance',
+        isBuiltIn: true,
+        cardText: 'Requires 5 Charge. Discharge 2: deal 400k damage to the enemy base in this zone.',
+        materialCost: 750000,
+        blueprintCost: 1326933,
+        cpCost: 0,
+        imageUrl: 'impedance.png',
+        playerId: null,
+        vehicleType: 'ship',
+        type: 'vehicle',
+        faction: FACTIONS.LH,
+        blueprintId: null,
+        keywords: [KEYWORDS.BLOCKER],
+        meta: { chargeMax: 2, requiresCharge: 5, [TRIGGERS.ON_ACTIVATE]: 'impedanceBeam', activateCpCost: 0, dischargeCost: 2 },
+    },
+    {
+        name: 'EMP Salvo',
+        isBuiltIn: true,
+        cardText: 'Discharge 2 from a friendly LH vehicle: stun target enemy vehicle in that zone.',
+        materialCost: 60000,
+        blueprintCost: 0,
+        cpCost: 0,
+        imageUrl: 'empSalvo.png',
+        playerId: null,
+        vehicleType: null,
+        type: 'ability',
+        faction: FACTIONS.LH,
+        blueprintId: null,
+        meta: { [TRIGGERS.PLAY_ON_VEHICLE]: 'empSalvoEffect', dischargeFrom: 2 },
+    },
+    {
+        name: 'Overcharge',
+        isBuiltIn: true,
+        cardText: 'Target friendly LH vehicle gains 2 charge.',
+        materialCost: 0,
+        blueprintCost: 0,
+        cpCost: 1,
+        imageUrl: 'overcharge.png',
+        playerId: null,
+        vehicleType: null,
+        type: 'ability',
+        faction: FACTIONS.LH,
+        blueprintId: null,
+        meta: { [TRIGGERS.PLAY_ON_VEHICLE]: 'overchargeEffect' },
+    },
+    {
+        name: 'Afterburner',
+        isBuiltIn: true,
+        cardText: 'Discharge 2 from a friendly LH vehicle: a friendly LH vehicle played this turn in that zone may attack the base this turn.',
+        materialCost: 50000,
+        blueprintCost: 0,
+        cpCost: 0,
+        imageUrl: 'afterburner.png',
+        playerId: null,
+        vehicleType: null,
+        type: 'ability',
+        faction: FACTIONS.LH,
+        blueprintId: null,
+        meta: { [TRIGGERS.PLAY_ON_VEHICLE]: 'afterburnerEffect', dischargeFrom: 2 },
+    },
+    {
+        name: 'Extended Sortie',
+        isBuiltIn: true,
+        cardText: 'Discharge 2 from a friendly LH vehicle: a friendly LH plane in that zone loses Temporary.',
+        materialCost: 100000,
+        blueprintCost: 0,
+        cpCost: 0,
+        imageUrl: 'extendedSortie.png',
+        playerId: null,
+        vehicleType: null,
+        type: 'ability',
+        faction: FACTIONS.LH,
+        blueprintId: null,
+        meta: { [TRIGGERS.PLAY_ON_VEHICLE]: 'extendedSortieEffect', dischargeFrom: 2 },
     },
 
 ];
