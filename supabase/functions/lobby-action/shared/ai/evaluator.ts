@@ -1,7 +1,9 @@
 import { BASE_DAMAGE_DIVISOR, KEYWORDS } from '../gameSettings.ts'
 import { materialsPerTurnOf } from '../lobbySettings.ts'
 import type { EngineContext, EngineGame, GameAction, Side, ZoneCardEntry } from '../engine/engineTypes.ts'
-import { applyAction, baseStrikersIn, effectiveMaterialCostOf, otherSide, sideOf } from '../engine/index.ts'
+import {
+  activeBlockersIn, applyAction, baseStrikersIn, boardChargeOf, effectiveMaterialCostOf, isStunned, otherSide, sideOf,
+} from '../engine/index.ts'
 import { basicPolicy } from './basicPolicy.ts'
 import { botOwes } from './botOwes.ts'
 import { viewFor } from './botView.ts'
@@ -21,6 +23,7 @@ export const EVALUATOR = {
   hand: 0.1,           // per card in the bot's hand
   baseHp: 0.0005,      // per HP of base advantage (1000 HP = half a turn)
   win: 1000,           // a decided game
+  charge: 0.15,        // per pip of charge advantage — a fraction of a discharge's tempo (2026-09-21 LH)
 } as const
 
 // Base damage a set of hulls deals per bombardment: applies the engine's
@@ -29,10 +32,12 @@ export const EVALUATOR = {
 // Temporary hulls (removed at the next turn start, so they never strike).
 // Fresh deployments are eligible—the score is read at the start of the
 // enemy's turn, and they strike on the bot's.
-export function strikePower(hulls: readonly ZoneCardEntry[]): number {
+export function strikePower(hulls: readonly ZoneCardEntry[], turnNumber: number): number {
   const strikers = baseStrikersIn(hulls as ZoneCardEntry[], Infinity)
   return strikers.reduce((sum, c) => {
     if (c.keywords.includes(KEYWORDS.TEMPORARY)) return sum
+    // A stunned hull sits out the turn the score is read for (2026-09-21 LH).
+    if (isStunned(c, turnNumber)) return sum
     return sum + Math.floor(effectiveMaterialCostOf(c) / BASE_DAMAGE_DIVISOR)
   }, 0)
 }
@@ -58,8 +63,8 @@ export function turnsToWin(game: EngineGame, attacker: Side): number {
   const times = game.state.zones.map((z) => {
     const hp = z.baseHp[defender]
     if (hp <= 0) return 0
-    if (z.cards[defender].some((c) => c.keywords.includes(KEYWORDS.BLOCKER))) return EVALUATOR.capTurns
-    const power = strikePower(z.cards[attacker] as ZoneCardEntry[])
+    if (activeBlockersIn(z.cards[defender] as ZoneCardEntry[], game.turnNumber).length > 0) return EVALUATOR.capTurns
+    const power = strikePower(z.cards[attacker] as ZoneCardEntry[], game.turnNumber)
     return power > 0 ? Math.min(EVALUATOR.capTurns, hp / power) : EVALUATOR.capTurns
   }).sort((x, y) => x - y)
   return times.length > 1 ? times[0] + times[1] : (times[0] ?? EVALUATOR.capTurns)
@@ -77,6 +82,7 @@ export function positionScore(game: EngineGame, side: Side): number {
     + EVALUATOR.board * (boardCost(game, side) - boardCost(game, enemy)) / income
     + EVALUATOR.hand * game.privates[side].hand.length
     + EVALUATOR.baseHp * game.state.zones.reduce((t, z) => t + z.baseHp[side] - z.baseHp[enemy], 0)
+    + EVALUATOR.charge * (boardChargeOf(game.state, side) - boardChargeOf(game.state, enemy))
 }
 
 const withRng = (ctx: EngineContext, seed: number): EngineContext => ({ ...ctx, rng: mulberry32(seed >>> 0) })
