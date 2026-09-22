@@ -1,8 +1,9 @@
 import { effectiveCostInGame } from '../engine/placement.ts'
-import { FACTIONS, KEYWORDS } from '../gameSettings.ts'
+import { addCharge, hasChargeRoom } from '../engine/charge.ts'
+import { FACTIONS, KEYWORDS, VOLTA_JUMP_START_CHARGE } from '../gameSettings.ts'
 import {
-  choice, drawFromPool, enemyVehicleOptions, grant, poolEligible, sequence, spawnVehicles, summonHulls,
-  whenPlayed, zoneOccupants,
+  choice, drawFromPool, enemyVehicleOptions, friendlyVehicleOptions, grant, poolEligible, sequence,
+  spawnVehicles, summonHulls, whenPlayed, zoneOccupants,
 } from './primitives.ts'
 import type { EffectFn } from './registry.ts'
 import { registerEffect } from './registry.ts'
@@ -357,3 +358,30 @@ const isLh = (e: { faction: string }): boolean => e.faction === FACTIONS.LH
 // Byte — "Discharge 1: draw a card." The engine has already checked and spent
 // the pip (ACTIVATE_VEHICLE, spec §3.2); this is the draw and nothing else.
 registerEffect('byteDraw', grant({ draw: 1 }))
+
+// Volta — "When played, a friendly LH vehicle in this zone gains 1 charge."
+// The player picks (R-3): which timer to accelerate is the whole decision.
+// The prompt excludes what this play just placed (Volta itself) and anything
+// already full; no candidate → a log line, never a refusal.
+const VOLTA = 'voltaJumpStart'
+registerEffect(VOLTA, choice({
+  effect: VOLTA,
+  prompt: 'Volta jump-starts a friendly LH vehicle in this zone — choose which gains 1 charge',
+  options: ({ game, actor, targetZoneId, placedInstanceIds }) => (
+    typeof targetZoneId === 'number'
+      ? friendlyVehicleOptions(game, actor, targetZoneId, (e) =>
+          isLh(e) && hasChargeRoom(e) && !(placedInstanceIds ?? []).includes(e.instanceId))
+      : []
+  ),
+  resolve: ({ game, actor, card }, choiceId) => {
+    if (choiceId === null) {
+      game.state.log.push(`${card.name}: nothing in this zone can take a charge`)
+      return true
+    }
+    const found = findVehicle(game.state, choiceId)
+    if (!found || found.side !== actor) return false
+    const gained = addCharge(found.entry as ZoneCardEntry, VOLTA_JUMP_START_CHARGE)
+    game.state.log.push(`${card.name} jump-starts ${found.entry.name} (+${gained} charge)`)
+    return true
+  },
+}))

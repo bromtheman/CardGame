@@ -503,5 +503,21 @@ export const lhVehicles = [
         // keeps BoardZone's button gate and the bot menu in step (spec §3.2).
         meta: { chargeMax: 1, [TRIGGERS.ON_ACTIVATE]: 'byteDraw', activateCpCost: 0, dischargeCost: 1 },
     },
+    {
+        name: 'Volta',
+        isBuiltIn: true,
+        cardText: 'When played, a friendly LH vehicle in this zone gains 1 charge.',
+        materialCost: 40000,
+        blueprintCost: 37207,
+        cpCost: 0,
+        imageUrl: 'volta.png',
+        playerId: null,
+        vehicleType: 'ship',
+        type: 'vehicle',
+        faction: FACTIONS.LH,
+        blueprintId: null,
+        keywords: [KEYWORDS.FRAGILE],
+        meta: { chargeMax: 1, [TRIGGERS.ON_PLAY]: 'voltaJumpStart' },
+    },
 
 ];

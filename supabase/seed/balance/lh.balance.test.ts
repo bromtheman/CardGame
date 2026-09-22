@@ -50,6 +50,11 @@ export const CARDS: Record<string, Expected> = {
     cardText: 'Discharge 1: draw a card.',
     meta: { chargeMax: 1, onActivate: 'byteDraw', activateCpCost: 0, dischargeCost: 1 },
   },
+  'LH:Volta': {
+    materialCost: 40_000, blueprintCost: 37_207, cpCost: 0, keywords: ['fragile'], vehicleType: 'ship',
+    cardText: 'When played, a friendly LH vehicle in this zone gains 1 charge.',
+    meta: { chargeMax: 1, onPlayEffect: 'voltaJumpStart' },
+  },
 }
 
 // Retired by this wave (spec §7): rows stay seeded, undraftable.
