@@ -594,6 +594,14 @@ registerHandler('PLAY_CARD_TARGETING_CARD_ON_FIELD', (game, actor, action, ctx) 
     if (chargeOf(target.entry) < dischargeFrom) {
       return err(400, `${target.entry.name} needs ${dischargeFrom} charge to discharge`)
     }
+    // R-20: hosting a discharge-from ability IS the hull's activation for the
+    // turn, so a Terawatt cannot both transfer (ACTIVATE_VEHICLE) and host an
+    // ability card's discharge, or host twice, in one turn. Overcharge has no
+    // dischargeFrom (it targets a card in hand's meta, not a field host), so
+    // it never reaches this branch and is unaffected.
+    if (target.entry.activatedOnTurn === game.turnNumber) {
+      return err(409, `${target.entry.name} was already activated this turn`)
+    }
   }
 
   // Decoy (spec §3.6): an enemy target beside a Decoy the effect could have hit.
@@ -609,7 +617,13 @@ registerHandler('PLAY_CARD_TARGETING_CARD_ON_FIELD', (game, actor, action, ctx) 
 
   takeFromHand(game, actor, action.instanceId)
   pay(game, actor, card)
-  if (dischargeFrom !== null) spendCharge(target.entry as ZoneCardEntry, dischargeFrom)
+  if (dischargeFrom !== null) {
+    spendCharge(target.entry as ZoneCardEntry, dischargeFrom)
+    // Stamped alongside the spend, not only checked above: hosting spends the
+    // hull's activation for the turn (R-20), same as ACTIVATE_VEHICLE's own
+    // stamp, so a second host or a later ACTIVATE_VEHICLE this turn refuses.
+    ;(target.entry as ZoneCardEntry).activatedOnTurn = game.turnNumber
+  }
 
   const failure = resolvePlayEffects(
     game, actor, card, ctx, { targetInstanceId: action.targetInstanceId }, ['playOnVehicleEffect', 'onPlayEffect'],

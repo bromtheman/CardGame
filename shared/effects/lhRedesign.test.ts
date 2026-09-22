@@ -240,6 +240,33 @@ describe('Terawatt — terawattTransfer', () => {
     if (!res.ok) throw new Error(res.error)
     expect(chargeOf(res.game.state.zones[0].cards.b[0] as ZoneCardEntry)).toBe(2)
   })
+
+  // R-20: hosting an ability card's discharge is the hull's activation, so a
+  // Terawatt that already transferred this turn cannot host EMP Salvo too.
+  it('cannot also host EMP Salvo the same turn it transfers — hosting is its activation (R-20)', () => {
+    const game = lhGame()
+    game.state.zones[0].cards.a.push(
+      terawatt(4),
+      zoneEntry({ instanceId: 'pen', faction: 'LH', meta: { chargeMax: 3 }, charge: 2 }),
+    )
+    const activated = activate(game, 'tera')
+    if (!activated.ok) throw new Error(activated.error)
+    const resolved = applyAction(activated.game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'pen' }, makeCtx())
+    if (!resolved.ok) throw new Error(resolved.error)
+    const withSalvo = resolved.game
+    withSalvo.privates.a.hand = [inst({
+      instanceId: 'salvo', name: 'EMP Salvo', type: 'ability', vehicleType: null, faction: 'LH', materialCost: 60000,
+      meta: { playOnVehicleEffect: 'empSalvoEffect', dischargeFrom: 2 },
+    })]
+    withSalvo.state.counts.a = { hand: 1, deck: withSalvo.privates.a.deck.length }
+    withSalvo.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'e1' }))
+    // Tera has exactly 2 charge left (4 - 2 discharged) — enough to pay EMP
+    // Salvo's own cost, so a 409 here can only be R-20's activation guard.
+    const res = applyAction(
+      withSalvo, 'alice', { type: 'PLAY_CARD_TARGETING_CARD_ON_FIELD', instanceId: 'salvo', targetInstanceId: 'tera' }, makeCtx(),
+    )
+    expect(res).toMatchObject({ ok: false, status: 409 })
+  })
 })
 
 describe('EMP Salvo — empSalvoEffect', () => {

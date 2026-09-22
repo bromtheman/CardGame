@@ -1832,6 +1832,24 @@ describe('dischargeFrom on an ability card (2026-09-21 LH spec §3.2)', () => {
     expect(chargeOf(res.game.state.zones[0].cards.a[0] as ZoneCardEntry)).toBe(0)
     expect(res.game.privates.a.hand).toHaveLength(0)
   })
+
+  // R-20: "The transfer is an activated ability, so Terawatt cannot both
+  // transfer and be an ability card's discharge host in one turn." Hosting IS
+  // the hull's activation for the turn, so a host already activated refuses,
+  // and a successful host is stamped just like ACTIVATE_VEHICLE stamps one.
+  it('refuses a host already activated this turn, and its pips are untouched (R-20)', () => {
+    const game = setup()
+    ;(game.state.zones[0].cards.a[0] as ZoneCardEntry).activatedOnTurn = game.turnNumber
+    const res = play(game, 'host')
+    expect(res).toMatchObject({ ok: false, status: 409 })
+    expect(chargeOf(game.state.zones[0].cards.a[0] as ZoneCardEntry)).toBe(2)
+  })
+
+  it('stamps the host\'s activatedOnTurn on a successful discharge (R-20)', () => {
+    const res = play(setup(), 'host')
+    if (!res.ok) throw new Error(res.error)
+    expect((res.game.state.zones[0].cards.a[0] as ZoneCardEntry).activatedOnTurn).toBe(res.game.turnNumber)
+  })
 })
 
 describe('LH placement keys (2026-09-21 spec §3.10)', () => {
