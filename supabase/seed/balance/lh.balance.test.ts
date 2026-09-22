@@ -131,6 +131,11 @@ export const CARDS: Record<string, Expected> = {
     cardText: 'Requires 3 Charge. Generators: this gains 2 charge at the start of your turn instead of 1. Discharge 2: another friendly LH vehicle in this zone gains 2 charge.',
     meta: { chargeMax: 4, chargeRate: 2, requiresCharge: 3, onActivate: 'terawattTransfer', activateCpCost: 0, dischargeCost: 2 },
   },
+  'LH:EMP Salvo': {
+    materialCost: 60_000, blueprintCost: 0, cpCost: 0, keywords: [], vehicleType: null,
+    cardText: 'Discharge 2 from a friendly LH vehicle: stun target enemy vehicle in that zone.',
+    meta: { playOnVehicleEffect: 'empSalvoEffect', dischargeFrom: 2 },
+  },
 }
 
 // Retired by this wave (spec §7): rows stay seeded, undraftable.

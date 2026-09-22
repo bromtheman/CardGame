@@ -512,3 +512,30 @@ registerEffect(TERAWATT_TRANSFER, choice({
     return true
   },
 }))
+
+// The three "Discharge 2 from a friendly LH vehicle" abilities (spec §3.2,
+// R-24). PLAY_CARD_TARGETING_CARD_ON_FIELD has validated the host and spent
+// the pips; each effect makes its second pick in the HOST'S lane through
+// `choice`. An empty option list resolves with null → false → the play is
+// refused and the clone rolled back, so nothing was spent (R-24's "greyed in
+// hand" is the engine refusing; the UI shows the reason).
+function hostLane(game: EngineGame, targetInstanceId: string | undefined) {
+  return typeof targetInstanceId === 'string' ? findVehicle(game.state, targetInstanceId) : null
+}
+
+const EMP_SALVO = 'empSalvoEffect'
+registerEffect(EMP_SALVO, choice({
+  effect: EMP_SALVO,
+  prompt: 'EMP Salvo — choose an enemy vehicle in that zone to stun',
+  options: ({ game, actor, targetInstanceId }) => {
+    const host = hostLane(game, targetInstanceId)
+    return host ? enemyVehicleOptions(game, actor, host.zone.id) : []
+  },
+  resolve: ({ game, actor }, choiceId) => {
+    if (choiceId === null) return false
+    const found = findVehicle(game.state, choiceId)
+    if (!found || found.side !== otherSide(actor)) return false
+    stunHull(game, found.entry as ZoneCardEntry)
+    return true
+  },
+}))

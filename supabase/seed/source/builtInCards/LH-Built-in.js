@@ -634,5 +634,20 @@ export const lhVehicles = [
         keywords: [KEYWORDS.BLOCKER],
         meta: { chargeMax: 2, requiresCharge: 5, [TRIGGERS.ON_ACTIVATE]: 'impedanceBeam', activateCpCost: 0, dischargeCost: 2 },
     },
+    {
+        name: 'EMP Salvo',
+        isBuiltIn: true,
+        cardText: 'Discharge 2 from a friendly LH vehicle: stun target enemy vehicle in that zone.',
+        materialCost: 60000,
+        blueprintCost: 0,
+        cpCost: 0,
+        imageUrl: 'empSalvo.png',
+        playerId: null,
+        vehicleType: null,
+        type: 'ability',
+        faction: FACTIONS.LH,
+        blueprintId: null,
+        meta: { [TRIGGERS.PLAY_ON_VEHICLE]: 'empSalvoEffect', dischargeFrom: 2 },
+    },
 
 ];

@@ -241,3 +241,37 @@ describe('Terawatt — terawattTransfer', () => {
     expect(chargeOf(res.game.state.zones[0].cards.b[0] as ZoneCardEntry)).toBe(2)
   })
 })
+
+describe('EMP Salvo — empSalvoEffect', () => {
+  const salvo = () => inst({
+    instanceId: 'salvo', name: 'EMP Salvo', type: 'ability', vehicleType: null, faction: 'LH', materialCost: 60000,
+    meta: { playOnVehicleEffect: 'empSalvoEffect', dischargeFrom: 2 },
+  })
+  const setup = (enemies: boolean) => {
+    const game = lhGame(); game.state.resources.a.materials = 100000
+    game.privates.a.hand = [salvo()]; game.state.counts.a = { hand: 1, deck: 1 }
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'host', faction: 'LH', meta: { chargeMax: 2 }, charge: 2 }))
+    if (enemies) game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'e1' }), zoneEntry({ instanceId: 'e2' }))
+    game.state.zones[1].cards.b.push(zoneEntry({ instanceId: 'far' }))
+    return game
+  }
+  const play = (game: ReturnType<typeof makeGame>) =>
+    applyAction(game, 'alice', { type: 'PLAY_CARD_TARGETING_CARD_ON_FIELD', instanceId: 'salvo', targetInstanceId: 'host' }, makeCtx())
+
+  it('offers the enemies in the host\'s lane and stuns the pick', () => {
+    const res = play(setup(true))
+    if (!res.ok) throw new Error(res.error)
+    expect(res.game.state.pendingEffect?.options.map((o) => o.id)).toEqual(['e1', 'e2'])
+    expect(chargeOf(res.game.state.zones[0].cards.a[0] as ZoneCardEntry)).toBe(0)
+    const done = applyAction(res.game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'e2' }, makeCtx())
+    if (!done.ok) throw new Error(done.error)
+    expect((done.game.state.zones[0].cards.b[1] as ZoneCardEntry).stunnedUntilTurn).toBe(5)
+  })
+
+  it('is refused, spending nothing, when the host\'s lane has no enemy', () => {
+    const game = setup(false)
+    expect(play(game)).toMatchObject({ ok: false, status: 400 })
+    expect(chargeOf(game.state.zones[0].cards.a[0] as ZoneCardEntry)).toBe(2)
+    expect(game.privates.a.hand).toHaveLength(1)
+  })
+})
