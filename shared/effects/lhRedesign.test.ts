@@ -188,3 +188,21 @@ describe('Cathode — cathodeDuel', () => {
     expect(done.game.state.activeBattle?.defenderIds).toEqual(['sub'])
   })
 })
+
+describe('Superradiance and Impedance — beams', () => {
+  it.each([
+    ['sup', 'superradianceBeam', 3, 700],
+    ['imp', 'impedanceBeam', 2, 600],
+  ])('%s shells the base past a Blocker and leaves the lane activation unspent', (id, effect, cost, hpLeft) => {
+    const game = lhGame()
+    game.state.zones[0].cards.a.push(zoneEntry({
+      instanceId: id, name: id, faction: 'LH',
+      meta: { chargeMax: cost, onActivate: effect, activateCpCost: 0, dischargeCost: cost }, charge: cost,
+    }))
+    game.state.zones[0].cards.b.push(zoneEntry({ keywords: ['blocker'] }))
+    const res = activate(game, id)
+    if (!res.ok) throw new Error(res.error)
+    expect(res.game.state.zones[0].baseHp.b).toBe(hpLeft)
+    expect(res.game.state.zones[0].lastActivatedTurn).toBeNull()
+  })
+})

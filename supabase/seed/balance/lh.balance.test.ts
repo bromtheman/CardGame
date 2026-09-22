@@ -116,6 +116,16 @@ export const CARDS: Record<string, Expected> = {
     cardText: 'Requires 3 Charge. Discharge 2: this vehicle fights a 1v1 against target enemy ship or submarine in this zone, then this surfaces — it loses Stealthy for the rest of the game.',
     meta: { chargeMax: 2, requiresCharge: 3, onActivate: 'cathodeDuel', activateCpCost: 0, dischargeCost: 2 },
   },
+  'LH:Superradiance': {
+    materialCost: 620_000, blueprintCost: 625_766, cpCost: 0, keywords: [], vehicleType: 'ship',
+    cardText: 'Discharge 3: deal 300k damage to the enemy base in this zone.',
+    meta: { chargeMax: 3, onActivate: 'superradianceBeam', activateCpCost: 0, dischargeCost: 3 },
+  },
+  'LH:Impedance': {
+    materialCost: 750_000, blueprintCost: 1_326_933, cpCost: 0, keywords: ['blocker'], vehicleType: 'ship',
+    cardText: 'Requires 5 Charge. Discharge 2: deal 400k damage to the enemy base in this zone.',
+    meta: { chargeMax: 2, requiresCharge: 5, onActivate: 'impedanceBeam', activateCpCost: 0, dischargeCost: 2 },
+  },
 }
 
 // Retired by this wave (spec §7): rows stay seeded, undraftable.

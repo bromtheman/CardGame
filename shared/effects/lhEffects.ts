@@ -2,7 +2,8 @@ import { effectiveCostInGame } from '../engine/placement.ts'
 import { addCharge, hasChargeRoom } from '../engine/charge.ts'
 import { dealBaseDamage } from '../engine/baseAttack.ts'
 import {
-  FACTIONS, KEYWORDS, UMBRA_SALVO_DAMAGE, VEHICLE_TYPES, VOLTA_JUMP_START_CHARGE,
+  FACTIONS, IMPEDANCE_BEAM_DAMAGE, KEYWORDS, SUPERRADIANCE_BEAM_DAMAGE, UMBRA_SALVO_DAMAGE, VEHICLE_TYPES,
+  VOLTA_JUMP_START_CHARGE,
 } from '../gameSettings.ts'
 import {
   choice, drawFromPool, enemyVehicleOptions, friendlyVehicleOptions, grant, poolEligible, sequence,
@@ -406,6 +407,8 @@ function beam(materials: number, surfaces: boolean): EffectFn {
   }
 }
 registerEffect('umbraSalvo', beam(UMBRA_SALVO_DAMAGE, true))
+registerEffect('superradianceBeam', beam(SUPERRADIANCE_BEAM_DAMAGE, false))
+registerEffect('impedanceBeam', beam(IMPEDANCE_BEAM_DAMAGE, false))
 
 // Ampere — "When played, stun target enemy vehicle in this zone." On play
 // only (R-10); enemyVehicleOptions applies Decoy in a mirror. No enemy in the
