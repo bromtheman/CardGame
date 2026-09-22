@@ -136,6 +136,11 @@ export const CARDS: Record<string, Expected> = {
     cardText: 'Discharge 2 from a friendly LH vehicle: stun target enemy vehicle in that zone.',
     meta: { playOnVehicleEffect: 'empSalvoEffect', dischargeFrom: 2 },
   },
+  'LH:Overcharge': {
+    materialCost: 0, blueprintCost: 0, cpCost: 1, keywords: [], vehicleType: null,
+    cardText: 'Target friendly LH vehicle gains 2 charge.',
+    meta: { playOnVehicleEffect: 'overchargeEffect' },
+  },
 }
 
 // Retired by this wave (spec §7): rows stay seeded, undraftable.

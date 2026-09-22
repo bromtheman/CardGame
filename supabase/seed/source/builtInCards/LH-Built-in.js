@@ -649,5 +649,20 @@ export const lhVehicles = [
         blueprintId: null,
         meta: { [TRIGGERS.PLAY_ON_VEHICLE]: 'empSalvoEffect', dischargeFrom: 2 },
     },
+    {
+        name: 'Overcharge',
+        isBuiltIn: true,
+        cardText: 'Target friendly LH vehicle gains 2 charge.',
+        materialCost: 0,
+        blueprintCost: 0,
+        cpCost: 1,
+        imageUrl: 'overcharge.png',
+        playerId: null,
+        vehicleType: null,
+        type: 'ability',
+        faction: FACTIONS.LH,
+        blueprintId: null,
+        meta: { [TRIGGERS.PLAY_ON_VEHICLE]: 'overchargeEffect' },
+    },
 
 ];

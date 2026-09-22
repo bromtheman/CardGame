@@ -2,7 +2,7 @@ import { effectiveCostInGame } from '../engine/placement.ts'
 import { addCharge, hasChargeRoom } from '../engine/charge.ts'
 import { dealBaseDamage } from '../engine/baseAttack.ts'
 import {
-  FACTIONS, IMPEDANCE_BEAM_DAMAGE, KEYWORDS, SUPERRADIANCE_BEAM_DAMAGE, TERAWATT_TRANSFER_CHARGE,
+  FACTIONS, IMPEDANCE_BEAM_DAMAGE, KEYWORDS, OVERCHARGE_CHARGE, SUPERRADIANCE_BEAM_DAMAGE, TERAWATT_TRANSFER_CHARGE,
   UMBRA_SALVO_DAMAGE, VEHICLE_TYPES, VOLTA_JUMP_START_CHARGE,
 } from '../gameSettings.ts'
 import {
@@ -539,3 +539,16 @@ registerEffect(EMP_SALVO, choice({
     return true
   },
 }))
+
+// Overcharge — "Target friendly LH vehicle gains 2 charge." A fresh hull is a
+// legal target (R-25); a full one, or a non-LH one, is not.
+registerEffect('overchargeEffect', ({ game, actor, card, targetInstanceId }) => {
+  if (typeof targetInstanceId !== 'string') return false
+  const found = findVehicle(game.state, targetInstanceId)
+  if (!found || found.side !== actor) return false
+  const entry = found.entry as ZoneCardEntry
+  if (!isLh(entry) || !hasChargeRoom(entry)) return false
+  const gained = addCharge(entry, OVERCHARGE_CHARGE)
+  game.state.log.push(`${card.name}: ${entry.name} gains ${gained} charge`)
+  return true
+})

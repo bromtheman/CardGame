@@ -275,3 +275,32 @@ describe('EMP Salvo — empSalvoEffect', () => {
     expect(game.privates.a.hand).toHaveLength(1)
   })
 })
+
+describe('Overcharge — overchargeEffect', () => {
+  const overcharge = () => inst({
+    instanceId: 'oc', name: 'Overcharge', type: 'ability', vehicleType: null, faction: 'LH', materialCost: 0, cpCost: 1,
+    meta: { playOnVehicleEffect: 'overchargeEffect' },
+  })
+  const play = (game: ReturnType<typeof makeGame>, target: string) =>
+    applyAction(game, 'alice', { type: 'PLAY_CARD_TARGETING_CARD_ON_FIELD', instanceId: 'oc', targetInstanceId: target }, makeCtx())
+  const setup = () => {
+    const game = lhGame()
+    game.privates.a.hand = [overcharge()]; game.state.counts.a = { hand: 1, deck: 1 }
+    game.state.zones[0].cards.a.push(
+      zoneEntry({ instanceId: 'fresh', faction: 'LH', meta: { chargeMax: 3 }, playedOnTurn: 4 }),
+      zoneEntry({ instanceId: 'full', faction: 'LH', meta: { chargeMax: 2 }, charge: 2 }),
+      zoneEntry({ instanceId: 'dwg', faction: 'DWG', meta: { chargeMax: 2 } }),
+    )
+    return game
+  }
+  it('adds two pips to a fresh LH hull for one CP, capped', () => {
+    const res = play(setup(), 'fresh')
+    if (!res.ok) throw new Error(res.error)
+    expect(chargeOf(res.game.state.zones[0].cards.a[0] as ZoneCardEntry)).toBe(2)
+    expect(res.game.state.resources.a.cp).toBe(2)
+  })
+  it('refuses a full hull and a non-LH hull', () => {
+    expect(play(setup(), 'full')).toMatchObject({ ok: false, status: 400 })
+    expect(play(setup(), 'dwg')).toMatchObject({ ok: false, status: 400 })
+  })
+})
