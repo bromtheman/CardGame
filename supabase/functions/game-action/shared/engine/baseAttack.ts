@@ -26,7 +26,9 @@ export function baseStrikersIn(entries: ZoneCardEntry[], turnNumber: number): Zo
       !c.keywords.includes(KEYWORDS.INOFFENSIVE) &&
       c.meta.noBaseDamage !== true &&
       !isStunned(c, turnNumber) &&
-      c.playedOnTurn < turnNumber,
+      // Swift, printed or granted for this turn by Afterburner (2026-09-21 LH
+      // spec §3.5), skips the one-turn deploy delay and nothing else.
+      (c.playedOnTurn < turnNumber || c.keywords.includes(KEYWORDS.SWIFT) || c.swiftOnTurn === turnNumber),
   )
 }
 

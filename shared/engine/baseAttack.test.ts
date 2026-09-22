@@ -1,5 +1,5 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import { applyAction, baseDamageFrom, baseStrikersIn } from './index'
+import { applyAction, baseDamageFrom, baseStrikersIn, discardSnapshotOf } from './index'
 import { registerEffect } from '../effects/registry'
 import type { ZoneCardEntry } from './engineTypes'
 import { makeCtx, makeGame, zoneEntry } from './testFixtures'
@@ -196,5 +196,23 @@ describe('noBaseDamage', () => {
       if (!r.ok) throw new Error(r.error)
       expect(r.game.state.zones[0].baseHp.b).toBe(before - 100)
     }
+  })
+})
+
+describe('Swift (2026-09-21 LH spec §3.5)', () => {
+  it('lets a fresh Swift hull strike, at its Half-Cost figure for a plane', () => {
+    const wing = zoneEntry({ vehicleType: 'plane', materialCost: 700000, keywords: ['halfCost', 'temporary', 'swift'], playedOnTurn: 5 })
+    const fresh = zoneEntry({ materialCost: 700000, playedOnTurn: 5 })
+    const burned = zoneEntry({ materialCost: 200000, playedOnTurn: 5, swiftOnTurn: 5 })
+    const stale = zoneEntry({ materialCost: 200000, playedOnTurn: 5, swiftOnTurn: 4 })
+    expect(baseDamageFrom([wing], 5)).toBe(350)
+    expect(baseDamageFrom([fresh], 5)).toBe(0)
+    expect(baseDamageFrom([burned], 5)).toBe(200)
+    expect(baseDamageFrom([stale], 5)).toBe(0)
+  })
+
+  it('strips swiftOnTurn on discard', () => {
+    const snap = discardSnapshotOf(zoneEntry({ swiftOnTurn: 5 })) as Record<string, unknown>
+    expect('swiftOnTurn' in snap).toBe(false)
   })
 })
