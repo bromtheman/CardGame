@@ -60,6 +60,26 @@ export const CARDS: Record<string, Expected> = {
     cardText: 'Discharge 2: deal 150k damage to the enemy base in this zone, then this surfaces — it loses Stealthy for the rest of the game.',
     meta: { chargeMax: 2, onActivate: 'umbraSalvo', activateCpCost: 0, dischargeCost: 2 },
   },
+  'LH:Kilowatt': {
+    materialCost: 180_000, blueprintCost: 180_583, cpCost: 0, keywords: ['blocker'], vehicleType: 'ship',
+    cardText: '', meta: { chargeMax: 2 },
+  },
+  'LH:Caspian': {
+    materialCost: 230_000, blueprintCost: 230_226, cpCost: 0, keywords: ['halfCost', 'temporary'], vehicleType: 'plane',
+    cardText: 'Sea-skimmer: may be played into a zone with enemy Air Screen.', meta: { ignoresAirScreen: true },
+  },
+  'LH:Hydrovolt': {
+    materialCost: 260_000, blueprintCost: 257_641, cpCost: 0, keywords: ['blocker', 'subScreen'], vehicleType: 'sub',
+    cardText: '', meta: { chargeMax: 2 },
+  },
+  'LH:Dynamo': {
+    materialCost: 350_000, blueprintCost: 346_346, cpCost: 0, keywords: ['mobile', 'swift'], vehicleType: 'airship',
+    cardText: 'Requires 2 Charge.', meta: { chargeMax: 1, requiresCharge: 2 },
+  },
+  'LH:Megawatt': {
+    materialCost: 360_000, blueprintCost: 361_751, cpCost: 0, keywords: ['mobile'], vehicleType: 'ship',
+    cardText: '', meta: { chargeMax: 2 },
+  },
 }
 
 // Retired by this wave (spec §7): rows stay seeded, undraftable.
