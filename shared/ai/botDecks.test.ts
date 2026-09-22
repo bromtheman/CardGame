@@ -22,10 +22,10 @@ function eligible(cards: SeedCard[], faction: string): Map<string, SeedCard> {
 }
 
 describe('isBotFaction', () => {
-  it('accepts the five fielded factions and nothing else', () => {
+  it('accepts the six fielded factions', () => {
     for (const f of BOT_FACTIONS) expect(isBotFaction(f)).toBe(true)
     expect(isBotFaction('GT')).toBe(false)
-    expect(isBotFaction('LH')).toBe(false)
+    expect(isBotFaction('LH')).toBe(true)
     expect(isBotFaction('NEUTRAL')).toBe(false)
     expect(isBotFaction(undefined)).toBe(false)
   })

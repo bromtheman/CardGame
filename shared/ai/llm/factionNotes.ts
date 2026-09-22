@@ -31,4 +31,16 @@ export const FACTION_NOTES: Partial<Record<BotFaction, FactionNote>> = {
 - Your hero power Boarding Party swaps one of your ships for an enemy ship of equal or lesser cost in the same zone. That suits you: your ships are often weak relative to their printed cost, and you can put more bodies into a zone than most opponents.`,
     mentions: ['Crossbones', 'Kraken', 'Paddlegun', 'Albacore', 'Buccaneer', 'Tarpon', 'Plunderer', 'Gang Up', 'Double Up', 'Boarding Party'],
   },
+  LH: {
+    text: `- LH is the Lightning Hoods: fast laser, plasma and EMP craft. Your hulls carry CHARGE — a pip fills at the start of each of your turns up to the card's max, and a hull's "Discharge N" ability spends N of them. Charge is visible to both players and dies with the hull, so a charging hull is a threat your opponent will try to fleet-attack; keep it behind a Blocker (Kilowatt, Hydrovolt, Angstrom) or move it away with Mobile.
+- Cheap pickets (Chrysoprase, Byte, Volta, Dipole) exist to bank pips. "Requires N Charge" capitals can only be played while your board holds that many pips in total, so keep the pickets alive. Conduit doubles the charge rate of its lane; Volta and Overcharge add pips at once.
+- Stun (Ampere on play, Penumbra at three pips, EMP Salvo) switches an enemy hull off through its next turn: it cannot attack, move, Block or Screen, and a Stealthy hull cannot withdraw. Stun a Blocker and bombard past it the same turn; stun a Stealthy hull and fleet-attack it.
+- Umbra shells the base past Blockers at two pips and then loses Stealthy; Eclipse duels a chosen enemy at two pips. Fire a full hull rather than holding it unless you are saving pips for a gate.
+- Lasers stop at the water: play Hydrovolt's Sub Screen where enemy submarines would hurt.`,
+    // Every card name the prose relies on, verbatim — a test pins each against the seed.
+    mentions: [
+      'Kilowatt', 'Hydrovolt', 'Angstrom', 'Chrysoprase', 'Byte', 'Volta', 'Dipole', 'Conduit',
+      'Overcharge', 'Ampere', 'Penumbra', 'EMP Salvo', 'Umbra', 'Eclipse',
+    ],
+  },
 }
