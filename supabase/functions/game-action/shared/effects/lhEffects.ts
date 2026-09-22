@@ -10,6 +10,7 @@ import type { EffectFn } from './registry.ts'
 import { registerEffect } from './registry.ts'
 import { findVehicle, otherSide, putInHand, revokeKeywordsFrom } from '../engine/gameEngine.ts'
 import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
+import { stunHull } from '../engine/stun.ts'
 import type { EngineGame, Side, ZoneCardEntry } from '../engine/engineTypes.ts'
 
 // LH built-in card effects.
@@ -403,3 +404,25 @@ function beam(materials: number, surfaces: boolean): EffectFn {
   }
 }
 registerEffect('umbraSalvo', beam(UMBRA_SALVO_DAMAGE, true))
+
+// Ampere — "When played, stun target enemy vehicle in this zone." On play
+// only (R-10); enemyVehicleOptions applies Decoy in a mirror. No enemy in the
+// lane: the play resolves with no stun and no refund.
+const AMPERE = 'ampereStun'
+registerEffect(AMPERE, choice({
+  effect: AMPERE,
+  prompt: "Ampere's EMP salvo — choose an enemy vehicle in this zone to stun",
+  options: ({ game, actor, targetZoneId }) => (
+    typeof targetZoneId === 'number' ? enemyVehicleOptions(game, actor, targetZoneId) : []
+  ),
+  resolve: ({ game, actor, card }, choiceId) => {
+    if (choiceId === null) {
+      game.state.log.push(`${card.name}: no enemy vehicle in this zone to stun`)
+      return true
+    }
+    const found = findVehicle(game.state, choiceId)
+    if (!found || found.side !== otherSide(actor)) return false
+    stunHull(game, found.entry as ZoneCardEntry)
+    return true
+  },
+}))

@@ -80,6 +80,11 @@ export const CARDS: Record<string, Expected> = {
     materialCost: 360_000, blueprintCost: 361_751, cpCost: 0, keywords: ['mobile'], vehicleType: 'ship',
     cardText: '', meta: { chargeMax: 2 },
   },
+  'LH:Ampere': {
+    materialCost: 200_000, blueprintCost: 206_645, cpCost: 0, keywords: ['mobile'], vehicleType: 'ship',
+    cardText: 'When played, stun target enemy vehicle in this zone.',
+    meta: { chargeMax: 2, onPlayEffect: 'ampereStun' },
+  },
 }
 
 // Retired by this wave (spec §7): rows stay seeded, undraftable.

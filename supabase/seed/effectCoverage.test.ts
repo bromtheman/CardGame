@@ -246,6 +246,7 @@ const DELIBERATE_ORPHANS: Record<string, string> = {
   scourgeOnPlay: 'balance 2026-09-16 cleared WF Scourge\'s text and removed its onPlayEffect key (M-10)',
   disembowelerOnPlay: 'balance 2026-09-16 cleared WF Disemboweler\'s text and removed its onPlayEffect key (M-10)',
   conduitEffect: '2026-09-21 LH redesign: Conduit is now a data-key relay with no effect (spec §7)',
+  ampereOnPlay: '2026-09-21 LH redesign replaced Ampere\'s pool draw with ampereStun (spec §7)',
 }
 
 describe('G4: every registered implementation is reachable from a seeded card', () => {
@@ -292,6 +293,7 @@ describe('G4: every registered implementation is reachable from a seeded card', 
   // than a rewrite of this whole line (2026-09-02 spec §2.3).
   it('the deliberate list matches exactly what the 2026-08-30, 2026-09-02, 2026-09-16 and 2026-09-21 passes orphaned', () => {
     expect(Object.keys(DELIBERATE_ORPHANS).sort()).toEqual([
+      'ampereOnPlay',
       'bulwarkOnPlay',
       'conduitEffect',
       'disembowelerOnPlay',

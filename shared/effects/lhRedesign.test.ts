@@ -92,3 +92,34 @@ describe('Umbra — umbraSalvo', () => {
     expect(activate(game, 'umbra')).toMatchObject({ ok: false, status: 400 })
   })
 })
+
+describe('Ampere — ampereStun', () => {
+  const ampere = () => inst({
+    instanceId: 'ampere', name: 'Ampere', faction: 'LH', materialCost: 200000, keywords: ['mobile'],
+    meta: { chargeMax: 2, onPlayEffect: 'ampereStun' },
+  })
+  const play = (game: ReturnType<typeof makeGame>) =>
+    applyAction(game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: 'ampere', zoneId: 1 }, makeCtx())
+
+  it('stuns the chosen enemy through their next turn', () => {
+    const game = lhGame(); game.state.resources.a.materials = 300000
+    game.privates.a.hand = [ampere()]; game.state.counts.a = { hand: 1, deck: 1 }
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'wall', keywords: ['blocker'] }), zoneEntry({ instanceId: 'other' }))
+    const res = play(game)
+    if (!res.ok) throw new Error(res.error)
+    expect(res.game.state.pendingEffect?.options.map((o) => o.id)).toEqual(['wall', 'other'])
+    const done = applyAction(res.game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'wall' }, makeCtx())
+    if (!done.ok) throw new Error(done.error)
+    const wall = done.game.state.zones[0].cards.b[0] as ZoneCardEntry
+    expect(wall.stunnedUntilTurn).toBe(5)
+  })
+
+  it('plays with no stun into an empty lane, no refund', () => {
+    const game = lhGame(); game.state.resources.a.materials = 300000
+    game.privates.a.hand = [ampere()]; game.state.counts.a = { hand: 1, deck: 1 }
+    const res = play(game)
+    if (!res.ok) throw new Error(res.error)
+    expect(res.game.state.pendingEffect).toBeNull()
+    expect(res.game.state.resources.a.materials).toBe(100000)
+  })
+})

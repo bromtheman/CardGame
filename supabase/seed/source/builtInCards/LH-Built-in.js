@@ -89,9 +89,9 @@ export const lhVehicles = [
     {
         name: 'Ampere',
         isBuiltIn: true,
-        cardText: 'When played draw a random card from the [TG] robotics pool',
+        cardText: 'When played, stun target enemy vehicle in this zone.',
         materialCost: 200000,
-        blueprintCost: 206000,
+        blueprintCost: 206645,
         cpCost: 0,
         imageUrl: 'ampere.png',
         playerId: null,
@@ -99,10 +99,8 @@ export const lhVehicles = [
         type: 'vehicle',
         faction: FACTIONS.LH,
         blueprintId: null,
-        keywords: [],
-        meta: {
-            [TRIGGERS.ON_PLAY]: 'ampereOnPlay',
-        }
+        keywords: [KEYWORDS.MOBILE],
+        meta: { chargeMax: 2, [TRIGGERS.ON_PLAY]: 'ampereStun' },
     },
     {
         name: 'Coulomb',
