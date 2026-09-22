@@ -10,10 +10,11 @@ import {
 } from './gameEngine.ts'
 import { zoneCapFor } from './zoneCapacity.ts'
 import { isStunned } from './stun.ts'
-import { costModifierFor, effectFor, effectName, noteUnimplemented } from '../effects/registry.ts'
+import { costModifierFor, effectFor, effectName, enemyTargetFilterFor, noteUnimplemented } from '../effects/registry.ts'
 import { dispatchDeployWatchers } from './battleTriggers.ts'
 import { effectiveMaterialCostOf } from './costs.ts'
 import { chargeGateShortfall, chargeOf, dischargeFromOf, spendCharge } from './charge.ts'
+import { decoyFor } from './decoy.ts'
 
 const BIOMES_BY_TYPE: Record<string, string[]> = {
   [VEHICLE_TYPES.SHIP]: [ZONE_TYPES.WATER, ZONE_TYPES.BEACH],
@@ -579,6 +580,13 @@ registerHandler('PLAY_CARD_TARGETING_CARD_ON_FIELD', (game, actor, action, ctx) 
     if (chargeOf(target.entry) < dischargeFrom) {
       return err(400, `${target.entry.name} needs ${dischargeFrom} charge to discharge`)
     }
+  }
+
+  // Decoy (spec §3.6): an enemy target beside a Decoy the effect could have hit.
+  const couldTarget = enemyTargetFilterFor(effectMeta)
+  if (couldTarget && target.side === otherSide(actor)) {
+    const decoy = decoyFor(target.zone.cards[target.side] as ZoneCardEntry[], target.entry as ZoneCardEntry, couldTarget)
+    if (decoy) return err(400, `${decoy.name} draws the attack — ${card.name} must target it instead`)
   }
 
   if (!canAffordInGame(game, actor, card)) return err(400, 'You cannot afford that card')

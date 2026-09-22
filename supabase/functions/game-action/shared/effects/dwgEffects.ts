@@ -600,7 +600,7 @@ registerEffect('flyingSquirrelAttackEffect', ({ game, actor, ctx, targetInstance
     summons,
     cause: card.name,
   })
-}, { needsCatalog: true })
+}, { needsCatalog: true, enemyTarget: () => true })
 
 // "Choose an enemy vehicle. Start a battle with that vehicle vs all your
 // vehicles from the same zone." DP3: the target is the sole defender (§7.3);
@@ -668,7 +668,7 @@ registerEffect('mutinyEffect', ({ game, actor, card, targetInstanceId }) => {
     `${card.name}: ${entry.name} mutinies and joins player ${actor.toUpperCase()} in zone ${zone.id} for this turn`,
   )
   return true
-})
+}, { enemyTarget: () => true })
 
 // "When this is destroyed, draw a copy of Mutiny." (2026-09-16.) slasherOnPlay's
 // shape: a named catalog mint through poolEligible into the hand via putInHand.

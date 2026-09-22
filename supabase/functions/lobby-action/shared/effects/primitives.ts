@@ -1,5 +1,5 @@
 import type { CardInstance, SnapshotCard } from '../engine/gameInit.ts'
-import { CARD_TYPES, VEHICLE_TYPES } from '../gameSettings.ts'
+import { CARD_TYPES, KEYWORDS, VEHICLE_TYPES } from '../gameSettings.ts'
 import type {
   BattleCasualty, BattleContext, EngineContext, EngineGame, Side, ZoneCardEntry,
 } from '../engine/engineTypes.ts'
@@ -394,8 +394,11 @@ export function enemyVehicleOptions(
   const zones = zoneId === null ? game.state.zones : game.state.zones.filter((z) => z.id === zoneId)
   const options: ChoiceOption[] = []
   for (const zone of zones) {
-    for (const entry of zone.cards[enemy] as ZoneCardEntry[]) {
-      if (filter && !filter(entry)) continue
+    const entries = (zone.cards[enemy] as ZoneCardEntry[]).filter((e) => !filter || filter(e))
+    // Decoy (2026-09-21 LH spec §3.6): a lane holding a Decoy the caller could
+    // target offers only its Decoys. Applied per lane, after the caller's filter.
+    const decoys = entries.filter((e) => e.keywords.includes(KEYWORDS.DECOY))
+    for (const entry of decoys.length > 0 ? decoys : entries) {
       options.push({ id: entry.instanceId, label: entry.name })
     }
   }

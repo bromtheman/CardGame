@@ -68,7 +68,7 @@ registerEffect('subKillerEffect', ({ game, actor, card, targetInstanceId, battle
     `${found.entry.name} is removed from play — player ${actor.toUpperCase()} may deploy no GT vehicle to zone ${found.zone.id} this turn`,
   )
   return true
-})
+}, { enemyTarget: (e) => SUB_KILLER_TARGETS.includes(e.vehicleType ?? '') })
 
 // "Target a vehicle and give it FRAGILE. If it survives the turn, draw a
 // card." Unrestricted as to side — the text says only "a vehicle" — and
@@ -97,7 +97,7 @@ const sabotageWatch: EffectFn = ({ game, actor, targetInstanceId }) => {
 registerEffect('sabotageEffect', sequence(
   grantKeywords({ keywords: [KEYWORDS.FRAGILE], target: 'field' }),
   sabotageWatch,
-))
+), { enemyTarget: () => true })
 
 const gtAirship = drawFromPool({
   source: 'catalog', filter: { faction: 'GT', vehicleType: 'airship' }, count: 1,
