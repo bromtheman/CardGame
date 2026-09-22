@@ -178,7 +178,7 @@ export const lhVehicles = [
     {
         name: 'Quadrupole',
         isBuiltIn: true,
-        cardText: 'Requires 3 Charge.',
+        cardText: 'Drain 2 Charge.',
         materialCost: 560000,
         blueprintCost: 685159,
         cpCost: 0,
@@ -189,12 +189,12 @@ export const lhVehicles = [
         faction: FACTIONS.LH,
         blueprintId: null,
         keywords: [KEYWORDS.BLOCKER, KEYWORDS.MOBILE],
-        meta: { chargeMax: 2, requiresCharge: 3 },
+        meta: { chargeMax: 2, requiresCharge: 2 },
     },
     {
         name: 'Terawatt',
         isBuiltIn: true,
-        cardText: 'Requires 3 Charge. Generators: this gains 2 charge at the start of your turn instead of 1. Discharge 2: another friendly LH vehicle in this zone gains 2 charge.',
+        cardText: 'Drain 2 Charge. Generators: this gains 2 charge at the start of your turn instead of 1. Discharge 2: another friendly LH vehicle in this zone gains 2 charge.',
         materialCost: 640000,
         blueprintCost: 725002,
         cpCost: 0,
@@ -205,7 +205,7 @@ export const lhVehicles = [
         faction: FACTIONS.LH,
         blueprintId: null,
         keywords: [KEYWORDS.BLOCKER, KEYWORDS.SCRAPPY, KEYWORDS.MOBILE],
-        meta: { chargeMax: 4, chargeRate: 2, requiresCharge: 3, [TRIGGERS.ON_ACTIVATE]: 'terawattTransfer', activateCpCost: 0, dischargeCost: 2 },
+        meta: { chargeMax: 4, chargeRate: 2, requiresCharge: 2, [TRIGGERS.ON_ACTIVATE]: 'terawattTransfer', activateCpCost: 0, dischargeCost: 2 },
     },
     {
         name: 'Angstrom',
@@ -226,7 +226,7 @@ export const lhVehicles = [
     {
         name: 'Candela',
         isBuiltIn: true,
-        cardText: 'Requires 4 Charge.',
+        cardText: 'Drain 3 Charge.',
         materialCost: 700000,
         blueprintCost: 1021169,
         cpCost: 0,
@@ -237,7 +237,7 @@ export const lhVehicles = [
         faction: FACTIONS.LH,
         blueprintId: null,
         keywords: [KEYWORDS.BLOCKER, KEYWORDS.SUB_SCREEN, KEYWORDS.SCRAPPY, KEYWORDS.MOBILE],
-        meta: { chargeMax: 2, requiresCharge: 4 },
+        meta: { chargeMax: 2, requiresCharge: 3 },
     },
     {
         name: 'Hydrovolt',
@@ -541,7 +541,7 @@ export const lhVehicles = [
     {
         name: 'Dynamo',
         isBuiltIn: true,
-        cardText: 'Requires 2 Charge.',
+        cardText: 'Drain 1 Charge.',
         materialCost: 350000,
         blueprintCost: 346346,
         cpCost: 0,
@@ -552,7 +552,7 @@ export const lhVehicles = [
         faction: FACTIONS.LH,
         blueprintId: null,
         keywords: [KEYWORDS.MOBILE, KEYWORDS.SWIFT],
-        meta: { chargeMax: 1, requiresCharge: 2 },
+        meta: { chargeMax: 1, requiresCharge: 1 },
     },
     {
         name: 'Megawatt',
@@ -589,7 +589,7 @@ export const lhVehicles = [
     {
         name: 'Cathode',
         isBuiltIn: true,
-        cardText: 'Requires 3 Charge. Discharge 2: this vehicle fights a 1v1 against target enemy ship or submarine in this zone, then this surfaces — it loses Stealthy for the rest of the game.',
+        cardText: 'Drain 2 Charge. Discharge 2: this vehicle fights a 1v1 against target enemy ship or submarine in this zone, then this surfaces — it loses Stealthy for the rest of the game.',
         materialCost: 600000,
         blueprintCost: 726398,
         cpCost: 0,
@@ -600,7 +600,7 @@ export const lhVehicles = [
         faction: FACTIONS.LH,
         blueprintId: null,
         keywords: [KEYWORDS.STEALTHY, KEYWORDS.SUB_SCREEN],
-        meta: { chargeMax: 2, requiresCharge: 3, [TRIGGERS.ON_ACTIVATE]: 'cathodeDuel', activateCpCost: 0, dischargeCost: 2 },
+        meta: { chargeMax: 2, requiresCharge: 2, [TRIGGERS.ON_ACTIVATE]: 'cathodeDuel', activateCpCost: 0, dischargeCost: 2 },
     },
     {
         name: 'Superradiance',
@@ -621,7 +621,7 @@ export const lhVehicles = [
     {
         name: 'Impedance',
         isBuiltIn: true,
-        cardText: 'Requires 5 Charge. Discharge 2: deal 400k damage to the enemy base in this zone.',
+        cardText: 'Drain 4 Charge. Discharge 2: deal 400k damage to the enemy base in this zone.',
         materialCost: 750000,
         blueprintCost: 1326933,
         cpCost: 0,
@@ -632,7 +632,7 @@ export const lhVehicles = [
         faction: FACTIONS.LH,
         blueprintId: null,
         keywords: [KEYWORDS.BLOCKER],
-        meta: { chargeMax: 2, requiresCharge: 5, [TRIGGERS.ON_ACTIVATE]: 'impedanceBeam', activateCpCost: 0, dischargeCost: 2 },
+        meta: { chargeMax: 2, requiresCharge: 4, [TRIGGERS.ON_ACTIVATE]: 'impedanceBeam', activateCpCost: 0, dischargeCost: 2 },
     },
     {
         name: 'EMP Salvo',

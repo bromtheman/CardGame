@@ -171,7 +171,7 @@ describe('Cathode — cathodeDuel', () => {
     const game = lhGame()
     game.state.zones[0].cards.a.push(zoneEntry({
       instanceId: 'cat', name: 'Cathode', faction: 'LH', vehicleType: 'sub', keywords: ['stealthy', 'subScreen'],
-      meta: { chargeMax: 2, requiresCharge: 3, onActivate: 'cathodeDuel', activateCpCost: 0, dischargeCost: 2 }, charge: 2,
+      meta: { chargeMax: 2, requiresCharge: 2, onActivate: 'cathodeDuel', activateCpCost: 0, dischargeCost: 2 }, charge: 2,
     }))
     game.state.zones[0].cards.b.push(
       zoneEntry({ instanceId: 'ship' }),
@@ -210,7 +210,7 @@ describe('Superradiance and Impedance — beams', () => {
 describe('Terawatt — terawattTransfer', () => {
   const terawatt = (charge: number) => zoneEntry({
     instanceId: 'tera', name: 'Terawatt', faction: 'LH', keywords: ['blocker', 'scrappy', 'mobile'],
-    meta: { chargeMax: 4, chargeRate: 2, requiresCharge: 3, onActivate: 'terawattTransfer', activateCpCost: 0, dischargeCost: 2 }, charge,
+    meta: { chargeMax: 4, chargeRate: 2, requiresCharge: 2, onActivate: 'terawattTransfer', activateCpCost: 0, dischargeCost: 2 }, charge,
   })
   it('offers other LH hulls with room in its lane and the pick gains two pips, capped', () => {
     const game = lhGame()

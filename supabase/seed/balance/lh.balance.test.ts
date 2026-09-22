@@ -74,7 +74,7 @@ export const CARDS: Record<string, Expected> = {
   },
   'LH:Dynamo': {
     materialCost: 350_000, blueprintCost: 346_346, cpCost: 0, keywords: ['mobile', 'swift'], vehicleType: 'airship',
-    cardText: 'Requires 2 Charge.', meta: { chargeMax: 1, requiresCharge: 2 },
+    cardText: 'Drain 1 Charge.', meta: { chargeMax: 1, requiresCharge: 1 },
   },
   'LH:Megawatt': {
     materialCost: 360_000, blueprintCost: 361_751, cpCost: 0, keywords: ['mobile'], vehicleType: 'ship',
@@ -101,11 +101,11 @@ export const CARDS: Record<string, Expected> = {
   },
   'LH:Quadrupole': {
     materialCost: 560_000, blueprintCost: 685_159, cpCost: 0, keywords: ['blocker', 'mobile'], vehicleType: 'airship',
-    cardText: 'Requires 3 Charge.', meta: { chargeMax: 2, requiresCharge: 3 },
+    cardText: 'Drain 2 Charge.', meta: { chargeMax: 2, requiresCharge: 2 },
   },
   'LH:Candela': {
     materialCost: 700_000, blueprintCost: 1_021_169, cpCost: 0, keywords: ['blocker', 'subScreen', 'scrappy', 'mobile'], vehicleType: 'ship',
-    cardText: 'Requires 4 Charge.', meta: { chargeMax: 2, requiresCharge: 4 },
+    cardText: 'Drain 3 Charge.', meta: { chargeMax: 2, requiresCharge: 3 },
   },
   'LH:Rectifier': {
     materialCost: 700_000, blueprintCost: 734_617, cpCost: 0, keywords: ['halfCost', 'temporary', 'fragile', 'swift'], vehicleType: 'plane',
@@ -113,8 +113,8 @@ export const CARDS: Record<string, Expected> = {
   },
   'LH:Cathode': {
     materialCost: 600_000, blueprintCost: 726_398, cpCost: 0, keywords: ['stealthy', 'subScreen'], vehicleType: 'sub',
-    cardText: 'Requires 3 Charge. Discharge 2: this vehicle fights a 1v1 against target enemy ship or submarine in this zone, then this surfaces — it loses Stealthy for the rest of the game.',
-    meta: { chargeMax: 2, requiresCharge: 3, onActivate: 'cathodeDuel', activateCpCost: 0, dischargeCost: 2 },
+    cardText: 'Drain 2 Charge. Discharge 2: this vehicle fights a 1v1 against target enemy ship or submarine in this zone, then this surfaces — it loses Stealthy for the rest of the game.',
+    meta: { chargeMax: 2, requiresCharge: 2, onActivate: 'cathodeDuel', activateCpCost: 0, dischargeCost: 2 },
   },
   'LH:Superradiance': {
     materialCost: 620_000, blueprintCost: 625_766, cpCost: 0, keywords: [], vehicleType: 'ship',
@@ -123,13 +123,13 @@ export const CARDS: Record<string, Expected> = {
   },
   'LH:Impedance': {
     materialCost: 750_000, blueprintCost: 1_326_933, cpCost: 0, keywords: ['blocker'], vehicleType: 'ship',
-    cardText: 'Requires 5 Charge. Discharge 2: deal 400k damage to the enemy base in this zone.',
-    meta: { chargeMax: 2, requiresCharge: 5, onActivate: 'impedanceBeam', activateCpCost: 0, dischargeCost: 2 },
+    cardText: 'Drain 4 Charge. Discharge 2: deal 400k damage to the enemy base in this zone.',
+    meta: { chargeMax: 2, requiresCharge: 4, onActivate: 'impedanceBeam', activateCpCost: 0, dischargeCost: 2 },
   },
   'LH:Terawatt': {
     materialCost: 640_000, blueprintCost: 725_002, cpCost: 0, keywords: ['blocker', 'scrappy', 'mobile'], vehicleType: 'ship',
-    cardText: 'Requires 3 Charge. Generators: this gains 2 charge at the start of your turn instead of 1. Discharge 2: another friendly LH vehicle in this zone gains 2 charge.',
-    meta: { chargeMax: 4, chargeRate: 2, requiresCharge: 3, onActivate: 'terawattTransfer', activateCpCost: 0, dischargeCost: 2 },
+    cardText: 'Drain 2 Charge. Generators: this gains 2 charge at the start of your turn instead of 1. Discharge 2: another friendly LH vehicle in this zone gains 2 charge.',
+    meta: { chargeMax: 4, chargeRate: 2, requiresCharge: 2, onActivate: 'terawattTransfer', activateCpCost: 0, dischargeCost: 2 },
   },
   'LH:EMP Salvo': {
     materialCost: 60_000, blueprintCost: 0, cpCost: 0, keywords: [], vehicleType: null,
@@ -210,7 +210,8 @@ describe('LH redesign — roster shape (spec §5, §7)', () => {
     expect(seed.get('LH:Dynamo')!.keywords).toContain('swift')
     expect(seed.get('LH:Rectifier')!.keywords).toContain('swift')
     expect(seed.get('LH:Watt')!.keywords).toContain('decoy')
-    for (const [k, gate] of [['LH:Dynamo', 2], ['LH:Quadrupole', 3], ['LH:Cathode', 3], ['LH:Terawatt', 3], ['LH:Candela', 4], ['LH:Impedance', 5]] as const) {
+    // Every gate one lower than first printed: draining made it a cost (2026-09-22 spec §6).
+    for (const [k, gate] of [['LH:Dynamo', 1], ['LH:Quadrupole', 2], ['LH:Cathode', 2], ['LH:Terawatt', 2], ['LH:Candela', 3], ['LH:Impedance', 4]] as const) {
       expect((seed.get(k)!.meta as Record<string, unknown>).requiresCharge, k).toBe(gate)
     }
   })
