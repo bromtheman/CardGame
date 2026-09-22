@@ -1,5 +1,5 @@
 import { effectiveCostInGame } from '../engine/placement.ts'
-import { KEYWORDS } from '../gameSettings.ts'
+import { FACTIONS, KEYWORDS } from '../gameSettings.ts'
 import {
   choice, drawFromPool, enemyVehicleOptions, grant, poolEligible, sequence, spawnVehicles, summonHulls,
   whenPlayed, zoneOccupants,
@@ -344,3 +344,16 @@ registerEffect(TERAWATT, (payload) => {
   if (!active || active.defenderIds.length !== 1) return true
   return terawattChoice(payload)
 }, { battleBystander: true })
+
+// ---------------------------------------------------------------------------
+// 2026-09-21 redesign (docs/superpowers/specs/2026-09-21-lh-faction-redesign-design.md).
+// Every id below is NEW: the pre-redesign ids above stay registered for the
+// frozen snapshots of games dealt before the deploy (spec §7) and are never
+// reused (the Kraken/Paddlegun rule).
+// ---------------------------------------------------------------------------
+
+const isLh = (e: { faction: string }): boolean => e.faction === FACTIONS.LH
+
+// Byte — "Discharge 1: draw a card." The engine has already checked and spent
+// the pip (ACTIVATE_VEHICLE, spec §3.2); this is the draw and nothing else.
+registerEffect('byteDraw', grant({ draw: 1 }))

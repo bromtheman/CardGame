@@ -45,6 +45,11 @@ export const CARDS: Record<string, Expected> = {
     cardText: 'Relay: at the start of your turn, other friendly LH vehicles in this zone gain 1 additional charge. This does not stack.',
     meta: { chargeRelay: 1 },
   },
+  'LH:Byte': {
+    materialCost: 40_000, blueprintCost: 43_301, cpCost: 0, keywords: ['mobile'], vehicleType: 'ship',
+    cardText: 'Discharge 1: draw a card.',
+    meta: { chargeMax: 1, onActivate: 'byteDraw', activateCpCost: 0, dischargeCost: 1 },
+  },
 }
 
 // Retired by this wave (spec §7): rows stay seeded, undraftable.
