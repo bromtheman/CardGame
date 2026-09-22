@@ -1,4 +1,7 @@
-import { KEYWORDS, VEHICLE_TYPES } from '@shared/gameSettings'
+import { CHARGE_TICK, KEYWORDS, VEHICLE_TYPES } from '@shared/gameSettings'
+import {
+  chargeGateOf, chargeMaxOf, chargeRateOf, chargeRelayOf, dischargeCostOf, dischargeFromOf,
+} from '@shared/engine/index'
 
 import shield from '../assets/icons/shieldSVG.svg'
 import repair from '../assets/icons/repairSVG.svg'
@@ -176,15 +179,97 @@ export function vehicleTypeIcon(vehicleType: string | null): string {
   return VEHICLE_TYPE_INFO[vehicleType ?? '']?.icon ?? anchorIcon
 }
 
+// 2026-09-21 LH Charge (spec §3.1–§3.3). Charge is not a keyword — it lives in
+// a card’s meta — so these rows are built per card rather than looked up, and
+// they are the only place the rules are written down for a player. The two
+// worth being pedantic about are the ones the shapes read alike but behave
+// oppositely: Requires totals the WHOLE BOARD and spends nothing, while every
+// Discharge comes out of ONE hull that must hold the entire cost.
+//
+// Read through the engine’s own accessors, never by re-parsing meta, so the
+// printed number can never drift from the number the rules enforce.
+export function chargeAttributesOf(meta: Record<string, unknown>): Attribute[] {
+  const card = { meta }
+  const rows: Attribute[] = []
+
+  const max = chargeMaxOf(card)
+  if (max > 0) {
+    // chargeRateOf defaults to CHARGE_TICK for every card, so it is only
+    // meaningful once we know the hull actually stores charge.
+    const rate = chargeRateOf(card)
+    rows.push({
+      key: 'charge', label: `Charge ${max}`, icon: spark,
+      description:
+        `Stores up to ${max} charge. It gains ${rate} charge at the start of each of your turns`
+        + `${rate === CHARGE_TICK ? ', ' : ` — faster than the usual ${CHARGE_TICK} — `}up to that cap. `
+        + 'Charge sits on this vehicle alone: there is no shared pool, and it carries over between turns '
+        + 'until something spends it.',
+    })
+  }
+
+  const relay = chargeRelayOf(card)
+  if (relay > 0) {
+    rows.push({
+      key: 'chargeRelay', label: `Charge Relay ${relay}`, icon: spark,
+      description:
+        `At the start of your turn, every other friendly vehicle in this zone gains ${relay} charge on top `
+        + 'of its own. Relays do not stack — a second one in the same zone adds nothing — and a relay '
+        + 'never charges itself or another relay.',
+    })
+  }
+
+  const gate = chargeGateOf(card)
+  if (gate > 0) {
+    rows.push({
+      key: 'requiresCharge', label: `Requires ${gate} Charge`, icon: spark,
+      description:
+        `You can only play this while the LH vehicles you control hold ${gate} charge or more in total, `
+        + 'added up across your whole board — it does not have to sit on one vehicle or in one zone. '
+        + 'Playing it does not spend that charge; the total is only checked as you play. Losing charged '
+        + 'vehicles can put this card out of reach again.',
+    })
+  }
+
+  const discharge = dischargeCostOf(card)
+  if (discharge !== null) {
+    rows.push({
+      key: 'discharge', label: `Discharge ${discharge}`, icon: spark,
+      description:
+        `Using its ability spends ${discharge} charge from this vehicle alone — charge held by your other `
+        + 'vehicles cannot help pay, however much of it you have. It also spends this vehicle’s '
+        + 'activation for the turn.',
+    })
+  }
+
+  const from = dischargeFromOf(card)
+  if (from !== null) {
+    rows.push({
+      key: 'dischargeFrom', label: `Discharge ${from} from a friendly LH vehicle`, icon: spark,
+      description:
+        `Playing this spends ${from} charge from one friendly LH vehicle you choose. That single vehicle `
+        + `must hold all ${from} — you cannot split the cost across several — and it spends its `
+        + 'activation for the turn as well.',
+    })
+  }
+
+  return rows
+}
+
 /**
  * The attributes to explain for one card: its vehicle type (if any) first,
- * then one entry per keyword. A keyword with no glossary entry still gets a
- * row, so a card can never carry a silently-unexplained modifier.
+ * then its charge rules (if any), then one entry per keyword. A keyword with
+ * no glossary entry still gets a row, so a card can never carry a silently-
+ * unexplained modifier.
  */
-export function attributesOf(vehicleType: string | null, keywords: string[]): Attribute[] {
+export function attributesOf(
+  vehicleType: string | null,
+  keywords: string[],
+  meta: Record<string, unknown> = {},
+): Attribute[] {
   const typeInfo = vehicleType !== null ? VEHICLE_TYPE_INFO[vehicleType] : undefined
   return [
     ...(typeInfo ? [typeInfo] : []),
+    ...chargeAttributesOf(meta),
     ...keywords.map(
       (k) =>
         KEYWORD_INFO[k] ?? {
