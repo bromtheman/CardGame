@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import type { CardInstance, PublicGameState } from '@shared/engine/gameInit'
 import type { GameAction, Side } from '@shared/engine/engineTypes'
 import type { LobbySettings } from '@shared/lobbySettings'
-import { battleFrozen, biomeAllows, effectiveCostInGame, effectName, findVehicle, legalZonesFor, zoneCapFor } from '@shared/engine/index'
+import { battleFrozen, biomeAllows, drainNeedsChoice, effectiveCostInGame, effectName, findVehicle, legalZonesFor, zoneCapFor } from '@shared/engine/index'
 import { shortHandNumber } from '@shared/format'
 import { botSideOf } from '@shared/ai/botGame'
 import { isTableTalk } from '@shared/ai/llm/tableTalk'
@@ -20,6 +20,7 @@ import { ConcedeButton } from './ConcedeButton'
 import { StealthyResponseBar } from './StealthyResponseBar'
 import { BattleOverlay } from './BattleOverlay'
 import { PendingChoiceDialog } from './PendingChoiceDialog'
+import { DrainChargeDialog } from './DrainChargeDialog'
 import { HeroPowerBar, type MoveMode, type SwapMode } from './HeroPowerBar'
 import { BotSpeechBubble } from './BotSpeechBubble'
 import { latestTableTalk, tableTalkText } from './tableTalkDelta'
@@ -48,6 +49,9 @@ export function GameBoardPage() {
   const [swapMode, setSwapMode] = useState<SwapMode | null>(null)
   // WF Flanking Maneuver: armed while the player is choosing the zone to flank.
   const [flankMode, setFlankMode] = useState(false)
+  // 2026-09-22 Drain N Charge: a gated card waiting on its split dialog, with
+  // the zone already chosen (spec §4). A board mode like the others.
+  const [draining, setDraining] = useState<{ card: CardInstance; zoneId: number } | null>(null)
   const [liftedCard, setLiftedCard] = useState<CardInstance | null>(null)
   const [confirmingConcede, setConfirmingConcede] = useState(false)
   const [logOpen, setLogOpen] = useState(false)
@@ -163,6 +167,19 @@ export function GameBoardPage() {
     setFieldTargeting(null)
     setSwapMode(null)
     setFlankMode(false)
+    setDraining(null)
+  }
+  // Every play of a hand card into a zone — the hand's one-legal-zone
+  // shortcut and a zone click alike — comes through here, so a Drain card
+  // whose split is a real choice stops at the dialog first (2026-09-22 spec
+  // §4). A board that cannot pay sends anyway: the server's refusal names why.
+  function playToZone(card: CardInstance, zoneId: number) {
+    if (!state) return
+    if (drainNeedsChoice(state, mySide, card)) {
+      setDraining({ card, zoneId })
+      return
+    }
+    void send({ type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId })
   }
   function onPlacingChange(card: CardInstance | null) {
     if (card) cancelAllModes()
@@ -258,7 +275,7 @@ export function GameBoardPage() {
   }
   function onZoneClick(zoneId: number) {
     if (placingCard) {
-      void send({ type: 'PLAY_CARD_TO_ZONE', instanceId: placingCard.instanceId, zoneId })
+      playToZone(placingCard, zoneId)
       setPlacingCard(null)
       return
     }
@@ -481,6 +498,7 @@ export function GameBoardPage() {
         busy={busy}
         placingCard={placingCard}
         onPlacingChange={onPlacingChange}
+        onPlayToZone={playToZone}
         fieldTargeting={fieldTargeting}
         onFieldTargetingChange={onFieldTargetingChange}
         moveMode={moveMode}
@@ -543,6 +561,21 @@ export function GameBoardPage() {
         >
           {error}
         </div>
+      )}
+
+      {draining && (
+        <DrainChargeDialog
+          state={state}
+          mySide={mySide}
+          turnNumber={game.turn_number}
+          card={draining.card}
+          busy={busy}
+          onPlay={(chargeFrom) => {
+            void send({ type: 'PLAY_CARD_TO_ZONE', instanceId: draining.card.instanceId, zoneId: draining.zoneId, chargeFrom })
+            setDraining(null)
+          }}
+          onCancel={() => setDraining(null)}
+        />
       )}
 
       <ConfirmDialog
