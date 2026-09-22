@@ -188,3 +188,30 @@ describe('LH redesign — rows by value', () => {
     expect((card!.meta as Record<string, unknown>).retired).toBe(true)
   })
 })
+
+describe('LH redesign — roster shape (spec §5, §7)', () => {
+  it('seeds 28 draftable LH cards and keeps the 8 retired rows', async () => {
+    const { cards } = await loadSeedData()
+    const lh = cards.filter((c) => c.faction === 'LH')
+    const live = lh.filter((c) => (c.meta as Record<string, unknown>)?.retired !== true)
+    expect(live).toHaveLength(28)
+    expect(lh).toHaveLength(36)
+    expect(live.map((c) => c.name).sort()).toEqual(Object.keys(CARDS).map((k) => k.slice(3)).sort())
+  })
+
+  it('every draftable LH vehicle is a report craft with a ship profile (Task 30 lands the profiles)', async () => {
+    const { cards } = await loadSeedData()
+    const vehicles = cards.filter((c) => c.faction === 'LH' && c.type === 'vehicle' && (c.meta as Record<string, unknown>)?.retired !== true)
+    expect(vehicles).toHaveLength(24)
+  })
+
+  it('the six new-keyword and gate carriers read as intended', async () => {
+    const seed = await bySeedKey()
+    expect(seed.get('LH:Dynamo')!.keywords).toContain('swift')
+    expect(seed.get('LH:Rectifier')!.keywords).toContain('swift')
+    expect(seed.get('LH:Watt')!.keywords).toContain('decoy')
+    for (const [k, gate] of [['LH:Dynamo', 2], ['LH:Quadrupole', 3], ['LH:Cathode', 3], ['LH:Terawatt', 3], ['LH:Candela', 4], ['LH:Impedance', 5]] as const) {
+      expect((seed.get(k)!.meta as Record<string, unknown>).requiresCharge, k).toBe(gate)
+    }
+  })
+})
