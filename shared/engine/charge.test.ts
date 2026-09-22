@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
-  addCharge, boardChargeOf, chargeGateShortfall, chargeMaxOf, chargeOf, spendCharge, tickCharge,
+  addCharge, applyDrain, boardChargeOf, chargeGateShortfall, chargeMaxOf, chargeOf, chargePayersOf,
+  chargeSplitError, chargeSplitIsForced, drainNeedsChoice, planDrain, spendCharge, suggestedChargeSplit,
+  tickCharge,
 } from './charge.ts'
 import type { ZoneCardEntry } from './engineTypes.ts'
 import { discardSnapshotOf } from './gameEngine.ts'
@@ -82,5 +84,126 @@ describe('END_TURN charges the incoming side', () => {
     expect(b.map((c) => c.instanceId)).toEqual(['bobs'])
     expect(chargeOf(b[0])).toBe(1)
     expect(chargeOf(res.game.state.zones[0].cards.a[0] as ZoneCardEntry)).toBe(0)
+  })
+})
+
+// 2026-09-22 Drain N Charge (docs/superpowers/specs/2026-09-22-lh-drain-charge-design.md
+// §2–§3). Batteries carry no dischargeCost; timers do.
+describe('Drain N Charge helpers', () => {
+  const battery = (id: string, charge: number) =>
+    zoneEntry({ instanceId: id, name: id, faction: 'LH', meta: { chargeMax: 2 }, charge })
+  const timer = (id: string, charge: number, cost: number) =>
+    zoneEntry({ instanceId: id, name: id, faction: 'LH', meta: { chargeMax: Math.max(cost, 2), dischargeCost: cost }, charge })
+  const gated = (gate: number) => ({ name: 'Quadrupole', meta: { requiresCharge: gate } })
+
+  it('lists the side’s charged LH hulls in board order, and nothing else', () => {
+    const game = makeGame()
+    game.state.zones[1].cards.a.push(battery('z2', 1))
+    game.state.zones[0].cards.a.push(battery('z1a', 2), battery('empty', 0), battery('z1b', 1))
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'dwg', faction: 'DWG', meta: { chargeMax: 2 }, charge: 2 }))
+    game.state.zones[0].cards.b.push(battery('theirs', 2))
+    expect(chargePayersOf(game.state, 'a').map((p) => [p.zoneId, p.entry.instanceId]))
+      .toEqual([[1, 'z1a'], [1, 'z1b'], [2, 'z2']])
+  })
+
+  it('suggests batteries first, fullest first, ties in board order', () => {
+    const game = makeGame()
+    game.state.zones[0].cards.a.push(battery('A', 2), battery('C', 1))
+    game.state.zones[1].cards.a.push(battery('B', 2), timer('S', 3, 3))
+    // A 2→1, then B 2→1, then the three-way tie at 1 goes to A (board order).
+    expect(suggestedChargeSplit(game.state, 'a', 3)).toEqual([
+      { instanceId: 'A', amount: 2 }, { instanceId: 'B', amount: 1 },
+    ])
+  })
+
+  it('then drains Discharge hulls, emptiest first, keeping a ready timer ready', () => {
+    const game = makeGame()
+    game.state.zones[0].cards.a.push(timer('Super', 3, 3), timer('Umbra', 1, 2), battery('K', 1))
+    game.state.zones[2].cards.a.push(timer('Byte', 1, 1))
+    // K first (a battery); then Umbra and Byte tie at 1 — Umbra in board order — then Byte.
+    expect(suggestedChargeSplit(game.state, 'a', 3)).toEqual([
+      { instanceId: 'Umbra', amount: 1 }, { instanceId: 'K', amount: 1 }, { instanceId: 'Byte', amount: 1 },
+    ])
+  })
+
+  it('returns null when the board cannot pay, and an empty split for nothing', () => {
+    const game = makeGame()
+    game.state.zones[0].cards.a.push(battery('A', 1))
+    expect(suggestedChargeSplit(game.state, 'a', 2)).toBeNull()
+    expect(suggestedChargeSplit(game.state, 'a', 0)).toEqual([])
+  })
+
+  it('names why a split cannot pay, or passes it', () => {
+    const game = makeGame()
+    game.state.zones[0].cards.a.push(battery('Chrysoprase', 2), battery('Kilowatt', 1))
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'Paddlegun', name: 'Paddlegun', faction: 'DWG', meta: { chargeMax: 2 }, charge: 2 }))
+    game.state.zones[0].cards.b.push(battery('Theirs', 2))
+    const check = (split: unknown[]) => chargeSplitError(game.state, 'a', 2, split)
+    expect(check([{ instanceId: 'Chrysoprase', amount: 1 }, { instanceId: 'Kilowatt', amount: 1 }])).toBeNull()
+    expect(check([{ instanceId: 'Chrysoprase', amount: 1 }])).toBe('Choose exactly 2 charge — you chose 1')
+    expect(check([{ instanceId: 'Kilowatt', amount: 2 }])).toBe('Kilowatt holds only 1 charge')
+    expect(check([{ instanceId: 'Chrysoprase', amount: 1 }, { instanceId: 'Chrysoprase', amount: 1 }]))
+      .toBe('Chrysoprase is listed twice')
+    expect(check([{ instanceId: 'Chrysoprase', amount: 1.5 }]))
+      .toBe('Chrysoprase must give up a whole number of charge, at least 1')
+    expect(check([{ instanceId: 'Chrysoprase', amount: 0 }, { instanceId: 'Kilowatt', amount: 1 }]))
+      .toBe('Chrysoprase must give up a whole number of charge, at least 1')
+    for (const id of ['Theirs', 'Paddlegun', 'ghost']) {
+      expect(check([{ instanceId: id, amount: 2 }])).toBe('That charge source is not one of your LH vehicles on the board')
+    }
+    expect(check([null, 7])).toBe('That charge source is not one of your LH vehicles on the board')
+  })
+
+  it('calls a split forced when the board holds exactly the drain, or one hull holds it all', () => {
+    const exact = makeGame()
+    exact.state.zones[0].cards.a.push(battery('A', 1), battery('B', 1))
+    expect(chargeSplitIsForced(exact.state, 'a', 2)).toBe(true)
+    const single = makeGame()
+    single.state.zones[1].cards.a.push(battery('A', 2), battery('empty', 0))
+    expect(chargeSplitIsForced(single.state, 'a', 1)).toBe(true)
+    const choice = makeGame()
+    choice.state.zones[0].cards.a.push(battery('A', 2), battery('B', 1))
+    expect(chargeSplitIsForced(choice.state, 'a', 2)).toBe(false)
+  })
+
+  it('opens the dialog only for a gated card the board can pay more than one way', () => {
+    const game = makeGame()
+    game.state.zones[0].cards.a.push(battery('A', 2), battery('B', 1))
+    expect(drainNeedsChoice(game.state, 'a', gated(2))).toBe(true)
+    expect(drainNeedsChoice(game.state, 'a', gated(3))).toBe(false) // forced: the board holds exactly 3
+    expect(drainNeedsChoice(game.state, 'a', gated(4))).toBe(false) // short: the server refuses with the reason
+    expect(drainNeedsChoice(game.state, 'a', { meta: {} })).toBe(false)
+  })
+
+  it('plans a drain: the precondition, the suggested split, or the player’s own', () => {
+    const game = makeGame()
+    game.state.zones[0].cards.a.push(battery('A', 2), battery('B', 1))
+    expect(planDrain(game.state, 'a', gated(4), undefined))
+      .toEqual({ error: 'Quadrupole drains 4 charge — your LH vehicles hold 3' })
+    // A 2→1, then the tie at 1 goes to A (board order).
+    expect(planDrain(game.state, 'a', gated(2), undefined)).toEqual({ split: [{ instanceId: 'A', amount: 2 }] })
+    const own = [{ instanceId: 'B', amount: 1 }, { instanceId: 'A', amount: 1 }]
+    expect(planDrain(game.state, 'a', gated(2), own)).toEqual({ split: own })
+    expect(planDrain(game.state, 'a', gated(2), [{ instanceId: 'B', amount: 2 }])).toEqual({ error: 'B holds only 1 charge' })
+    expect(planDrain(game.state, 'a', gated(2), 'all of it'))
+      .toEqual({ error: 'chargeFrom must be a list of { instanceId, amount }' })
+    const plain = { name: 'Kilowatt', meta: {} }
+    expect(planDrain(game.state, 'a', plain, undefined)).toEqual({ split: [] })
+    expect(planDrain(game.state, 'a', plain, [])).toEqual({ split: [] })
+    expect(planDrain(game.state, 'a', plain, [{ instanceId: 'A', amount: 1 }])).toEqual({ error: 'Kilowatt drains no charge' })
+  })
+
+  it('spends a split and logs it in board order, never touching an activation', () => {
+    const game = makeGame()
+    const a = battery('Chrysoprase', 2)
+    const b = battery('Kilowatt', 2)
+    game.state.zones[0].cards.a.push(a)
+    game.state.zones[1].cards.a.push(b)
+    applyDrain(game, 'a', 'Quadrupole', [{ instanceId: 'Kilowatt', amount: 1 }, { instanceId: 'Chrysoprase', amount: 2 }])
+    expect([chargeOf(a), chargeOf(b)]).toEqual([0, 1])
+    expect(game.state.log).toEqual(['Quadrupole drains 3 charge — Chrysoprase 2, Kilowatt 1'])
+    expect([a.activatedOnTurn, b.activatedOnTurn]).toEqual([null, null])
+    applyDrain(game, 'a', 'Kilowatt', [])
+    expect(game.state.log).toHaveLength(1)
   })
 })

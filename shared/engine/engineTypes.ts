@@ -159,6 +159,10 @@ export interface EngineGame {
   privates: { a: PrivateState; b: PrivateState }
 }
 
+// 2026-09-22 Drain N Charge (docs/superpowers/specs/2026-09-22-lh-drain-charge-design.md):
+// how much one friendly LH hull gives up toward a gated card's play.
+export interface ChargeShare { instanceId: string; amount: number }
+
 export type GameAction =
   | { type: 'END_TURN' }
   | { type: 'CONCEDE' }
