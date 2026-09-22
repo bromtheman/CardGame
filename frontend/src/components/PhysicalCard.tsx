@@ -107,7 +107,7 @@ export function PhysicalCard({
                 max={chargeMax}
                 variant="capacity"
                 size="sm"
-                segmentWidth={10}
+                segmentWidth={8}
                 label={`Stores up to ${chargeMax} charge`}
               />
             </span>

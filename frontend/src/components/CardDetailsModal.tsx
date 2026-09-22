@@ -46,14 +46,15 @@ function ScoreList({ rows }: { rows: ProfileRow[] }) {
 
 // The four matchups keep their reason printed: unlike a percentile it names
 // the armament the score is drawn from, which is the part a player acts on.
+// It sits UNDER the bar, so the bars line up with the five scores' above.
 function MatchupList({ rows }: { rows: ProfileRow[] }) {
   return (
-    <ul className="flex flex-col gap-2">
+    <ul className="flex flex-col gap-3">
       {rows.map((r) => (
-        <li key={r.key} className="grid grid-cols-[7.5rem_9rem_1fr] items-center gap-x-3">
+        <li key={r.key} className="grid grid-cols-[7.5rem_1fr] items-center gap-x-3 gap-y-1">
           <span className="font-bold">{r.label}</span>
-          <SegmentBar value={r.score} max={5} label={r.spoken} className="w-full" />
-          <span className="text-sm leading-snug text-ocean-300">{r.why}</span>
+          <SegmentBar value={r.score} max={5} label={r.spoken} className="w-full max-w-56" />
+          <span className="col-start-2 text-sm leading-snug text-ocean-300">{r.why}</span>
         </li>
       ))}
     </ul>
@@ -71,7 +72,7 @@ function ShipProfilePanel({ profile, faction }: { profile: ShipProfile; faction:
     ['Sees', profile.sees], ['Escort', profile.escort],
   ]
   return (
-    <div className="mt-3 flex flex-col gap-4 rounded border border-ocean-600 bg-ocean-950/50 p-4">
+    <div className="flex flex-col gap-4 rounded border border-ocean-600 bg-ocean-950/50 p-4">
       <div>
         <p className="text-xs uppercase tracking-wide text-ocean-300">
           {shipProfileHeadline(profile, faction)}
@@ -79,7 +80,6 @@ function ShipProfilePanel({ profile, faction }: { profile: ShipProfile; faction:
         <p className="mt-1 text-lg leading-snug">{profile.summary}</p>
         {profile.note && <p className="mt-1 text-sm italic text-ocean-300">{profile.note}</p>}
       </div>
-      {/* Stacked, not side by side: the column is ~590px wide and the matchup reasons need the room. */}
       <ScoreList rows={scores} />
       <MatchupList rows={matchups} />
       <p className="text-sm leading-relaxed">
@@ -160,6 +160,10 @@ export function CardDetailsModal({
   const inGameCost = effectiveCost ?? halved
   // Built-in only: a custom card may borrow a seeded name without being that craft.
   const profile = card.is_built_in ? shipProfileOf(card.faction, card.name) : null
+  // Every built-in vehicle is due a profile (OW, TG and GT await their FtD
+  // reports), so it keeps the two-column layout even before its profile lands.
+  // Abilities and custom cards never get one, and take the single column.
+  const twoColumn = profile !== null || (card.is_built_in && card.type === 'vehicle')
 
   return createPortal(
     <div
@@ -176,98 +180,112 @@ export function CardDetailsModal({
         if (e.target === e.currentTarget && pressedBackdrop.current) onClose()
       }}
     >
+      {/* Two columns for a built-in vehicle, whose right column holds its ship
+          profile; any other card is the left column alone, so the dialog
+          narrows to it. */}
       <div
         role="dialog"
         aria-modal="true"
         aria-label={`${card.name} — card details`}
         onClick={(e) => e.stopPropagation()}
-        className={`mx-auto flex min-h-full max-w-5xl flex-col gap-6 rounded-xl border-2 border-brass-400 bg-ocean-900 p-6 shadow-plank transition-transform duration-150 ease-out motion-reduce:transition-none md:flex-row ${
-          open ? 'translate-y-0 starting:translate-y-1' : 'translate-y-1'
-        }`}
+        className={`mx-auto flex min-h-full flex-col gap-6 rounded-xl border-2 border-brass-400 bg-ocean-900 p-6 shadow-plank transition-transform duration-150 ease-out motion-reduce:transition-none ${
+          twoColumn ? 'max-w-5xl' : 'max-w-md'
+        } ${open ? 'translate-y-0 starting:translate-y-1' : 'translate-y-1'}`}
       >
-        <section className="flex w-full flex-col md:w-[360px] md:shrink-0">
-          <div className="flex h-[280px] items-center justify-center overflow-hidden rounded bg-parchment-300 shadow-inner">
-            <img
-              src={img.src}
-              alt={card.name}
-              className={img.isFallback ? 'h-32 w-32 opacity-60' : 'h-full w-full object-cover'}
-            />
-          </div>
-          <h2 className="mt-4 font-display text-3xl">{card.name}</h2>
-          <p className="text-sm uppercase tracking-wide text-ocean-300">
-            {card.is_built_in ? card.faction : 'Custom'} · {card.vehicle_type ?? card.type}
-          </p>
-          {card.card_text && (
-            <p className="mt-3 whitespace-pre-line rounded bg-ocean-950/60 p-3 leading-relaxed">
-              {card.card_text}
+        {/* The name heads the whole dialog rather than sitting under the
+            image, so the image and the profile panel start on one line. */}
+        <header className="flex items-start justify-between gap-4">
+          <div className="flex min-w-0 flex-wrap items-baseline gap-x-3">
+            <h2 className="font-display text-3xl">{card.name}</h2>
+            <p className="text-sm uppercase tracking-wide text-ocean-300">
+              {card.is_built_in ? card.faction : 'Custom'} · {card.vehicle_type ?? card.type}
             </p>
-          )}
-          <div className="mt-4 flex flex-wrap gap-2">
-            <CostChip
-              label="Materials"
-              value={
-                inGameCost === card.material_cost
-                  ? shortHandNumber(card.material_cost)
-                  : `${shortHandNumber(inGameCost)} (was ${shortHandNumber(card.material_cost)})`
-              }
-            />
-            {card.cp_cost > 0 && <CostChip label="CP" value={String(card.cp_cost)} />}
-            {chargeMax > 0 && (
-              <CostChip label="Charge" value={`⚡${chargeMax}`}>
-                <SegmentBar
-                  value={chargeMax}
-                  max={chargeMax}
-                  variant="capacity"
-                  label={`Stores up to ${chargeMax} charge`}
-                  className="mt-1 w-full min-w-14"
-                />
-              </CostChip>
-            )}
-            {card.blueprint_cost > 0 && (
-              <CostChip label="Blueprint" value={shortHandNumber(card.blueprint_cost)} muted />
-            )}
           </div>
-        </section>
+          <button
+            type="button"
+            onClick={onClose}
+            autoFocus
+            className="shrink-0 rounded border border-ocean-600 px-3 py-1 font-bold text-parchment-100"
+          >
+            Close
+          </button>
+        </header>
 
-        <section className="flex min-w-0 flex-1 flex-col">
-          {/* The Close button rides the column's first heading, whichever that is. */}
-          <div className="flex items-start justify-between gap-4">
-            <h3 className="font-display text-2xl">
-              {profile ? 'How it fights in From The Depths' : <>What this card&rsquo;s attributes do</>}
-            </h3>
-            <button
-              type="button"
-              onClick={onClose}
-              autoFocus
-              className="rounded border border-ocean-600 px-3 py-1 font-bold text-parchment-100"
-            >
-              Close
-            </button>
-          </div>
-          {profile && (
-            <>
-              <ShipProfilePanel profile={profile} faction={card.faction} />
-              <h3 className="mt-6 font-display text-2xl">What this card&rsquo;s attributes do</h3>
-            </>
+        <div className="flex flex-col gap-6 md:flex-row">
+          <section className={`flex w-full flex-col ${twoColumn ? 'md:w-[360px] md:shrink-0' : ''}`}>
+            <div className="flex h-[280px] items-center justify-center overflow-hidden rounded bg-parchment-300 shadow-inner">
+              <img
+                src={img.src}
+                alt={card.name}
+                className={img.isFallback ? 'h-32 w-32 opacity-60' : 'h-full w-full object-cover'}
+              />
+            </div>
+            {card.card_text && (
+              <p className="mt-4 whitespace-pre-line rounded bg-ocean-950/60 p-3 leading-relaxed">
+                {card.card_text}
+              </p>
+            )}
+            <div className="mt-4 flex flex-wrap gap-2">
+              <CostChip
+                label="Materials"
+                value={
+                  inGameCost === card.material_cost
+                    ? shortHandNumber(card.material_cost)
+                    : `${shortHandNumber(inGameCost)} (was ${shortHandNumber(card.material_cost)})`
+                }
+              />
+              {card.cp_cost > 0 && <CostChip label="CP" value={String(card.cp_cost)} />}
+              {chargeMax > 0 && (
+                <CostChip label="Charge" value={`⚡${chargeMax}`}>
+                  <SegmentBar
+                    value={chargeMax}
+                    max={chargeMax}
+                    variant="capacity"
+                    label={`Stores up to ${chargeMax} charge`}
+                    className="mt-1 w-full min-w-14"
+                  />
+                </CostChip>
+              )}
+              {card.blueprint_cost > 0 && (
+                <CostChip label="Blueprint" value={shortHandNumber(card.blueprint_cost)} muted />
+              )}
+            </div>
+
+            <h3 className="mt-6 font-display text-2xl">Card&rsquo;s Attributes</h3>
+            {attributes.length === 0 ? (
+              <p className="mt-3 text-ocean-300">
+                This card has no vehicle type or modifiers — everything it does is in its card text.
+              </p>
+            ) : (
+              <ul className="mt-3 flex flex-col gap-3">
+                {attributes.map((attr) => (
+                  <li key={attr.key} className="flex gap-3 rounded border border-ocean-600 bg-ocean-950/50 p-3">
+                    <img src={attr.icon} alt="" aria-hidden className="h-8 w-8 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="font-bold text-brass-400">{attr.label}</p>
+                      <p className="text-sm leading-relaxed text-parchment-100">{attr.description}</p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          {/* No heading: the panel's own headline and bars say what it is. The
+              placeholder keeps a not-yet-profiled vehicle's right column from
+              reading as a layout that failed to load. */}
+          {twoColumn && (
+            <section className="flex min-w-0 flex-1 flex-col">
+              {profile ? (
+                <ShipProfilePanel profile={profile} faction={card.faction} />
+              ) : (
+                <p className="rounded border border-dashed border-ocean-600 bg-ocean-950/50 p-4 text-sm text-ocean-300">
+                  No From The Depths profile for this craft yet.
+                </p>
+              )}
+            </section>
           )}
-          {attributes.length === 0 ? (
-            <p className="mt-4 text-ocean-300">
-              This card has no vehicle type or modifiers — everything it does is in its card text.
-            </p>
-          ) : (
-            <ul className="mt-4 flex flex-col gap-3">
-              {attributes.map((attr) => (
-                <li key={attr.key} className="flex gap-3 rounded border border-ocean-600 bg-ocean-950/50 p-3">
-                  <img src={attr.icon} alt="" aria-hidden className="h-8 w-8 shrink-0" />
-                  <div className="min-w-0">
-                    <p className="font-bold text-brass-400">{attr.label}</p>
-                    <p className="text-sm leading-relaxed text-parchment-100">{attr.description}</p>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+        </div>
       </div>
     </div>,
     document.body,

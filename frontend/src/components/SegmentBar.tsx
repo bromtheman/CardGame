@@ -6,13 +6,26 @@
 // a straight-edged, `overflow-hidden` box. The flex `gap` between segments is
 // laid out BEFORE the skew, so each gap comes out as a diagonal cut, while the
 // box clips the skew's overhang so the bar's own left and right edges stay
-// vertical. That is why the strip is deliberately wider than its box.
+// vertical. Three details keep that trick clean:
+//   - The strip is `shrink-0`. It is deliberately wider than its box, and a
+//     flex item shrinks to fit by default — which silently deleted the right
+//     overhang, so the skew pulled the last segment's bottom corner inside the
+//     box (a notch at the bar's end) and every slash sat off-centre.
+//   - The box has no background and no ring. Anything painted on the box shows
+//     through every gap: an inset ring did, as a light tick at the top and the
+//     bottom of each slash. A gap now shows only the surface the bar sits on.
+//   - The end segments are wider by the overhang, so after clipping every
+//     visible segment is the same length.
 const SKEW = '-skew-x-[20deg]'
+/** The slash width — keep in step with the strip's literal `gap-[2px]`. */
+const GAP_PX = 2
 
-/** Height and overhang per size; the overhang must clear (height / 2) × tan 20°. */
+// Per size: the box height, the strip's overhang on each side, and the extra
+// basis an end segment needs to cover that overhang. The overhang must clear
+// (height / 2) × tan 20° — 1.8px at h-2.5, 2.5px at h-3.5.
 const SIZES = {
-  sm: { box: 'h-2.5', strip: '-ml-1 w-[calc(100%+0.5rem)]' },
-  md: { box: 'h-3.5', strip: '-ml-1.5 w-[calc(100%+0.75rem)]' },
+  sm: { box: 'h-2.5', strip: '-ml-1 w-[calc(100%+0.5rem)]', end: 'basis-1' },
+  md: { box: 'h-3.5', strip: '-ml-1.5 w-[calc(100%+0.75rem)]', end: 'basis-1.5' },
 } as const
 
 export function SegmentBar({
@@ -25,36 +38,36 @@ export function SegmentBar({
   label: string
   size?: keyof typeof SIZES
   /**
-   * `score` fills `value` of `max`. `capacity` fills every segment in a muted
-   * tone instead: a card in the collection or in hand has a charge CAP but no
-   * live charge, and drawing that as a full bar would claim pips it has not
-   * earned — while drawing it empty would read as zero.
+   * `score` fills `value` of `max` in brass. `capacity` fills every segment in
+   * steel gray instead: a card in the collection or in hand has a charge CAP
+   * but no live charge, and drawing that in the brass of a real reading would
+   * claim pips it has not earned — while drawing it empty would read as zero.
    */
   variant?: 'score' | 'capacity'
   /**
-   * Pixels per segment, so the bar's LENGTH is the capacity — a 4-charge hull
-   * draws twice as long as a 2-charge one. Omit to size it with `className`
-   * instead (the ship profile's fixed-width 1–5 scale).
+   * Visible pixels per segment (the slashes are added on top), so the bar's
+   * LENGTH is the capacity and every segment lands on whole pixels. Omit to
+   * size it with `className` instead (the ship profile's fixed-width 1–5 scale).
    */
   segmentWidth?: number
   className?: string
 }) {
   const filled = variant === 'capacity' ? max : Math.max(0, Math.min(max, value))
-  const { box, strip } = SIZES[size]
+  const { box, strip, end } = SIZES[size]
   return (
     <span
       role="img"
       aria-label={label}
       title={label}
-      style={segmentWidth === undefined ? undefined : { width: max * segmentWidth }}
-      className={`inline-flex ${box} overflow-hidden rounded-[3px] bg-ocean-950 ring-1 ring-inset ring-ocean-600 ${className}`}
+      style={segmentWidth === undefined ? undefined : { width: max * segmentWidth + (max - 1) * GAP_PX }}
+      className={`inline-flex ${box} overflow-hidden rounded-[3px] ${className}`}
     >
-      <span className={`flex ${strip} ${SKEW} gap-[2px]`} aria-hidden>
+      <span className={`flex shrink-0 ${strip} ${SKEW} gap-[2px]`} aria-hidden>
         {Array.from({ length: max }, (_, i) => (
           <span
             key={i}
-            className={`flex-1 ${
-              i < filled ? (variant === 'capacity' ? 'bg-brass-400/40' : 'bg-brass-400') : 'bg-ocean-800'
+            className={`grow ${i === 0 || i === max - 1 ? end : 'basis-0'} ${
+              i < filled ? (variant === 'capacity' ? 'bg-steel-400' : 'bg-brass-400') : 'bg-ocean-800'
             }`}
           />
         ))}
