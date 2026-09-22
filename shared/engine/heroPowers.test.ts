@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { CHANGE_ORDER_DELAY_TURNS, MAX_VEHICLES_PER_ZONE_SIDE } from '../gameSettings'
 import { applyAction, effectiveMaterialCostOf } from './index'
+import { chargeOf } from './charge.ts'
+import type { ZoneCardEntry } from './engineTypes.ts'
 import { CATALOG_HERO_POWERS } from './heroPowers'
 import { inst, makeCtx, makeGame, snap, zoneEntry } from './testFixtures'
 
@@ -662,5 +664,36 @@ describe('USE_HERO_POWER flankingManeuver (WF)', () => {
     expect(r.game.state.zoneEffects).toEqual([])
     expect(r.game.privates.a.hand).toHaveLength(handBefore)
     expect(r.game.state.log.some((l) => /Flanking Maneuver expired/.test(l))).toBe(true)
+  })
+})
+
+describe('Surge (2026-09-21 LH spec §6)', () => {
+  it('gives every friendly LH hull one pip, capped, and is usable with nothing to charge', () => {
+    const game = makeGame({ turnNumber: 3, activePlayer: 'alice' })
+    game.state.factions = { a: 'LH', b: 'SS' }
+    game.state.zones[0].cards.a.push(
+      zoneEntry({ instanceId: 'x', faction: 'LH', meta: { chargeMax: 2 }, charge: 1 }),
+      zoneEntry({ instanceId: 'full', faction: 'LH', meta: { chargeMax: 1 }, charge: 1 }),
+      zoneEntry({ instanceId: 'plane', faction: 'LH', vehicleType: 'plane', keywords: ['temporary'] }),
+    )
+    game.state.zones[2].cards.a.push(zoneEntry({ instanceId: 'y', faction: 'LH', meta: { chargeMax: 3 } }))
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'theirs', faction: 'LH', meta: { chargeMax: 2 } }))
+    const res = applyAction(game, 'alice', { type: 'USE_HERO_POWER', power: 'surge' }, makeCtx())
+    if (!res.ok) throw new Error(res.error)
+    const a0 = res.game.state.zones[0].cards.a as ZoneCardEntry[]
+    expect(chargeOf(a0[0])).toBe(2)
+    expect(chargeOf(a0[1])).toBe(1)
+    expect(chargeOf(res.game.state.zones[2].cards.a[0] as ZoneCardEntry)).toBe(1)
+    expect(chargeOf(res.game.state.zones[0].cards.b[0] as ZoneCardEntry)).toBe(0)
+    expect(res.game.state.resources.a.cp).toBe(2)
+    expect(res.game.state.usedHeroPowers.a).toEqual(['surge'])
+    const bare = makeGame({ turnNumber: 3, activePlayer: 'alice' })
+    bare.state.factions = { a: 'LH', b: 'SS' }
+    expect(applyAction(bare, 'alice', { type: 'USE_HERO_POWER', power: 'surge' }, makeCtx()).ok).toBe(true)
+  })
+
+  it('belongs to LH', () => {
+    const game = makeGame({ turnNumber: 3, activePlayer: 'alice' })
+    expect(applyAction(game, 'alice', { type: 'USE_HERO_POWER', power: 'surge' }, makeCtx())).toMatchObject({ ok: false, status: 403 })
   })
 })

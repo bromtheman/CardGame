@@ -588,7 +588,7 @@ insert into public.hero_powers (id, name, faction, power_text, cp_cost, meta)
 values ('78d7b7df-c926-593e-9ad9-543778c16ad8', 'Change Order', 'OW', 'Discard an OW vehicle card. Draw a copy of a player made ship or tank from your deck in two turns', 1, '{}'::jsonb)
 on conflict (id) do update set name = excluded.name, faction = excluded.faction, power_text = excluded.power_text, cp_cost = excluded.cp_cost, meta = excluded.meta;
 insert into public.hero_powers (id, name, faction, power_text, cp_cost, meta)
-values ('6f174556-c99f-5ceb-9be5-6b7d03bb11b1', 'Flyby', 'LH', 'Choose a LH vehicle card in hand. Give it the HALFCOST and TEMPORARY keywords.', 1, '{}'::jsonb)
+values ('b439e4e1-8ded-5430-befd-f2f9f22fec27', 'Surge', 'LH', 'Every friendly LH vehicle gains 1 charge.', 1, '{}'::jsonb)
 on conflict (id) do update set name = excluded.name, faction = excluded.faction, power_text = excluded.power_text, cp_cost = excluded.cp_cost, meta = excluded.meta;
 insert into public.hero_powers (id, name, faction, power_text, cp_cost, meta)
 values ('6e3573d1-01a0-5693-9ae6-7d457841c0b7', 'Flanking maneuver', 'WF', 'Choose a zone. The next time you start a fleet battle in that zone this turn, you may deploy after the defender. During that battle, all enemy ships are considered to have FRAGILE keyword', 1, '{}'::jsonb)

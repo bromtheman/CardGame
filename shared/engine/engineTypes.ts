@@ -183,7 +183,7 @@ export type GameAction =
       power:
         | 'salvage' | 'tacticalPositioning' | 'draw' | 'rapidRedeployment'
         | 'boardingParty' | 'changeOrder' | 'flyby'
-        | 'counterIntelligence' | 'drones' | 'flankingManeuver'
+        | 'counterIntelligence' | 'drones' | 'flankingManeuver' | 'surge'
       cardId?: string       // salvage: which destroyed card
       instanceId?: string   // rapidRedeployment/boardingParty(mine)/changeOrder/flyby/counterIntelligence: which card
       targetInstanceId?: string // boardingParty: the enemy ship being traded for
