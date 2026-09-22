@@ -68,3 +68,27 @@ describe('Volta — voltaJumpStart', () => {
     expect(res.game.state.log).toContain('Volta: nothing in this zone can take a charge')
   })
 })
+
+describe('Umbra — umbraSalvo', () => {
+  const umbra = (charge: number) => zoneEntry({
+    instanceId: 'umbra', name: 'Umbra', faction: 'LH', vehicleType: 'sub', keywords: ['stealthy'],
+    meta: { chargeMax: 2, onActivate: 'umbraSalvo', activateCpCost: 0, dischargeCost: 2 }, charge,
+  })
+  it('shells the base past a Blocker for 150, surfaces for the rest of the game, and the discard restores Stealthy', () => {
+    const game = lhGame()
+    game.state.zones[0].cards.a.push(umbra(2))
+    game.state.zones[0].cards.b.push(zoneEntry({ keywords: ['blocker'] }))
+    const res = activate(game, 'umbra')
+    if (!res.ok) throw new Error(res.error)
+    expect(res.game.state.zones[0].baseHp.b).toBe(850)
+    const hull = res.game.state.zones[0].cards.a[0] as ZoneCardEntry
+    expect(hull.keywords).not.toContain('stealthy')
+    expect(chargeOf(hull)).toBe(0)
+    expect(res.game.state.log).toContain('Umbra surfaces — it is no longer Stealthy')
+    expect(discardSnapshotOf(hull).keywords).toContain('stealthy')
+  })
+  it('refuses at one pip', () => {
+    const game = lhGame(); game.state.zones[0].cards.a.push(umbra(1))
+    expect(activate(game, 'umbra')).toMatchObject({ ok: false, status: 400 })
+  })
+})

@@ -127,9 +127,9 @@ export const lhVehicles = [
     {
         name: 'Umbra',
         isBuiltIn: true,
-        cardText: '',
-        materialCost: 148000,
-        blueprintCost: 148000,
+        cardText: 'Discharge 2: deal 150k damage to the enemy base in this zone, then this surfaces — it loses Stealthy for the rest of the game.',
+        materialCost: 150000,
+        blueprintCost: 148479,
         cpCost: 0,
         imageUrl: 'umbra.png',
         playerId: null,
@@ -138,8 +138,7 @@ export const lhVehicles = [
         faction: FACTIONS.LH,
         blueprintId: null,
         keywords: [KEYWORDS.STEALTHY],
-        meta: {
-        }
+        meta: { chargeMax: 2, [TRIGGERS.ON_ACTIVATE]: 'umbraSalvo', activateCpCost: 0, dischargeCost: 2 },
     },
     {
         name: 'Conduit',

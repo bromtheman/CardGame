@@ -1,13 +1,14 @@
 import { effectiveCostInGame } from '../engine/placement.ts'
 import { addCharge, hasChargeRoom } from '../engine/charge.ts'
-import { FACTIONS, KEYWORDS, VOLTA_JUMP_START_CHARGE } from '../gameSettings.ts'
+import { dealBaseDamage } from '../engine/baseAttack.ts'
+import { FACTIONS, KEYWORDS, UMBRA_SALVO_DAMAGE, VOLTA_JUMP_START_CHARGE } from '../gameSettings.ts'
 import {
   choice, drawFromPool, enemyVehicleOptions, friendlyVehicleOptions, grant, poolEligible, sequence,
   spawnVehicles, summonHulls, whenPlayed, zoneOccupants,
 } from './primitives.ts'
 import type { EffectFn } from './registry.ts'
 import { registerEffect } from './registry.ts'
-import { findVehicle, otherSide, putInHand } from '../engine/gameEngine.ts'
+import { findVehicle, otherSide, putInHand, revokeKeywordsFrom } from '../engine/gameEngine.ts'
 import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
 import type { EngineGame, Side, ZoneCardEntry } from '../engine/engineTypes.ts'
 
@@ -385,3 +386,20 @@ registerEffect(VOLTA, choice({
     return true
   },
 }))
+
+// The three beams (spec §3.8): effect damage in the hull's own lane, Blocker
+// ignored, a fallen base a no-op. dealBaseDamage owns the rule; this only
+// finds the lane and, for Umbra, surfaces the sub afterwards (R-8).
+function beam(materials: number, surfaces: boolean): EffectFn {
+  return ({ game, actor, card }) => {
+    const found = findVehicle(game.state, card.instanceId)
+    if (!found || found.side !== actor) return false
+    if (!dealBaseDamage(game, actor, found.zone.id, materials, card.name)) return false
+    if (surfaces) {
+      revokeKeywordsFrom(found.entry, [KEYWORDS.STEALTHY])
+      game.state.log.push(`${card.name} surfaces — it is no longer Stealthy`)
+    }
+    return true
+  }
+}
+registerEffect('umbraSalvo', beam(UMBRA_SALVO_DAMAGE, true))

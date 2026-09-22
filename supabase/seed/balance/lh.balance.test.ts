@@ -55,6 +55,11 @@ export const CARDS: Record<string, Expected> = {
     cardText: 'When played, a friendly LH vehicle in this zone gains 1 charge.',
     meta: { chargeMax: 1, onPlayEffect: 'voltaJumpStart' },
   },
+  'LH:Umbra': {
+    materialCost: 150_000, blueprintCost: 148_479, cpCost: 0, keywords: ['stealthy'], vehicleType: 'sub',
+    cardText: 'Discharge 2: deal 150k damage to the enemy base in this zone, then this surfaces — it loses Stealthy for the rest of the game.',
+    meta: { chargeMax: 2, onActivate: 'umbraSalvo', activateCpCost: 0, dischargeCost: 2 },
+  },
 }
 
 // Retired by this wave (spec §7): rows stay seeded, undraftable.
