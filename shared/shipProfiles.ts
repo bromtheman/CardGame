@@ -1,4 +1,5 @@
 import { DWG_SHIP_PROFILES } from './shipProfiles/DWG.ts'
+import { LH_SHIP_PROFILES } from './shipProfiles/LH.ts'
 import { SS_SHIP_PROFILES } from './shipProfiles/SS.ts'
 import { WF_SHIP_PROFILES } from './shipProfiles/WF.ts'
 
@@ -48,6 +49,7 @@ export interface ShipProfile {
 
 export const SHIP_PROFILES: Record<string, ShipProfile> = {
   ...DWG_SHIP_PROFILES,
+  ...LH_SHIP_PROFILES,
   ...SS_SHIP_PROFILES,
   ...WF_SHIP_PROFILES,
 }
