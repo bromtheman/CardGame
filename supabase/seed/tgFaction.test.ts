@@ -48,10 +48,12 @@ describe('the LH [TG] Robotics pool stays exactly four (wave 7)', () => {
     }
   })
 
-  it('gives them no other meta — the marker is their only wave-7 edit', async () => {
+  // The 2026-09-21 LH redesign retired all four pool rows (spec §7): `retired`
+  // is the only other key the marker has ever gained.
+  it('gives them no other meta — the marker and the 2026-09-21 retirement are their only edits', async () => {
     const byKey = await bySeedKey()
     for (const name of POOL) {
-      expect(Object.keys(byKey.get(`TG:${name}`)?.meta ?? {})).toEqual(['lhRoboticsPool'])
+      expect(Object.keys(byKey.get(`TG:${name}`)?.meta ?? {}).sort()).toEqual(['lhRoboticsPool', 'retired'].sort())
     }
   })
 })

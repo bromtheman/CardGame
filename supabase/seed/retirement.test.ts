@@ -10,18 +10,33 @@ import { loadSeedData } from './transform'
 // pass retired a card by accident.
 // TG:Horror joined on 2026-09-16 (spec M-9): Fear's rewrite removed its last spawner.
 // DWG:Land Marauder joined on 2026-09-17 by owner decision, outside any pass.
+// The 2026-09-21 LH redesign retired the old LH roster and the four [TG] pool cards (spec §7).
+// Note TG:Amusement (an existing TG card, retired 2026-09-02) is distinct from
+// TG:[TG] Amusement (the LH pool row, retired 2026-09-21) — both belong below.
 const RETIRED = [
   'DWG:Land Marauder',
+  'LH:Coulomb',
+  'LH:Orbit',
+  'LH:Orbit Flank',
+  'LH:Robotic Assemblers',
+  'LH:Sapphire',
+  'LH:Sapphire Screen',
+  'LH:Spectrum',
+  'LH:Thunderbird',
   'OW:Halberd',
   'SS:Dryad',
   'TG:Acceptance',
   'TG:Amusement',
   'TG:Horror',
+  'TG:[TG] Amusement',
+  'TG:[TG] Fear',
+  'TG:[TG] Hysteria',
+  'TG:[TG] Obsession',
   'WF:Harbringer',
 ]
 
-describe('card retirements (2026-09-02, 2026-09-16, 2026-09-17)', () => {
-  it('retires exactly the seven cards named above', async () => {
+describe('card retirements (2026-09-02, 2026-09-16, 2026-09-17, 2026-09-21)', () => {
+  it('retires exactly the nineteen cards named above', async () => {
     const { cards } = await loadSeedData()
     const actual = cards
       .filter((c) => (c.meta as { retired?: unknown } | undefined)?.retired === true)

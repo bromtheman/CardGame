@@ -18,6 +18,8 @@ export const TG_ROBOTICS = [
         keywords: [KEYWORDS.ROBOTIC, KEYWORDS.MOBILE],
         meta: {
             lhRoboticsPool: true,
+            // Retired by the 2026-09-21 LH redesign (spec §7): the pool draw was its only reader.
+            retired: true,
         }
     },
     {
@@ -36,6 +38,8 @@ export const TG_ROBOTICS = [
         keywords: [KEYWORDS.ROBOTIC],
         meta: {
             lhRoboticsPool: true,
+            // Retired by the 2026-09-21 LH redesign (spec §7): the pool draw was its only reader.
+            retired: true,
         }
     },
     {
@@ -54,6 +58,8 @@ export const TG_ROBOTICS = [
         keywords: [KEYWORDS.ROBOTIC],
         meta: {
             lhRoboticsPool: true,
+            // Retired by the 2026-09-21 LH redesign (spec §7): the pool draw was its only reader.
+            retired: true,
         }
     },
     {
@@ -72,6 +78,8 @@ export const TG_ROBOTICS = [
         keywords: [KEYWORDS.ROBOTIC],
         meta: {
             lhRoboticsPool: true,
+            // Retired by the 2026-09-21 LH redesign (spec §7): the pool draw was its only reader.
+            retired: true,
         }
     },
 ];
@@ -111,7 +119,9 @@ export const lhVehicles = [
         blueprintId: null,
         keywords: [],
         meta: {
-            [TRIGGERS.ON_DEATH]: 'coulombEffect'
+            [TRIGGERS.ON_DEATH]: 'coulombEffect',
+            // Retired by the 2026-09-21 LH redesign (spec §7).
+            retired: true,
         }
     },
     {
@@ -134,9 +144,9 @@ export const lhVehicles = [
     {
         name: 'Conduit',
         isBuiltIn: true,
-        cardText: 'When this vehicle is destroyed, draw a player made ship or tank card',
-        materialCost: 100000,
-        blueprintCost: 98000,
+        cardText: 'Relay: at the start of your turn, other friendly LH vehicles in this zone gain 1 additional charge. This does not stack.',
+        materialCost: 70000,
+        blueprintCost: 54077,
         cpCost: 0,
         imageUrl: 'conduit.png',
         playerId: null,
@@ -144,10 +154,10 @@ export const lhVehicles = [
         type: 'vehicle',
         faction: FACTIONS.LH,
         blueprintId: null,
-        keywords: [],
-        meta: {
-            [TRIGGERS.ON_DEATH]: 'conduitEffect'
-        }
+        keywords: [KEYWORDS.INOFFENSIVE, KEYWORDS.SCRAPPY],
+        // 2026-09-21 redesign (spec §3.1.5, R-4). A rule, not an effect —
+        // read by tickCharge; `max` over relays, so two never stack.
+        meta: { chargeRelay: 1 },
     },
     {
         name: 'Thunderbird',
@@ -164,6 +174,8 @@ export const lhVehicles = [
         blueprintId: null,
         keywords: [KEYWORDS.TEMPORARY, KEYWORDS.HALF_COST],
         meta: {
+            // Retired by the 2026-09-21 LH redesign (spec §7).
+            retired: true,
         }
     },
     {
@@ -286,7 +298,9 @@ export const lhVehicles = [
         blueprintId: null,
         keywords: [KEYWORDS.MOBILE, KEYWORDS.STEALTHY],
         meta: {
-            [TRIGGERS.ON_PLAY]: 'sapphireEffect'
+            [TRIGGERS.ON_PLAY]: 'sapphireEffect',
+            // Retired by the 2026-09-21 LH redesign (spec §7).
+            retired: true,
         }
     },
     {
@@ -324,7 +338,9 @@ export const lhVehicles = [
         keywords: [KEYWORDS.HALF_COST, KEYWORDS.TEMPORARY],
         meta: {
             [TRIGGERS.ON_ACTIVATE]: 'spectrumEffect',
-            activateCpCost: 1
+            activateCpCost: 1,
+            // Retired by the 2026-09-21 LH redesign (spec §7).
+            retired: true,
         }
     },
     {
@@ -341,7 +357,9 @@ export const lhVehicles = [
         faction: FACTIONS.LH,
         blueprintId: null,
         meta: {
-            [TRIGGERS.ON_PLAY]: 'sapphireScreenEffect'
+            [TRIGGERS.ON_PLAY]: 'sapphireScreenEffect',
+            // Retired by the 2026-09-21 LH redesign (spec §7).
+            retired: true,
         }
     },
      {
@@ -360,6 +378,8 @@ export const lhVehicles = [
         keywords: [KEYWORDS.HALF_COST, KEYWORDS.TEMPORARY],
         meta: {
             resourceSurge: { materialsAtLeast: 140000, extraSpawns: 1 },
+            // Retired by the 2026-09-21 LH redesign (spec §7).
+            retired: true,
         }
     },
     {
@@ -376,7 +396,9 @@ export const lhVehicles = [
         faction: FACTIONS.LH,
         blueprintId: null,
         meta: {
-            [TRIGGERS.ON_PLAY]: 'orbitFlankEffect'
+            [TRIGGERS.ON_PLAY]: 'orbitFlankEffect',
+            // Retired by the 2026-09-21 LH redesign (spec §7).
+            retired: true,
         }
     },
     {
@@ -393,8 +415,40 @@ export const lhVehicles = [
         faction: FACTIONS.LH,
         blueprintId: null,
         meta: {
-            [TRIGGERS.ON_PLAY]: 'roboticAssemblersEffect'
+            [TRIGGERS.ON_PLAY]: 'roboticAssemblersEffect',
+            // Retired by the 2026-09-21 LH redesign (spec §7).
+            retired: true,
         }
+    },
+    {
+        name: 'Chrysoprase', isBuiltIn: true, cardText: '',
+        materialCost: 40000, blueprintCost: 39571, cpCost: 0, imageUrl: 'chrysoprase.png',
+        playerId: null, vehicleType: 'ship', type: 'vehicle', faction: FACTIONS.LH, blueprintId: null,
+        keywords: [KEYWORDS.SCRAPPY],
+        meta: { chargeMax: 2 },
+    },
+    {
+        name: 'Dipole', isBuiltIn: true, cardText: '',
+        materialCost: 70000, blueprintCost: 65069, cpCost: 0, imageUrl: 'dipole.png',
+        playerId: null, vehicleType: VEHICLE_TYPES.AIRSHIP, type: 'vehicle', faction: FACTIONS.LH, blueprintId: null,
+        keywords: [KEYWORDS.MOBILE],
+        meta: { chargeMax: 2 },
+    },
+    {
+        name: 'Watt', isBuiltIn: true, cardText: '',
+        materialCost: 90000, blueprintCost: 90797, cpCost: 0, imageUrl: 'watt.png',
+        playerId: null, vehicleType: 'ship', type: 'vehicle', faction: FACTIONS.LH, blueprintId: null,
+        // Decoy's rule lives in the glossary, like every keyword's — no card text (R-6).
+        keywords: [KEYWORDS.SCRAPPY, KEYWORDS.MOBILE, KEYWORDS.DECOY],
+        meta: { chargeMax: 1 },
+    },
+    {
+        name: 'Luxon', isBuiltIn: true,
+        cardText: 'Blind on its own: can only be played into a zone where you control an LH vehicle.',
+        materialCost: 60000, blueprintCost: 59142, cpCost: 0, imageUrl: 'luxon.png',
+        playerId: null, vehicleType: 'plane', type: 'vehicle', faction: FACTIONS.LH, blueprintId: null,
+        keywords: [KEYWORDS.HALF_COST, KEYWORDS.TEMPORARY],
+        meta: { deployRequiresLhVehicle: true },
     },
 
 ];

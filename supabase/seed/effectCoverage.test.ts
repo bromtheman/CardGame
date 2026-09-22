@@ -245,6 +245,7 @@ const DELIBERATE_ORPHANS: Record<string, string> = {
   spectreOnPlay: 'balance 2026-09-16 cleared SS Spectre\'s text and removed its onPlayEffect key (M-10)',
   scourgeOnPlay: 'balance 2026-09-16 cleared WF Scourge\'s text and removed its onPlayEffect key (M-10)',
   disembowelerOnPlay: 'balance 2026-09-16 cleared WF Disemboweler\'s text and removed its onPlayEffect key (M-10)',
+  conduitEffect: '2026-09-21 LH redesign: Conduit is now a data-key relay with no effect (spec §7)',
 }
 
 describe('G4: every registered implementation is reachable from a seeded card', () => {
@@ -289,9 +290,10 @@ describe('G4: every registered implementation is reachable from a seeded card', 
   // One name per line so a later branch adding its own orphan (OW's
   // bulwarkOnPlay, SS's victoriaActivate, ...) is a clean insertion rather
   // than a rewrite of this whole line (2026-09-02 spec §2.3).
-  it('the deliberate list matches exactly what the 2026-08-30, 2026-09-02 and 2026-09-16 balance passes orphaned', () => {
+  it('the deliberate list matches exactly what the 2026-08-30, 2026-09-02, 2026-09-16 and 2026-09-21 passes orphaned', () => {
     expect(Object.keys(DELIBERATE_ORPHANS).sort()).toEqual([
       'bulwarkOnPlay',
+      'conduitEffect',
       'disembowelerOnPlay',
       'purifierEffect',
       'rheaOnPlay',
