@@ -391,7 +391,7 @@ export function HandBar({
               )}
               {gate && (
                 <span className="absolute inset-x-3 top-3 rounded bg-red-700/90 px-2 py-1 text-center text-xs font-bold text-parchment-100">
-                  Requires {gate.required} Charge — you have {gate.have}
+                  Drain {gate.required} Charge — you have {gate.have}
                 </span>
               )}
               {dischargeUnmet && (

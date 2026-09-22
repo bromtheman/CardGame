@@ -179,12 +179,13 @@ export function vehicleTypeIcon(vehicleType: string | null): string {
   return VEHICLE_TYPE_INFO[vehicleType ?? '']?.icon ?? anchorIcon
 }
 
-// 2026-09-21 LH Charge (spec §3.1–§3.3). Charge is not a keyword — it lives in
-// a card’s meta — so these rows are built per card rather than looked up, and
-// they are the only place the rules are written down for a player. The two
-// worth being pedantic about are the ones the shapes read alike but behave
-// oppositely: Requires totals the WHOLE BOARD and spends nothing, while every
-// Discharge comes out of ONE hull that must hold the entire cost.
+// 2026-09-21 LH Charge (spec §3.1–§3.3; Drain since 2026-09-22). Charge is not
+// a keyword — it lives in a card’s meta — so these rows are built per card
+// rather than looked up, and they are the only place the rules are written
+// down for a player. The two worth being pedantic about are the ones the
+// shapes read alike but split differently: a Drain comes out of ANY MIX of
+// hulls across the whole board, while every Discharge comes out of ONE hull
+// that must hold the entire cost.
 //
 // Read through the engine’s own accessors, never by re-parsing meta, so the
 // printed number can never drift from the number the rules enforce.
@@ -221,12 +222,11 @@ export function chargeAttributesOf(meta: Record<string, unknown>): Attribute[] {
   const gate = chargeGateOf(card)
   if (gate > 0) {
     rows.push({
-      key: 'requiresCharge', label: `Requires ${gate} Charge`, icon: spark,
+      key: 'requiresCharge', label: `Drain ${gate} Charge`, icon: spark,
       description:
-        `You can only play this while the LH vehicles you control hold ${gate} charge or more in total, `
-        + 'added up across your whole board — it does not have to sit on one vehicle or in one zone. '
-        + 'Playing it does not spend that charge; the total is only checked as you play. Losing charged '
-        + 'vehicles can put this card out of reach again.',
+        `Playing this drains ${gate} charge from the LH vehicles you control. Take it from any of them, `
+        + 'in any zone — you choose how much each gives up as you play it. You need '
+        + `${gate} in total across your whole board, so losing charged vehicles can put this card out of reach.`,
     })
   }
 
