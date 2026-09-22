@@ -13,7 +13,7 @@ import { isStunned } from './stun.ts'
 import { costModifierFor, effectFor, effectName, enemyTargetFilterFor, noteUnimplemented } from '../effects/registry.ts'
 import { dispatchDeployWatchers } from './battleTriggers.ts'
 import { effectiveMaterialCostOf } from './costs.ts'
-import { chargeGateShortfall, chargeOf, dischargeFromOf, spendCharge } from './charge.ts'
+import { applyDrain, chargeOf, dischargeFromOf, planDrain, spendCharge } from './charge.ts'
 import { decoyFor } from './decoy.ts'
 
 const BIOMES_BY_TYPE: Record<string, string[]> = {
@@ -484,12 +484,12 @@ registerHandler('PLAY_CARD_TO_ZONE', (game, actor, action, ctx) => {
   }
   if (!canAffordInGame(game, actor, card)) return err(400, 'You cannot afford that card')
 
-  // 2026-09-21 LH (spec §3.3): a play precondition on the board's pips, read at
-  // play time only and never spent. Spawns never come through here (§7.4).
-  const shortfall = chargeGateShortfall(game.state, actor, card)
-  if (shortfall) {
-    return err(400, `${card.name} requires ${shortfall.required} Charge on your board — you have ${shortfall.have}`)
-  }
+  // 2026-09-22 Drain N Charge (docs/superpowers/specs/2026-09-22-lh-drain-charge-design.md
+  // §2–§3): the whole-board precondition, then the player's split — or the
+  // suggested one when the play names none. Checked here, before anything
+  // moves; spent after pay(). Spawns never come through here (spec §7.4).
+  const drain = planDrain(game.state, actor, card, action.chargeFrom)
+  if ('error' in drain) return err(400, drain.error)
 
   if (card.type === 'vehicle' && !legalZonesFor(game.state, actor, card, game.turnNumber).includes(action.zoneId)) {
     return err(400, 'That vehicle cannot deploy to that zone')
@@ -512,6 +512,7 @@ registerHandler('PLAY_CARD_TO_ZONE', (game, actor, action, ctx) => {
 
   takeFromHand(game, actor, action.instanceId)
   pay(game, actor, card)
+  applyDrain(game, actor, card.name, drain.split)
 
   const placedInstanceIds = card.type === 'vehicle'
     ? deployVehicle(game, ctx, actor, card, action.zoneId, surged)
@@ -680,6 +681,11 @@ registerHandler('PLAY_CARD_TARGETING_CARD_IN_HAND', (game, actor, action, ctx) =
 
   if (!canAffordInGame(game, actor, card)) return err(400, 'You cannot afford that card')
 
+  // The same Drain as PLAY_CARD_TO_ZONE (2026-09-22 spec §3). No card on this
+  // path carries a gate today, and it takes no split: the suggested one pays.
+  const drain = planDrain(game.state, actor, card, undefined)
+  if ('error' in drain) return err(400, drain.error)
+
   if (game.state.alertCard?.instanceId === action.instanceId) game.state.alertCard = null
 
   // Read the surge before paying — same ordering PLAY_CARD_TO_ZONE relies on,
@@ -689,6 +695,7 @@ registerHandler('PLAY_CARD_TARGETING_CARD_IN_HAND', (game, actor, action, ctx) =
 
   takeFromHand(game, actor, action.instanceId)
   pay(game, actor, card)
+  applyDrain(game, actor, card.name, drain.split)
 
   // A vehicle deploys like any other hull; an ability places nothing on the
   // board.

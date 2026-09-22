@@ -7,8 +7,9 @@ import { takeFromEnemyDeck } from '../effects/primitives.ts'
 import { ADDITIONAL_SPAWNS_CAP, KEYWORDS, MAX_VEHICLES_PER_ZONE_SIDE } from '../gameSettings.ts'
 import { inst, makeCtx, makeGame, snap, zoneEntry } from './testFixtures'
 import { baseDamageFrom } from './baseAttack.ts'
-import { chargeGateShortfall, chargeOf } from './charge.ts'
-import type { ZoneCardEntry } from './engineTypes.ts'
+import { chargeOf } from './charge.ts'
+import type { EngineGame, GameAction, ZoneCardEntry } from './engineTypes.ts'
+import type { CardInstance } from './gameInit.ts'
 
 function withHand(cardOver: Record<string, unknown>) {
   const g = makeGame()
@@ -1790,22 +1791,112 @@ describe('uniquePerZone (wave 8)', () => {
   })
 })
 
-describe('Requires N Charge (2026-09-21 LH spec §3.3)', () => {
-  const gated = () => inst({ instanceId: 'cap', name: 'Capital', faction: 'LH', materialCost: 40000, meta: { requiresCharge: 2 } })
-  const battery = (charge: number) => zoneEntry({ faction: 'LH', meta: { chargeMax: 2 }, charge })
-
-  it('refuses the play until the board carries the pips, anywhere, and never spends them', () => {
+describe('Drain N Charge (2026-09-22 spec §2–§3)', () => {
+  beforeAll(() => { registerEffect('t_drainHandNoop', () => true) })
+  const gated = (over: Partial<CardInstance> = {}) => inst({
+    instanceId: 'cap', name: 'Quadrupole', faction: 'LH', materialCost: 40000, meta: { requiresCharge: 2 }, ...over,
+  })
+  const battery = (id: string, charge: number) =>
+    zoneEntry({ instanceId: id, name: id, faction: 'LH', meta: { chargeMax: 2 }, charge })
+  const setup = (...cards: CardInstance[]) => {
     const game = makeGame({ turnNumber: 2, activePlayer: 'alice' })
-    game.privates.a.hand = [gated()]
-    game.state.counts.a = { hand: 1, deck: 0 }
-    game.state.zones[2].cards.a.push(battery(1))
-    const short = applyAction(game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: 'cap', zoneId: 1 }, makeCtx())
-    expect(short).toMatchObject({ ok: false, status: 400 })
-    expect((short as { error: string }).error).toContain('requires 2 Charge')
-    game.state.zones[1].cards.a.push(battery(1))
-    const res = applyAction(game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: 'cap', zoneId: 1 }, makeCtx())
+    game.privates.a.hand = cards.length > 0 ? cards : [gated()]
+    game.state.counts.a = { hand: game.privates.a.hand.length, deck: 0 }
+    return game
+  }
+  const hull = (game: EngineGame, zoneIndex: number, i: number) => game.state.zones[zoneIndex].cards.a[i] as ZoneCardEntry
+  const play = (game: EngineGame, extra: Record<string, unknown> = {}, instanceId = 'cap') =>
+    applyAction(game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId, zoneId: 1, ...extra } as GameAction, makeCtx())
+
+  it('refuses the play while the board holds too little, naming both figures', () => {
+    const game = setup()
+    game.state.zones[2].cards.a.push(battery('Chrysoprase', 1))
+    expect(play(game)).toMatchObject({ ok: false, status: 400, error: 'Quadrupole drains 2 charge — your LH vehicles hold 1' })
+  })
+
+  it('spends the split the player chose, across lanes, and logs it before the deploy line', () => {
+    const game = setup()
+    game.state.zones[0].cards.a.push(battery('Chrysoprase', 2))
+    game.state.zones[2].cards.a.push(battery('Kilowatt', 2))
+    const res = play(game, { chargeFrom: [{ instanceId: 'Kilowatt', amount: 2 }] })
     if (!res.ok) throw new Error(res.error)
-    expect(chargeGateShortfall(res.game.state, 'a', gated())).toBeNull()
+    expect(chargeOf(hull(res.game, 0, 0))).toBe(2)
+    expect(chargeOf(hull(res.game, 2, 0))).toBe(0)
+    const log = res.game.state.log
+    expect(log.indexOf('Quadrupole drains 2 charge — Kilowatt 2')).toBeGreaterThanOrEqual(0)
+    expect(log.indexOf('Quadrupole drains 2 charge — Kilowatt 2')).toBeLessThan(log.indexOf('Quadrupole deployed to zone 1'))
+  })
+
+  it('pays the suggested split when the play names none (PracticeAI, a stale client)', () => {
+    const game = setup()
+    game.state.zones[0].cards.a.push(zoneEntry({
+      instanceId: 'Umbra', name: 'Umbra', faction: 'LH', meta: { chargeMax: 2, dischargeCost: 2 }, charge: 2,
+    }))
+    game.state.zones[1].cards.a.push(battery('Chrysoprase', 2))
+    const res = play(game)
+    if (!res.ok) throw new Error(res.error)
+    expect(chargeOf(hull(res.game, 0, 0))).toBe(2) // the timer keeps its salvo
+    expect(chargeOf(hull(res.game, 1, 0))).toBe(0)
+  })
+
+  it('leaves a payer’s activation alone, so it may still discharge this turn', () => {
+    const game = setup()
+    game.state.zones[0].cards.a.push(battery('Chrysoprase', 2))
+    const res = play(game)
+    if (!res.ok) throw new Error(res.error)
+    expect(hull(res.game, 0, 0).activatedOnTurn).toBeNull()
+  })
+
+  it('refuses a split that cannot pay, and spends nothing', () => {
+    const cases: [unknown, string][] = [
+      [[{ instanceId: 'Chrysoprase', amount: 1 }], 'Choose exactly 2 charge — you chose 1'],
+      [[{ instanceId: 'Chrysoprase', amount: 3 }], 'Chrysoprase holds only 2 charge'],
+      [[{ instanceId: 'Theirs', amount: 2 }], 'That charge source is not one of your LH vehicles on the board'],
+    ]
+    for (const [chargeFrom, error] of cases) {
+      const game = setup()
+      game.state.zones[0].cards.a.push(battery('Chrysoprase', 2))
+      game.state.zones[0].cards.b.push(battery('Theirs', 2))
+      expect(play(game, { chargeFrom })).toMatchObject({ ok: false, status: 400, error })
+      expect(chargeOf(hull(game, 0, 0))).toBe(2)
+      expect(game.privates.a.hand).toHaveLength(1)
+    }
+  })
+
+  it('refuses a split sent with a card that drains nothing', () => {
+    const game = setup(inst({ instanceId: 'plain', name: 'Kilowatt', faction: 'LH', materialCost: 40000 }))
+    game.state.zones[0].cards.a.push(battery('Chrysoprase', 2))
+    expect(play(game, { chargeFrom: [{ instanceId: 'Chrysoprase', amount: 1 }] }, 'plain'))
+      .toMatchObject({ ok: false, status: 400, error: 'Kilowatt drains no charge' })
+  })
+
+  it('makes a second Drain card in the same turn find its own pips', () => {
+    const game = setup(gated(), gated({ instanceId: 'cap2' }))
+    game.state.zones[0].cards.a.push(battery('Chrysoprase', 2), battery('Kilowatt', 1))
+    const first = play(game)
+    if (!first.ok) throw new Error(first.error)
+    expect(play(first.game, {}, 'cap2'))
+      .toMatchObject({ ok: false, status: 400, error: 'Quadrupole drains 2 charge — your LH vehicles hold 1' })
+  })
+
+  // No LH card deploys through PLAY_CARD_TARGETING_CARD_IN_HAND; a synthetic
+  // one pins that Excalibur's path is not a way around the Drain.
+  it('gates and drains a vehicle deployed through Excalibur’s path too', () => {
+    const excalibur = () => [
+      gated({ meta: { requiresCharge: 2, playOnCardEffect: 't_drainHandNoop' } }),
+      inst({ instanceId: 'other' }),
+    ]
+    const action = { type: 'PLAY_CARD_TARGETING_CARD_IN_HAND', instanceId: 'cap', targetInstanceId: 'other', zoneId: 1 } as GameAction
+    const short = setup(...excalibur())
+    short.state.zones[0].cards.a.push(battery('Chrysoprase', 1))
+    expect(applyAction(short, 'alice', action, makeCtx()))
+      .toMatchObject({ ok: false, status: 400, error: 'Quadrupole drains 2 charge — your LH vehicles hold 1' })
+    const game = setup(...excalibur())
+    game.state.zones[0].cards.a.push(battery('Chrysoprase', 2))
+    const res = applyAction(game, 'alice', action, makeCtx())
+    if (!res.ok) throw new Error(res.error)
+    expect(chargeOf(hull(res.game, 0, 0))).toBe(0)
+    expect(res.game.state.log).toContain('Quadrupole drains 2 charge — Chrysoprase 2')
   })
 })
 
