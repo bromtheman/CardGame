@@ -85,6 +85,11 @@ export const CARDS: Record<string, Expected> = {
     cardText: 'When played, stun target enemy vehicle in this zone.',
     meta: { chargeMax: 2, onPlayEffect: 'ampereStun' },
   },
+  'LH:Eclipse': {
+    materialCost: 220_000, blueprintCost: 215_980, cpCost: 0, keywords: ['stealthy'], vehicleType: 'ship',
+    cardText: 'Discharge 2: this vehicle fights a 1v1 against target non-Stealthy enemy vehicle in this zone.',
+    meta: { chargeMax: 2, onActivate: 'eclipseDuel', activateCpCost: 0, dischargeCost: 2 },
+  },
 }
 
 // Retired by this wave (spec §7): rows stay seeded, undraftable.

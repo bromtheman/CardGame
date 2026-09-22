@@ -247,6 +247,7 @@ const DELIBERATE_ORPHANS: Record<string, string> = {
   disembowelerOnPlay: 'balance 2026-09-16 cleared WF Disemboweler\'s text and removed its onPlayEffect key (M-10)',
   conduitEffect: '2026-09-21 LH redesign: Conduit is now a data-key relay with no effect (spec §7)',
   ampereOnPlay: '2026-09-21 LH redesign replaced Ampere\'s pool draw with ampereStun (spec §7)',
+  eclipseEffect: '2026-09-21 LH redesign replaced Eclipse\'s free 1v1 with the charged eclipseDuel (spec §7)',
 }
 
 describe('G4: every registered implementation is reachable from a seeded card', () => {
@@ -297,6 +298,7 @@ describe('G4: every registered implementation is reachable from a seeded card', 
       'bulwarkOnPlay',
       'conduitEffect',
       'disembowelerOnPlay',
+      'eclipseEffect',
       'purifierEffect',
       'rheaOnPlay',
       'scourgeOnPlay',

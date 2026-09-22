@@ -10,7 +10,7 @@ import type { EffectFn } from './registry.ts'
 import { registerEffect } from './registry.ts'
 import { findVehicle, otherSide, putInHand, revokeKeywordsFrom } from '../engine/gameEngine.ts'
 import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
-import { stunHull } from '../engine/stun.ts'
+import { isStunned, stunHull } from '../engine/stun.ts'
 import type { EngineGame, Side, ZoneCardEntry } from '../engine/engineTypes.ts'
 
 // LH built-in card effects.
@@ -426,3 +426,39 @@ registerEffect(AMPERE, choice({
     return true
   },
 }))
+
+// A charged 1v1 (spec §3.9): the old Eclipse's shape with a new id, the charge
+// as its cost, and NO zone activation spent — "a forced battle is not a zone
+// activation" holds for these as for every other forced battle. "Non-Stealthy"
+// is read at declaration, so a hull Ampere stunned this turn qualifies.
+// `surfaces` is Cathode's (R-18): Stealthy comes off the moment the duel is
+// declared, and a refused declaration rolls the whole clone back.
+function duel(id: string, prompt: string, targetable: (e: ZoneCardEntry) => boolean, surfaces: boolean): EffectFn {
+  const canTarget = (game: EngineGame, e: ZoneCardEntry) =>
+    !(e.keywords.includes(KEYWORDS.STEALTHY) && !isStunned(e, game.turnNumber)) && targetable(e)
+  return choice({
+    effect: id,
+    prompt,
+    options: ({ game, actor, card }) => {
+      const self = findVehicle(game.state, card.instanceId)
+      return self ? enemyVehicleOptions(game, actor, self.zone.id, (e) => canTarget(game, e)) : []
+    },
+    resolve: ({ game, actor, card, ctx }, choiceId) => {
+      if (choiceId === null) return false
+      const self = findVehicle(game.state, card.instanceId)
+      if (!self || self.side !== actor) return false
+      const stillLegal = enemyVehicleOptions(game, actor, self.zone.id, (e) => canTarget(game, e)).some((o) => o.id === choiceId)
+      if (!stillLegal) return false
+      if (surfaces) {
+        revokeKeywordsFrom(self.entry, [KEYWORDS.STEALTHY])
+        game.state.log.push(`${card.name} surfaces — it is no longer Stealthy`)
+      }
+      return declareForcedBattle(game, ctx, {
+        zoneId: self.zone.id, aggressor: actor,
+        attackerIds: [card.instanceId], defenderIds: [choiceId],
+        cause: card.name, activatesZone: false,
+      })
+    },
+  })
+}
+registerEffect('eclipseDuel', duel('eclipseDuel', 'Choose a non-Stealthy enemy vehicle for Eclipse to fight', () => true, false))

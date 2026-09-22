@@ -123,3 +123,27 @@ describe('Ampere — ampereStun', () => {
     expect(res.game.state.resources.a.materials).toBe(100000)
   })
 })
+
+describe('Eclipse — eclipseDuel', () => {
+  const eclipse = (charge: number) => zoneEntry({
+    instanceId: 'eclipse', name: 'Eclipse', faction: 'LH', keywords: ['stealthy'],
+    meta: { chargeMax: 2, onActivate: 'eclipseDuel', activateCpCost: 0, dischargeCost: 2 }, charge,
+  })
+  it('offers non-Stealthy enemies (a stunned Stealthy one included) and declares a 1v1 that leaves the lane activation unspent', () => {
+    const game = lhGame()
+    game.state.zones[0].cards.a.push(eclipse(2))
+    game.state.zones[0].cards.b.push(
+      zoneEntry({ instanceId: 'hidden', keywords: ['stealthy'] }),
+      zoneEntry({ instanceId: 'stunnedHidden', keywords: ['stealthy'], stunnedUntilTurn: 5 }),
+      zoneEntry({ instanceId: 'plain' }),
+    )
+    const res = activate(game, 'eclipse')
+    if (!res.ok) throw new Error(res.error)
+    expect(res.game.state.pendingEffect?.options.map((o) => o.id)).toEqual(['stunnedHidden', 'plain'])
+    const done = applyAction(res.game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'plain' }, makeCtx())
+    if (!done.ok) throw new Error(done.error)
+    expect(done.game.state.activeBattle).toMatchObject({ zoneId: 1, aggressor: 'a', attackerIds: ['eclipse'], defenderIds: ['plain'] })
+    expect(done.game.state.zones[0].lastActivatedTurn).toBeNull()
+    expect((done.game.state.zones[0].cards.a[0] as ZoneCardEntry).keywords).toContain('stealthy')
+  })
+})

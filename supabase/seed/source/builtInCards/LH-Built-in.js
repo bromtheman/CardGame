@@ -302,9 +302,9 @@ export const lhVehicles = [
     {
         name: 'Eclipse',
         isBuiltIn: true,
-        cardText: 'Once per turn this vehicle may target one non-stealthy enemy vehicle in its zone to have a 1v1 battle. If you do so, you may not declare a fleet battle in this zone this turn.',
+        cardText: 'Discharge 2: this vehicle fights a 1v1 against target non-Stealthy enemy vehicle in this zone.',
         materialCost: 220000,
-        blueprintCost: 223000,
+        blueprintCost: 215980,
         cpCost: 0,
         imageUrl: 'eclipse.png',
         playerId: null,
@@ -312,11 +312,8 @@ export const lhVehicles = [
         type: 'vehicle',
         faction: FACTIONS.LH,
         blueprintId: null,
-        keywords: [],
-        meta: {
-            [TRIGGERS.ON_ACTIVATE]: 'eclipseEffect',
-            activateCpCost: 0
-        }
+        keywords: [KEYWORDS.STEALTHY],
+        meta: { chargeMax: 2, [TRIGGERS.ON_ACTIVATE]: 'eclipseDuel', activateCpCost: 0, dischargeCost: 2 },
     },
     {
         name: 'Spectrum',
