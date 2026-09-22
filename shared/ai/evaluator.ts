@@ -29,7 +29,9 @@ export const EVALUATOR = {
 // Base damage a set of hulls deals per bombardment: applies the engine's
 // strike-eligibility roster from baseAttack.ts (not subs, not Inoffensive,
 // not noBaseDamage; hulls played before the turn count), then excludes
-// Temporary hulls (removed at the next turn start, so they never strike).
+// Temporary hulls (removed at the next turn start, so they never strike) and
+// stunned ones (2026-09-21 LH: a stunned hull sits out the turn the score is
+// read for).
 // Fresh deployments are eligible—the score is read at the start of the
 // enemy's turn, and they strike on the bot's.
 export function strikePower(hulls: readonly ZoneCardEntry[], turnNumber: number): number {
@@ -44,12 +46,13 @@ export function strikePower(hulls: readonly ZoneCardEntry[], turnNumber: number)
 
 // Turns until `attacker` fells the defender's SECOND base at current power,
 // every zone bombarding in parallel: a fallen base is 0, a zone with a
-// defending Blocker or no striker stalls at the cap, else HP / power. The
-// game ends when the second base falls, but the SUM of the two smallest zone
-// times — not just the second-smallest — is what's returned, so progress
-// against the first zone stays visible in the score rather than vanishing
-// the moment a second zone isn't yet threatened (2026-09-19 scored-menu
-// Task 3 fix round 1).
+// defending Blocker or no striker stalls at the cap, else HP / power — power
+// already excludes Temporary and stunned hulls, via strikePower above
+// (2026-09-21 LH). The game ends when the second base falls, but the SUM of
+// the two smallest zone times — not just the second-smallest — is what's
+// returned, so progress against the first zone stays visible in the score
+// rather than vanishing the moment a second zone isn't yet threatened
+// (2026-09-19 scored-menu Task 3 fix round 1).
 //
 // The else branch is clamped at the cap too: HP / power is unbounded when a
 // striker is small against a big base (a 1-damage striker on a 1000 HP base

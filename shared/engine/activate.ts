@@ -5,14 +5,15 @@ import { chargeOf, spendCharge } from './charge.ts'
 // The price of an activated ability is plain card data, in the same class as
 // additionalSpawns: a number in meta, with no registry entry (spec §4.3).
 //
-// There are TWO prices since wave 6, and they are independent. A card may
-// carry either or both, and needs at least one — a card with `onActivate` and
-// no price has no activated ability at all, and no board button either
-// (BoardZone.tsx gates on the same pair).
+// There are THREE prices since the 2026-09-21 LH redesign added discharge
+// (wave 6 shipped the first two, CP and materials), and they are independent.
+// A card may carry any of them, and needs at least one — a card with
+// `onActivate` and no price has no activated ability at all, and no board
+// button either (BoardZone.tsx gates on the same three).
 //
-// Both parsers return null for an absent key AND for a malformed one; the
-// handler tells those apart by looking at the raw key, so a mistyped price is
-// a refusal rather than a free activation.
+// All three parsers return null for an absent key AND for a malformed one;
+// the handler tells those apart by looking at the raw key, so a mistyped
+// price is a refusal rather than a free activation.
 export function activateCpCostOf(card: { meta: Record<string, unknown> }): number | null {
   return parsePrice(card.meta.activateCpCost)
 }

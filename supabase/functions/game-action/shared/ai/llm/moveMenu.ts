@@ -5,6 +5,7 @@ import {
   activateCpCostOf, activateMaterialCostOf, applyAction, effectName, effectiveMaterialCostOf,
   FACTION_POWERS, sideOf,
 } from '../../engine/index.ts'
+import { dischargeCostOf } from '../../engine/activate.ts'
 import type { OwedKind } from '../basicPolicy.ts'
 import { repairableParticipants } from '../basicPolicy.ts'
 import { scoreMove } from '../evaluator.ts'
@@ -143,10 +144,12 @@ function enumerateTurn(game: EngineGame, side: Side): GameAction[] {
   for (const { zone, card } of mine) {
     for (const z of zones) if (z.id !== zone.id) out.push({ type: 'MOVE_VEHICLE', instanceId: card.instanceId, zoneId: z.id })
   }
-  // activate.ts's rule: an activation needs onActivate AND at least one price.
+  // activate.ts's rule: an activation needs onActivate AND at least one price
+  // — CP, materials, or (2026-09-21 LH) discharge, matching the engine's own
+  // gate and BoardZone's board button.
   for (const { card } of mine) {
     if (effectName(card, TRIGGERS.ON_ACTIVATE) === null) continue
-    if (activateCpCostOf(card) === null && activateMaterialCostOf(card) === null) continue
+    if (activateCpCostOf(card) === null && activateMaterialCostOf(card) === null && dischargeCostOf(card) === null) continue
     out.push({ type: 'ACTIVATE_VEHICLE', instanceId: card.instanceId })
     for (const z of zones) out.push({ type: 'ACTIVATE_VEHICLE', instanceId: card.instanceId, zoneId: z.id })
     for (const targetInstanceId of fieldIds) out.push({ type: 'ACTIVATE_VEHICLE', instanceId: card.instanceId, targetInstanceId })

@@ -125,7 +125,7 @@ export const BOT_DECKS: Record<BotFaction, Record<string, number>> = {
     'Wonder': 1,
   },
   // 2026-09-21 LH redesign. Curated for the bot: batteries it can protect,
-  // two Blockers, one timer, one beam, and the two ability cards whose
+  // three Blockers, one timer, one beam, and the two ability cards whose
   // second pick the policy aims by trial. No Requires-4+ capitals — a greedy
   // bot would hold them all game.
   LH: {

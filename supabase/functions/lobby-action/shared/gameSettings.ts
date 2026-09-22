@@ -301,7 +301,7 @@ export const UMBRA_SALVO_DAMAGE = 150_000
 export const SUPERRADIANCE_BEAM_DAMAGE = 300_000
 export const IMPEDANCE_BEAM_DAMAGE = 400_000
 
-// Human-readable names for the ten hero powers, used wherever a power id
+// Human-readable names for the eleven hero powers, used wherever a power id
 // is shown to a player (Kraken's refresh choice).
 export const HERO_POWER_LABELS: Record<string, string> = {
   salvage: 'Salvage',

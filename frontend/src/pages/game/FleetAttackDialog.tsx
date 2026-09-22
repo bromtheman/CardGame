@@ -1,7 +1,6 @@
 import type { ZoneState } from '@shared/engine/gameInit'
 import type { GameAction, Side, ZoneCardEntry } from '@shared/engine/engineTypes'
 import type { PublicGameState } from '@shared/engine/gameInit'
-import { KEYWORDS } from '@shared/gameSettings'
 import { fleetAttackRosters } from '@shared/engine/index'
 import { MiniVehicle } from './MiniVehicle'
 import crosshairIcon from '../../assets/icons/crosshairSVG.svg'
@@ -34,7 +33,11 @@ export function FleetAttackDialog({
   const rosters = fleetAttackRosters(state, mySide, zone.id, turnNumber)
   const force = rosters?.force ?? []
   const targets = rosters?.targets ?? []
-  const benched = (zone.cards[mySide] as ZoneCardEntry[]).filter((c) => c.keywords.includes(KEYWORDS.INOFFENSIVE))
+  const mine = zone.cards[mySide] as ZoneCardEntry[]
+  // Everything of mine NOT in the force, not only the Inoffensive ones —
+  // fleetAttackRosters also drops a stunned hull (2026-09-21 LH spec §3.4),
+  // and it used to vanish from the dialog entirely rather than show up here.
+  const benched = mine.filter((c) => !force.some((f) => f.instanceId === c.instanceId))
 
   async function onLaunch() {
     await send({ type: 'ATTACK_ENEMY_FLEET', zoneId: zone.id })
@@ -58,7 +61,7 @@ export function FleetAttackDialog({
               {benched.map((c) => (
                 <div key={c.instanceId} className="flex w-20 shrink-0 flex-col items-center">
                   <MiniVehicle entry={c} turnNumber={turnNumber} dimmed />
-                  <span className="mt-0.5 text-[10px] text-ocean-300">Inoffensive — stays out</span>
+                  <span className="mt-0.5 text-[10px] text-ocean-300">Sits out</span>
                 </div>
               ))}
               {force.length === 0 && benched.length === 0 && (

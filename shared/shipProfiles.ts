@@ -59,7 +59,9 @@ export function shipProfileOf(faction: string, name: string): ShipProfile | null
 }
 
 // One faction's profiles in report order — the fleet table lists craft
-// cheapest first — each with the bare card name.
+// cheapest first for most factions, but LH's FtDArmament report instead
+// groups by vehicle type, then name within each type — each with the bare
+// card name.
 export function shipProfilesForFaction(faction: string): { name: string; profile: ShipProfile }[] {
   const prefix = `${faction}:`
   return Object.entries(SHIP_PROFILES)

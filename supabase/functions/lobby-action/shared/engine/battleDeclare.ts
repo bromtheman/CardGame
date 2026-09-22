@@ -242,8 +242,10 @@ export function joinBattle(
 // ordinary fleet attack, and both are load-bearing (departure 1) — reusing
 // lockBattle unchanged would violate both:
 //   - It is NOT a zone activation: lastActivatedTurn is left untouched unless
-//     the caller explicitly passes activatesZone (Eclipse alone does, per its
-//     own card text).
+//     the caller explicitly passes activatesZone (only the orphaned
+//     pre-redesign `eclipseEffect` does, per its own card text — the live
+//     Eclipse (`eclipseDuel`, 2026-09-21) passes false, since its cost is now
+//     charge rather than a zone activation).
 //   - It skips the Stealthy opt-out entirely — the card *forces* the fight,
 //     so there is no awaitingResponse window; the battle locks immediately.
 // Sets no alert card (spec §4.3, departure 2): the BattleOverlay this raises
@@ -264,7 +266,9 @@ export function declareForcedBattle(game: EngineGame, ctx: EngineContext, spec: 
   summons?: ZoneCardEntry[]
   continuation?: BattleContinuation | null
   cause: string            // card name, for the log line
-  activatesZone?: boolean  // stamps lastActivatedTurn; Eclipse alone passes true
+  // Stamps lastActivatedTurn. Only the orphaned pre-redesign `eclipseEffect`
+  // passes true; the live Eclipse (`eclipseDuel`) passes false.
+  activatesZone?: boolean
   // Wave 7 — TG Duel: "target a friendly and enemy vehicle. They can be in
   // different zones." OPT-IN, mirroring activatesZone above, so every existing
   // caller keeps the same-zone guard it has always had rather than having it
