@@ -95,6 +95,22 @@ export const CARDS: Record<string, Expected> = {
     cardText: 'Discharge 3: stun every enemy vehicle in this zone.',
     meta: { chargeMax: 3, onActivate: 'penumbraPulse', activateCpCost: 0, dischargeCost: 3 },
   },
+  'LH:Angstrom': {
+    materialCost: 540_000, blueprintCost: 545_846, cpCost: 0, keywords: ['blocker', 'airScreen', 'mobile'], vehicleType: 'ship',
+    cardText: '', meta: { chargeMax: 2 },
+  },
+  'LH:Quadrupole': {
+    materialCost: 560_000, blueprintCost: 685_159, cpCost: 0, keywords: ['blocker', 'mobile'], vehicleType: 'airship',
+    cardText: 'Requires 3 Charge.', meta: { chargeMax: 2, requiresCharge: 3 },
+  },
+  'LH:Candela': {
+    materialCost: 700_000, blueprintCost: 1_021_169, cpCost: 0, keywords: ['blocker', 'subScreen', 'scrappy', 'mobile'], vehicleType: 'ship',
+    cardText: 'Requires 4 Charge.', meta: { chargeMax: 2, requiresCharge: 4 },
+  },
+  'LH:Rectifier': {
+    materialCost: 700_000, blueprintCost: 734_617, cpCost: 0, keywords: ['halfCost', 'temporary', 'fragile', 'swift'], vehicleType: 'plane',
+    cardText: '', meta: {},
+  },
 }
 
 // Retired by this wave (spec §7): rows stay seeded, undraftable.

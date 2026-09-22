@@ -248,6 +248,8 @@ const DELIBERATE_ORPHANS: Record<string, string> = {
   conduitEffect: '2026-09-21 LH redesign: Conduit is now a data-key relay with no effect (spec §7)',
   ampereOnPlay: '2026-09-21 LH redesign replaced Ampere\'s pool draw with ampereStun (spec §7)',
   eclipseEffect: '2026-09-21 LH redesign replaced Eclipse\'s free 1v1 with the charged eclipseDuel (spec §7)',
+  quadrupoleOnPlay: '2026-09-21 LH redesign: Quadrupole no longer draws from the [TG] pool (spec §7)',
+  candelaOnPlay: '2026-09-21 LH redesign: Candela no longer draws from the [TG] pool (spec §7)',
 }
 
 describe('G4: every registered implementation is reachable from a seeded card', () => {
@@ -296,10 +298,12 @@ describe('G4: every registered implementation is reachable from a seeded card', 
     expect(Object.keys(DELIBERATE_ORPHANS).sort()).toEqual([
       'ampereOnPlay',
       'bulwarkOnPlay',
+      'candelaOnPlay',
       'conduitEffect',
       'disembowelerOnPlay',
       'eclipseEffect',
       'purifierEffect',
+      'quadrupoleOnPlay',
       'rheaOnPlay',
       'scourgeOnPlay',
       'spectreOnPlay',

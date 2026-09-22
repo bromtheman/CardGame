@@ -178,9 +178,9 @@ export const lhVehicles = [
     {
         name: 'Quadrupole',
         isBuiltIn: true,
-        cardText: 'When played, draw one card from the [TG] Robotics pool',
-        materialCost: 540000,
-        blueprintCost: 545000,
+        cardText: 'Requires 3 Charge.',
+        materialCost: 560000,
+        blueprintCost: 685159,
         cpCost: 0,
         imageUrl: 'quadrupole.png',
         playerId: null,
@@ -188,10 +188,8 @@ export const lhVehicles = [
         type: 'vehicle',
         faction: FACTIONS.LH,
         blueprintId: null,
-        keywords: [KEYWORDS.BLOCKER, KEYWORDS.SCRAPPY],
-        meta: {
-            [TRIGGERS.ON_PLAY]: 'quadrupoleOnPlay',
-        }
+        keywords: [KEYWORDS.BLOCKER, KEYWORDS.MOBILE],
+        meta: { chargeMax: 2, requiresCharge: 3 },
     },
     {
         name: 'Terawatt',
@@ -216,7 +214,7 @@ export const lhVehicles = [
         isBuiltIn: true,
         cardText: '',
         materialCost: 540000,
-        blueprintCost: 543000,
+        blueprintCost: 545846,
         cpCost: 0,
         imageUrl: 'angstrom.png',
         playerId: null,
@@ -224,16 +222,15 @@ export const lhVehicles = [
         type: 'vehicle',
         faction: FACTIONS.LH,
         blueprintId: null,
-        keywords: [],
-        meta: {
-        }
+        keywords: [KEYWORDS.BLOCKER, KEYWORDS.AIR_SCREEN, KEYWORDS.MOBILE],
+        meta: { chargeMax: 2 },
     },
     {
         name: 'Candela',
         isBuiltIn: true,
-        cardText: 'When played, draw one card from the [TG] Robotics pool',
-        materialCost: 800000,
-        blueprintCost: 878000,
+        cardText: 'Requires 4 Charge.',
+        materialCost: 700000,
+        blueprintCost: 1021169,
         cpCost: 0,
         imageUrl: 'candela.png',
         playerId: null,
@@ -241,10 +238,8 @@ export const lhVehicles = [
         type: 'vehicle',
         faction: FACTIONS.LH,
         blueprintId: null,
-        keywords: [KEYWORDS.BLOCKER, KEYWORDS.SUB_SCREEN],
-        meta: {
-            [TRIGGERS.ON_PLAY]: 'candelaOnPlay',
-        }
+        keywords: [KEYWORDS.BLOCKER, KEYWORDS.SUB_SCREEN, KEYWORDS.SCRAPPY, KEYWORDS.MOBILE],
+        meta: { chargeMax: 2, requiresCharge: 4 },
     },
     {
         name: 'Hydrovolt',
@@ -267,7 +262,7 @@ export const lhVehicles = [
         isBuiltIn: true,
         cardText: '',
         materialCost: 700000,
-        blueprintCost: 734000,
+        blueprintCost: 734617,
         cpCost: 0,
         imageUrl: 'rectifier.png',
         playerId: null,
@@ -275,9 +270,10 @@ export const lhVehicles = [
         type: 'vehicle',
         faction: FACTIONS.LH,
         blueprintId: null,
-        keywords: [KEYWORDS.HALF_COST, KEYWORDS.TEMPORARY],
-        meta: {
-        }
+        // Fragile is moot while Temporary and live once Extended Sortie keeps it
+        // (R-22) — TG Audacious prints the same set for Spawn Audacious.
+        keywords: [KEYWORDS.HALF_COST, KEYWORDS.TEMPORARY, KEYWORDS.FRAGILE, KEYWORDS.SWIFT],
+        meta: {},
     },
     {
         name: 'Sapphire',
