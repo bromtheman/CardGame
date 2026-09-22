@@ -250,6 +250,7 @@ const DELIBERATE_ORPHANS: Record<string, string> = {
   eclipseEffect: '2026-09-21 LH redesign replaced Eclipse\'s free 1v1 with the charged eclipseDuel (spec §7)',
   quadrupoleOnPlay: '2026-09-21 LH redesign: Quadrupole no longer draws from the [TG] pool (spec §7)',
   candelaOnPlay: '2026-09-21 LH redesign: Candela no longer draws from the [TG] pool (spec §7)',
+  terawattJoin: '2026-09-21 LH redesign replaced Terawatt\'s bystander join with terawattTransfer (spec §7)',
 }
 
 describe('G4: every registered implementation is reachable from a seeded card', () => {
@@ -307,6 +308,7 @@ describe('G4: every registered implementation is reachable from a seeded card', 
       'rheaOnPlay',
       'scourgeOnPlay',
       'spectreOnPlay',
+      'terawattJoin',
       'victoriaActivate',
       'victoriaOnDeath',
     ])

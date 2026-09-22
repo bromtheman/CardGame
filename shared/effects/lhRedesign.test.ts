@@ -206,3 +206,38 @@ describe('Superradiance and Impedance — beams', () => {
     expect(res.game.state.zones[0].lastActivatedTurn).toBeNull()
   })
 })
+
+describe('Terawatt — terawattTransfer', () => {
+  const terawatt = (charge: number) => zoneEntry({
+    instanceId: 'tera', name: 'Terawatt', faction: 'LH', keywords: ['blocker', 'scrappy', 'mobile'],
+    meta: { chargeMax: 4, chargeRate: 2, requiresCharge: 3, onActivate: 'terawattTransfer', activateCpCost: 0, dischargeCost: 2 }, charge,
+  })
+  it('offers other LH hulls with room in its lane and the pick gains two pips, capped', () => {
+    const game = lhGame()
+    game.state.zones[0].cards.a.push(
+      terawatt(4),
+      zoneEntry({ instanceId: 'pen', faction: 'LH', meta: { chargeMax: 3 }, charge: 2 }),
+      zoneEntry({ instanceId: 'full', faction: 'LH', meta: { chargeMax: 2 }, charge: 2 }),
+    )
+    const res = activate(game, 'tera')
+    if (!res.ok) throw new Error(res.error)
+    expect(res.game.state.pendingEffect?.options.map((o) => o.id)).toEqual(['pen'])
+    const done = applyAction(res.game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'pen' }, makeCtx())
+    if (!done.ok) throw new Error(done.error)
+    const [tera, pen] = done.game.state.zones[0].cards.a as ZoneCardEntry[]
+    expect(chargeOf(tera)).toBe(2)
+    expect(chargeOf(pen)).toBe(3)
+  })
+  it('refuses, spending nothing, when nothing in the lane has room', () => {
+    const game = lhGame(); game.state.zones[0].cards.a.push(terawatt(4))
+    expect(activate(game, 'tera')).toMatchObject({ ok: false, status: 400 })
+    expect(chargeOf(game.state.zones[0].cards.a[0] as ZoneCardEntry)).toBe(4)
+  })
+  it('ticks two a turn', () => {
+    const game = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+    game.state.zones[0].cards.b.push(terawatt(0))
+    const res = applyAction(game, 'alice', { type: 'END_TURN' }, makeCtx())
+    if (!res.ok) throw new Error(res.error)
+    expect(chargeOf(res.game.state.zones[0].cards.b[0] as ZoneCardEntry)).toBe(2)
+  })
+})

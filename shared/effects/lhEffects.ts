@@ -2,8 +2,8 @@ import { effectiveCostInGame } from '../engine/placement.ts'
 import { addCharge, hasChargeRoom } from '../engine/charge.ts'
 import { dealBaseDamage } from '../engine/baseAttack.ts'
 import {
-  FACTIONS, IMPEDANCE_BEAM_DAMAGE, KEYWORDS, SUPERRADIANCE_BEAM_DAMAGE, UMBRA_SALVO_DAMAGE, VEHICLE_TYPES,
-  VOLTA_JUMP_START_CHARGE,
+  FACTIONS, IMPEDANCE_BEAM_DAMAGE, KEYWORDS, SUPERRADIANCE_BEAM_DAMAGE, TERAWATT_TRANSFER_CHARGE,
+  UMBRA_SALVO_DAMAGE, VEHICLE_TYPES, VOLTA_JUMP_START_CHARGE,
 } from '../gameSettings.ts'
 import {
   choice, drawFromPool, enemyVehicleOptions, friendlyVehicleOptions, grant, poolEligible, sequence,
@@ -489,3 +489,26 @@ registerEffect('penumbraPulse', ({ game, actor, card }) => {
   game.state.log.push(`${card.name} pulses — ${enemies.length} enemy vehicle(s) in zone ${found.zone.id} stunned`)
   return true
 })
+
+// Terawatt — "Discharge 2: another friendly LH vehicle in this zone gains 2
+// charge." No candidate with room → refuse, so the activation rolls back and
+// the pips stay (the engine spent them before the effect ran).
+const TERAWATT_TRANSFER = 'terawattTransfer'
+registerEffect(TERAWATT_TRANSFER, choice({
+  effect: TERAWATT_TRANSFER,
+  prompt: 'Terawatt discharges into a friendly LH vehicle in this zone — choose which gains 2 charge',
+  options: ({ game, actor, card }) => {
+    const self = findVehicle(game.state, card.instanceId)
+    return self
+      ? friendlyVehicleOptions(game, actor, self.zone.id, (e) => isLh(e) && e.instanceId !== card.instanceId && hasChargeRoom(e))
+      : []
+  },
+  resolve: ({ game, actor, card }, choiceId) => {
+    if (choiceId === null) return false
+    const found = findVehicle(game.state, choiceId)
+    if (!found || found.side !== actor) return false
+    const gained = addCharge(found.entry as ZoneCardEntry, TERAWATT_TRANSFER_CHARGE)
+    game.state.log.push(`${card.name} discharges into ${found.entry.name} (+${gained} charge)`)
+    return true
+  },
+}))

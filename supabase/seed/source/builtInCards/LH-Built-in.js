@@ -194,9 +194,9 @@ export const lhVehicles = [
     {
         name: 'Terawatt',
         isBuiltIn: true,
-        cardText: 'Whenever a friendly vehicle would be made to fight in battle alone due to enemy card effect, you may add this vehicle to the combat.',
-        materialCost: 680000,
-        blueprintCost: 687000,
+        cardText: 'Requires 3 Charge. Generators: this gains 2 charge at the start of your turn instead of 1. Discharge 2: another friendly LH vehicle in this zone gains 2 charge.',
+        materialCost: 640000,
+        blueprintCost: 725002,
         cpCost: 0,
         imageUrl: 'terawatt.png',
         playerId: null,
@@ -204,10 +204,8 @@ export const lhVehicles = [
         type: 'vehicle',
         faction: FACTIONS.LH,
         blueprintId: null,
-        keywords: [],
-        meta: {
-            [TRIGGERS.ON_BATTLE_EFFECT]: 'terawattJoin',
-        }
+        keywords: [KEYWORDS.BLOCKER, KEYWORDS.SCRAPPY, KEYWORDS.MOBILE],
+        meta: { chargeMax: 4, chargeRate: 2, requiresCharge: 3, [TRIGGERS.ON_ACTIVATE]: 'terawattTransfer', activateCpCost: 0, dischargeCost: 2 },
     },
     {
         name: 'Angstrom',

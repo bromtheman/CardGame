@@ -126,6 +126,11 @@ export const CARDS: Record<string, Expected> = {
     cardText: 'Requires 5 Charge. Discharge 2: deal 400k damage to the enemy base in this zone.',
     meta: { chargeMax: 2, requiresCharge: 5, onActivate: 'impedanceBeam', activateCpCost: 0, dischargeCost: 2 },
   },
+  'LH:Terawatt': {
+    materialCost: 640_000, blueprintCost: 725_002, cpCost: 0, keywords: ['blocker', 'scrappy', 'mobile'], vehicleType: 'ship',
+    cardText: 'Requires 3 Charge. Generators: this gains 2 charge at the start of your turn instead of 1. Discharge 2: another friendly LH vehicle in this zone gains 2 charge.',
+    meta: { chargeMax: 4, chargeRate: 2, requiresCharge: 3, onActivate: 'terawattTransfer', activateCpCost: 0, dischargeCost: 2 },
+  },
 }
 
 // Retired by this wave (spec §7): rows stay seeded, undraftable.
