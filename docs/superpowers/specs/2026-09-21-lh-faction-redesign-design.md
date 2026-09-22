@@ -23,14 +23,14 @@ before touching a stamp.
 |---|---|
 | Scope | The whole LH faction is redesigned. Nothing in the current `LH-Built-in.js` survives on its merits: the `[TG]` robotics-pool draws predate TG being a faction, and Sapphire/Orbit/Coulomb are not craft in the report. Ten old names are reused (their rows update in place), eight are retired, and the four `[TG]` pool cards retire with them (§7). |
 | Charge shape | **Per hull**, not a per-player pool. A hull prints ⚡N, fills one pip per turn, and the pips are visible on the board and die with the hull. Chosen over the pool because the threat sits where an FtD battle can answer it, speed (Mobile) then means something, nothing banks charge the opponent can never drain, and it reuses the activation / targeting / deploy-requirement paths the engine already has. |
-| Two verbs | **Discharge N** spends pips (a hull's own activated ability, or an ability card spending from a friendly hull). **Requires N Charge** is a play precondition on the board total — never spent, so it is a condition the opponent can break by killing charged hulls. Flagship prices are discounted below FtD cost in exchange. |
+| Two verbs | **Discharge N** spends pips from one hull (a hull's own activated ability, or an ability card spending from a friendly hull). **Drain N Charge** — printed "Requires N Charge" until the [2026-09-22 amendment](2026-09-22-lh-drain-charge-design.md) — is a play precondition on the board total *and* a cost: playing the card spends N pips from any mix of friendly LH hulls, split as the player chooses. The opponent can still break it by killing charged hulls. Flagship prices are discounted below FtD cost in exchange. |
 | Stun | Yes, as the second pillar: a timed disable (§3.4), on exactly three cards, always paid for in charge or a 200k body. Fragile/Inoffensive grants were rejected — TG owns them, and a permanent disable for a charge cost is either useless or oppressive. |
 | Third keyword | **Decoy** (Watt only). Accepted because every timer in the roster is otherwise a 50k Martyr Attack away from never firing (§3.6). |
 | Speed | **Swift** keyword ("may attack the enemy base the turn it is played") on Dynamo and Rectifier, plus **Afterburner** for everyone else; Mobile on ten hulls. |
 | Principle: timers don't move | Penumbra, Superradiance, Impedance, Eclipse, Umbra have no Mobile, whatever their speed. Walls and raiders (Angstrom, Candela, Terawatt, Quadrupole, Megawatt, Dynamo, Watt, Dipole, Byte, Ampere) do. A Mobile timer charges in the empty lane and jumps; a static one can be raced. |
 | Principle: no death triggers on chaff | FtD's AI shoots the biggest hull first, and a lost battle wipes the lane, so "when this dies" on a picket almost never fires usefully. Volta's original death trigger was rewritten to fire on play. |
 | Hero power | **Surge** replaces Flyby: 1 CP, once — every friendly LH vehicle gains 1 charge. |
-| Pricing | FtD cost rounded to 10k (down, as the old data did). Discounts only on Requires hulls: R2 none (its gate buys Swift), R3 12–18 %, R4 31 %, R5 43 %. Conduit alone is priced above its hull (70k for 54k) because its text is the card. |
+| Pricing | FtD cost rounded to 10k (down, as the old data did). Discounts only on the gated hulls: R2 none (its gate buys Swift), R3 12–18 %, R4 31 %, R5 43 %. Those are the gates as first printed; on 2026-09-22 draining made the gate a cost and every gate dropped by 1, prices unchanged ([amendment](2026-09-22-lh-drain-charge-design.md) §6). Conduit alone is priced above its hull (70k for 54k) because its text is the card. |
 | Delivery | One branch, one PR, data and effects together, so no LH card ever ships ahead of its effect (2026-09-02 spec §1). The wave is the size of the SS wave of the balance pass plus TG's keyword work. |
 
 ## 2. Faction identity
@@ -97,15 +97,23 @@ timed disable in the game.
   to that hull's lane. The card is greyed in hand unless a legal pair exists.
   Pips are spent on play; a declined second prompt does not refund them.
 
-### 3.3 Requires N Charge
+### 3.3 Drain N Charge (first printed "Requires N Charge")
 
-`meta.requiresCharge: N` is a play precondition, checked alongside cost: the
-**sum of `charge` over the player's LH hulls in every lane** must be ≥ N.
-"LH" everywhere in this document means `faction === 'LH'`; player-made cards
-are NEUTRAL and never count. Nothing is spent. Read at play time only — a hull already down stays down if
-its batteries die later. Umbra's pips count while it is Stealthy. Spawning is
-not playing (spec §7.4): spawns ignore it. The hand UI must state the reason
-("Requires 3 Charge — you have 2") exactly as it states "not enough materials".
+> **Amended 2026-09-22.** [2026-09-22-lh-drain-charge-design.md](2026-09-22-lh-drain-charge-design.md)
+> replaces this section. As first written the gate was checked and never
+> spent; it is now also a cost, and every gate dropped by 1.
+
+`meta.requiresCharge: N` (the key keeps its name) is printed **"Drain N
+Charge"**. It is a play precondition, checked alongside cost: the **sum of
+`charge` over the player's LH hulls in every lane** must be ≥ N. "LH"
+everywhere in this document means `faction === 'LH'`; player-made cards are
+NEUTRAL and never count. Playing the card then **spends N pips** from any mix
+of the player's LH hulls, split as the player chooses (PracticeAI pays a
+suggested split). Paying is not an activation. Read and paid at play time
+only — a hull already down stays down if its batteries die later. Umbra's pips
+count while it is Stealthy. Spawning is not playing (spec §7.4): spawns ignore
+it. The hand UI must state the reason ("Drain 3 Charge — you have 2") exactly
+as it states "not enough materials".
 
 ### 3.4 Stun
 
@@ -233,9 +241,10 @@ Taken card by card on 2026-09-21; binding.
   Angstrom. The 1v1-on-play alternative was rejected: the roster already has
   enough single-hull removal, and LH is a timer faction, not a removal one.
 - **R-13 Hydrovolt is not Stealthy** — a wall must be fightable.
-- **R-14 Requires is a vulnerability, not a hurdle.** An un-raced board clears
-  every gate on the turn materials allow; a hunted board does not. Gates are
-  read at play time only (§3.3).
+- **R-14 Drain is a vulnerability and a cost** (amended 2026-09-22; first
+  ruled "Requires is a vulnerability, not a hurdle"). A hunted board cannot
+  pay; an un-raced one pays, and must refill before its next Drain card. Gates
+  are read and paid at play time only (§3.3).
 - **R-15 Megawatt is vanilla with Mobile.** The "rapid strikes" second-bombard
   discharge was rejected: the backbone is the plain body that makes the timers
   safe to run.
@@ -247,8 +256,8 @@ Taken card by card on 2026-09-21; binding.
   roster's one active anti-sub tool. Surfacing on declaration.
 - **R-19 Superradiance is neither Mobile nor a Blocker nor Scrappy**: the
   offensive capital, static, paying full repairs to keep a 3-pip timer alive.
-- **R-20 Terawatt keeps all three lines** (Requires 3; Generators — rate 2;
-  transfer). The transfer is an activated ability, so Terawatt cannot both
+- **R-20 Terawatt keeps all three lines** (Drain 2 — first printed Requires 3;
+  Generators — rate 2; transfer). The transfer is an activated ability, so Terawatt cannot both
   transfer and be an ability card's discharge host in one turn. Generators
   applies before Conduit's relay; everything caps at 4.
 - **R-21 Candela is the deal**: 700k for a 1,021k hull, no text beyond the gate,
@@ -275,6 +284,8 @@ Taken card by card on 2026-09-21; binding.
 ## 5. The roster
 
 Costs are printed card costs; the FtD figure is the report's material cost.
+Drain figures are as amended on 2026-09-22 (every gate one lower than first
+printed; [amendment](2026-09-22-lh-drain-charge-design.md) §6).
 Every vehicle is a report craft, so `shipProfiles.test.ts`'s demand for a
 profile per non-retired LH vehicle is met by importing the report (§8).
 
@@ -300,7 +311,7 @@ profile per non-retired LH vehicle is met by importing the report (§8).
 | Eclipse | ship · 220k (216k) | 2 | Stealthy | Discharge 2: this vehicle fights a 1v1 against target non-Stealthy enemy vehicle in this zone. |
 | Caspian | plane · 230k (230k) | — | Half-Cost, Temporary | Sea-skimmer: may be played into a zone with enemy Air Screen. |
 | Hydrovolt | sub · 260k (258k) | 2 | Blocker, Sub Screen | — |
-| Dynamo | airship · 350k (346k) | 1 | Mobile, Swift | Requires 2 Charge. |
+| Dynamo | airship · 350k (346k) | 1 | Mobile, Swift | Drain 1 Charge. |
 | Megawatt | ship · 360k (362k) | 2 | Mobile | — |
 | Penumbra | ship · 370k (375k) | 3 | — | Discharge 3: stun every enemy vehicle in this zone. |
 
@@ -309,13 +320,13 @@ profile per non-retired LH vehicle is met by importing the report (§8).
 | Card | Type · cost (FtD) | ⚡ | Keywords | Text |
 |---|---|---|---|---|
 | Angstrom | ship · 540k (546k) | 2 | Blocker, Air Screen, Mobile | — |
-| Quadrupole | airship · 560k (685k) | 2 | Blocker, Mobile | Requires 3 Charge. |
-| Cathode | sub · 600k (726k) | 2 | Stealthy, Sub Screen | Requires 3 Charge. Discharge 2: this vehicle fights a 1v1 against target enemy ship or submarine in this zone, then this surfaces — it loses Stealthy for the rest of the game. |
+| Quadrupole | airship · 560k (685k) | 2 | Blocker, Mobile | Drain 2 Charge. |
+| Cathode | sub · 600k (726k) | 2 | Stealthy, Sub Screen | Drain 2 Charge. Discharge 2: this vehicle fights a 1v1 against target enemy ship or submarine in this zone, then this surfaces — it loses Stealthy for the rest of the game. |
 | Superradiance | ship · 620k (626k) | 3 | — | Discharge 3: deal 300k damage to the enemy base in this zone. |
-| Terawatt | ship · 640k (725k) | 4 | Blocker, Scrappy, Mobile | Requires 3 Charge. Generators: this gains 2 charge at the start of your turn instead of 1. Discharge 2: another friendly LH vehicle in this zone gains 2 charge. |
-| Candela | ship · 700k (1,021k) | 2 | Blocker, Sub Screen, Scrappy, Mobile | Requires 4 Charge. |
+| Terawatt | ship · 640k (725k) | 4 | Blocker, Scrappy, Mobile | Drain 2 Charge. Generators: this gains 2 charge at the start of your turn instead of 1. Discharge 2: another friendly LH vehicle in this zone gains 2 charge. |
+| Candela | ship · 700k (1,021k) | 2 | Blocker, Sub Screen, Scrappy, Mobile | Drain 3 Charge. |
 | Rectifier | plane · 700k (735k) | — | Half-Cost, Temporary, Fragile, Swift | — |
-| Impedance | ship · 750k (1,327k) | 2 | Blocker | Requires 5 Charge. Discharge 2: deal 400k damage to the enemy base in this zone. |
+| Impedance | ship · 750k (1,327k) | 2 | Blocker | Drain 4 Charge. Discharge 2: deal 400k damage to the enemy base in this zone. |
 
 ### 5.4 Abilities
 
@@ -336,8 +347,9 @@ profile per non-retired LH vehicle is met by importing the report (§8).
   turn 5; Angstrom turn 8; Quadrupole/Cathode turn 8; Superradiance/Terawatt
   turn 9; Candela/Impedance turn 10; Rectifier (350k to play) turn 5.
 - Charge timeline, un-raced: Chrysoprase (t1) + Watt + Volta (t2) + Kilowatt (t3)
-  is 5 pips on turn 4 from 350k of hulls; Dynamo's gate opens turn 5; every
-  Requires-3 capital is gated by materials, not pips. A raced board — pickets
+  is 5 pips on turn 4 from 350k of hulls; Dynamo's gate opens turn 5; on an
+  un-raced board every Drain capital is gated by materials, not pips, but each
+  one drains the board it lands on (2026-09-22), so two in a row pay twice. A raced board — pickets
   fleet-attacked on turns 2–4 — has none, and its capitals sit in hand. That is
   the interaction the mechanic exists to create.
 - A legal sample deck: 2 Chrysoprase, 2 Byte, Volta, Conduit, 2 Watt, Dipole,
@@ -401,11 +413,14 @@ appears in `keywords`, only as the stamp and a badge.
 
 **One helper each:** `addCharge(entry, n)` (clamp), `spendCharge(entry, n)`,
 `isStunned(entry, turn)`, `stunHull(entry, turn)`, `revokeKeywordsFrom(entry,
-keywords)`, `boardChargeOf(state, side)`, `dealBaseDamage(game, actor, zone,
+keywords)`, `boardChargeOf(state, side)` (and, since 2026-09-22, the Drain
+split helpers `chargePayersOf`, `suggestedChargeSplit`, `chargeSplitError`,
+`chargeSplitIsForced`), `dealBaseDamage(game, actor, zone,
 materials, cardName)`.
 
 **Chokepoints touched:** `endTurn` (tick + relay), `activate.ts`
-(`dischargeCost` gate and spend), `placement.ts` (`requiresCharge`,
+(`dischargeCost` gate and spend), `placement.ts` (`requiresCharge` gate and,
+since 2026-09-22, its drain,
 `deployRequiresLhVehicle`, `ignoresAirScreen`, stunned Screens, the friendly
 `dischargeFrom` validation), `baseAttack.ts` (Swift, `swiftOnTurn`, stunned
 strikers, stunned Blockers), `battleDeclare.ts` (stunned attackers, stunned
@@ -431,7 +446,8 @@ test.
 
 **Frontend:** pips on the hull in `BoardZone` (⚡ current/max) and a ⚡N stat on
 `PhysicalCard` and `CardDetailsModal`; a stun badge; the activation button
-labelled "Discharge N"; hand tooltips for Requires and Discharge-from; Swift and
+labelled "Discharge N"; hand tooltips for Drain and Discharge-from, and the
+Drain split dialog (2026-09-22); Swift and
 Decoy icons and glossary entries. The spawn sheet and `customBattle.ts` are
 untouched.
 
@@ -457,8 +473,8 @@ for every non-retired LH vehicle — all 24 are report craft.
 - **Coverage guards** G1–G4: every new id implemented and reachable; the six
   orphans listed; `KNOWN_GAPS` stays empty (the wave lands data and effects
   together).
-- **Rule tests**, each pinned: tick order and caps; relay non-stacking; Requires
-  read at play only and across lanes; stun's six reads and its +1.0 expiry from
+- **Rule tests**, each pinned: tick order and caps; relay non-stacking; Drain
+  read and paid at play only and across lanes; stun's six reads and its +1.0 expiry from
   both sides' turns; Swift on a plane reads 350; Decoy redirects and never
   blanks (Sub Strike case); revocation restored on discard and absent on a
   replayed card; beams ignore Blocker and no-op on a fallen base; forced 1v1s
@@ -471,7 +487,7 @@ for every non-retired LH vehicle — all 24 are report craft.
 - **Typecheck and functions:** `npx tsc -p tsconfig.json --noEmit`,
   `npm --prefix frontend run build`, `npm run functions:check`.
 - **Browser:** an LH deck against PracticeAI — pips render and tick, the
-  discharge button appears and spends, a stun badges and expires, a Requires
+  discharge button appears and spends, a stun badges and expires, a Drain
   card explains itself in hand, Surge charges the board, a Swift plane
   bombards on arrival, the spawn sheet lists the right blueprints. Signed in via
   `scripts/qa-login.mjs`, never by typing credentials.
