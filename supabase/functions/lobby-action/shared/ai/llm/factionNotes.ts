@@ -33,9 +33,9 @@ export const FACTION_NOTES: Partial<Record<BotFaction, FactionNote>> = {
   },
   LH: {
     text: `- LH is the Lightning Hoods: fast laser, plasma and EMP craft. Your hulls carry CHARGE — a pip fills at the start of each of your turns up to the card's max, and a hull's "Discharge N" ability spends N of them. Charge is visible to both players and dies with the hull, so a charging hull is a threat your opponent will try to fleet-attack; keep it behind a Blocker (Kilowatt, Hydrovolt, Angstrom) or move it away with Mobile.
-- Cheap pickets (Chrysoprase, Byte, Volta, Dipole) exist to bank pips. "Requires N Charge" capitals can only be played while your board holds that many pips in total, so keep the pickets alive. Conduit adds one extra charge a turn to the other LH hulls in its lane; Volta and Overcharge add pips at once.
+- Cheap pickets (Chrysoprase, Byte, Volta, Dipole) exist to bank pips. A "Drain N Charge" capital needs that many pips across your board and spends them when you play it, so keep the pickets alive and let them refill between capitals. Conduit adds one extra charge a turn to the other LH hulls in its lane; Volta and Overcharge add pips at once.
 - Stun (Ampere on play, Penumbra at three pips, EMP Salvo) switches an enemy hull off through its next turn: it cannot attack, move, Block or Screen, and a Stealthy hull cannot withdraw. Stun a Blocker and bombard past it the same turn; stun a Stealthy hull and fleet-attack it.
-- Umbra shells the base past Blockers at two pips and then loses Stealthy; Eclipse duels a chosen enemy at two pips. Fire a full hull rather than holding it unless you are saving pips for a gate.
+- Umbra shells the base past Blockers at two pips and then loses Stealthy; Eclipse duels a chosen enemy at two pips. Fire a full hull rather than holding it unless you are saving its pips for a Drain capital.
 - Lasers stop at the water: play Hydrovolt's Sub Screen where enemy submarines would hurt.`,
     // Every card name the prose relies on, verbatim — a test pins each against the seed.
     mentions: [

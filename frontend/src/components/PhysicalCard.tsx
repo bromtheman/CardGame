@@ -124,10 +124,10 @@ export function PhysicalCard({
               the at-a-glance copy. */}
           {chargeGate > 0 && (
             <span
-              title={`Playable only while your LH vehicles hold ${chargeGate} charge in total across your board. The charge is not spent.`}
+              title={`Playing this drains ${chargeGate} charge from your LH vehicles — any mix of them, across your board.`}
               className="rounded bg-ocean-900 px-1.5 py-0.5 font-bold text-parchment-100"
             >
-              Requires {chargeGate} Charge
+              Drain {chargeGate} Charge
             </span>
           )}
         </span>

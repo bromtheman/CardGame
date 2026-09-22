@@ -76,8 +76,8 @@ describe('submarine base-damage wording (wave 7)', () => {
 
 // 2026-09-21 LH Charge (spec §3.1–§3.3). These rows are the ONLY place the
 // game explains how charge is earned and spent, so each one is pinned to the
-// rule it describes — in particular the two that players confuse: Requires
-// reads the whole board and spends nothing, Discharge comes from one hull.
+// rule it describes — in particular the two that players confuse: Drain
+// comes out of any mix of hulls across the whole board, Discharge out of one hull.
 describe('chargeAttributesOf', () => {
   const labels = (meta: Record<string, unknown>) => chargeAttributesOf(meta).map((a) => a.label)
   const body = (meta: Record<string, unknown>, key: string) =>
@@ -113,11 +113,14 @@ describe('chargeAttributesOf', () => {
     expect(text).toContain('do not stack')
   })
 
-  it('explains Requires as a whole-board total that is checked, never spent', () => {
-    expect(labels({ chargeMax: 2, requiresCharge: 3 })).toEqual(['Charge 2', 'Requires 3 Charge'])
+  it('explains Drain as a whole-board cost the player splits as they choose', () => {
+    expect(labels({ chargeMax: 2, requiresCharge: 3 })).toEqual(['Charge 2', 'Drain 3 Charge'])
     const text = body({ requiresCharge: 3 }, 'requiresCharge')
+    expect(text).toContain('drains 3 charge')
+    expect(text).toContain('any of them')
+    expect(text).toContain('you choose')
     expect(text).toContain('whole board')
-    expect(text).toContain('does not spend')
+    expect(text).not.toContain('does not spend')
   })
 
   it('explains Discharge as a cost paid by the one vehicle, plus its activation', () => {
@@ -135,8 +138,8 @@ describe('chargeAttributesOf', () => {
 
   it('lists every charge rule a single card carries, cap first', () => {
     // Terawatt's full meta: the busiest card in the faction.
-    expect(labels({ chargeMax: 4, chargeRate: 2, requiresCharge: 3, dischargeCost: 2 }))
-      .toEqual(['Charge 4', 'Requires 3 Charge', 'Discharge 2'])
+    expect(labels({ chargeMax: 4, chargeRate: 2, requiresCharge: 2, dischargeCost: 2 }))
+      .toEqual(['Charge 4', 'Drain 2 Charge', 'Discharge 2'])
   })
 
   it('ignores a zero or malformed value rather than printing “Charge 0”', () => {
@@ -147,7 +150,7 @@ describe('chargeAttributesOf', () => {
 describe('attributesOf with charge', () => {
   it('slots the charge rules between the vehicle type and the keywords', () => {
     const attrs = attributesOf(VEHICLE_TYPES.SHIP, [KEYWORDS.BLOCKER], { chargeMax: 2, requiresCharge: 3 })
-    expect(attrs.map((a) => a.label)).toEqual(['Ship', 'Charge 2', 'Requires 3 Charge', 'Blocker'])
+    expect(attrs.map((a) => a.label)).toEqual(['Ship', 'Charge 2', 'Drain 3 Charge', 'Blocker'])
   })
 
   it('leaves a card with no charge meta exactly as it was', () => {

@@ -126,8 +126,8 @@ export const BOT_DECKS: Record<BotFaction, Record<string, number>> = {
   },
   // 2026-09-21 LH redesign. Curated for the bot: batteries it can protect,
   // three Blockers, one timer, one beam, and the two ability cards whose
-  // second pick the policy aims by trial. No Requires-4+ capitals — a greedy
-  // bot would hold them all game.
+  // second pick the policy aims by trial. No Drain capitals — a greedy bot
+  // would hold them all game.
   LH: {
     'Chrysoprase': 2,
     'Byte': 2,

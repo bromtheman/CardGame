@@ -159,11 +159,17 @@ export interface EngineGame {
   privates: { a: PrivateState; b: PrivateState }
 }
 
+// 2026-09-22 Drain N Charge (docs/superpowers/specs/2026-09-22-lh-drain-charge-design.md):
+// how much one friendly LH hull gives up toward a gated card's play.
+export interface ChargeShare { instanceId: string; amount: number }
+
 export type GameAction =
   | { type: 'END_TURN' }
   | { type: 'CONCEDE' }
   | { type: 'ABANDON' }
-  | { type: 'PLAY_CARD_TO_ZONE'; instanceId: string; zoneId: number }
+  // chargeFrom (2026-09-22 Drain N Charge): how much each friendly LH hull
+  // gives up toward a gated card. Absent pays the suggested split.
+  | { type: 'PLAY_CARD_TO_ZONE'; instanceId: string; zoneId: number; chargeFrom?: ChargeShare[] }
   | { type: 'PLAY_ABILITY_CARD'; instanceId: string }
   | { type: 'PLAY_CARD_TARGETING_CARD_ON_FIELD'; instanceId: string; targetInstanceId: string }
   | { type: 'PLAY_CARD_TARGETING_CARD_IN_HAND'; instanceId: string; targetInstanceId: string; zoneId?: number }

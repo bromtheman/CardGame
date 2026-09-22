@@ -74,7 +74,7 @@ function hasLegalHandTarget(card: CardInstance, hand: CardInstance[]): boolean {
 // confirm only when the card has no meta effect at all.
 export function HandBar({
   hand, state, mySide, turnNumber, send, busy,
-  placingCard, onPlacingChange,
+  placingCard, onPlacingChange, onPlayToZone,
   fieldTargeting, onFieldTargetingChange,
   moveMode,
   onVehicleHandTargetPicked,
@@ -95,6 +95,9 @@ export function HandBar({
   busy: boolean
   placingCard: CardInstance | null
   onPlacingChange: (card: CardInstance | null) => void
+  // Every vehicle play into a known zone goes through GameBoardPage, which
+  // stops a Drain card at its split dialog first (2026-09-22 spec §4).
+  onPlayToZone: (card: CardInstance, zoneId: number) => void
   fieldTargeting: CardInstance | null
   onFieldTargetingChange: (card: CardInstance | null) => void
   moveMode: MoveMode | null
@@ -181,7 +184,7 @@ export function HandBar({
     const legalZones = legalZonesFor(state, mySide, card, turnNumber)
     if (legalZones.length === 1) {
       cancelBoardModes()
-      void send({ type: 'PLAY_CARD_TO_ZONE', instanceId: card.instanceId, zoneId: legalZones[0] })
+      onPlayToZone(card, legalZones[0])
       return
     }
     onPlacingChange(card)
@@ -391,7 +394,7 @@ export function HandBar({
               )}
               {gate && (
                 <span className="absolute inset-x-3 top-3 rounded bg-red-700/90 px-2 py-1 text-center text-xs font-bold text-parchment-100">
-                  Requires {gate.required} Charge — you have {gate.have}
+                  Drain {gate.required} Charge — you have {gate.have}
                 </span>
               )}
               {dischargeUnmet && (
