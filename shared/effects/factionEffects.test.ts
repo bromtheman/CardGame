@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { CATALOG_EFFECTS, DATA_EFFECT_KEYS, RESOLVE_BYSTANDER_EFFECTS, effectFor, registerEffect } from './registry.ts'
 import { choice, summonHulls } from './primitives.ts'
 import {
-  ARGONAUT_COST_DELTA, BASE_DAMAGE_DIVISOR, BULL_SHARK_BASE_DAMAGE, CASH_ADVANCE_MATERIALS,
+  ARGONAUT_COST_DELTA, CASH_ADVANCE_MATERIALS,
   EXCALIBUR_COST_DELTA, FLYING_SQUIRREL_ATTACK_COUNT, KEYWORDS, MATERIALS_PER_TURN, NOTHUNG_COST_DELTA,
   RESOLUTE_COST_DELTA, SACRILEGO_COST_DELTA, SLASHER_EARTH_RAKER_COUNT, TRONDHEIM_COST_DELTA,
   TYR_HAND_DISCOUNT, TYR_MIN_COST, VICTORIA_COST_DELTA,
@@ -6780,7 +6780,7 @@ describe('SS Tyr — a discount that grows in your hand', () => {
   })
 })
 
-describe('SS Bull Shark — 200k to the base on an offensive win', () => {
+describe('SS Bull Shark — 300k to the base on an offensive win', () => {
   const ctxFor = (over: Partial<BattleContext> = {}): BattleContext => ({
     phase: 'resolve', zoneId: 1, isDefender: false, isParticipant: true,
     forced: false, survived: true, won: true, casualties: [], ...over,
@@ -6793,10 +6793,13 @@ describe('SS Bull Shark — 200k to the base on an offensive win', () => {
     return { game, ok }
   }
 
-  it('takes 200 HP off the enemy base in its own zone', () => {
+  // A literal, not BULL_SHARK_BASE_DAMAGE / BASE_DAMAGE_DIVISOR: an expectation
+  // derived from the constant passes whatever the constant says. 300k since
+  // the 2026-09-22 owner hotfix (was 200k).
+  it('takes 300 HP off the enemy base in its own zone', () => {
     const { game, ok } = fire(ctxFor())
     expect(ok).toBe(true)
-    expect(game.state.zones[0].baseHp.b).toBe(1000 - BULL_SHARK_BASE_DAMAGE / BASE_DAMAGE_DIVISOR)
+    expect(game.state.zones[0].baseHp.b).toBe(700)
     expect(game.state.zones[0].baseHp.a).toBe(1000)
   })
 
@@ -6814,7 +6817,7 @@ describe('SS Bull Shark — 200k to the base on an offensive win', () => {
   // ⚠ ON_BATTLE_VICTORY is ALSO dispatched by ATTACK_ENEMY_BASE
   // (dispatchBaseAttackVictory, phase 'baseAttack') — that is Plunderer's other
   // half. A bombardment is not a fleet battle, so this must be inert there or
-  // every base attack Bull Shark joins deals 200 extra HP.
+  // every base attack Bull Shark joins deals 300 extra HP.
   it('does nothing on a bombardment', () => {
     const { game } = fire(ctxFor({ phase: 'baseAttack' }))
     expect(game.state.zones[0].baseHp.b).toBe(1000)
