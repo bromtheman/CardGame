@@ -47,7 +47,9 @@ From the report, and what each trait became:
 - **Toughness from heavy armour, not shields** → Scrappy on the tanks (Chrysoprase,
   Conduit, Watt, Terawatt, Candela) and nowhere else; DWG stays the Scrappy faction.
 - **Weak to submarines** (lasers stop at the water) → three **Sub Screens**
-  (Hydrovolt, Cathode, Candela) and one hull that can hunt a sub (Cathode).
+  (Anode, which replaced Hydrovolt on 2026-09-22; Cathode; Candela) and one hull
+  that can hunt a sub (Cathode). Since 2026-09-23, one card removes a sub
+  (EMP Torpedo, [amendment](2026-09-23-lh-emp-torpedo-design.md)).
 - **Missile-proof point-defence** on Angstrom → the roster's **Air Screen**, on a
   Mobile wall.
 
@@ -254,6 +256,8 @@ Taken card by card on 2026-09-21; binding.
   means SS Asphodel, Counter Intelligence, DWG Land Marauder and a mirror
   Angstrom. The 1v1-on-play alternative was rejected: the roster already has
   enough single-hull removal, and LH is a timer faction, not a removal one.
+  **Amended 2026-09-23** ([EMP Torpedo amendment](2026-09-23-lh-emp-torpedo-design.md)):
+  submarines are the exception, and EMP Torpedo removes one.
 - **R-13 Hydrovolt is not Stealthy** — a wall must be fightable. **Amended
   2026-09-22** ([hovercraft amendment](2026-09-22-lh-hovercraft-design.md)):
   Hydrovolt retired; Anode takes its role and inherits the ruling.
@@ -269,7 +273,9 @@ Taken card by card on 2026-09-21; binding.
 - **R-17 Angstrom has no Sub Screen; Candela has no Air Screen.** One screen per
   wall; a hull with both is SS's hero power on a 700-damage Mobile Blocker.
 - **R-18 Cathode surfaces on discharge and duels ships *or submarines*** — the
-  roster's one active anti-sub tool. Surfacing on declaration.
+  roster's one active anti-sub tool. Surfacing on declaration. **Amended
+  2026-09-23** ([EMP Torpedo amendment](2026-09-23-lh-emp-torpedo-design.md)):
+  EMP Torpedo is now a second anti-sub tool.
 - **R-19 Superradiance is neither Mobile nor a Blocker nor Scrappy**: the
   offensive capital, static, paying full repairs to keep a 3-pip timer alive.
 - **R-20 Terawatt keeps all three lines** (Drain 2 — first printed Requires 3;
@@ -307,6 +313,7 @@ Drain figures are as amended on 2026-09-22 (every gate one lower than first
 printed; [amendment](2026-09-22-lh-drain-charge-design.md) §6).
 Ampere, Umbra and the Watt, Byte's and Hydrovolt's retirement, and Anode are as
 amended by the [2026-09-22 hovercraft amendment](2026-09-22-lh-hovercraft-design.md).
+EMP Torpedo comes from the [2026-09-23 EMP Torpedo amendment](2026-09-23-lh-emp-torpedo-design.md).
 Every vehicle is a report craft, so `shipProfiles.test.ts`'s demand for a
 profile per non-retired LH vehicle is met by importing the report (§8).
 
@@ -360,6 +367,7 @@ profile per non-retired LH vehicle is met by importing the report (§8).
 | Extended Sortie | 100k | Discharge 2 from a friendly LH vehicle: a friendly LH plane in that zone loses Temporary. |
 | Data Burst | 50k | Discharge 2 from a friendly LH vehicle: draw 2 cards. |
 | Feedback Loop | 0k | Choose a zone. This turn, whenever a friendly LH vehicle in that zone discharges, draw a card. |
+| EMP Torpedo | 100k | Discharge 2 from a friendly LH vehicle: remove target enemy submarine in that zone from play. |
 
 ### 5.5 Shape checks
 
