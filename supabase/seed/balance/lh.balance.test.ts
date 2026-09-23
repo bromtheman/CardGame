@@ -89,8 +89,8 @@ export const CARDS: Record<string, Expected> = {
   },
   'LH:Ampere': {
     materialCost: 200_000, blueprintCost: 206_645, cpCost: 0, keywords: ['mobile'], vehicleType: 'ship',
-    cardText: 'When played, stun target enemy vehicle in this zone.',
-    meta: { chargeMax: 2, onPlayEffect: 'ampereStun' },
+    cardText: 'When played, this gains 2 charge and stuns target enemy vehicle in this zone.',
+    meta: { chargeMax: 2, onPlayEffect: 'ampereChargedStun' },
   },
   'LH:Eclipse': {
     materialCost: 220_000, blueprintCost: 215_980, cpCost: 0, keywords: ['stealthy'], vehicleType: 'ship',

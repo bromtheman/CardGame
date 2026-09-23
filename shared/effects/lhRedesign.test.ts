@@ -144,6 +144,47 @@ describe('Ampere — ampereStun', () => {
     if (!res.ok) throw new Error(res.error)
     expect(res.game.state.pendingEffect).toBeNull()
     expect(res.game.state.resources.a.materials).toBe(100000)
+    expect(chargeOf(res.game.state.zones[0].cards.a[0] as ZoneCardEntry)).toBe(0)
+  })
+})
+
+// 2026-09-22 hovercraft amendment: Ampere lands full. The charge lands on the
+// first entry only, so resolving the stun cannot charge it twice.
+describe('Ampere — ampereChargedStun', () => {
+  const ampere = () => inst({
+    instanceId: 'ampere', name: 'Ampere', faction: 'LH', materialCost: 200000, keywords: ['mobile'],
+    meta: { chargeMax: 2, onPlayEffect: 'ampereChargedStun' },
+  })
+  const setup = () => {
+    const game = lhGame(); game.state.resources.a.materials = 300000
+    game.privates.a.hand = [ampere()]; game.state.counts.a = { hand: 1, deck: 1 }
+    return game
+  }
+  const play = (game: ReturnType<typeof makeGame>) =>
+    applyAction(game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: 'ampere', zoneId: 1 }, makeCtx())
+  const hull = (game: ReturnType<typeof makeGame>) =>
+    game.state.zones[0].cards.a.find((c) => c.instanceId === 'ampere') as ZoneCardEntry
+
+  it('lands with both pips, then stuns the chosen enemy', () => {
+    const game = setup()
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'wall', keywords: ['blocker'] }))
+    const res = play(game)
+    if (!res.ok) throw new Error(res.error)
+    expect(chargeOf(hull(res.game))).toBe(2)
+    expect(res.game.state.pendingEffect?.options.map((o) => o.id)).toEqual(['wall'])
+    const done = applyAction(res.game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'wall' }, makeCtx())
+    if (!done.ok) throw new Error(done.error)
+    expect(chargeOf(hull(done.game))).toBe(2)
+    expect((done.game.state.zones[0].cards.b[0] as ZoneCardEntry).stunnedUntilTurn).toBe(5)
+    expect(done.game.state.log).toContain('Ampere gains 2 charge')
+  })
+
+  it('still lands charged in a lane with no enemy', () => {
+    const res = play(setup())
+    if (!res.ok) throw new Error(res.error)
+    expect(res.game.state.pendingEffect).toBeNull()
+    expect(chargeOf(hull(res.game))).toBe(2)
+    expect(res.game.state.log).toContain('Ampere: no enemy vehicle in this zone to stun')
   })
 })
 

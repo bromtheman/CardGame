@@ -89,7 +89,7 @@ export const lhVehicles = [
     {
         name: 'Ampere',
         isBuiltIn: true,
-        cardText: 'When played, stun target enemy vehicle in this zone.',
+        cardText: 'When played, this gains 2 charge and stuns target enemy vehicle in this zone.',
         materialCost: 200000,
         blueprintCost: 206645,
         cpCost: 0,
@@ -100,7 +100,8 @@ export const lhVehicles = [
         faction: FACTIONS.LH,
         blueprintId: null,
         keywords: [KEYWORDS.MOBILE],
-        meta: { chargeMax: 2, [TRIGGERS.ON_PLAY]: 'ampereStun' },
+        // 2026-09-22 hovercraft amendment: ampereChargedStun — it lands full.
+        meta: { chargeMax: 2, [TRIGGERS.ON_PLAY]: 'ampereChargedStun' },
     },
     {
         name: 'Coulomb',

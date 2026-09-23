@@ -2,14 +2,14 @@ import { effectiveCostInGame } from '../engine/placement.ts'
 import { addCharge, hasChargeRoom } from '../engine/charge.ts'
 import { dealBaseDamage } from '../engine/baseAttack.ts'
 import {
-  BYTE_PLAY_CHARGE, DATA_BURST_DRAW, FACTIONS, IMPEDANCE_BEAM_DAMAGE, KEYWORDS, OVERCHARGE_CHARGE,
+  AMPERE_PLAY_CHARGE, BYTE_PLAY_CHARGE, DATA_BURST_DRAW, FACTIONS, IMPEDANCE_BEAM_DAMAGE, KEYWORDS, OVERCHARGE_CHARGE,
   SUPERRADIANCE_BEAM_DAMAGE, TERAWATT_TRANSFER_CHARGE, UMBRA_SALVO_DAMAGE, VEHICLE_TYPES, VOLTA_JUMP_START_CHARGE,
 } from '../gameSettings.ts'
 import {
   choice, drawFromPool, enemyVehicleOptions, friendlyVehicleOptions, grant, poolEligible, sequence,
   spawnVehicles, summonHulls, whenPlayed, zoneOccupants,
 } from './primitives.ts'
-import type { EffectFn } from './registry.ts'
+import type { EffectFn, EffectPayload } from './registry.ts'
 import { registerEffect } from './registry.ts'
 import { findVehicle, otherSide, putInHand, revokeKeywordsFrom } from '../engine/gameEngine.ts'
 import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
@@ -369,14 +369,19 @@ registerEffect('byteDraw', grant({ draw: 1 }))
 // New ids again: Byte snapshots dealt before the deploy name no onPlayEffect,
 // so they keep entering empty.
 
-// Byte — "When played, this gains 1 charge." PLAY_CARD_TO_ZONE places the hull
-// before on-play effects fire, so it is on the board to charge; its own
-// chargeMax caps the gain.
-registerEffect('byteChargeOnPlay', ({ game, actor, card }) => {
+// "When played, this gains N charge." PLAY_CARD_TO_ZONE places the hull before
+// on-play effects fire, so it is on the board to charge; its own chargeMax
+// caps the gain. Byte, Ampere and the Watt each call it under their own id.
+function gainOwnCharge({ game, actor, card }: EffectPayload, amount: number): void {
   const found = findVehicle(game.state, card.instanceId)
-  if (!found || found.side !== actor) return true
-  const gained = addCharge(found.entry as ZoneCardEntry, BYTE_PLAY_CHARGE)
+  if (!found || found.side !== actor) return
+  const gained = addCharge(found.entry as ZoneCardEntry, amount)
   if (gained > 0) game.state.log.push(`${card.name} gains ${gained} charge`)
+}
+
+// Byte — "When played, this gains 1 charge."
+registerEffect('byteChargeOnPlay', (payload) => {
+  gainOwnCharge(payload, BYTE_PLAY_CHARGE)
   return true
 })
 
@@ -441,25 +446,40 @@ registerEffect('impedanceBeam', beam(IMPEDANCE_BEAM_DAMAGE, false))
 
 // Ampere — "When played, stun target enemy vehicle in this zone." On play
 // only (R-10); enemyVehicleOptions applies Decoy in a mirror. No enemy in the
-// lane: the play resolves with no stun and no refund.
-const AMPERE = 'ampereStun'
-registerEffect(AMPERE, choice({
-  effect: AMPERE,
-  prompt: "Ampere's EMP salvo — choose an enemy vehicle in this zone to stun",
-  options: ({ game, actor, targetZoneId }) => (
-    typeof targetZoneId === 'number' ? enemyVehicleOptions(game, actor, targetZoneId) : []
-  ),
-  resolve: ({ game, actor, card }, choiceId) => {
-    if (choiceId === null) {
-      game.state.log.push(`${card.name}: no enemy vehicle in this zone to stun`)
+// lane: the play resolves with no stun and no refund. One factory for both
+// ids, because a pending choice re-dispatches by the id it was offered under.
+function ampereStunChoice(effect: string): EffectFn {
+  return choice({
+    effect,
+    prompt: "Ampere's EMP salvo — choose an enemy vehicle in this zone to stun",
+    options: ({ game, actor, targetZoneId }) => (
+      typeof targetZoneId === 'number' ? enemyVehicleOptions(game, actor, targetZoneId) : []
+    ),
+    resolve: ({ game, actor, card }, choiceId) => {
+      if (choiceId === null) {
+        game.state.log.push(`${card.name}: no enemy vehicle in this zone to stun`)
+        return true
+      }
+      const found = findVehicle(game.state, choiceId)
+      if (!found || found.side !== otherSide(actor)) return false
+      stunHull(game, found.entry as ZoneCardEntry)
       return true
-    }
-    const found = findVehicle(game.state, choiceId)
-    if (!found || found.side !== otherSide(actor)) return false
-    stunHull(game, found.entry as ZoneCardEntry)
-    return true
-  },
-}))
+    },
+  })
+}
+registerEffect('ampereStun', ampereStunChoice('ampereStun'))
+
+// 2026-09-22 hovercraft amendment §3 (docs/superpowers/specs/2026-09-22-lh-hovercraft-design.md):
+// "When played, this gains 2 charge and stuns target enemy vehicle in this
+// zone." A NEW id: dealt Amperes keep 'ampereStun' and enter empty. The charge
+// lands on the FIRST entry only, before the stun is offered, so a lane with no
+// enemy still charges and the pick's re-entry cannot charge twice.
+const AMPERE_CHARGED = 'ampereChargedStun'
+const ampereChargedStun = ampereStunChoice(AMPERE_CHARGED)
+registerEffect(AMPERE_CHARGED, (payload) => {
+  if (payload.resolution === undefined) gainOwnCharge(payload, AMPERE_PLAY_CHARGE)
+  return ampereChargedStun(payload)
+})
 
 // A charged 1v1 (spec §3.9): the old Eclipse's shape with a new id, the charge
 // as its cost, and NO zone activation spent — "a forced battle is not a zone
