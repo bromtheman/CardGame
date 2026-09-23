@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import type { CardInstance, PublicGameState } from '@shared/engine/gameInit'
 import type { GameAction, Side } from '@shared/engine/engineTypes'
 import type { LobbySettings } from '@shared/lobbySettings'
-import { battleFrozen, biomeAllows, drainNeedsChoice, effectiveCostInGame, effectName, findVehicle, legalZonesFor, zoneCapFor } from '@shared/engine/index'
+import { battleFrozen, biomeAllows, cheapestCostInGame, drainNeedsChoice, effectName, findVehicle, legalZonesFor, zoneCapFor } from '@shared/engine/index'
 import { shortHandNumber } from '@shared/format'
 import { botSideOf } from '@shared/ai/botGame'
 import { isTableTalk } from '@shared/ai/llm/tableTalk'
@@ -155,7 +155,7 @@ export function GameBoardPage() {
   // out of reach — it answers "can I play this?" at the moment it is asked.
   const liftedUnaffordable =
     liftedCard !== null &&
-    state.resources[mySide].materials < effectiveCostInGame(state, mySide, liftedCard, game.turn_number)
+    state.resources[mySide].materials < cheapestCostInGame(state, mySide, liftedCard, game.turn_number)
 
   // Placing/fieldTargeting/moveMode/swapMode are mutually exclusive: starting
   // one clears the others. HandBar's handTargeting is internal to that
@@ -172,16 +172,14 @@ export function GameBoardPage() {
   }
   // Every play of a hand card into a zone — the hand's one-legal-zone
   // shortcut and a zone click alike — comes through here, so a Drain card
-  // whose split is a real choice stops at the dialog first (2026-09-22 spec
-  // §4). Only a play the server could take asks for a split: a board that
-  // cannot pay, a card the hand already rings as unaffordable (the same
-  // effectiveCostInGame test HandBar draws that ring with) and an off-turn
-  // click all send at once, and the server's refusal names why.
+  // with a real choice (drain or pay full price, or which hulls pay) stops at
+  // the dialog first (2026-09-23 spec §4). Everything else sends at once with
+  // no split: the engine drains when the board holds N and pays full price
+  // when it does not, and an unaffordable or off-turn play gets the server's
+  // refusal, which names why.
   function playToZone(card: CardInstance, zoneId: number) {
     if (!state || !game) return
-    const affordable = state.resources[mySide].materials >= effectiveCostInGame(state, mySide, card, game.turn_number)
-      && state.resources[mySide].cp >= card.cpCost
-    if (isMyTurn && affordable && drainNeedsChoice(state, mySide, card)) {
+    if (isMyTurn && drainNeedsChoice(state, mySide, card, game.turn_number)) {
       setDraining({ card, zoneId })
       return
     }

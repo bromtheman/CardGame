@@ -123,7 +123,9 @@ a realtime channel never recovers, not only when it does.
   `effectName`) and holds the `ALL_TRIGGER_KEYS` duplicate noted in
   [card-effects.md](card-effects.md).
 - Costs shown to the player use `effectiveCostInGame` (typed over
-  `PublicGameState` precisely so the client can call it).
+  `PublicGameState` precisely so the client can call it). The hand and the
+  materials tint use `cheapestCostInGame`, which also takes a Drain card's
+  discount when the board holds its N (2026-09-23).
 
 ### The board fits ONE viewport — don't let a change take that back
 

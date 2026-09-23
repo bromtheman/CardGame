@@ -5,6 +5,11 @@ Every ruling below was taken with the owner on 2026-09-22 and is binding on
 the change that implements it. Where this document and the 2026-09-21 spec
 disagree, this one wins; the 2026-09-21 spec is edited to point here (§9).
 
+> **Superseded in part 2026-09-23.** [2026-09-23-lh-drain-discount-design.md](2026-09-23-lh-drain-discount-design.md)
+> makes Drain an all-or-nothing discount. §2's precondition, the shortfall
+> refusal and "exactly N or refused" no longer hold: a short board pays the
+> printed price. The split rules (§2.1–§2.2) and the dialog's payer rows stand.
+
 ## 1. Decisions
 
 | Decision | Choice |

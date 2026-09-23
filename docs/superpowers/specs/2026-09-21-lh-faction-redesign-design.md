@@ -47,7 +47,7 @@ From the report, and what each trait became:
 - **Toughness from heavy armour, not shields** → Scrappy on the tanks (Chrysoprase,
   Conduit, Watt, Terawatt, Candela) and nowhere else; DWG stays the Scrappy faction.
 - **Weak to submarines** (lasers stop at the water) → three **Sub Screens**
-  (Hydrovolt, Cathode, Candela) and one hull that can hunt a sub (Cathode).
+  (Hydrovolt, Cathode, Candela) and one hull that can hunt a sub (Cathode). *(2026-09-23: Cathode is neither now — [drain discount spec](2026-09-23-lh-drain-discount-design.md) §6.)*
 - **Missile-proof point-defence** on Angstrom → the roster's **Air Screen**, on a
   Mobile wall.
 
@@ -102,6 +102,9 @@ timed disable in the game.
 > **Amended 2026-09-22.** [2026-09-22-lh-drain-charge-design.md](2026-09-22-lh-drain-charge-design.md)
 > replaces this section. As first written the gate was checked and never
 > spent; it is now also a cost, and every gate dropped by 1.
+
+> **Amended again 2026-09-23.** [2026-09-23-lh-drain-discount-design.md](2026-09-23-lh-drain-discount-design.md):
+> Drain is a discount, never a gate — drain all N pips for N × 50k off, or pay the printed price.
 
 `meta.requiresCharge: N` (the key keeps its name) is printed **"Drain N
 Charge"**. It is a play precondition, checked alongside cost: the **sum of
@@ -260,23 +263,26 @@ Taken card by card on 2026-09-21; binding.
 - **R-14 Drain is a vulnerability and a cost** (amended 2026-09-22; first
   ruled "Requires is a vulnerability, not a hurdle"). A hunted board cannot
   pay; an un-raced one pays, and must refill before its next Drain card. Gates
-  are read and paid at play time only (§3.3).
+  are read and paid at play time only (§3.3). **Amended 2026-09-23** ([drain discount spec](2026-09-23-lh-drain-discount-design.md) §2):
+  Drain is a discount, never a gate — a hunted board pays full price instead of being unable to play.
 - **R-15 Megawatt is vanilla with Mobile.** The "rapid strikes" second-bombard
   discharge was rejected: the backbone is the plain body that makes the timers
   safe to run.
 - **R-16 Penumbra has no Mobile and no other use for its pips** — the only thing
   its charge is for is the salvo.
 - **R-17 Angstrom has no Sub Screen; Candela has no Air Screen.** One screen per
-  wall; a hull with both is SS's hero power on a 700-damage Mobile Blocker.
+  wall; a hull with both is SS's hero power on an 850-damage Mobile Blocker (700 before the 2026-09-23 repricing).
 - **R-18 Cathode surfaces on discharge and duels ships *or submarines*** — the
-  roster's one active anti-sub tool. Surfacing on declaration.
+  roster's one active anti-sub tool. Surfacing on declaration. **Superseded 2026-09-23**
+  ([drain discount spec](2026-09-23-lh-drain-discount-design.md) §6): Cathode has no duel
+  and never surfaces; it overheats after every battle it fights.
 - **R-19 Superradiance is neither Mobile nor a Blocker nor Scrappy**: the
   offensive capital, static, paying full repairs to keep a 3-pip timer alive.
 - **R-20 Terawatt keeps all three lines** (Drain 2 — first printed Requires 3;
   Generators — rate 2; transfer). The transfer is an activated ability, so Terawatt cannot both
   transfer and be an ability card's discharge host in one turn. Generators
   applies before Conduit's relay; everything caps at 4.
-- **R-21 Candela is the deal**: 700k for a 1,021k hull, no text beyond the gate,
+- **R-21 Candela is the deal**: 700k drained (850k printed since 2026-09-23) for a 1,021k hull, no text beyond the Drain,
   fights at its FtD weight in battles.
 - **R-22 Rectifier prints Fragile** — moot while Temporary, live once Extended
   Sortie makes it permanent (TG Audacious prints the same set for Spawn
@@ -323,7 +329,7 @@ profile per non-retired LH vehicle is met by importing the report (§8).
 | Volta | ship · 40k (37k) | 1 | Fragile | When played, a friendly LH vehicle in this zone gains 1 charge. |
 | Conduit | ship · 70k (54k) | — | Inoffensive, Scrappy | Relay: at the start of your turn, other friendly LH vehicles in this zone gain 1 additional charge. This does not stack. |
 | Dipole | airship · 70k (65k) | 2 | Mobile | — |
-| Watt | hover · 90k (91k) | 1 | Scrappy, Mobile | When played, this gains 1 charge and a friendly Luxon spawns in this zone. That Luxon has Decoy and is not Temporary. Discharge 1: draw a card. |
+| Watt | hover · 120k (91k) | 1 | Scrappy, Mobile | When played, a friendly Luxon spawns in this zone. That Luxon has Decoy and is not Temporary. Discharge 1: draw a card. (2026-09-23: 120k, enters empty) |
 | Luxon | plane · 60k (59k) | — | Half-Cost, Temporary | Blind on its own: can only be played into a zone where you control an LH vehicle. |
 
 ### 5.2 Raiders
@@ -337,23 +343,23 @@ profile per non-retired LH vehicle is met by importing the report (§8).
 | Eclipse | hover · 220k (216k) | 2 | Stealthy | Discharge 2: this vehicle fights a 1v1 against target non-Stealthy enemy vehicle in this zone. |
 | Caspian | plane · 230k (230k) | — | Half-Cost, Temporary | Sea-skimmer: may be played into a zone with enemy Air Screen. |
 | Anode | sub · 260k (364k) | 2 | Blocker, Sub Screen | — (replaced Hydrovolt, retired, 2026-09-22) |
-| Dynamo | airship · 350k (346k) | 1 | Mobile, Swift | Drain 1 Charge. |
+| Dynamo | airship · 400k (346k) | 1 | Mobile, Swift | Drain 1 Charge: costs 50k less. |
 | Megawatt | ship · 360k (362k) | 2 | Mobile | When played, draw a card. |
 | Penumbra | ship · 370k (375k) | 3 | — | Discharge 3: stun every enemy vehicle in this zone. |
-| Thyristor | airship · 400k (565k) | 2 | Mobile | Drain 2 Charge. (back from the bench, 2026-09-23) |
+| Thyristor | airship · 500k (565k) | 2 | Mobile | Drain 2 Charge: costs 100k less. (back from the bench, 2026-09-23) |
 
 ### 5.3 Capitals
 
 | Card | Type · cost (FtD) | ⚡ | Keywords | Text |
 |---|---|---|---|---|
 | Angstrom | ship · 540k (546k) | 2 | Blocker, Air Screen, Mobile | — |
-| Quadrupole | airship · 560k (685k) | 2 | Blocker, Mobile | Drain 2 Charge. |
-| Cathode | sub · 600k (726k) | 2 | Stealthy, Sub Screen | Drain 2 Charge. Discharge 2: this vehicle fights a 1v1 against target enemy ship or submarine in this zone, then this surfaces — it loses Stealthy for the rest of the game. |
+| Quadrupole | airship · 660k (685k) | 2 | Blocker | Drain 2 Charge: costs 100k less. (2026-09-23: no Mobile) |
+| Cathode | sub · 600k (726k) | 2 | Fragile | Drain 2 Charge: costs 100k less. Overheat: after each battle it fights, it is stunned until the end of the next turn. (2026-09-23) |
 | Superradiance | ship · 620k (626k) | 3 | — | Discharge 3: deal 300k damage to the enemy base in this zone. |
-| Terawatt | hover · 640k (725k) | 4 | Blocker, Scrappy, Mobile | Drain 2 Charge. Generators: this gains 2 charge at the start of your turn instead of 1. Discharge 2: another friendly LH vehicle in this zone gains 2 charge. |
-| Candela | ship · 700k (1,021k) | 2 | Blocker, Sub Screen, Scrappy, Mobile | Drain 3 Charge. |
+| Terawatt | hover · 740k (725k) | 4 | Blocker, Scrappy, Mobile | Drain 2 Charge: costs 100k less. Generators: this gains 2 charge at the start of your turn instead of 1. Discharge 2: another friendly LH vehicle in this zone gains 2 charge. |
+| Candela | ship · 850k (1,021k) | 2 | Blocker, Sub Screen, Scrappy, Mobile | Drain 3 Charge: costs 150k less. |
 | Rectifier | plane · 700k (735k) | — | Half-Cost, Temporary, Fragile, Swift | — |
-| Impedance | ship · 750k (1,327k) | 2 | Blocker | Drain 4 Charge. Discharge 2: deal 400k damage to the enemy base in this zone. |
+| Impedance | ship · 950k (1,327k) | 2 | Blocker | Drain 4 Charge: costs 200k less. Discharge 2: deal 400k damage to the enemy base in this zone. |
 
 ### 5.4 Abilities
 
@@ -368,19 +374,20 @@ profile per non-retired LH vehicle is met by importing the report (§8).
 
 ### 5.5 Shape checks
 
-- Stun sources 3; beams 3 (150/300/400); 1v1 hulls 2; Swift 2 + Afterburner;
-  Blockers 7; Sub Screens 3, Air Screen 1; fliers 8 with Faraday (2026-09-22) and Thyristor (2026-09-23) against the 6-copy limit;
-  subs 3; timers static, walls and raiders Mobile.
-- Curve: 40k pickets on turn 1; Conduit/Dipole 70k; Watt 90k turn 2; Umbra turn
+- Stun sources 3; beams 3 (150/300/400); 1v1 hulls 1 (Eclipse; Cathode's duel went 2026-09-23); Swift 2 + Afterburner;
+  Blockers 7; Sub Screens 2 (Anode, Candela), Air Screen 1; fliers 8 with Faraday (2026-09-22) and Thyristor (2026-09-23) against the 6-copy limit;
+  subs 3; timers static, walls and raiders Mobile (Quadrupole excepted since 2026-09-23).
+- Curve: 40k pickets on turn 1; Conduit/Dipole 70k; Watt 120k turn 2; Umbra turn
   2; Kilowatt/Ampere/Eclipse turn 3; Hydrovolt turn 4; Dynamo/Megawatt/Penumbra
   turn 5; Thyristor turn 6; Angstrom turn 8; Quadrupole/Cathode turn 8; Superradiance/Terawatt
-  turn 9; Candela/Impedance turn 10; Rectifier (350k to play) turn 5.
+  turn 9; Candela/Impedance turn 10; Rectifier (350k to play) turn 5. Since 2026-09-23 the Drain capitals print N × 50k more, so these are their drained turns; undrained, each lands a turn or two later (Cathode excepted: 600k printed, 500k drained).
 - Charge timeline, un-raced: Chrysoprase (t1) + Watt + Volta (t2) + Kilowatt (t3)
-  is 5 pips on turn 4 from 350k of hulls; Dynamo's gate opens turn 5; on an
+  is 5 pips on turn 4 from 380k of hulls; Dynamo's gate opens turn 5; on an
   un-raced board every Drain capital is gated by materials, not pips, but each
   one drains the board it lands on (2026-09-22), so two in a row pay twice. A raced board — pickets
   fleet-attacked on turns 2–4 — has none, and its capitals sit in hand. That is
-  the interaction the mechanic exists to create.
+  the interaction the mechanic exists to create. *(2026-09-23: Drain is a discount — a raced board
+  pays full price for its capitals instead of holding them; [drain discount spec](2026-09-23-lh-drain-discount-design.md) §2.)*
 - A legal sample deck: 2 Chrysoprase, 2 Byte, Volta, Conduit, 2 Watt, Dipole,
   Luxon, Umbra, 2 Kilowatt, Ampere, Eclipse, Penumbra, Megawatt, Angstrom, EMP
   Salvo, Overcharge — twenty cards, two fliers, one sub.

@@ -13,7 +13,10 @@ import { isStunned } from './stun.ts'
 import { costModifierFor, effectFor, effectName, enemyTargetFilterFor, noteUnimplemented } from '../effects/registry.ts'
 import { dispatchDeployWatchers } from './battleTriggers.ts'
 import { effectiveMaterialCostOf } from './costs.ts'
-import { applyDrain, chargeOf, dischargeFromOf, planDrain, spendCharge } from './charge.ts'
+import {
+  applyDrain, boardChargeOf, chargeGateOf, chargeOf, chargeSplitIsForced, dischargeFromOf, drainDiscountOf,
+  planDrain, spendCharge,
+} from './charge.ts'
 import { decoyFor } from './decoy.ts'
 
 const BIOMES_BY_TYPE: Record<string, string[]> = {
@@ -330,9 +333,50 @@ export function effectiveCostInGame(
   return Math.max(0, effectiveMaterialCostOf({ materialCost: modified, keywords }))
 }
 
-function canAffordInGame(game: EngineGame, side: Side, card: CardInstance): boolean {
+// ── 2026-09-23 Drain as a discount (docs/superpowers/specs/2026-09-23-lh-drain-discount-design.md §3) ──
+// The discount comes off LAST, after modifiers, costDelta and Half-Cost, so a
+// Drain card costs exactly N × 50k less than it otherwise would; never below 0.
+export function drainedCostInGame(
+  state: PublicGameState, side: Side, card: CardInstance, turnNumber: number,
+): number {
+  return Math.max(0, effectiveCostInGame(state, side, card, turnNumber) - drainDiscountOf(card))
+}
+
+// What the hand shows and rings by: the drained price when the board holds
+// the card's N, otherwise effectiveCostInGame. A card without a Drain always
+// gets the latter.
+export function cheapestCostInGame(
+  state: PublicGameState, side: Side, card: CardInstance, turnNumber: number,
+): number {
+  const gate = chargeGateOf(card)
+  return gate > 0 && boardChargeOf(state, side) >= gate
+    ? drainedCostInGame(state, side, card, turnNumber)
+    : effectiveCostInGame(state, side, card, turnNumber)
+}
+
+// The Drain dialog's gate (§4): a drained play is affordable, and something is
+// left to choose — the full price is affordable too, or the split is not
+// forced. Otherwise the client sends the play with no split, and the engine
+// drains, pays full price, or refuses naming why.
+export function drainNeedsChoice(
+  state: PublicGameState, side: Side, card: CardInstance, turnNumber: number,
+): boolean {
+  const gate = chargeGateOf(card)
+  if (gate === 0 || boardChargeOf(state, side) < gate) return false
+  const { materials, cp } = state.resources[side]
+  if (cp < card.cpCost || materials < drainedCostInGame(state, side, card, turnNumber)) return false
+  return materials >= effectiveCostInGame(state, side, card, turnNumber) || !chargeSplitIsForced(state, side, gate)
+}
+
+// The price a play actually pays: effectiveCostInGame less a Drain's discount
+// (0 unless all N pips were drained), never below zero.
+function priceInGame(game: EngineGame, side: Side, card: CardInstance, discount: number): number {
+  return Math.max(0, effectiveCostInGame(game.state, side, card, game.turnNumber) - discount)
+}
+
+function canAffordInGame(game: EngineGame, side: Side, card: CardInstance, discount = 0): boolean {
   return (
-    game.state.resources[side].materials >= effectiveCostInGame(game.state, side, card, game.turnNumber) &&
+    game.state.resources[side].materials >= priceInGame(game, side, card, discount) &&
     game.state.resources[side].cp >= card.cpCost
   )
 }
@@ -354,8 +398,8 @@ export function spendCard(game: EngineGame, side: Side, card: CardInstance): voi
   discardCard(game, side, card)
 }
 
-function pay(game: EngineGame, side: Side, card: CardInstance): void {
-  game.state.resources[side].materials -= effectiveCostInGame(game.state, side, card, game.turnNumber)
+function pay(game: EngineGame, side: Side, card: CardInstance, discount = 0): void {
+  game.state.resources[side].materials -= priceInGame(game, side, card, discount)
   game.state.resources[side].cp -= card.cpCost
 }
 
@@ -484,14 +528,13 @@ registerHandler('PLAY_CARD_TO_ZONE', (game, actor, action, ctx) => {
   if (card.type !== 'vehicle' && zoneEffectName === null) {
     return err(400, 'Ability cards are played without a zone')
   }
-  if (!canAffordInGame(game, actor, card)) return err(400, 'You cannot afford that card')
-
-  // 2026-09-22 Drain N Charge (docs/superpowers/specs/2026-09-22-lh-drain-charge-design.md
-  // §2–§3): the whole-board precondition, then the player's split — or the
-  // suggested one when the play names none. Checked here, before anything
-  // moves; spent after pay(). Spawns never come through here (spec §7.4).
+  // 2026-09-23 Drain as a discount (docs/superpowers/specs/2026-09-23-lh-drain-discount-design.md
+  // §2–§3): all N pips for N × 50k off, or none at the printed price. Planned
+  // FIRST, because the price depends on it; nothing is spent until pay(), and
+  // spawns never come through here (design spec §7.4).
   const drain = planDrain(game.state, actor, card, action.chargeFrom)
   if ('error' in drain) return err(400, drain.error)
+  if (!canAffordInGame(game, actor, card, drain.discount)) return err(400, 'You cannot afford that card')
 
   if (card.type === 'vehicle' && !legalZonesFor(game.state, actor, card, game.turnNumber).includes(action.zoneId)) {
     return err(400, 'That vehicle cannot deploy to that zone')
@@ -513,8 +556,8 @@ registerHandler('PLAY_CARD_TO_ZONE', (game, actor, action, ctx) => {
   const surged = resourceSurgeActive(game.state, actor, card)
 
   takeFromHand(game, actor, action.instanceId)
-  pay(game, actor, card)
-  applyDrain(game, actor, card.name, drain.split)
+  pay(game, actor, card, drain.discount)
+  applyDrain(game, actor, card.name, drain.split, drain.discount)
 
   const placedInstanceIds = card.type === 'vehicle'
     ? deployVehicle(game, ctx, actor, card, action.zoneId, surged)
@@ -682,12 +725,12 @@ registerHandler('PLAY_CARD_TARGETING_CARD_IN_HAND', (game, actor, action, ctx) =
     return err(400, 'That vehicle cannot deploy to that zone')
   }
 
-  if (!canAffordInGame(game, actor, card)) return err(400, 'You cannot afford that card')
-
-  // The same Drain as PLAY_CARD_TO_ZONE (2026-09-22 spec §3). No card on this
-  // path carries a gate today, and it takes no split: the suggested one pays.
+  // The same Drain as PLAY_CARD_TO_ZONE (2026-09-23 spec §3). No card on this
+  // path carries one today, and it takes no split, so the absent row applies:
+  // the suggested split when the board holds N, otherwise full price.
   const drain = planDrain(game.state, actor, card, undefined)
   if ('error' in drain) return err(400, drain.error)
+  if (!canAffordInGame(game, actor, card, drain.discount)) return err(400, 'You cannot afford that card')
 
   if (game.state.alertCard?.instanceId === action.instanceId) game.state.alertCard = null
 
@@ -697,8 +740,8 @@ registerHandler('PLAY_CARD_TARGETING_CARD_IN_HAND', (game, actor, action, ctx) =
   const surged = resourceSurgeActive(game.state, actor, card)
 
   takeFromHand(game, actor, action.instanceId)
-  pay(game, actor, card)
-  applyDrain(game, actor, card.name, drain.split)
+  pay(game, actor, card, drain.discount)
+  applyDrain(game, actor, card.name, drain.split, drain.discount)
 
   // A vehicle deploys like any other hull; an ability places nothing on the
   // board.

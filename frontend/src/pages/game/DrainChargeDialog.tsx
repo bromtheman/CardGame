@@ -1,15 +1,21 @@
 import { useState } from 'react'
+import { shortHandNumber } from '@shared/format'
 import type { CardInstance, PublicGameState } from '@shared/engine/gameInit'
 import type { ChargeShare, Side } from '@shared/engine/engineTypes'
-import { chargeGateOf, chargeOf, chargePayersOf, chargeSplitError, suggestedChargeSplit } from '@shared/engine/index'
+import {
+  chargeGateOf, chargeOf, chargePayersOf, chargeSplitError, drainDiscountOf, drainedCostInGame,
+  effectiveCostInGame, suggestedChargeSplit,
+} from '@shared/engine/index'
 import { useEscapeToCancel } from '../../components/ConfirmDialog'
 import { MiniVehicle } from './MiniVehicle'
 
-// 2026-09-22 Drain N Charge (docs/superpowers/specs/2026-09-22-lh-drain-charge-design.md §4).
-// The last step of playing a Drain card whose split is a real choice: which
-// of my LH hulls give up how much. It opens on the engine's suggested split
-// and asks the engine's own validator about every change — nothing here
-// re-derives a rule (docs/claude/frontend.md, "Never mirror engine logic").
+// 2026-09-23 Drain as a discount (docs/superpowers/specs/2026-09-23-lh-drain-discount-design.md §4).
+// The last step of playing a Drain card when there is a real choice: drain
+// exactly N pips — which of my LH hulls give up how much — for N × 50k off, or
+// pay the full price and keep every pip. It opens on the engine's suggested
+// split and asks the engine's own validator and prices about every change;
+// nothing here re-derives a rule (docs/claude/frontend.md, "Never mirror
+// engine logic").
 export function DrainChargeDialog({
   state, mySide, turnNumber, card, busy, onPlay, onCancel,
 }: {
@@ -18,6 +24,7 @@ export function DrainChargeDialog({
   turnNumber: number
   card: CardInstance
   busy: boolean
+  // A split drains; an empty list is the full-price play (`chargeFrom: []`).
   onPlay: (split: ChargeShare[]) => void
   onCancel: () => void
 }) {
@@ -26,6 +33,11 @@ export function DrainChargeDialog({
   const [taken, setTaken] = useState<Record<string, number>>(() =>
     Object.fromEntries((suggestedChargeSplit(state, mySide, gate) ?? []).map((s) => [s.instanceId, s.amount])))
   useEscapeToCancel(true, onCancel)
+
+  const { materials, cp } = state.resources[mySide]
+  const affordable = (price: number) => materials >= price && cp >= card.cpCost
+  const fullPrice = effectiveCostInGame(state, mySide, card, turnNumber)
+  const drainedPrice = drainedCostInGame(state, mySide, card, turnNumber)
 
   const split: ChargeShare[] = payers
     .filter((p) => (taken[p.entry.instanceId] ?? 0) > 0)
@@ -42,13 +54,14 @@ export function DrainChargeDialog({
       <div
         role="dialog"
         aria-modal="true"
-        aria-label={`Drain ${gate} charge for ${card.name}`}
+        aria-label={`Drain ${gate} charge for ${card.name}?`}
         className="w-full max-w-2xl rounded-xl border-2 border-brass-400 bg-ocean-900 p-6 shadow-plank"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="font-display text-2xl">Drain {gate} charge for {card.name}</h2>
+        <h2 className="font-display text-2xl">Drain {gate} charge for {card.name}?</h2>
         <p className="mt-1 text-sm text-ocean-300">
-          Choose which of your LH vehicles give up charge. Nothing is spent unless you play.
+          Drain exactly {gate} charge from your LH vehicles and it costs {shortHandNumber(drainDiscountOf(card))} less,
+          or pay the full price and keep your charge.
         </p>
         <div className="mt-4 space-y-3">
           {zoneIds.map((zoneId) => (
@@ -96,7 +109,7 @@ export function DrainChargeDialog({
         <p className={`mt-4 text-sm font-bold ${chosen === gate ? 'text-ocean-300' : 'text-red-300'}`}>
           {chosen} of {gate} chosen
         </p>
-        <div className="mt-4 flex justify-end gap-2">
+        <div className="mt-4 flex flex-wrap justify-end gap-2">
           {/* Focus moves into the dialog on open, onto Cancel as ConfirmDialog
               does, so the keyboard is not left on the hand behind it. */}
           <button
@@ -109,11 +122,19 @@ export function DrainChargeDialog({
           </button>
           <button
             type="button"
-            disabled={busy || problem !== null}
+            disabled={busy || !affordable(fullPrice)}
+            onClick={() => onPlay([])}
+            className="rounded border border-brass-400 px-4 py-2 font-bold text-brass-400 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Pay full price — {shortHandNumber(fullPrice)}
+          </button>
+          <button
+            type="button"
+            disabled={busy || problem !== null || !affordable(drainedPrice)}
             onClick={() => onPlay(split)}
             className="rounded bg-brass-400 px-4 py-2 font-bold text-ocean-950 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Play {card.name}
+            Drain and pay {shortHandNumber(drainedPrice)}
           </button>
         </div>
       </div>

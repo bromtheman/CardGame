@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
-  addCharge, applyDrain, boardChargeOf, chargeGateShortfall, chargeMaxOf, chargeOf, chargePayersOf,
-  chargeSplitError, chargeSplitIsForced, drainNeedsChoice, planDrain, spendCharge, suggestedChargeSplit,
+  addCharge, applyDrain, boardChargeOf, chargeMaxOf, chargeOf, chargePayersOf,
+  chargeSplitError, chargeSplitIsForced, drainDiscountOf, planDrain, spendCharge, suggestedChargeSplit,
   tickCharge,
 } from './charge.ts'
 import type { ZoneCardEntry } from './engineTypes.ts'
@@ -36,16 +36,13 @@ describe('charge', () => {
     expect(chargeOf(e)).toBe(0)
   })
 
-  it('sums LH pips across every lane and reports a gate shortfall', () => {
+  it('sums LH pips across every lane, and only LH', () => {
     const game = makeGame()
     game.state.zones[0].cards.a.push(lh({ charge: 2 }))
     game.state.zones[2].cards.a.push(lh({ charge: 1 }))
     game.state.zones[1].cards.a.push(zoneEntry({ faction: 'DWG', meta: { chargeMax: 2 }, charge: 2 }))
     game.state.zones[0].cards.b.push(lh({ charge: 2 }))
     expect(boardChargeOf(game.state, 'a')).toBe(3)
-    expect(chargeGateShortfall(game.state, 'a', { meta: { requiresCharge: 4 } })).toEqual({ required: 4, have: 3 })
-    expect(chargeGateShortfall(game.state, 'a', { meta: { requiresCharge: 3 } })).toBeNull()
-    expect(chargeGateShortfall(game.state, 'a', { meta: {} })).toBeNull()
   })
 
   it('ticks at the printed rate, relays once per lane, and leaves the other side alone', () => {
@@ -166,44 +163,50 @@ describe('Drain N Charge helpers', () => {
     expect(chargeSplitIsForced(choice.state, 'a', 2)).toBe(false)
   })
 
-  it('opens the dialog only for a gated card the board can pay more than one way', () => {
-    const game = makeGame()
-    game.state.zones[0].cards.a.push(battery('A', 2), battery('B', 1))
-    expect(drainNeedsChoice(game.state, 'a', gated(2))).toBe(true)
-    expect(drainNeedsChoice(game.state, 'a', gated(3))).toBe(false) // forced: the board holds exactly 3
-    expect(drainNeedsChoice(game.state, 'a', gated(4))).toBe(false) // short: the server refuses with the reason
-    expect(drainNeedsChoice(game.state, 'a', { meta: {} })).toBe(false)
+  it('prices a drain at N × 50k', () => {
+    expect(drainDiscountOf(gated(1))).toBe(50_000)
+    expect(drainDiscountOf(gated(4))).toBe(200_000)
+    expect(drainDiscountOf({ meta: {} })).toBe(0)
   })
 
-  it('plans a drain: the precondition, the suggested split, or the player’s own', () => {
+  it('plans a drain: all N for the discount, or none at full price — never refused for want of pips', () => {
     const game = makeGame()
     game.state.zones[0].cards.a.push(battery('A', 2), battery('B', 1))
-    expect(planDrain(game.state, 'a', gated(4), undefined))
-      .toEqual({ error: 'Quadrupole drains 4 charge — your LH vehicles hold 3' })
-    // A 2→1, then the tie at 1 goes to A (board order).
-    expect(planDrain(game.state, 'a', gated(2), undefined)).toEqual({ split: [{ instanceId: 'A', amount: 2 }] })
+    const none = { split: [], discount: 0 }
+    // Absent: the suggested split when the board holds N (A 2→1, then the tie
+    // at 1 goes to A in board order), otherwise the printed price.
+    expect(planDrain(game.state, 'a', gated(2), undefined))
+      .toEqual({ split: [{ instanceId: 'A', amount: 2 }], discount: 100_000 })
+    expect(planDrain(game.state, 'a', gated(4), undefined)).toEqual(none)
+    // An empty list is a deliberate full-price play, even when the board could drain.
+    expect(planDrain(game.state, 'a', gated(2), [])).toEqual(none)
     const own = [{ instanceId: 'B', amount: 1 }, { instanceId: 'A', amount: 1 }]
-    expect(planDrain(game.state, 'a', gated(2), own)).toEqual({ split: own })
+    expect(planDrain(game.state, 'a', gated(2), own)).toEqual({ split: own, discount: 100_000 })
+    // A named split must still total exactly N — there is no partial drain.
+    expect(planDrain(game.state, 'a', gated(2), [{ instanceId: 'B', amount: 1 }]))
+      .toEqual({ error: 'Choose exactly 2 charge — you chose 1' })
     expect(planDrain(game.state, 'a', gated(2), [{ instanceId: 'B', amount: 2 }])).toEqual({ error: 'B holds only 1 charge' })
+    expect(planDrain(game.state, 'a', gated(4), [{ instanceId: 'A', amount: 2 }, { instanceId: 'B', amount: 1 }]))
+      .toEqual({ error: 'Choose exactly 4 charge — you chose 3' })
     expect(planDrain(game.state, 'a', gated(2), 'all of it'))
       .toEqual({ error: 'chargeFrom must be a list of { instanceId, amount }' })
     const plain = { name: 'Kilowatt', meta: {} }
-    expect(planDrain(game.state, 'a', plain, undefined)).toEqual({ split: [] })
-    expect(planDrain(game.state, 'a', plain, [])).toEqual({ split: [] })
+    expect(planDrain(game.state, 'a', plain, undefined)).toEqual(none)
+    expect(planDrain(game.state, 'a', plain, [])).toEqual(none)
     expect(planDrain(game.state, 'a', plain, [{ instanceId: 'A', amount: 1 }])).toEqual({ error: 'Kilowatt drains no charge' })
   })
 
-  it('spends a split and logs it in board order, never touching an activation', () => {
+  it('spends a split and logs it with its discount, in board order, never touching an activation', () => {
     const game = makeGame()
     const a = battery('Chrysoprase', 2)
     const b = battery('Kilowatt', 2)
     game.state.zones[0].cards.a.push(a)
     game.state.zones[1].cards.a.push(b)
-    applyDrain(game, 'a', 'Quadrupole', [{ instanceId: 'Kilowatt', amount: 1 }, { instanceId: 'Chrysoprase', amount: 2 }])
+    applyDrain(game, 'a', 'Candela', [{ instanceId: 'Kilowatt', amount: 1 }, { instanceId: 'Chrysoprase', amount: 2 }], 150_000)
     expect([chargeOf(a), chargeOf(b)]).toEqual([0, 1])
-    expect(game.state.log).toEqual(['Quadrupole drains 3 charge — Chrysoprase 2, Kilowatt 1'])
+    expect(game.state.log).toEqual(['Candela drains 3 charge for 150k off — Chrysoprase 2, Kilowatt 1'])
     expect([a.activatedOnTurn, b.activatedOnTurn]).toEqual([null, null])
-    applyDrain(game, 'a', 'Kilowatt', [])
+    applyDrain(game, 'a', 'Kilowatt', [], 0)
     expect(game.state.log).toHaveLength(1)
   })
 })

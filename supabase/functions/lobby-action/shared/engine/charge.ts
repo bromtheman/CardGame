@@ -1,4 +1,5 @@
-import { CHARGE_TICK, FACTIONS } from '../gameSettings.ts'
+import { CHARGE_TICK, DRAIN_DISCOUNT_PER_CHARGE, FACTIONS } from '../gameSettings.ts'
+import { shortHandNumber } from '../format.ts'
 import type { PublicGameState } from './gameInit.ts'
 import type { ChargeShare, EngineGame, Side, ZoneCardEntry } from './engineTypes.ts'
 
@@ -43,8 +44,8 @@ export function spendCharge(entry: ZoneCardEntry, amount: number): boolean {
   return true
 }
 
-// The Drain gate reads the whole board (§3.3; printed "Requires N Charge" until
-// 2026-09-22). "LH" is faction === 'LH': player-made cards are NEUTRAL and never count.
+// A Drain reads the whole board (2026-09-21 spec §3.3; a gate until 2026-09-23,
+// a discount since). "LH" is faction === 'LH': player-made cards are NEUTRAL and never count.
 export function boardChargeOf(state: PublicGameState, side: Side): number {
   let total = 0
   for (const zone of state.zones) {
@@ -53,13 +54,10 @@ export function boardChargeOf(state: PublicGameState, side: Side): number {
   return total
 }
 
-export function chargeGateShortfall(
-  state: PublicGameState, side: Side, card: HasMeta,
-): { required: number; have: number } | null {
-  const required = chargeGateOf(card)
-  if (required === 0) return null
-  const have = boardChargeOf(state, side)
-  return have >= required ? null : { required, have }
+// "Drain N Charge: costs Xk less" (2026-09-23 spec §2): X = N × DRAIN_DISCOUNT_PER_CHARGE,
+// earned only by draining all N. Zero for a card without a Drain.
+export function drainDiscountOf(card: HasMeta): number {
+  return chargeGateOf(card) * DRAIN_DISCOUNT_PER_CHARGE
 }
 
 // The turn-start tick for `side` (§3.1.2, §3.1.5): every hull gains its rate,
@@ -75,11 +73,12 @@ export function tickCharge(game: EngineGame, side: Side): void {
   }
 }
 
-// ── 2026-09-22 Drain N Charge (docs/superpowers/specs/2026-09-22-lh-drain-charge-design.md) ──
-// A gated card (meta.requiresCharge, printed "Drain N Charge") is paid for in
-// pips from any mix of the player's LH hulls. These are the ONE copy of the
-// payment rules: both deploy handlers, the split dialog and PracticeAI (which
-// always pays the suggested split) import them — nothing re-derives them.
+// ── Drain N Charge (2026-09-22; a discount since docs/superpowers/specs/2026-09-23-lh-drain-discount-design.md) ──
+// A Drain card (meta.requiresCharge, printed "Drain N Charge: costs Xk less")
+// may be paid for in pips from any mix of the player's LH hulls — all N of
+// them for N × 50k off, or none at the printed price. These are the ONE copy of
+// the payment rules: both deploy handlers, the dialog and PracticeAI (which
+// drains the suggested split whenever it can) import them — nothing re-derives them.
 
 export interface ChargePayer { zoneId: number; entry: ZoneCardEntry }
 
@@ -158,37 +157,43 @@ export function chargeSplitIsForced(state: PublicGameState, side: Side, amount: 
   return payers.length === 1 || payers.reduce((sum, p) => sum + chargeOf(p.entry), 0) === amount
 }
 
-// The split dialog's gate (§4): a gated card the board can pay, more than one way.
-export function drainNeedsChoice(state: PublicGameState, side: Side, card: HasMeta): boolean {
-  const gate = chargeGateOf(card)
-  return gate > 0 && boardChargeOf(state, side) >= gate && !chargeSplitIsForced(state, side, gate)
-}
+export type DrainPlan = { split: ChargeShare[]; discount: number } | { error: string }
 
-export type DrainPlan = { split: ChargeShare[] } | { error: string }
-
-// Everything a play checks about its Drain, before anything moves (§2, §3):
-// the whole-board precondition, then the player's split — or the suggested
-// one when the play names none (PracticeAI, a stale client, a forced split).
+// Everything a play decides about its Drain, before anything moves
+// (2026-09-23 spec §2–§3). All or nothing: exactly N pips for the discount, or
+// none at the printed price — there is no partial drain, and a short board is
+// never refused, it just pays full price.
+//   - chargeFrom absent (PracticeAI, a forced split): the suggested split when
+//     the board holds N, otherwise full price;
+//   - chargeFrom []: a deliberate full-price play;
+//   - a named split: validated by chargeSplitError, so it totals exactly N.
 export function planDrain(
   state: PublicGameState, side: Side, card: HasMeta & { name: string }, chargeFrom: unknown,
 ): DrainPlan {
+  const fullPrice: DrainPlan = { split: [], discount: 0 }
   const gate = chargeGateOf(card)
   if (gate === 0) {
     const sent = Array.isArray(chargeFrom) ? chargeFrom.length > 0 : chargeFrom !== undefined
-    return sent ? { error: `${card.name} drains no charge` } : { split: [] }
+    return sent ? { error: `${card.name} drains no charge` } : fullPrice
   }
-  const shortfall = chargeGateShortfall(state, side, card)
-  if (shortfall) return { error: `${card.name} drains ${shortfall.required} charge — your LH vehicles hold ${shortfall.have}` }
-  if (chargeFrom === undefined) return { split: suggestedChargeSplit(state, side, gate)! }
+  if (chargeFrom === undefined) {
+    const suggested = suggestedChargeSplit(state, side, gate)
+    return suggested ? { split: suggested, discount: drainDiscountOf(card) } : fullPrice
+  }
   if (!Array.isArray(chargeFrom)) return { error: 'chargeFrom must be a list of { instanceId, amount }' }
+  if (chargeFrom.length === 0) return fullPrice
   const error = chargeSplitError(state, side, gate, chargeFrom)
-  return error ? { error } : { split: chargeFrom as ChargeShare[] }
+  return error ? { error } : { split: chargeFrom as ChargeShare[], discount: drainDiscountOf(card) }
 }
 
-// Spends a split planDrain returned and logs it — public, since every payer
-// is on the board. Paying is not an activation: activatedOnTurn is never
-// touched, so a payer may still Discharge this turn with what it has left.
-export function applyDrain(game: EngineGame, side: Side, cardName: string, split: readonly ChargeShare[]): void {
+// Spends a split planDrain returned and logs it with its discount — public,
+// since every payer is on the board, and "for 100k off" says it is a payment,
+// not an ability (the 2026-09-22 playtest misread). Paying is not an
+// activation: activatedOnTurn is never touched, so a payer may still
+// Discharge this turn with what it has left. A full-price play logs nothing.
+export function applyDrain(
+  game: EngineGame, side: Side, cardName: string, split: readonly ChargeShare[], discount: number,
+): void {
   if (split.length === 0) return
   const byId = new Map(split.map((s) => [s.instanceId, s.amount]))
   const parts: string[] = []
@@ -200,5 +205,5 @@ export function applyDrain(game: EngineGame, side: Side, cardName: string, split
     parts.push(`${entry.name} ${amount}`)
     total += amount
   }
-  game.state.log.push(`${cardName} drains ${total} charge — ${parts.join(', ')}`)
+  game.state.log.push(`${cardName} drains ${total} charge for ${shortHandNumber(discount)} off — ${parts.join(', ')}`)
 }

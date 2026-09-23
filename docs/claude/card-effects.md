@@ -344,7 +344,8 @@ Keywords come from the summoning card, not the spawned row
 prints none) and the merge de-duplicates.
 
 A spawned hull can be made a **token** by stamping the INSTANCE's
-`meta.summonOnly = true` — the Watt's Luxon (`wattOnPlay`, 2026-09-22), a copy
+`meta.summonOnly = true` — the Watt's Luxon (`wattEscortOnPlay` since 2026-09-23;
+`wattOnPlay` for dealt snapshots), a copy
 of a draftable card. `discardCard` refuses it (`isSummonOnly` reads the
 instance's own `meta`), so a dead token is simply gone and never files into a
 deck through the discard. Until then `summonOnly` was only catalog data.

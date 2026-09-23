@@ -395,24 +395,24 @@ registerEffect('faradayOnPlay', grant({ draw: 1 }))
 // PLAY_CARD_TARGETING_CARD_ON_FIELD); this is the draw and nothing else.
 registerEffect('dataBurstEffect', grant({ draw: DATA_BURST_DRAW }))
 
-// Watt — "When played, this gains 1 charge and a friendly Luxon spawns in this
-// zone. That Luxon has Decoy and is not Temporary." (2026-09-22 hovercraft
-// amendment §3.) Spawning is not playing: no payment, no blind-placement check,
-// no on-play. The Decoy is a recorded grant and Temporary a recorded revoke —
-// Extended Sortie's path, so the turn-start cull skips it. The Luxon is a
-// TOKEN: stamped summonOnly, which discardCard refuses, so a dead one is gone
-// instead of filing a free Luxon into the deck. No room in the lane → no
-// Luxon, the room rule a card's printed extra copies follow. A catalog without
-// Luxon is a data bug and fails the play (spawnVehicles' contract), checked
-// before anything moves.
+// Watt — "When played, a friendly Luxon spawns in this zone. That Luxon has
+// Decoy and is not Temporary." (2026-09-22 hovercraft amendment §3; since
+// 2026-09-23 it no longer gains a pip on play — drain discount spec §7.)
+// Spawning is not playing: no payment, no blind-placement check, no on-play.
+// The Decoy is a recorded grant and Temporary a recorded revoke — Extended
+// Sortie's path, so the turn-start cull skips it. The Luxon is a TOKEN: stamped
+// summonOnly, which discardCard refuses, so a dead one is gone instead of
+// filing a free Luxon into the deck. No room in the lane → no Luxon, the room
+// rule a card's printed extra copies follow. A catalog without Luxon is a data
+// bug and fails the play (spawnVehicles' contract), checked before anything moves.
 const WATT_ESCORT = 'Luxon'
-registerEffect('wattOnPlay', (payload) => {
+function wattLaunch(payload: EffectPayload, pip: number): boolean {
   const { game, actor, card, ctx } = payload
   const escortCard = catalogCard(ctx, WATT_ESCORT)
   if (!escortCard || !poolEligible(escortCard)) return false
   const self = findVehicle(game.state, card.instanceId)
   if (!self || self.side !== actor) return true
-  gainOwnCharge(payload, WATT_PLAY_CHARGE)
+  if (pip > 0) gainOwnCharge(payload, pip)
   const zoneId = self.zone.id
   if (self.zone.cards[actor].length >= zoneCapFor(game.state, actor, zoneId)) {
     game.state.log.push(`${card.name}: no room in zone ${zoneId} for its Luxon`)
@@ -425,7 +425,11 @@ registerEffect('wattOnPlay', (payload) => {
   escort.meta = { ...escort.meta, summonOnly: true }
   game.state.log.push(`${card.name} launches a Luxon in zone ${zoneId} — it has Decoy and stays`)
   return true
-}, { needsCatalog: true })
+}
+// Dealt snapshots (before 2026-09-23) name this one, and keep the pip.
+registerEffect('wattOnPlay', (payload) => wattLaunch(payload, WATT_PLAY_CHARGE), { needsCatalog: true })
+// Since 2026-09-23: the Luxon only — the Watt's first pip comes at its owner's next turn start.
+registerEffect('wattEscortOnPlay', (payload) => wattLaunch(payload, 0), { needsCatalog: true })
 
 // Watt — "Discharge 1: draw a card." Byte's draw under the Watt's own id: no
 // two cards share a registry name, however small the implementation
@@ -558,8 +562,9 @@ registerEffect(AMPERE_CHARGED, (payload) => {
 // as its cost, and NO zone activation spent — "a forced battle is not a zone
 // activation" holds for these as for every other forced battle. "Non-Stealthy"
 // is read at declaration, so a hull Ampere stunned this turn qualifies.
-// `surfaces` is Cathode's (R-18): Stealthy comes off the moment the duel is
-// declared, and a refused declaration rolls the whole clone back.
+// `surfaces` is Cathode's (R-18; dealt snapshots only since 2026-09-23):
+// Stealthy comes off the moment the duel is declared, and a refused
+// declaration rolls the whole clone back.
 function duel(id: string, prompt: string, targetable: (e: ZoneCardEntry) => boolean, surfaces: boolean): EffectFn {
   const canTarget = (game: EngineGame, e: ZoneCardEntry) =>
     !(e.keywords.includes(KEYWORDS.STEALTHY) && !isStunned(e, game.turnNumber)) && targetable(e)
@@ -599,6 +604,21 @@ registerEffect('cathodeDuel', duel(
   (e) => isShipClass(e.vehicleType) || e.vehicleType === VEHICLE_TYPES.SUB,
   true,
 ))
+
+// 2026-09-23 (docs/superpowers/specs/2026-09-23-lh-drain-discount-design.md §6):
+// Cathode — "Overheat: after each battle it fights, it is stunned until the
+// end of the next turn." The existing stun, stamped from the battle's own turn:
+// after an attack it sits out the enemy's turn (held still in FtD — subs are
+// held types), after a defence its owner's next one. Resolve only, survivors
+// only, whatever the outcome; lock does nothing. A NEW id: dealt Cathodes keep
+// cathodeDuel and never overheat.
+registerEffect('cathodeOverheat', ({ game, actor, card, battle }) => {
+  if (battle?.phase !== 'resolve' || !battle.survived) return true
+  const self = findVehicle(game.state, card.instanceId)
+  if (!self || self.side !== actor) return true
+  stunHull(game, self.entry as ZoneCardEntry, `${card.name} overheats — stunned until the end of the next turn`)
+  return true
+})
 
 // Penumbra — "Discharge 3: stun every enemy vehicle in this zone." Every hull,
 // already-stunned ones included (they get the same expiry). An empty lane is

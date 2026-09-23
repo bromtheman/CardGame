@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { shortHandNumber } from '@shared/format'
-import { chargeGateOf, chargeMaxOf } from '@shared/engine/index'
+import { chargeGateOf, chargeMaxOf, drainDiscountOf } from '@shared/engine/index'
 import type { CardRow } from '../lib/cards'
 import { cardImageOrFallback } from '../lib/cards'
 import { KeywordIcons } from './KeywordIcons'
@@ -124,7 +124,7 @@ export function PhysicalCard({
               the at-a-glance copy. */}
           {chargeGate > 0 && (
             <span
-              title={`Playing this drains ${chargeGate} charge from your LH vehicles — any mix of them, across your board.`}
+              title={`You may drain ${chargeGate} charge from your LH vehicles as you play this — any mix of them, across your board — to pay ${shortHandNumber(drainDiscountOf({ meta }))} less.`}
               className="rounded bg-ocean-900 px-1.5 py-0.5 font-bold text-parchment-100"
             >
               Drain {chargeGate} Charge
