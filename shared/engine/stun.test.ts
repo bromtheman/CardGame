@@ -77,4 +77,15 @@ describe('holdsStillInFtd — which stunned hulls the FtD battle holds still', (
   it('lets the hull go on the turn its stun expires', () => {
     expect(holdsStillInFtd(zoneEntry({ vehicleType: 'ship', stunnedUntilTurn: 4 }), 4)).toBe(false)
   })
+
+  // The exclusion is FtD-only, and easy to misread as a board rule: on the
+  // board a stunned hovercraft is as stunned as any hull.
+  it('still stuns a hovercraft on the board; only the FtD battle lets it go', () => {
+    const game = makeGame({ turnNumber: 3 })
+    const hover = zoneEntry({ instanceId: 'h', vehicleType: 'hover' })
+    stunHull(game, hover)
+    game.state.zones[0].cards.a.push(hover, zoneEntry({ instanceId: 'a2' }))
+    expect(fleetAttackRosters(game.state, 'a', 1, 3)!.force.map((c) => c.instanceId)).toEqual(['a2'])
+    expect(holdsStillInFtd(hover, 3)).toBe(false)
+  })
 })
