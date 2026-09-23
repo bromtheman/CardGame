@@ -48,13 +48,8 @@ export const CARDS: Record<string, Expected> = {
     cardText: 'Relay: at the start of your turn, other friendly LH vehicles in this zone gain 1 additional charge. This does not stack.',
     meta: { chargeRelay: 1 },
   },
-  // Byte, Faraday and Data Burst as amended by the 2026-09-22 draw amendment
+  // Faraday and Data Burst as amended by the 2026-09-22 draw amendment
   // (docs/superpowers/specs/2026-09-22-lh-draw-design.md).
-  'LH:Byte': {
-    materialCost: 40_000, blueprintCost: 43_301, cpCost: 0, keywords: ['mobile'], vehicleType: 'ship',
-    cardText: 'When played, this gains 1 charge. Discharge 1: draw a card.',
-    meta: { chargeMax: 1, onPlayEffect: 'byteChargeOnPlay', onActivate: 'byteDraw', activateCpCost: 0, dischargeCost: 1 },
-  },
   'LH:Faraday': {
     materialCost: 140_000, blueprintCost: 141_825, cpCost: 0, keywords: ['mobile'], vehicleType: 'airship',
     cardText: 'When played, draw a card.',
@@ -78,8 +73,10 @@ export const CARDS: Record<string, Expected> = {
     materialCost: 230_000, blueprintCost: 230_226, cpCost: 0, keywords: ['halfCost', 'temporary'], vehicleType: 'plane',
     cardText: 'Sea-skimmer: may be played into a zone with enemy Air Screen.', meta: { ignoresAirScreen: true },
   },
-  'LH:Hydrovolt': {
-    materialCost: 260_000, blueprintCost: 257_641, cpCost: 0, keywords: ['blocker', 'subScreen'], vehicleType: 'sub',
+  // 2026-09-22 hovercraft amendment: the Anode craft in Hydrovolt's role, at
+  // Hydrovolt's price (FtD 363,765 — a 100k discount, owner's call).
+  'LH:Anode': {
+    materialCost: 260_000, blueprintCost: 363_765, cpCost: 0, keywords: ['blocker', 'subScreen'], vehicleType: 'sub',
     cardText: '', meta: { chargeMax: 2 },
   },
   'LH:Dynamo': {
@@ -173,6 +170,7 @@ export const RETIRED = [
   'LH:Coulomb', 'LH:Thunderbird', 'LH:Sapphire', 'LH:Sapphire Screen', 'LH:Spectrum',
   'LH:Orbit', 'LH:Orbit Flank', 'LH:Robotic Assemblers',
   'TG:[TG] Amusement', 'TG:[TG] Fear', 'TG:[TG] Hysteria', 'TG:[TG] Obsession',
+  'LH:Byte', 'LH:Hydrovolt',
 ]
 
 describe('LH redesign — rows by value', () => {
@@ -205,20 +203,20 @@ describe('LH redesign — rows by value', () => {
 })
 
 describe('LH redesign — roster shape (spec §5, §7)', () => {
-  // 28 + Faraday and Data Burst (2026-09-22 draw amendment).
-  it('seeds 30 draftable LH cards and keeps the 8 retired rows', async () => {
+  // 28 + Faraday and Data Burst (2026-09-22 draw amendment); − Byte − Hydrovolt + Anode (2026-09-22 hovercraft amendment).
+  it('seeds 29 draftable LH cards and keeps the 10 retired rows', async () => {
     const { cards } = await loadSeedData()
     const lh = cards.filter((c) => c.faction === 'LH')
     const live = lh.filter((c) => (c.meta as Record<string, unknown>)?.retired !== true)
-    expect(live).toHaveLength(30)
-    expect(lh).toHaveLength(38)
+    expect(live).toHaveLength(29)
+    expect(lh).toHaveLength(39)
     expect(live.map((c) => c.name).sort()).toEqual(Object.keys(CARDS).map((k) => k.slice(3)).sort())
   })
 
   it('every draftable LH vehicle is a report craft with a ship profile (Task 30 lands the profiles)', async () => {
     const { cards } = await loadSeedData()
     const vehicles = cards.filter((c) => c.faction === 'LH' && c.type === 'vehicle' && (c.meta as Record<string, unknown>)?.retired !== true)
-    expect(vehicles).toHaveLength(25)
+    expect(vehicles).toHaveLength(24)
   })
 
   it('the six new-keyword and gate carriers read as intended', async () => {

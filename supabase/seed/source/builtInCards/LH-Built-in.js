@@ -255,6 +255,28 @@ export const lhVehicles = [
         faction: FACTIONS.LH,
         blueprintId: null,
         keywords: [KEYWORDS.BLOCKER, KEYWORDS.SUB_SCREEN],
+        meta: {
+            chargeMax: 2,
+            // Retired by the 2026-09-22 hovercraft amendment: Anode took its role.
+            retired: true,
+        },
+    },
+    {
+        // 2026-09-22 hovercraft amendment: the report's torpedo submarine with a
+        // particle pod (363,765) in Hydrovolt's role, at Hydrovolt's price.
+        name: 'Anode',
+        isBuiltIn: true,
+        cardText: '',
+        materialCost: 260000,
+        blueprintCost: 363765,
+        cpCost: 0,
+        imageUrl: 'anode.png',
+        playerId: null,
+        vehicleType: VEHICLE_TYPES.SUB,
+        type: 'vehicle',
+        faction: FACTIONS.LH,
+        blueprintId: null,
+        keywords: [KEYWORDS.BLOCKER, KEYWORDS.SUB_SCREEN],
         meta: { chargeMax: 2 },
     },
     {
@@ -501,6 +523,8 @@ export const lhVehicles = [
         meta: {
             chargeMax: 1, [TRIGGERS.ON_PLAY]: 'byteChargeOnPlay',
             [TRIGGERS.ON_ACTIVATE]: 'byteDraw', activateCpCost: 0, dischargeCost: 1,
+            // Retired by the 2026-09-22 hovercraft amendment: its draw moved to the Watt.
+            retired: true,
         },
     },
     {

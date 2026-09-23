@@ -131,9 +131,12 @@ export const BOT_DECKS: Record<BotFaction, Record<string, number>> = {
   // Watts, Megawatt and the second Kilowatt — none of them named in the LH
   // strategy notes (factionNotes.ts), which pin every card they name to this
   // list. Fliers 3 of 6.
+  // 2026-09-22 hovercraft amendment: Byte retired, so both Watts came back
+  // (Byte's draw moved to them); Anode replaced the retired Hydrovolt. Still
+  // twenty cards, fliers 3 of 6 — a spawned Luxon is not a deck card.
   LH: {
     'Chrysoprase': 2,
-    'Byte': 2,
+    'Watt': 2,
     'Volta': 1,
     'Conduit': 1,
     'Dipole': 1,
@@ -142,7 +145,7 @@ export const BOT_DECKS: Record<BotFaction, Record<string, number>> = {
     'Kilowatt': 1,
     'Ampere': 1,
     'Eclipse': 1,
-    'Hydrovolt': 1,
+    'Anode': 1,
     'Penumbra': 1,
     'Angstrom': 1,
     'EMP Salvo': 1,
