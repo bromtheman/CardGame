@@ -32,11 +32,12 @@ export const CARDS: Record<string, Expected> = {
     cardText: '', meta: { chargeMax: 2 },
   },
   // 2026-09-22 hovercraft amendment: Byte's draw, a Decoy Luxon token, and the
-  // Hovercraft type; the Watt itself no longer prints Decoy.
+  // Hovercraft type; the Watt itself no longer prints Decoy. 2026-09-23 (owner
+  // request): 120k, and it enters with no charge (wattEscortOnPlay).
   'LH:Watt': {
-    materialCost: 90_000, blueprintCost: 90_797, cpCost: 0, keywords: ['scrappy', 'mobile'], vehicleType: 'hover',
-    cardText: 'When played, this gains 1 charge and a friendly Luxon spawns in this zone. That Luxon has Decoy and is not Temporary. Discharge 1: draw a card.',
-    meta: { chargeMax: 1, onPlayEffect: 'wattOnPlay', onActivate: 'wattDraw', activateCpCost: 0, dischargeCost: 1 },
+    materialCost: 120_000, blueprintCost: 90_797, cpCost: 0, keywords: ['scrappy', 'mobile'], vehicleType: 'hover',
+    cardText: 'When played, a friendly Luxon spawns in this zone. That Luxon has Decoy and is not Temporary. Discharge 1: draw a card.',
+    meta: { chargeMax: 1, onPlayEffect: 'wattEscortOnPlay', onActivate: 'wattDraw', activateCpCost: 0, dischargeCost: 1 },
   },
   'LH:Luxon': {
     materialCost: 60_000, blueprintCost: 59_142, cpCost: 0, keywords: ['halfCost', 'temporary'], vehicleType: 'plane',

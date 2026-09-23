@@ -395,24 +395,24 @@ registerEffect('faradayOnPlay', grant({ draw: 1 }))
 // PLAY_CARD_TARGETING_CARD_ON_FIELD); this is the draw and nothing else.
 registerEffect('dataBurstEffect', grant({ draw: DATA_BURST_DRAW }))
 
-// Watt — "When played, this gains 1 charge and a friendly Luxon spawns in this
-// zone. That Luxon has Decoy and is not Temporary." (2026-09-22 hovercraft
-// amendment §3.) Spawning is not playing: no payment, no blind-placement check,
-// no on-play. The Decoy is a recorded grant and Temporary a recorded revoke —
-// Extended Sortie's path, so the turn-start cull skips it. The Luxon is a
-// TOKEN: stamped summonOnly, which discardCard refuses, so a dead one is gone
-// instead of filing a free Luxon into the deck. No room in the lane → no
-// Luxon, the room rule a card's printed extra copies follow. A catalog without
-// Luxon is a data bug and fails the play (spawnVehicles' contract), checked
-// before anything moves.
+// Watt — "When played, a friendly Luxon spawns in this zone. That Luxon has
+// Decoy and is not Temporary." (2026-09-22 hovercraft amendment §3; since
+// 2026-09-23 it no longer gains a pip on play — drain discount spec §7.)
+// Spawning is not playing: no payment, no blind-placement check, no on-play.
+// The Decoy is a recorded grant and Temporary a recorded revoke — Extended
+// Sortie's path, so the turn-start cull skips it. The Luxon is a TOKEN: stamped
+// summonOnly, which discardCard refuses, so a dead one is gone instead of
+// filing a free Luxon into the deck. No room in the lane → no Luxon, the room
+// rule a card's printed extra copies follow. A catalog without Luxon is a data
+// bug and fails the play (spawnVehicles' contract), checked before anything moves.
 const WATT_ESCORT = 'Luxon'
-registerEffect('wattOnPlay', (payload) => {
+function wattLaunch(payload: EffectPayload, pip: number): boolean {
   const { game, actor, card, ctx } = payload
   const escortCard = catalogCard(ctx, WATT_ESCORT)
   if (!escortCard || !poolEligible(escortCard)) return false
   const self = findVehicle(game.state, card.instanceId)
   if (!self || self.side !== actor) return true
-  gainOwnCharge(payload, WATT_PLAY_CHARGE)
+  if (pip > 0) gainOwnCharge(payload, pip)
   const zoneId = self.zone.id
   if (self.zone.cards[actor].length >= zoneCapFor(game.state, actor, zoneId)) {
     game.state.log.push(`${card.name}: no room in zone ${zoneId} for its Luxon`)
@@ -425,7 +425,11 @@ registerEffect('wattOnPlay', (payload) => {
   escort.meta = { ...escort.meta, summonOnly: true }
   game.state.log.push(`${card.name} launches a Luxon in zone ${zoneId} — it has Decoy and stays`)
   return true
-}, { needsCatalog: true })
+}
+// Dealt snapshots (before 2026-09-23) name this one, and keep the pip.
+registerEffect('wattOnPlay', (payload) => wattLaunch(payload, WATT_PLAY_CHARGE), { needsCatalog: true })
+// Since 2026-09-23: the Luxon only — the Watt's first pip comes at its owner's next turn start.
+registerEffect('wattEscortOnPlay', (payload) => wattLaunch(payload, 0), { needsCatalog: true })
 
 // Watt — "Discharge 1: draw a card." Byte's draw under the Watt's own id: no
 // two cards share a registry name, however small the implementation

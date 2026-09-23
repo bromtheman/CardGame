@@ -489,8 +489,8 @@ export const lhVehicles = [
     {
         name: 'Watt',
         isBuiltIn: true,
-        cardText: 'When played, this gains 1 charge and a friendly Luxon spawns in this zone. That Luxon has Decoy and is not Temporary. Discharge 1: draw a card.',
-        materialCost: 90000,
+        cardText: 'When played, a friendly Luxon spawns in this zone. That Luxon has Decoy and is not Temporary. Discharge 1: draw a card.',
+        materialCost: 120000,
         blueprintCost: 90797,
         cpCost: 0,
         imageUrl: 'watt.png',
@@ -502,10 +502,11 @@ export const lhVehicles = [
         faction: FACTIONS.LH,
         blueprintId: null,
         // Byte's draw moved here, and the Decoy moved to the permanent Luxon
-        // token wattOnPlay spawns (R-6 amended).
+        // token (R-6 amended). 2026-09-23 (owner request): 120k, and it enters
+        // with no charge — wattEscortOnPlay launches the Luxon only.
         keywords: [KEYWORDS.SCRAPPY, KEYWORDS.MOBILE],
         meta: {
-            chargeMax: 1, [TRIGGERS.ON_PLAY]: 'wattOnPlay',
+            chargeMax: 1, [TRIGGERS.ON_PLAY]: 'wattEscortOnPlay',
             [TRIGGERS.ON_ACTIVATE]: 'wattDraw', activateCpCost: 0, dischargeCost: 1,
         },
     },

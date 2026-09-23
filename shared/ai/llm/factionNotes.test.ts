@@ -15,6 +15,11 @@ describe('faction notes', () => {
     for (const [faction, note] of Object.entries(FACTION_NOTES)) expect(note.text, faction).not.toMatch(/\d/)
   })
 
+  it('says the Watt enters empty and draws from its owner’s next turn (2026-09-23)', () => {
+    expect(FACTION_NOTES.LH.text).not.toContain('enters holding a pip')
+    expect(FACTION_NOTES.LH.text).toContain("the Watt's first pip arrives at the start of your next turn")
+  })
+
   it('tell every faction to spend each turn, and that repairs are rare and no reason to hold materials back', () => {
     // The owner's ruling (2026-09-17): repairs are the one use unspent
     // materials keep, they seldom come up, and fielding more firepower beats

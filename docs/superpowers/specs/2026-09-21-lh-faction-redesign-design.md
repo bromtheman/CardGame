@@ -328,7 +328,7 @@ profile per non-retired LH vehicle is met by importing the report (§8).
 | Volta | ship · 40k (37k) | 1 | Fragile | When played, a friendly LH vehicle in this zone gains 1 charge. |
 | Conduit | ship · 70k (54k) | — | Inoffensive, Scrappy | Relay: at the start of your turn, other friendly LH vehicles in this zone gain 1 additional charge. This does not stack. |
 | Dipole | airship · 70k (65k) | 2 | Mobile | — |
-| Watt | hover · 90k (91k) | 1 | Scrappy, Mobile | When played, this gains 1 charge and a friendly Luxon spawns in this zone. That Luxon has Decoy and is not Temporary. Discharge 1: draw a card. |
+| Watt | hover · 120k (91k) | 1 | Scrappy, Mobile | When played, a friendly Luxon spawns in this zone. That Luxon has Decoy and is not Temporary. Discharge 1: draw a card. (2026-09-23: 120k, enters empty) |
 | Luxon | plane · 60k (59k) | — | Half-Cost, Temporary | Blind on its own: can only be played into a zone where you control an LH vehicle. |
 
 ### 5.2 Raiders
@@ -376,12 +376,12 @@ profile per non-retired LH vehicle is met by importing the report (§8).
 - Stun sources 3; beams 3 (150/300/400); 1v1 hulls 2; Swift 2 + Afterburner;
   Blockers 7; Sub Screens 3, Air Screen 1; fliers 8 with Faraday (2026-09-22) and Thyristor (2026-09-23) against the 6-copy limit;
   subs 3; timers static, walls and raiders Mobile.
-- Curve: 40k pickets on turn 1; Conduit/Dipole 70k; Watt 90k turn 2; Umbra turn
+- Curve: 40k pickets on turn 1; Conduit/Dipole 70k; Watt 120k turn 2; Umbra turn
   2; Kilowatt/Ampere/Eclipse turn 3; Hydrovolt turn 4; Dynamo/Megawatt/Penumbra
   turn 5; Thyristor turn 6; Angstrom turn 8; Quadrupole/Cathode turn 8; Superradiance/Terawatt
   turn 9; Candela/Impedance turn 10; Rectifier (350k to play) turn 5.
 - Charge timeline, un-raced: Chrysoprase (t1) + Watt + Volta (t2) + Kilowatt (t3)
-  is 5 pips on turn 4 from 350k of hulls; Dynamo's gate opens turn 5; on an
+  is 5 pips on turn 4 from 380k of hulls; Dynamo's gate opens turn 5; on an
   un-raced board every Drain capital is gated by materials, not pips, but each
   one drains the board it lands on (2026-09-22), so two in a row pay twice. A raced board — pickets
   fleet-attacked on turns 2–4 — has none, and its capitals sit in hand. That is

@@ -254,6 +254,7 @@ const DELIBERATE_ORPHANS: Record<string, string> = {
   terawattJoin: '2026-09-21 LH redesign replaced Terawatt\'s bystander join with terawattTransfer (spec §7)',
   umbraSalvo: '2026-09-22 hovercraft amendment: Umbra no longer surfaces; umbraBeam replaced it (spec §3)',
   cathodeDuel: '2026-09-23 drain discount: Cathode no longer duels; cathodeOverheat replaced its ability (spec §6)',
+  wattOnPlay: '2026-09-23 drain discount: the Watt enters with no charge; wattEscortOnPlay replaced it (spec §7)',
 }
 
 describe('G4: every registered implementation is reachable from a seeded card', () => {
@@ -317,6 +318,7 @@ describe('G4: every registered implementation is reachable from a seeded card', 
       'umbraSalvo',
       'victoriaActivate',
       'victoriaOnDeath',
+      'wattOnPlay',
     ])
   })
 })

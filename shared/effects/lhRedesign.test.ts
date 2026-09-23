@@ -552,7 +552,7 @@ describe('Extended Sortie — extendedSortieEffect', () => {
 
 // 2026-09-22 hovercraft amendment §3: Byte's draw moved here; the Decoy moved
 // to a permanent Luxon token.
-describe('Watt — wattOnPlay and wattDraw', () => {
+describe('Watt — wattOnPlay (dealt snapshots) and wattDraw', () => {
   const luxon = () => snap({
     name: 'Luxon', faction: 'LH', vehicleType: 'plane', materialCost: 60000,
     keywords: ['halfCost', 'temporary'], meta: { deployRequiresLhVehicle: true },
@@ -632,5 +632,56 @@ describe('Watt — wattOnPlay and wattDraw', () => {
     if (!res.ok) throw new Error(res.error)
     expect(res.game.privates.a.hand.map((c) => c.name)).toEqual(['Spare'])
     expect(chargeOf(res.game.state.zones[0].cards.a[0] as ZoneCardEntry)).toBe(0)
+  })
+})
+
+// 2026-09-23 (docs/superpowers/specs/2026-09-23-lh-drain-discount-design.md §7):
+// the Watt costs 120k and enters with no charge; its Luxon is unchanged.
+describe('Watt — wattEscortOnPlay', () => {
+  const luxon = () => snap({
+    name: 'Luxon', faction: 'LH', vehicleType: 'plane', materialCost: 60000,
+    keywords: ['halfCost', 'temporary'], meta: { deployRequiresLhVehicle: true },
+  })
+  const setup = () => {
+    const game = lhGame()
+    game.state.resources.a.materials = 150_000
+    game.privates.a.hand = [inst({
+      instanceId: 'watt', name: 'Watt', faction: 'LH', vehicleType: 'hover', materialCost: 120_000,
+      keywords: ['scrappy', 'mobile'],
+      meta: { chargeMax: 1, onPlayEffect: 'wattEscortOnPlay', onActivate: 'wattDraw', activateCpCost: 0, dischargeCost: 1 },
+    })]
+    game.state.counts.a = { hand: 1, deck: 1 }
+    return game
+  }
+  const play = (game: ReturnType<typeof makeGame>, ctx = makeCtx({ catalog: [luxon()] })) =>
+    applyAction(game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: 'watt', zoneId: 1 }, ctx)
+
+  it('asks for the catalog, so game-action loads it for a Watt play', () => {
+    expect(CATALOG_EFFECTS.has('wattEscortOnPlay')).toBe(true)
+  })
+
+  it('lands with no charge and still launches its Decoy Luxon token', () => {
+    const res = play(setup())
+    if (!res.ok) throw new Error(res.error)
+    const [hull, escort] = res.game.state.zones[0].cards.a as ZoneCardEntry[]
+    expect(hull.instanceId).toBe('watt')
+    expect(chargeOf(hull)).toBe(0)
+    expect(escort.name).toBe('Luxon')
+    expect(escort.keywords).toEqual(['halfCost', 'decoy'])
+    expect(escort.meta.summonOnly).toBe(true)
+    expect(res.game.state.log).toContain('Watt launches a Luxon in zone 1 — it has Decoy and stays')
+    expect(res.game.state.log).not.toContain('Watt gains 1 charge')
+  })
+
+  it('cannot draw the turn it lands — its first pip comes at its owner’s next turn start', () => {
+    const res = play(setup())
+    if (!res.ok) throw new Error(res.error)
+    expect(activate(res.game, 'watt')).toMatchObject({ ok: false, status: 400, error: 'Watt needs 1 charge to discharge' })
+  })
+
+  it('fails the play when the catalog has no Luxon, as wattOnPlay does', () => {
+    const game = setup()
+    expect(play(game, makeCtx())).toMatchObject({ ok: false })
+    expect(game.privates.a.hand.map((c) => c.instanceId)).toEqual(['watt'])
   })
 })
