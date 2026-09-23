@@ -34,6 +34,7 @@ export const VEHICLE_TYPES = {
     TANK: 'tank',
     PLANE: 'plane',
     SUB: 'sub',
+    HOVER: 'hover', // 2026-09-22 hovercraft amendment: a ship in every rule, spawned just above the water in FtD
 };
 
 export const ZONE_TYPES = {

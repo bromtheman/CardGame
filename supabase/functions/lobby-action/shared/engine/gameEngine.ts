@@ -7,6 +7,7 @@ import type { CardInstance, PublicGameState, SnapshotCard, ZoneEffect } from './
 import type {
   ApplyResult, EngineContext, EngineGame, GameAction, Side, ZoneCardEntry,
 } from './engineTypes.ts'
+import { isShipClass } from '../vehicleClass.ts'
 
 export function defaultEngineContext(): EngineContext {
   return { rng: secureRng, newId: () => crypto.randomUUID(), catalog: [] }
@@ -602,7 +603,7 @@ function endTurn(game: EngineGame, ctx: EngineContext): ApplyResult {
     if (item.type === 'changeOrderDraw') {
       const priv = game.privates[side]
       const pool = priv.deck.filter(
-        (c) => c.isBuiltIn === false && (c.vehicleType === VEHICLE_TYPES.SHIP || c.vehicleType === VEHICLE_TYPES.TANK),
+        (c) => c.isBuiltIn === false && (isShipClass(c.vehicleType) || c.vehicleType === VEHICLE_TYPES.TANK),
       )
       if (pool.length === 0) {
         game.state.log.push('Change Order finds no player-made ship or tank')

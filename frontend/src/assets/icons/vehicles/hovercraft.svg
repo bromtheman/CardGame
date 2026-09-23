@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="br" gradientUnits="userSpaceOnUse" x1="0" y1="6" x2="0" y2="58">
+      <stop offset="0" stop-color="#f7e08f"/>
+      <stop offset=".55" stop-color="#c9a227"/>
+      <stop offset="1" stop-color="#8a6a12"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(32 32) scale(0.9) translate(-32 -32)">
+    <g transform="translate(0 -3.8)">
+      <path fill-rule="evenodd" d="M41 21A8.5 8.5 0 1 0 58 21A8.5 8.5 0 1 0 41 21ZM45.3 21A4.2 4.2 0 1 0 53.7 21A4.2 4.2 0 1 0 45.3 21Z" fill="url(#br)" stroke="#0b1f40" stroke-width="6.22" stroke-linejoin="round" paint-order="stroke"/>
+      <circle cx="49.5" cy="21" r="1.4" fill="url(#br)" stroke="#0b1f40" stroke-width="6.22" stroke-linejoin="round" paint-order="stroke"/>
+      <path d="M13 32L17 23.4Q17.6 22 19.2 22H37V32Z" fill="url(#br)" stroke="#0b1f40" stroke-width="6.22" stroke-linejoin="round" paint-order="stroke"/>
+      <path d="M8 40.5L12 31H57V40.5Z" fill="url(#br)" stroke="#0b1f40" stroke-width="6.22" stroke-linejoin="round" paint-order="stroke"/>
+      <rect x="3" y="39" width="58" height="12" rx="6" fill="url(#br)" stroke="#0b1f40" stroke-width="6.22" stroke-linejoin="round" paint-order="stroke"/>
+      <rect x="10" y="57.6" width="10" height="2.2" rx="1.1" fill="url(#br)" stroke="#0b1f40" stroke-width="6.22" stroke-linejoin="round" paint-order="stroke"/>
+      <rect x="27" y="57.6" width="10" height="2.2" rx="1.1" fill="url(#br)" stroke="#0b1f40" stroke-width="6.22" stroke-linejoin="round" paint-order="stroke"/>
+      <rect x="44" y="57.6" width="10" height="2.2" rx="1.1" fill="url(#br)" stroke="#0b1f40" stroke-width="6.22" stroke-linejoin="round" paint-order="stroke"/>
+    </g>
+  </g>
+</svg>

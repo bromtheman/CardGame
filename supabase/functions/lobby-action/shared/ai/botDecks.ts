@@ -133,9 +133,12 @@ export const BOT_DECKS: Record<BotFaction, Record<string, number>> = {
   // list. Fliers 3 of 6. 2026-09-23: Megawatt (now "When played, draw a card")
   // back in for the second Data Burst; Feedback Loop stays out — a one-ply
   // evaluator cannot see a draw that only pays on later discharges.
+  // 2026-09-22 hovercraft amendment: Byte retired, so both Watts came back
+  // (Byte's draw moved to them); Anode replaced the retired Hydrovolt. Still
+  // twenty cards, fliers 3 of 6 — a spawned Luxon is not a deck card.
   LH: {
     'Chrysoprase': 2,
-    'Byte': 2,
+    'Watt': 2,
     'Volta': 1,
     'Conduit': 1,
     'Dipole': 1,
@@ -144,7 +147,7 @@ export const BOT_DECKS: Record<BotFaction, Record<string, number>> = {
     'Kilowatt': 1,
     'Ampere': 1,
     'Eclipse': 1,
-    'Hydrovolt': 1,
+    'Anode': 1,
     'Megawatt': 1,
     'Penumbra': 1,
     'Angstrom': 1,

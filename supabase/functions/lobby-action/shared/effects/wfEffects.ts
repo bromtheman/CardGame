@@ -9,6 +9,7 @@ import type { EngineContext, EngineGame, Side, ZoneCardEntry } from '../engine/e
 import type { SnapshotCard } from '../engine/gameInit.ts'
 import { discardCard, findVehicle, grantKeywordsTo, otherSide, putInHand, zoneById } from '../engine/gameEngine.ts'
 import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
+import { isShipClass } from '../vehicleClass.ts'
 import {
   catalogCard, choice, enemyVehicleOptions, grant, poolEligible, shuffled, spawnInto, summonHulls,
 } from './primitives.ts'
@@ -378,7 +379,7 @@ function harbringerPool(ctx: EngineContext): SnapshotCard[] {
     c.isBuiltIn &&
     c.faction === 'WF' &&
     c.type === 'vehicle' &&
-    c.vehicleType === VEHICLE_TYPES.SHIP &&
+    isShipClass(c.vehicleType) &&
     c.materialCost <= HARBRINGER_GUEST_MAX_COST &&
     poolEligible(c))
 }

@@ -247,10 +247,12 @@ const DELIBERATE_ORPHANS: Record<string, string> = {
   disembowelerOnPlay: 'balance 2026-09-16 cleared WF Disemboweler\'s text and removed its onPlayEffect key (M-10)',
   conduitEffect: '2026-09-21 LH redesign: Conduit is now a data-key relay with no effect (spec §7)',
   ampereOnPlay: '2026-09-21 LH redesign replaced Ampere\'s pool draw with ampereStun (spec §7)',
+  ampereStun: '2026-09-22 hovercraft amendment: Ampere also gains 2 charge on play; ampereChargedStun replaced it (spec §3)',
   eclipseEffect: '2026-09-21 LH redesign replaced Eclipse\'s free 1v1 with the charged eclipseDuel (spec §7)',
   quadrupoleOnPlay: '2026-09-21 LH redesign: Quadrupole no longer draws from the [TG] pool (spec §7)',
   candelaOnPlay: '2026-09-21 LH redesign: Candela no longer draws from the [TG] pool (spec §7)',
   terawattJoin: '2026-09-21 LH redesign replaced Terawatt\'s bystander join with terawattTransfer (spec §7)',
+  umbraSalvo: '2026-09-22 hovercraft amendment: Umbra no longer surfaces; umbraBeam replaced it (spec §3)',
 }
 
 describe('G4: every registered implementation is reachable from a seeded card', () => {
@@ -295,9 +297,10 @@ describe('G4: every registered implementation is reachable from a seeded card', 
   // One name per line so a later branch adding its own orphan (OW's
   // bulwarkOnPlay, SS's victoriaActivate, ...) is a clean insertion rather
   // than a rewrite of this whole line (2026-09-02 spec §2.3).
-  it('the deliberate list matches exactly what the 2026-08-30, 2026-09-02, 2026-09-16 and 2026-09-21 passes orphaned', () => {
+  it('the deliberate list matches exactly what the 2026-08-30, 2026-09-02, 2026-09-16, 2026-09-21 and 2026-09-22 passes orphaned', () => {
     expect(Object.keys(DELIBERATE_ORPHANS).sort()).toEqual([
       'ampereOnPlay',
+      'ampereStun',
       'bulwarkOnPlay',
       'candelaOnPlay',
       'conduitEffect',
@@ -309,6 +312,7 @@ describe('G4: every registered implementation is reachable from a seeded card', 
       'scourgeOnPlay',
       'spectreOnPlay',
       'terawattJoin',
+      'umbraSalvo',
       'victoriaActivate',
       'victoriaOnDeath',
     ])

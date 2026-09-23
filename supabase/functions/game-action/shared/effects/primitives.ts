@@ -7,6 +7,7 @@ import {
   drawCard, findVehicle, grantKeywordsTo, otherSide, putInHand, reshuffleDiscard,
 } from '../engine/gameEngine.ts'
 import { canRevive, reviveEntry, sacrificeEntry } from '../engine/battleTriggers.ts'
+import { isShipClass } from '../vehicleClass.ts'
 import type { EffectFn, EffectPayload } from './registry.ts'
 
 // Copy one card out of the enemy's deck into the actor's hand. The log line
@@ -114,11 +115,16 @@ export interface PoolSpec {
   costDelta?: number
 }
 
+// A pool that asks for a ship takes any ship-class hull — a Hovercraft counts
+// as a ship for every rule (2026-09-22 hovercraft amendment §4).
+const vehicleTypeMatches = (actual: string | null, wanted: string): boolean =>
+  wanted === VEHICLE_TYPES.SHIP ? isShipClass(actual) : actual === wanted
+
 // Cost filters read the printed materialCost — "base cost" in card text —
 // never effectiveMaterialCostOf.
 function matches(card: { faction: string; vehicleType: string | null; type: string; isBuiltIn: boolean; materialCost: number; meta: Record<string, unknown> }, f: PoolFilter): boolean {
   if (f.faction !== undefined && card.faction !== f.faction) return false
-  if (f.vehicleType !== undefined && card.vehicleType !== f.vehicleType) return false
+  if (f.vehicleType !== undefined && !vehicleTypeMatches(card.vehicleType, f.vehicleType)) return false
   if (f.type !== undefined && card.type !== f.type) return false
   if (f.isBuiltIn !== undefined && card.isBuiltIn !== f.isBuiltIn) return false
   if (f.maxCost !== undefined && card.materialCost > f.maxCost) return false
@@ -168,7 +174,7 @@ export function poolEligible(c: { meta: Record<string, unknown> }): boolean {
  * grows with every faction seeded.
  */
 export function isAiShip(c: Pick<SnapshotCard, 'isBuiltIn' | 'type' | 'vehicleType'>): boolean {
-  return c.isBuiltIn === true && c.type === CARD_TYPES.VEHICLE && c.vehicleType === VEHICLE_TYPES.SHIP
+  return c.isBuiltIn === true && c.type === CARD_TYPES.VEHICLE && isShipClass(c.vehicleType)
 }
 
 // Put `count` cards matching `filter` into the actor's hand, either minted

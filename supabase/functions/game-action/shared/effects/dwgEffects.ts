@@ -14,6 +14,7 @@ import { zoneCapFor } from '../engine/zoneCapacity.ts'
 import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
 import { activeBlockersIn, baseDamageFrom, baseStrikersIn } from '../engine/baseAttack.ts'
 import { fireDeathEffect } from '../engine/battleTriggers.ts'
+import { isShipClass } from '../vehicleClass.ts'
 import {
   catalogCard, choice, enemyVehicleOptions, friendlyVehicleOptions, grant, mintHull, poolEligible, summonHulls,
   takeFromEnemyDeck,
@@ -153,7 +154,7 @@ registerEffect('doubleUpEffect', ({ game, actor, card, targetInstanceId }) => {
   if (typeof targetInstanceId !== 'string' || targetInstanceId === card.instanceId) return false
   const target = game.privates[actor].hand.find((c) => c.instanceId === targetInstanceId)
   if (!target || target.type !== 'vehicle' || target.faction !== 'DWG') return false
-  if (target.vehicleType !== VEHICLE_TYPES.SHIP) return false
+  if (!isShipClass(target.vehicleType)) return false
   if (effectiveMaterialCostOf(target) > DOUBLE_UP_MAX_COST) return false
   // ⚠ `grantSpawnsTo`, not an increment of `additionalSpawns` (wave 8). This
   // is a per-INSTANCE grant to a card the deck will hand out again, and

@@ -11,6 +11,7 @@ import { biomeAllows, effectiveMaterialCostOf, uniquePerZoneBlocked } from './pl
 import { zoneCapFor } from './zoneCapacity.ts'
 import { catalogCard, spawnInto } from '../effects/primitives.ts'
 import { isStunned } from './stun.ts'
+import { isShipClass } from '../vehicleClass.ts'
 
 // power → faction that alone may use it. Powers absent from this map (the
 // four universal ones) are open to any faction.
@@ -53,11 +54,11 @@ function boardingParty(
     return err(400, 'Boarding Party needs a ship of mine and an enemy target')
   }
   const mine = findVehicle(game.state, instanceId)
-  if (!mine || mine.side !== actor || mine.entry.faction !== 'DWG' || mine.entry.vehicleType !== 'ship') {
+  if (!mine || mine.side !== actor || mine.entry.faction !== 'DWG' || !isShipClass(mine.entry.vehicleType)) {
     return err(400, 'You must select your own DWG ship')
   }
   const theirs = findVehicle(game.state, targetInstanceId)
-  if (!theirs || theirs.side !== otherSide(actor) || theirs.entry.vehicleType !== 'ship') {
+  if (!theirs || theirs.side !== otherSide(actor) || !isShipClass(theirs.entry.vehicleType)) {
     return err(400, 'The target must be an enemy ship')
   }
   if (theirs.zone.id !== mine.zone.id) return err(400, 'The enemy ship must be in the same zone as yours')

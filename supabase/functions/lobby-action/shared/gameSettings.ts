@@ -94,6 +94,11 @@ export const CARD_TYPES = { VEHICLE: 'vehicle', ABILITY: 'ability' } as const
 
 export const VEHICLE_TYPES = {
   SHIP: 'ship', AIRSHIP: 'airship', TANK: 'tank', PLANE: 'plane', SUB: 'sub',
+  // 2026-09-22 hovercraft amendment §4: counts as a ship for every rule
+  // (shared/vehicleClass.ts) and spawns just above the water in FtD
+  // (HOVER_SPAWN_ALTITUDE_M, shared/customBattle.ts). The cards table's check
+  // admits it from migration *_add_hover_vehicle_type.sql.
+  HOVER: 'hover',
 } as const
 
 export const ZONE_TYPES = { WATER: 'water', BEACH: 'beach', LAND: 'land' } as const
@@ -294,6 +299,12 @@ export const SURGE_CHARGE = 1
 // 2026-09-22 LH draw amendment. Byte: "When played, this gains 1 charge." —
 // its Discharge 1 draw can fire the turn it lands, or the pip can pay a Drain.
 export const BYTE_PLAY_CHARGE = 1
+// 2026-09-22 hovercraft amendment. Ampere: "When played, this gains 2 charge
+// and stuns …" — it lands full, so its pips can pay the same turn.
+export const AMPERE_PLAY_CHARGE = 2
+// Watt: "When played, this gains 1 charge …" — Byte's draw moved here, so the
+// pip can buy a card the turn it lands (2026-09-22 hovercraft amendment).
+export const WATT_PLAY_CHARGE = 1
 // Data Burst: "Discharge 2 from a friendly LH vehicle: draw 2 cards." Its own
 // constant, not EXCRUCIATOR_DRAW_COUNT's, which it equals only by coincidence.
 export const DATA_BURST_DRAW = 2

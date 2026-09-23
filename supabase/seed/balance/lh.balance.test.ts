@@ -31,9 +31,12 @@ export const CARDS: Record<string, Expected> = {
     materialCost: 70_000, blueprintCost: 65_069, cpCost: 0, keywords: ['mobile'], vehicleType: 'airship',
     cardText: '', meta: { chargeMax: 2 },
   },
+  // 2026-09-22 hovercraft amendment: Byte's draw, a Decoy Luxon token, and the
+  // Hovercraft type; the Watt itself no longer prints Decoy.
   'LH:Watt': {
-    materialCost: 90_000, blueprintCost: 90_797, cpCost: 0, keywords: ['scrappy', 'mobile', 'decoy'], vehicleType: 'ship',
-    cardText: '', meta: { chargeMax: 1 },
+    materialCost: 90_000, blueprintCost: 90_797, cpCost: 0, keywords: ['scrappy', 'mobile'], vehicleType: 'hover',
+    cardText: 'When played, this gains 1 charge and a friendly Luxon spawns in this zone. That Luxon has Decoy and is not Temporary. Discharge 1: draw a card.',
+    meta: { chargeMax: 1, onPlayEffect: 'wattOnPlay', onActivate: 'wattDraw', activateCpCost: 0, dischargeCost: 1 },
   },
   'LH:Luxon': {
     materialCost: 60_000, blueprintCost: 59_142, cpCost: 0, keywords: ['halfCost', 'temporary'], vehicleType: 'plane',
@@ -45,13 +48,8 @@ export const CARDS: Record<string, Expected> = {
     cardText: 'Relay: at the start of your turn, other friendly LH vehicles in this zone gain 1 additional charge. This does not stack.',
     meta: { chargeRelay: 1 },
   },
-  // Byte, Faraday and Data Burst as amended by the 2026-09-22 draw amendment
+  // Faraday and Data Burst as amended by the 2026-09-22 draw amendment
   // (docs/superpowers/specs/2026-09-22-lh-draw-design.md).
-  'LH:Byte': {
-    materialCost: 40_000, blueprintCost: 43_301, cpCost: 0, keywords: ['mobile'], vehicleType: 'ship',
-    cardText: 'When played, this gains 1 charge. Discharge 1: draw a card.',
-    meta: { chargeMax: 1, onPlayEffect: 'byteChargeOnPlay', onActivate: 'byteDraw', activateCpCost: 0, dischargeCost: 1 },
-  },
   'LH:Faraday': {
     materialCost: 140_000, blueprintCost: 141_825, cpCost: 0, keywords: ['mobile'], vehicleType: 'airship',
     cardText: 'When played, draw a card.',
@@ -64,8 +62,8 @@ export const CARDS: Record<string, Expected> = {
   },
   'LH:Umbra': {
     materialCost: 150_000, blueprintCost: 148_479, cpCost: 0, keywords: ['stealthy'], vehicleType: 'sub',
-    cardText: 'Discharge 2: deal 150k damage to the enemy base in this zone, then this surfaces — it loses Stealthy for the rest of the game.',
-    meta: { chargeMax: 2, onActivate: 'umbraSalvo', activateCpCost: 0, dischargeCost: 2 },
+    cardText: 'Discharge 2: deal 150k damage to the enemy base in this zone.',
+    meta: { chargeMax: 2, onActivate: 'umbraBeam', activateCpCost: 0, dischargeCost: 2 },
   },
   // Kilowatt, Megawatt and Feedback Loop as amended on 2026-09-23 (the draw
   // amendment's second round).
@@ -77,8 +75,10 @@ export const CARDS: Record<string, Expected> = {
     materialCost: 230_000, blueprintCost: 230_226, cpCost: 0, keywords: ['halfCost', 'temporary'], vehicleType: 'plane',
     cardText: 'Sea-skimmer: may be played into a zone with enemy Air Screen.', meta: { ignoresAirScreen: true },
   },
-  'LH:Hydrovolt': {
-    materialCost: 260_000, blueprintCost: 257_641, cpCost: 0, keywords: ['blocker', 'subScreen'], vehicleType: 'sub',
+  // 2026-09-22 hovercraft amendment: the Anode craft in Hydrovolt's role, at
+  // Hydrovolt's price (FtD 363,765 — a 100k discount, owner's call).
+  'LH:Anode': {
+    materialCost: 260_000, blueprintCost: 363_765, cpCost: 0, keywords: ['blocker', 'subScreen'], vehicleType: 'sub',
     cardText: '', meta: { chargeMax: 2 },
   },
   'LH:Dynamo': {
@@ -91,8 +91,8 @@ export const CARDS: Record<string, Expected> = {
   },
   'LH:Ampere': {
     materialCost: 200_000, blueprintCost: 206_645, cpCost: 0, keywords: ['mobile'], vehicleType: 'ship',
-    cardText: 'When played, stun target enemy vehicle in this zone.',
-    meta: { chargeMax: 2, onPlayEffect: 'ampereStun' },
+    cardText: 'When played, this gains 2 charge and stuns target enemy vehicle in this zone.',
+    meta: { chargeMax: 2, onPlayEffect: 'ampereChargedStun' },
   },
   'LH:Eclipse': {
     materialCost: 220_000, blueprintCost: 215_980, cpCost: 0, keywords: ['stealthy'], vehicleType: 'ship',
@@ -136,7 +136,7 @@ export const CARDS: Record<string, Expected> = {
     meta: { chargeMax: 2, requiresCharge: 4, onActivate: 'impedanceBeam', activateCpCost: 0, dischargeCost: 2 },
   },
   'LH:Terawatt': {
-    materialCost: 640_000, blueprintCost: 725_002, cpCost: 0, keywords: ['blocker', 'scrappy', 'mobile'], vehicleType: 'ship',
+    materialCost: 640_000, blueprintCost: 725_002, cpCost: 0, keywords: ['blocker', 'scrappy', 'mobile'], vehicleType: 'hover',
     cardText: 'Drain 2 Charge. Generators: this gains 2 charge at the start of your turn instead of 1. Discharge 2: another friendly LH vehicle in this zone gains 2 charge.',
     meta: { chargeMax: 4, chargeRate: 2, requiresCharge: 2, onActivate: 'terawattTransfer', activateCpCost: 0, dischargeCost: 2 },
   },
@@ -177,6 +177,7 @@ export const RETIRED = [
   'LH:Coulomb', 'LH:Thunderbird', 'LH:Sapphire', 'LH:Sapphire Screen', 'LH:Spectrum',
   'LH:Orbit', 'LH:Orbit Flank', 'LH:Robotic Assemblers',
   'TG:[TG] Amusement', 'TG:[TG] Fear', 'TG:[TG] Hysteria', 'TG:[TG] Obsession',
+  'LH:Byte', 'LH:Hydrovolt',
 ]
 
 describe('LH redesign — rows by value', () => {
@@ -209,27 +210,30 @@ describe('LH redesign — rows by value', () => {
 })
 
 describe('LH redesign — roster shape (spec §5, §7)', () => {
-  // 28 + Faraday and Data Burst (2026-09-22) + Feedback Loop (2026-09-23).
-  it('seeds 31 draftable LH cards and keeps the 8 retired rows', async () => {
+  // 28 + Faraday and Data Burst (2026-09-22 draw amendment) + Feedback Loop (2026-09-23);
+  // − Byte − Hydrovolt + Anode (2026-09-22 hovercraft amendment). Byte and
+  // Hydrovolt join the 8 retired rows, so 30 draftable + 10 retired = 40 rows.
+  it('seeds 30 draftable LH cards and keeps the 10 retired rows', async () => {
     const { cards } = await loadSeedData()
     const lh = cards.filter((c) => c.faction === 'LH')
     const live = lh.filter((c) => (c.meta as Record<string, unknown>)?.retired !== true)
-    expect(live).toHaveLength(31)
-    expect(lh).toHaveLength(39)
+    expect(live).toHaveLength(30)
+    expect(lh).toHaveLength(40)
     expect(live.map((c) => c.name).sort()).toEqual(Object.keys(CARDS).map((k) => k.slice(3)).sort())
   })
 
   it('every draftable LH vehicle is a report craft with a ship profile (Task 30 lands the profiles)', async () => {
     const { cards } = await loadSeedData()
     const vehicles = cards.filter((c) => c.faction === 'LH' && c.type === 'vehicle' && (c.meta as Record<string, unknown>)?.retired !== true)
-    expect(vehicles).toHaveLength(25)
+    expect(vehicles).toHaveLength(24)
   })
 
   it('the six new-keyword and gate carriers read as intended', async () => {
     const seed = await bySeedKey()
     expect(seed.get('LH:Dynamo')!.keywords).toContain('swift')
     expect(seed.get('LH:Rectifier')!.keywords).toContain('swift')
-    expect(seed.get('LH:Watt')!.keywords).toContain('decoy')
+    // Decoy is no longer printed: the Watt's Luxon token takes it by grant (2026-09-22).
+    expect(seed.get('LH:Watt')!.keywords).not.toContain('decoy')
     // Every gate one lower than first printed: draining made it a cost (2026-09-22 spec §6).
     for (const [k, gate] of [['LH:Dynamo', 1], ['LH:Quadrupole', 2], ['LH:Cathode', 2], ['LH:Terawatt', 2], ['LH:Candela', 3], ['LH:Impedance', 4]] as const) {
       expect((seed.get(k)!.meta as Record<string, unknown>).requiresCharge, k).toBe(gate)

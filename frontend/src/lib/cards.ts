@@ -8,6 +8,7 @@ import submarineArt from '../assets/icons/submarineSVG.svg'
 import tankArt from '../assets/icons/tankSVG.svg'
 import planeArt from '../assets/icons/planeSVG.svg'
 import airshipArt from '../assets/icons/airShield1SVG.svg'
+import hoverArt from '../assets/icons/hovercraftSVG.svg'
 import anchorArt from '../assets/icons/anchorSVG.svg'
 
 export type CardRow = Database['public']['Tables']['cards']['Row']
@@ -27,8 +28,13 @@ export function useCardsQuery() {
 // The picture for a card with no hosted art: a faded silhouette of its vehicle
 // type, or the anchor for an ability. Not the gold vehicleTypeIcon — the owner
 // kept these silhouettes as card pictures when the icons went gold (2026-09-22).
+// Every VEHICLE_TYPES value needs an entry: a missing one falls back to the
+// anchor silently (cards.test.ts holds every type to it).
 const PLACEHOLDER_ART: Record<string, string> = {
   [VEHICLE_TYPES.SHIP]: shipArt,
+  // The hovercraft amendment's silhouette (2026-09-22 §4) is the card picture;
+  // its brass emblem, icons/vehicles/hovercraft.svg, is the glossary icon.
+  [VEHICLE_TYPES.HOVER]: hoverArt,
   [VEHICLE_TYPES.SUB]: submarineArt,
   [VEHICLE_TYPES.TANK]: tankArt,
   [VEHICLE_TYPES.PLANE]: planeArt,

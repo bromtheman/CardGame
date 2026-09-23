@@ -5,6 +5,7 @@ import type { PublicGameState } from './gameInit.ts'
 import { err, findVehicle, otherSide, registerHandler, zoneById } from './gameEngine.ts'
 import { dispatchBattleLock, lockRoster } from './battleTriggers.ts'
 import { isStunned } from './stun.ts'
+import { isShipClass } from '../vehicleClass.ts'
 
 // The one condition meta.defensiveOmission expresses (spec §4.8). A string
 // rather than a boolean so a second condition is expressible without a second
@@ -352,7 +353,7 @@ export function fleetAttackRosters(
   // the 2026-09-16 amendment is everything the aggressor owns in the zone bar
   // Inoffensive hulls, because nothing can be benched any more.
   const forceHasShipOrTank = force.some(
-    (c) => c.vehicleType === VEHICLE_TYPES.SHIP || c.vehicleType === VEHICLE_TYPES.TANK,
+    (c) => isShipClass(c.vehicleType) || c.vehicleType === VEHICLE_TYPES.TANK,
   )
   const stealthyIds: string[] = []
   const omissibleIds: string[] = []

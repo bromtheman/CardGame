@@ -215,7 +215,9 @@ Taken card by card on 2026-09-21; binding.
   turn. Standard empty-deck rule applies. **Overturned 2026-09-22**
   ([draw amendment](2026-09-22-lh-draw-design.md)): Byte gains 1 charge when
   played, so its draw can fire the turn it lands, and Faraday and Data Burst
-  join the roster.
+  join the roster. **Byte retired 2026-09-22**
+  ([hovercraft amendment](2026-09-22-lh-hovercraft-design.md)); its draw moved
+  to the Watt.
 - **R-2 Chrysoprase and Watt have no Blocker.** A 40k or 90k Blocker would stall
   every turn-1 bombardment; Kilowatt at 180k is the cheapest wall, in line with
   Iron Maiden (150k) and Paddlegun (180k).
@@ -225,25 +227,36 @@ Taken card by card on 2026-09-21; binding.
 - **R-4 Conduit has no pips of its own and does not stack** (§3.1.5). It is
   Inoffensive (it defends, never attacks or bombards) and Scrappy.
 - **R-5 Dipole and every hover/thruster craft is an `airship`**; every FtD
-  aircraft is a `plane`. Spawn-sheet altitude follows the type.
+  aircraft is a `plane`. Spawn-sheet altitude follows the type. **Amended
+  2026-09-22** ([hovercraft amendment](2026-09-22-lh-hovercraft-design.md) §4):
+  still true of craft that fly; a skimmer FtD classes as a ship but that hovers
+  (the Watt) is a `hover`, spawned 20 m up.
 - **R-6 Decoy stands** (§3.6). Watt gains Mobile — the escort goes to the timer.
+  **Amended 2026-09-22** ([hovercraft amendment](2026-09-22-lh-hovercraft-design.md)):
+  the Watt loses Decoy; the permanent Luxon it spawns carries it.
 - **R-7 Luxon's spotter is any friendly LH vehicle** including a plane; the chain
   still needs a first hull.
 - **R-8 Umbra keeps Stealthy and surfaces on discharge** (§3.7). The first shot is
   guaranteed short of targeted removal; every later one is on an attackable hull.
-  "Rest of the game" means this hull instance.
+  "Rest of the game" means this hull instance. **Overturned 2026-09-22**
+  ([hovercraft amendment](2026-09-22-lh-hovercraft-design.md)): Umbra stays
+  Stealthy after firing. Cathode still surfaces (R-18).
 - **R-9 Kilowatt is vanilla** — no Mobile (a 180k relocating wall would be the
   cheapest in the game), no Scrappy.
 - **R-10 Ampere's stun is on play only.** A repeating `Discharge: stun` at ⚡1–2
   locks one enemy hull for the game for 200k. Target chosen on play; no enemy in
-  the lane → the play resolves with no stun.
+  the lane → the play resolves with no stun. Still binding after 2026-09-22,
+  when Ampere also began to gain 2 charge on play
+  ([hovercraft amendment](2026-09-22-lh-hovercraft-design.md)).
 - **R-11 Eclipse keeps Stealthy permanently** (average stats, 220k); its 1v1 is
   a battle it is visible in and does not surface it.
 - **R-12 Caspian keeps the sea-skimmer text** although enemy Air Screen today
   means SS Asphodel, Counter Intelligence, DWG Land Marauder and a mirror
   Angstrom. The 1v1-on-play alternative was rejected: the roster already has
   enough single-hull removal, and LH is a timer faction, not a removal one.
-- **R-13 Hydrovolt is not Stealthy** — a wall must be fightable.
+- **R-13 Hydrovolt is not Stealthy** — a wall must be fightable. **Amended
+  2026-09-22** ([hovercraft amendment](2026-09-22-lh-hovercraft-design.md)):
+  Hydrovolt retired; Anode takes its role and inherits the ruling.
 - **R-14 Drain is a vulnerability and a cost** (amended 2026-09-22; first
   ruled "Requires is a vulnerability, not a hurdle"). A hunted board cannot
   pay; an un-raced one pays, and must refill before its next Drain card. Gates
@@ -292,6 +305,8 @@ Byte's text, Faraday and Data Burst are as amended by the
 Megawatt's text and Feedback Loop by its second round (2026-09-23, §6 there).
 Drain figures are as amended on 2026-09-22 (every gate one lower than first
 printed; [amendment](2026-09-22-lh-drain-charge-design.md) §6).
+Ampere, Umbra and the Watt, Byte's and Hydrovolt's retirement, and Anode are as
+amended by the [2026-09-22 hovercraft amendment](2026-09-22-lh-hovercraft-design.md).
 Every vehicle is a report craft, so `shipProfiles.test.ts`'s demand for a
 profile per non-retired LH vehicle is met by importing the report (§8).
 
@@ -299,12 +314,12 @@ profile per non-retired LH vehicle is met by importing the report (§8).
 
 | Card | Type · cost (FtD) | ⚡ | Keywords | Text |
 |---|---|---|---|---|
-| Byte | ship · 40k (43k) | 1 | Mobile | When played, this gains 1 charge. Discharge 1: draw a card. |
+| ~~Byte~~ | retired 2026-09-22 | | | |
 | Chrysoprase | ship · 40k (40k) | 2 | Scrappy | — |
 | Volta | ship · 40k (37k) | 1 | Fragile | When played, a friendly LH vehicle in this zone gains 1 charge. |
 | Conduit | ship · 70k (54k) | — | Inoffensive, Scrappy | Relay: at the start of your turn, other friendly LH vehicles in this zone gain 1 additional charge. This does not stack. |
 | Dipole | airship · 70k (65k) | 2 | Mobile | — |
-| Watt | ship · 90k (91k) | 1 | Scrappy, Mobile, Decoy | — |
+| Watt | hover · 90k (91k) | 1 | Scrappy, Mobile | When played, this gains 1 charge and a friendly Luxon spawns in this zone. That Luxon has Decoy and is not Temporary. Discharge 1: draw a card. |
 | Luxon | plane · 60k (59k) | — | Half-Cost, Temporary | Blind on its own: can only be played into a zone where you control an LH vehicle. |
 
 ### 5.2 Raiders
@@ -312,12 +327,12 @@ profile per non-retired LH vehicle is met by importing the report (§8).
 | Card | Type · cost (FtD) | ⚡ | Keywords | Text |
 |---|---|---|---|---|
 | Faraday | airship · 140k (142k) | 2 | Mobile | When played, draw a card. |
-| Umbra | sub · 150k (148k) | 2 | Stealthy | Discharge 2: deal 150k damage to the enemy base in this zone, then this surfaces — it loses Stealthy for the rest of the game. |
+| Umbra | sub · 150k (148k) | 2 | Stealthy | Discharge 2: deal 150k damage to the enemy base in this zone. |
 | Kilowatt | ship · 180k (181k) | 2 | Blocker | When played, draw a card. |
-| Ampere | ship · 200k (207k) | 2 | Mobile | When played, stun target enemy vehicle in this zone. |
+| Ampere | ship · 200k (207k) | 2 | Mobile | When played, this gains 2 charge and stuns target enemy vehicle in this zone. |
 | Eclipse | ship · 220k (216k) | 2 | Stealthy | Discharge 2: this vehicle fights a 1v1 against target non-Stealthy enemy vehicle in this zone. |
 | Caspian | plane · 230k (230k) | — | Half-Cost, Temporary | Sea-skimmer: may be played into a zone with enemy Air Screen. |
-| Hydrovolt | sub · 260k (258k) | 2 | Blocker, Sub Screen | — |
+| Anode | sub · 260k (364k) | 2 | Blocker, Sub Screen | — (replaced Hydrovolt, retired, 2026-09-22) |
 | Dynamo | airship · 350k (346k) | 1 | Mobile, Swift | Drain 1 Charge. |
 | Megawatt | ship · 360k (362k) | 2 | Mobile | When played, draw a card. |
 | Penumbra | ship · 370k (375k) | 3 | — | Discharge 3: stun every enemy vehicle in this zone. |
@@ -330,7 +345,7 @@ profile per non-retired LH vehicle is met by importing the report (§8).
 | Quadrupole | airship · 560k (685k) | 2 | Blocker, Mobile | Drain 2 Charge. |
 | Cathode | sub · 600k (726k) | 2 | Stealthy, Sub Screen | Drain 2 Charge. Discharge 2: this vehicle fights a 1v1 against target enemy ship or submarine in this zone, then this surfaces — it loses Stealthy for the rest of the game. |
 | Superradiance | ship · 620k (626k) | 3 | — | Discharge 3: deal 300k damage to the enemy base in this zone. |
-| Terawatt | ship · 640k (725k) | 4 | Blocker, Scrappy, Mobile | Drain 2 Charge. Generators: this gains 2 charge at the start of your turn instead of 1. Discharge 2: another friendly LH vehicle in this zone gains 2 charge. |
+| Terawatt | hover · 640k (725k) | 4 | Blocker, Scrappy, Mobile | Drain 2 Charge. Generators: this gains 2 charge at the start of your turn instead of 1. Discharge 2: another friendly LH vehicle in this zone gains 2 charge. |
 | Candela | ship · 700k (1,021k) | 2 | Blocker, Sub Screen, Scrappy, Mobile | Drain 3 Charge. |
 | Rectifier | plane · 700k (735k) | — | Half-Cost, Temporary, Fragile, Swift | — |
 | Impedance | ship · 750k (1,327k) | 2 | Blocker | Drain 4 Charge. Discharge 2: deal 400k damage to the enemy base in this zone. |

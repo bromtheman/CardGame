@@ -95,7 +95,8 @@ export interface BattleCard {
   blueprintId?: string | null
   /**
    * The card's vehicle type, deciding spawn altitude. Aircraft start at
-   * AIRCRAFT_SPAWN_ALTITUDE_M; everything else at the surface.
+   * AIRCRAFT_SPAWN_ALTITUDE_M, hovercraft at HOVER_SPAWN_ALTITUDE_M; everything
+   * else at the surface.
    */
   vehicleType?: string | null
   /**
@@ -284,6 +285,16 @@ const NEUTRAL_FLEET_COLORS = ['0,0,0,0', '0,0,0,0', '0,0,0,0', '0,0,0,0']
 export const AIRCRAFT_SPAWN_ALTITUDE_M = 160
 
 /**
+ * A Hovercraft's spawn height (2026-09-22 hovercraft amendment §4). The Watt is
+ * a skimmer that hovers: spawned at the surface like a ship, it died before the
+ * fight began, so it starts this far up and settles onto its cushion.
+ *
+ * ⚠ Derive every player-facing statement of it, exactly as for
+ * AIRCRAFT_SPAWN_ALTITUDE_M (the 80 → 160 lesson above).
+ */
+export const HOVER_SPAWN_ALTITUDE_M = 20
+
+/**
  * Yaw applied to every hull on the attacking side, in degrees.
  *
  * Both fleets otherwise spawn facing the same way. Turning the attacker around
@@ -308,6 +319,7 @@ export const FLEET_HULL_SPACING_M = 450
 const AIRBORNE_VEHICLE_TYPES: readonly string[] = [VEHICLE_TYPES.AIRSHIP, VEHICLE_TYPES.PLANE]
 
 function spawnAltitudeOf(card: BattleCard): number {
+  if (card.vehicleType === VEHICLE_TYPES.HOVER) return HOVER_SPAWN_ALTITUDE_M
   const airborne = card.vehicleType != null && AIRBORNE_VEHICLE_TYPES.includes(card.vehicleType)
   return airborne ? AIRCRAFT_SPAWN_ALTITUDE_M : 0.0
 }

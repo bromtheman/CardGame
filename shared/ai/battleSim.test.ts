@@ -53,6 +53,13 @@ describe('hullStrength', () => {
     const s = hullStrength(plain('h', 100000, { keywords: [KEYWORDS.HALF_COST] }), [plain('e')])
     expect(s).toEqual({ offense: 50000, defense: 50000 })
   })
+  it('files an enemy hovercraft with ships — it counts as a ship (2026-09-22 hovercraft amendment)', () => {
+    const vsShip = hullStrength(crossbones('x'), [plain('e')])
+    const vsHover = hullStrength(crossbones('x'), [plain('h', 100000, { vehicleType: 'hover' })])
+    const vsPlane = hullStrength(crossbones('x'), [plain('p', 100000, { vehicleType: 'plane' })])
+    expect(vsHover).toEqual(vsShip)
+    expect(vsPlane.offense).not.toBe(vsShip.offense)   // Crossbones: vs ships 5, aircraft 2
+  })
 })
 
 describe('lossFraction', () => {

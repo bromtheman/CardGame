@@ -108,58 +108,6 @@ export const LH_SHIP_PROFILES: Record<string, ShipProfile> = {
     "verdict": "balanced, missile-proof",
     "verdictDetail": "Firepower 0.88× and toughness 0.97× the per-material median for its price — ordinary per material, but 212 knots and a point-defence few missile ships get through."
   },
-  "LH:Byte": {
-    "role": "hover skimmer",
-    "strength": 358,
-    "rank": 42,
-    "type": "Tiny jet skimmer the game classes as a ship — it can climb to 150 m. 29 m long, 27 m wide, 821 blocks.",
-    "speed": "105.6 m/s (205 kn) — quicker than 19 in 20 ships.",
-    "fightsAt": "1,000 m.",
-    "sees": "A radar tracker, a camera and a camera tracker, a radio snooper. No warners.",
-    "summary": "Cheap glass cannon. Four fixed particle lenses and four small missiles on an alloy shell. Designers: 20 battle points.",
-    "scores": {
-      "firepower": {
-        "score": 2,
-        "why": "32nd percentile — half particle cannon, half missiles"
-      },
-      "toughness": {
-        "score": 1,
-        "why": "15th percentile; 25th among craft of its price"
-      },
-      "speed": {
-        "score": 5,
-        "why": "85th percentile"
-      },
-      "range": {
-        "score": 2,
-        "why": "32nd percentile"
-      },
-      "cost": {
-        "score": 1,
-        "why": "19th percentile"
-      }
-    },
-    "matchups": {
-      "ships": {
-        "score": 2,
-        "why": "four small fixed particle lenses on 64 m of tube, four small radar frag missiles"
-      },
-      "aircraft": {
-        "score": 1,
-        "why": "fixed lenses; designers 0.4×"
-      },
-      "submarines": {
-        "score": 1,
-        "why": "nothing reaches under water"
-      },
-      "missiles": {
-        "score": 1,
-        "why": "no warners, interceptors, shields or decoys"
-      }
-    },
-    "verdict": "cheap glass cannon",
-    "verdictDetail": "Firepower 1.7× and toughness 0.64× the per-material median for its price."
-  },
   "LH:Candela": {
     "role": "laser battleship",
     "strength": 1569,
@@ -787,6 +735,59 @@ export const LH_SHIP_PROFILES: Record<string, ShipProfile> = {
     "verdict": "tank",
     "verdictDetail": "Firepower 0.54× and toughness 2.25× the per-material median for its price."
   },
+  "LH:Anode": {
+    "role": "torpedo submarine with particle pod",
+    "strength": 1186,
+    "rank": 26,
+    "type": "Submarine — two huge torpedoes on turrets and a detachable particle-cannon pod. 78 m long, 55 m wide, 5,749 blocks including the pod.",
+    "speed": "34.4 m/s (67 kn) — quicker than 2 in 3 ships.",
+    "fightsAt": "1,300 m.",
+    "sees": "Four active and four passive sonar sets, a radio snooper, and two radar buoys it can float to the surface — a submarine's fit.",
+    "escort": "The pod (\"gr\", 832 blocks): two small particle lenses on 842 m of tube, listed by the tool as a carried vehicle.",
+    "summary": "Balanced submarine. Two 18-block torpedoes and a particle pod, launched from where guns cannot reach. Designers: 30 battle points, difficulty 3.",
+    "scores": {
+      "firepower": {
+        "score": 4,
+        "why": "71st percentile — 78 % particle cannon, 22 % torpedoes"
+      },
+      "toughness": {
+        "score": 4,
+        "why": "73rd percentile; 51st among craft of its price"
+      },
+      "speed": {
+        "score": 3,
+        "why": "45th percentile; 69th among ships"
+      },
+      "range": {
+        "score": 4,
+        "why": "75th percentile"
+      },
+      "cost": {
+        "score": 4,
+        "why": "74th percentile"
+      }
+    },
+    "matchups": {
+      "ships": {
+        "score": 4,
+        "why": "two huge sonar torpedoes (3 frag + 3 EMP warheads each) fired from under water, and the particle pod"
+      },
+      "aircraft": {
+        "score": 2,
+        "why": "only the particle pod can engage anything in the air; designers 1×"
+      },
+      "submarines": {
+        "score": 3,
+        "why": "eight sonar sets, two sonar torpedoes, and it fights under water itself; designers 1×"
+      },
+      "missiles": {
+        "score": 3,
+        "why": "submerged, only torpedoes can reach it; 12 torpedo interceptors, no shields"
+      }
+    },
+    "verdict": "balanced submarine",
+    "verdictDetail": "Firepower 0.89× and toughness 0.98× the per-material median for its price; submerged, it is hard to hit at all."
+  },
   "LH:Cathode": {
     "role": "heavy torpedo submarine with particle pod",
     "strength": 3506,
@@ -839,58 +840,6 @@ export const LH_SHIP_PROFILES: Record<string, ShipProfile> = {
     },
     "verdict": "tank",
     "verdictDetail": "Firepower 0.94× and toughness 1.23× the per-material median for its price, and submerged."
-  },
-  "LH:Hydrovolt": {
-    "role": "armoured torpedo submarine",
-    "strength": 1422,
-    "rank": 21,
-    "type": "Wide, flat submarine — two huge laser-designated torpedoes and a short-range laser turret on a hull that is 37 % heavy armour. 90 m long, 69 m wide, 4,762 blocks.",
-    "speed": "55.4 m/s (108 kn) — quicker than 5 in 6 ships.",
-    "fightsAt": "1,200 m.",
-    "sees": "Seven active and six passive sonar sets, 4 laser warners, a radio snooper — a submarine's fit.",
-    "summary": "Armoured submarine with few teeth. Twice the toughness of its price class, 60 % of the firepower. Designers: 20 battle points, difficulty 3.",
-    "scores": {
-      "firepower": {
-        "score": 3,
-        "why": "51st percentile — 52 % laser, 48 % torpedoes"
-      },
-      "toughness": {
-        "score": 5,
-        "why": "80th percentile; 94th among craft of its price"
-      },
-      "speed": {
-        "score": 4,
-        "why": "61st percentile; 86th among ships"
-      },
-      "range": {
-        "score": 4,
-        "why": "67th percentile"
-      },
-      "cost": {
-        "score": 4,
-        "why": "64th percentile"
-      }
-    },
-    "matchups": {
-      "ships": {
-        "score": 3,
-        "why": "two 14-block torpedoes with four frag warheads, steered onto a laser spot from under water; a six-output short-range laser"
-      },
-      "aircraft": {
-        "score": 2,
-        "why": "six short-range lasers on one turret; designers 1×"
-      },
-      "submarines": {
-        "score": 2,
-        "why": "thirteen sonar sets, but its two torpedoes follow a laser spot rather than sonar; designers 1×"
-      },
-      "missiles": {
-        "score": 4,
-        "why": "submerged, only torpedoes can reach it; 26 torpedo interceptors, 3 shields, 2 smoke generators"
-      }
-    },
-    "verdict": "tank",
-    "verdictDetail": "Firepower 0.60× and toughness 2.20× the per-material median for its price, and submerged."
   },
   "LH:Umbra": {
     "role": "missile submarine",

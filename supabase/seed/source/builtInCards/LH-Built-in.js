@@ -89,7 +89,7 @@ export const lhVehicles = [
     {
         name: 'Ampere',
         isBuiltIn: true,
-        cardText: 'When played, stun target enemy vehicle in this zone.',
+        cardText: 'When played, this gains 2 charge and stuns target enemy vehicle in this zone.',
         materialCost: 200000,
         blueprintCost: 206645,
         cpCost: 0,
@@ -100,7 +100,8 @@ export const lhVehicles = [
         faction: FACTIONS.LH,
         blueprintId: null,
         keywords: [KEYWORDS.MOBILE],
-        meta: { chargeMax: 2, [TRIGGERS.ON_PLAY]: 'ampereStun' },
+        // 2026-09-22 hovercraft amendment: ampereChargedStun — it lands full.
+        meta: { chargeMax: 2, [TRIGGERS.ON_PLAY]: 'ampereChargedStun' },
     },
     {
         name: 'Coulomb',
@@ -125,7 +126,7 @@ export const lhVehicles = [
     {
         name: 'Umbra',
         isBuiltIn: true,
-        cardText: 'Discharge 2: deal 150k damage to the enemy base in this zone, then this surfaces — it loses Stealthy for the rest of the game.',
+        cardText: 'Discharge 2: deal 150k damage to the enemy base in this zone.',
         materialCost: 150000,
         blueprintCost: 148479,
         cpCost: 0,
@@ -136,7 +137,8 @@ export const lhVehicles = [
         faction: FACTIONS.LH,
         blueprintId: null,
         keywords: [KEYWORDS.STEALTHY],
-        meta: { chargeMax: 2, [TRIGGERS.ON_ACTIVATE]: 'umbraSalvo', activateCpCost: 0, dischargeCost: 2 },
+        // 2026-09-22 hovercraft amendment: umbraBeam — it stays Stealthy (R-8 overturned).
+        meta: { chargeMax: 2, [TRIGGERS.ON_ACTIVATE]: 'umbraBeam', activateCpCost: 0, dischargeCost: 2 },
     },
     {
         name: 'Conduit',
@@ -200,7 +202,9 @@ export const lhVehicles = [
         cpCost: 0,
         imageUrl: 'terawatt.png',
         playerId: null,
-        vehicleType: 'ship',
+        // 2026-09-22 hovercraft amendment (owner request): a 116 m/s skimmer like
+        // the Watt, so FtD spawns it just above the water (HOVER_SPAWN_ALTITUDE_M).
+        vehicleType: VEHICLE_TYPES.HOVER,
         type: 'vehicle',
         faction: FACTIONS.LH,
         blueprintId: null,
@@ -247,6 +251,28 @@ export const lhVehicles = [
         blueprintCost: 257641,
         cpCost: 0,
         imageUrl: 'hydrovolt.png',
+        playerId: null,
+        vehicleType: VEHICLE_TYPES.SUB,
+        type: 'vehicle',
+        faction: FACTIONS.LH,
+        blueprintId: null,
+        keywords: [KEYWORDS.BLOCKER, KEYWORDS.SUB_SCREEN],
+        meta: {
+            chargeMax: 2,
+            // Retired by the 2026-09-22 hovercraft amendment: Anode took its role.
+            retired: true,
+        },
+    },
+    {
+        // 2026-09-22 hovercraft amendment: the report's torpedo submarine with a
+        // particle pod (363,765) in Hydrovolt's role, at Hydrovolt's price.
+        name: 'Anode',
+        isBuiltIn: true,
+        cardText: '',
+        materialCost: 260000,
+        blueprintCost: 363765,
+        cpCost: 0,
+        imageUrl: 'anode.png',
         playerId: null,
         vehicleType: VEHICLE_TYPES.SUB,
         type: 'vehicle',
@@ -442,19 +468,25 @@ export const lhVehicles = [
     {
         name: 'Watt',
         isBuiltIn: true,
-        cardText: '',
+        cardText: 'When played, this gains 1 charge and a friendly Luxon spawns in this zone. That Luxon has Decoy and is not Temporary. Discharge 1: draw a card.',
         materialCost: 90000,
         blueprintCost: 90797,
         cpCost: 0,
         imageUrl: 'watt.png',
         playerId: null,
-        vehicleType: 'ship',
+        // 2026-09-22 hovercraft amendment: a skimmer that hovers — it died when
+        // FtD spawned it at the surface like a ship.
+        vehicleType: VEHICLE_TYPES.HOVER,
         type: 'vehicle',
         faction: FACTIONS.LH,
         blueprintId: null,
-        // Decoy's rule lives in the glossary, like every keyword's — no card text (R-6).
-        keywords: [KEYWORDS.SCRAPPY, KEYWORDS.MOBILE, KEYWORDS.DECOY],
-        meta: { chargeMax: 1 },
+        // Byte's draw moved here, and the Decoy moved to the permanent Luxon
+        // token wattOnPlay spawns (R-6 amended).
+        keywords: [KEYWORDS.SCRAPPY, KEYWORDS.MOBILE],
+        meta: {
+            chargeMax: 1, [TRIGGERS.ON_PLAY]: 'wattOnPlay',
+            [TRIGGERS.ON_ACTIVATE]: 'wattDraw', activateCpCost: 0, dischargeCost: 1,
+        },
     },
     {
         name: 'Luxon',
@@ -493,6 +525,8 @@ export const lhVehicles = [
         meta: {
             chargeMax: 1, [TRIGGERS.ON_PLAY]: 'byteChargeOnPlay',
             [TRIGGERS.ON_ACTIVATE]: 'byteDraw', activateCpCost: 0, dischargeCost: 1,
+            // Retired by the 2026-09-22 hovercraft amendment: its draw moved to the Watt.
+            retired: true,
         },
     },
     {

@@ -15,7 +15,9 @@ import { loadSeedData } from './transform'
 // TG:[TG] Amusement (the LH pool row, retired 2026-09-21) — both belong below.
 const RETIRED = [
   'DWG:Land Marauder',
+  'LH:Byte',
   'LH:Coulomb',
+  'LH:Hydrovolt',
   'LH:Orbit',
   'LH:Orbit Flank',
   'LH:Robotic Assemblers',
@@ -35,8 +37,8 @@ const RETIRED = [
   'WF:Harbringer',
 ]
 
-describe('card retirements (2026-09-02, 2026-09-16, 2026-09-17, 2026-09-21)', () => {
-  it('retires exactly the nineteen cards named above', async () => {
+describe('card retirements (2026-09-02, 2026-09-16, 2026-09-17, 2026-09-21, 2026-09-22)', () => {
+  it('retires exactly the twenty-one cards named above', async () => {
     const { cards } = await loadSeedData()
     const actual = cards
       .filter((c) => (c.meta as { retired?: unknown } | undefined)?.retired === true)
@@ -64,5 +66,7 @@ describe('card retirements (2026-09-02, 2026-09-16, 2026-09-17, 2026-09-21)', ()
     expect(meta('SS:Dryad').onBattleEffect).toBe('dryadBattle')
     expect(meta('TG:Horror').onBattleEffect).toBe('horrorBattle')
     expect(meta('WF:Harbringer').onBattleEffect).toBe('harbringerBattle')
+    expect(meta('LH:Byte').onPlayEffect).toBe('byteChargeOnPlay')
+    expect(meta('LH:Byte').onActivate).toBe('byteDraw')
   })
 })

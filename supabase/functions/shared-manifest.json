@@ -3,6 +3,7 @@
   "lobby-action": [
     "gameSettings.ts",
     "types.ts",
+    "vehicleClass.ts",
     "lobbySettings.ts",
     "engine/deckValidation.ts",
     "engine/gameInit.ts",
@@ -70,6 +71,7 @@
   "game-action": [
     "gameSettings.ts",
     "types.ts",
+    "vehicleClass.ts",
     "lobbySettings.ts",
     "engine/deckValidation.ts",
     "engine/gameInit.ts",

@@ -337,6 +337,15 @@ automatically" — is closed by `scripts/deploy-function.mjs` above.)
   timestamps (all six differed; `add_profile_is_admin` had no local file at all).
   If you ever apply a migration through MCP again, write the file back with the
   version MCP recorded — check with `list_migrations`.
+- **A migration applied to production ahead of its PR must reach `main` at
+  once, on its own tiny PR** carrying the file under the recorded version.
+  Until it does, production records a version no file on `main` has, so every
+  merge to `main` fails the integration's migrate step ("Remote migration
+  versions not found in local migrations directory") — and a failed migrate
+  step silently skips the function deploy (see Deploying). It happened on
+  2026-09-22: `add_hover_vehicle_type` went to production through MCP while
+  the hovercraft branch that carries its file was still open, so PR #88 merged
+  but did not deploy until PR #91 committed the file to `main` (2026-09-23).
 - Seed pipeline: `supabase/seed/` (`npm run seed:build` transforms
   `source/` → `seed_data.sql`); built-in cards have `is_built_in = true`.
 - RLS is on everywhere. `games` rows: participants-only SELECT, written only
