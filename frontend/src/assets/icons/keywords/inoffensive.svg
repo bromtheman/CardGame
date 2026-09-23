@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="br" gradientUnits="userSpaceOnUse" x1="0" y1="6" x2="0" y2="58">
+      <stop offset="0" stop-color="#f7e08f"/>
+      <stop offset=".55" stop-color="#c9a227"/>
+      <stop offset="1" stop-color="#8a6a12"/>
+    </linearGradient>
+    <linearGradient id="rd" gradientUnits="userSpaceOnUse" x1="0" y1="6" x2="0" y2="58">
+      <stop offset="0" stop-color="#ef6a5c"/>
+      <stop offset=".5" stop-color="#d63c31"/>
+      <stop offset="1" stop-color="#a3241b"/>
+    </linearGradient>
+  </defs>
+  <circle cx="32" cy="32" r="25.5" fill="none" stroke="#0b1f40" stroke-width="11.1"/>
+  <g transform="translate(32 32) scale(0.72) translate(-32 -32)">
+    <g transform="rotate(45 32 32)">
+      <path d="M32 3L36.5 10V39H27.5V10Z" fill="url(#br)" stroke="#0b1f40" stroke-width="7.78" stroke-linejoin="round" paint-order="stroke"/>
+      <path d="M31.3 11H32.7V37H31.3Z" fill="rgba(70,45,0,.28)"/>
+      <rect x="29.5" y="44" width="5" height="10" rx="1.5" fill="url(#br)" stroke="#0b1f40" stroke-width="7.78" stroke-linejoin="round" paint-order="stroke"/>
+      <circle cx="32" cy="57" r="4" fill="url(#br)" stroke="#0b1f40" stroke-width="7.78" stroke-linejoin="round" paint-order="stroke"/>
+      <rect x="21" y="39" width="22" height="5" rx="2.5" fill="url(#br)" stroke="#0b1f40" stroke-width="7.78" stroke-linejoin="round" paint-order="stroke"/>
+    </g>
+  </g>
+  <path d="M14.3 14.3L49.7 49.7" stroke="#0b1f40" stroke-width="11.1" stroke-linecap="round"/>
+  <circle cx="32" cy="32" r="25.5" fill="none" stroke="url(#rd)" stroke-width="5.5"/>
+  <path d="M14.3 14.3L49.7 49.7" stroke="url(#rd)" stroke-width="5.5" stroke-linecap="round"/>
+</svg>
