@@ -331,7 +331,7 @@ profile per non-retired LH vehicle is met by importing the report (§8).
 |---|---|---|---|---|
 | Faraday | airship · 140k (142k) | 2 | Mobile | When played, draw a card. |
 | Umbra | sub · 150k (148k) | 2 | Stealthy | Discharge 2: deal 150k damage to the enemy base in this zone. |
-| Kilowatt | hover · 180k (181k) | 2 | Blocker | When played, draw a card. |
+| Kilowatt | ship · 180k (181k) | 2 | Blocker | When played, draw a card. |
 | Ampere | ship · 200k (207k) | 2 | Mobile | When played, this gains 2 charge and stuns target enemy vehicle in this zone. |
 | Eclipse | hover · 220k (216k) | 2 | Stealthy | Discharge 2: this vehicle fights a 1v1 against target non-Stealthy enemy vehicle in this zone. |
 | Caspian | plane · 230k (230k) | — | Half-Cost, Temporary | Sea-skimmer: may be played into a zone with enemy Air Screen. |

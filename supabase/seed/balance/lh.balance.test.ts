@@ -66,10 +66,10 @@ export const CARDS: Record<string, Expected> = {
     meta: { chargeMax: 2, onActivate: 'umbraBeam', activateCpCost: 0, dischargeCost: 2 },
   },
   // Kilowatt, Megawatt and Feedback Loop as amended on 2026-09-23 (the draw
-  // amendment's second round). Kilowatt, Eclipse and Angstrom became
-  // Hovercraft the same day (owner request).
+  // amendment's second round). Eclipse and Angstrom became Hovercraft the same
+  // day (owner request).
   'LH:Kilowatt': {
-    materialCost: 180_000, blueprintCost: 180_583, cpCost: 0, keywords: ['blocker'], vehicleType: 'hover',
+    materialCost: 180_000, blueprintCost: 180_583, cpCost: 0, keywords: ['blocker'], vehicleType: 'ship',
     cardText: 'When played, draw a card.', meta: { chargeMax: 2, onPlayEffect: 'kilowattOnPlay' },
   },
   'LH:Caspian': {
