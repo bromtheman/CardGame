@@ -1,4 +1,4 @@
-import { err, findVehicle, registerHandler } from './gameEngine.ts'
+import { drawOnDischarge, err, findVehicle, registerHandler } from './gameEngine.ts'
 import { effectFor, effectName } from '../effects/registry.ts'
 import { chargeOf, spendCharge } from './charge.ts'
 
@@ -86,6 +86,7 @@ registerHandler('ACTIVATE_VEHICLE', (game, actor, action, ctx) => {
   if (materialCost !== null) game.state.resources[actor].materials -= materialCost
   if (dischargeCost !== null) spendCharge(entry, dischargeCost)
   entry.activatedOnTurn = game.turnNumber
+  if (dischargeCost !== null) drawOnDischarge(game, actor, found.zone.id, ctx)
   const resolved = fn({
     game,
     actor,

@@ -67,9 +67,11 @@ export const CARDS: Record<string, Expected> = {
     cardText: 'Discharge 2: deal 150k damage to the enemy base in this zone, then this surfaces — it loses Stealthy for the rest of the game.',
     meta: { chargeMax: 2, onActivate: 'umbraSalvo', activateCpCost: 0, dischargeCost: 2 },
   },
+  // Kilowatt, Megawatt and Feedback Loop as amended on 2026-09-23 (the draw
+  // amendment's second round).
   'LH:Kilowatt': {
     materialCost: 180_000, blueprintCost: 180_583, cpCost: 0, keywords: ['blocker'], vehicleType: 'ship',
-    cardText: '', meta: { chargeMax: 2 },
+    cardText: 'When played, draw a card.', meta: { chargeMax: 2, onPlayEffect: 'kilowattOnPlay' },
   },
   'LH:Caspian': {
     materialCost: 230_000, blueprintCost: 230_226, cpCost: 0, keywords: ['halfCost', 'temporary'], vehicleType: 'plane',
@@ -85,7 +87,7 @@ export const CARDS: Record<string, Expected> = {
   },
   'LH:Megawatt': {
     materialCost: 360_000, blueprintCost: 361_751, cpCost: 0, keywords: ['mobile'], vehicleType: 'ship',
-    cardText: '', meta: { chargeMax: 2 },
+    cardText: 'When played, draw a card.', meta: { chargeMax: 2, onPlayEffect: 'megawattOnPlay' },
   },
   'LH:Ampere': {
     materialCost: 200_000, blueprintCost: 206_645, cpCost: 0, keywords: ['mobile'], vehicleType: 'ship',
@@ -163,6 +165,11 @@ export const CARDS: Record<string, Expected> = {
     cardText: 'Discharge 2 from a friendly LH vehicle: draw 2 cards.',
     meta: { playOnVehicleEffect: 'dataBurstEffect', dischargeFrom: 2 },
   },
+  'LH:Feedback Loop': {
+    materialCost: 0, blueprintCost: 0, cpCost: 0, keywords: [], vehicleType: null,
+    cardText: 'Choose a zone. This turn, whenever a friendly LH vehicle in that zone discharges, draw a card.',
+    meta: { playOnZoneEffect: 'feedbackLoopEffect' },
+  },
 }
 
 // Retired by this wave (spec §7): rows stay seeded, undraftable.
@@ -202,13 +209,13 @@ describe('LH redesign — rows by value', () => {
 })
 
 describe('LH redesign — roster shape (spec §5, §7)', () => {
-  // 28 + Faraday and Data Burst (2026-09-22 draw amendment).
-  it('seeds 30 draftable LH cards and keeps the 8 retired rows', async () => {
+  // 28 + Faraday and Data Burst (2026-09-22) + Feedback Loop (2026-09-23).
+  it('seeds 31 draftable LH cards and keeps the 8 retired rows', async () => {
     const { cards } = await loadSeedData()
     const lh = cards.filter((c) => c.faction === 'LH')
     const live = lh.filter((c) => (c.meta as Record<string, unknown>)?.retired !== true)
-    expect(live).toHaveLength(30)
-    expect(lh).toHaveLength(38)
+    expect(live).toHaveLength(31)
+    expect(lh).toHaveLength(39)
     expect(live.map((c) => c.name).sort()).toEqual(Object.keys(CARDS).map((k) => k.slice(3)).sort())
   })
 

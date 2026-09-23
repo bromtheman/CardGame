@@ -130,7 +130,9 @@ export const BOT_DECKS: Record<BotFaction, Record<string, number>> = {
   // 2026-09-22 draw amendment: Faraday ×2 and Data Burst ×2 came in for both
   // Watts, Megawatt and the second Kilowatt — none of them named in the LH
   // strategy notes (factionNotes.ts), which pin every card they name to this
-  // list. Fliers 3 of 6.
+  // list. Fliers 3 of 6. 2026-09-23: Megawatt (now "When played, draw a card")
+  // back in for the second Data Burst; Feedback Loop stays out — a one-ply
+  // evaluator cannot see a draw that only pays on later discharges.
   LH: {
     'Chrysoprase': 2,
     'Byte': 2,
@@ -143,10 +145,11 @@ export const BOT_DECKS: Record<BotFaction, Record<string, number>> = {
     'Ampere': 1,
     'Eclipse': 1,
     'Hydrovolt': 1,
+    'Megawatt': 1,
     'Penumbra': 1,
     'Angstrom': 1,
     'EMP Salvo': 1,
     'Overcharge': 1,
-    'Data Burst': 2,
+    'Data Burst': 1,
   },
 }

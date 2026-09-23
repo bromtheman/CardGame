@@ -532,7 +532,7 @@ export const lhVehicles = [
     {
         name: 'Kilowatt',
         isBuiltIn: true,
-        cardText: '',
+        cardText: 'When played, draw a card.',
         materialCost: 180000,
         blueprintCost: 180583,
         cpCost: 0,
@@ -543,7 +543,8 @@ export const lhVehicles = [
         faction: FACTIONS.LH,
         blueprintId: null,
         keywords: [KEYWORDS.BLOCKER],
-        meta: { chargeMax: 2 },
+        // 2026-09-23 draw amendment, second round: the cheapest wall draws.
+        meta: { chargeMax: 2, [TRIGGERS.ON_PLAY]: 'kilowattOnPlay' },
     },
     {
         name: 'Caspian',
@@ -580,7 +581,7 @@ export const lhVehicles = [
     {
         name: 'Megawatt',
         isBuiltIn: true,
-        cardText: '',
+        cardText: 'When played, draw a card.',
         materialCost: 360000,
         blueprintCost: 361751,
         cpCost: 0,
@@ -591,7 +592,8 @@ export const lhVehicles = [
         faction: FACTIONS.LH,
         blueprintId: null,
         keywords: [KEYWORDS.MOBILE],
-        meta: { chargeMax: 2 },
+        // 2026-09-23 draw amendment, second round: the fleet backbone draws.
+        meta: { chargeMax: 2, [TRIGGERS.ON_PLAY]: 'megawattOnPlay' },
     },
     {
         name: 'Penumbra',
@@ -732,6 +734,22 @@ export const lhVehicles = [
         faction: FACTIONS.LH,
         blueprintId: null,
         meta: { [TRIGGERS.PLAY_ON_VEHICLE]: 'dataBurstEffect', dischargeFrom: 2 },
+    },
+    {
+        // 2026-09-23 draw amendment, second round: a lane's discharges into cards.
+        name: 'Feedback Loop',
+        isBuiltIn: true,
+        cardText: 'Choose a zone. This turn, whenever a friendly LH vehicle in that zone discharges, draw a card.',
+        materialCost: 0,
+        blueprintCost: 0,
+        cpCost: 0,
+        imageUrl: 'feedbackLoop.png',
+        playerId: null,
+        vehicleType: null,
+        type: 'ability',
+        faction: FACTIONS.LH,
+        blueprintId: null,
+        meta: { [TRIGGERS.PLAY_ON_ZONE]: 'feedbackLoopEffect' },
     },
 
 ];

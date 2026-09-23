@@ -78,7 +78,37 @@ weight 0.05 the bot almost never cast Data Burst — so the shipped bot will dra
 more than the A row. Bot games, a strength resolver that ignores stun: numbers
 for direction, not balance.
 
-## 6. Still open
+## 6. Second round (2026-09-23)
+
+After the owner live-tested the first round: **Faraday plays well and stays**;
+**Byte is to be removed soon**, so its draw cannot be counted on. The owner asked
+for a discharge engine as an ability played on a whole zone, lasting **this turn
+only**, plus draw on decent hulls (**Kilowatt and Megawatt**).
+
+| Card | Type · cost | Text | Registry id |
+|---|---|---|---|
+| Feedback Loop (new) | ability · 0k | Choose a zone. This turn, whenever a friendly LH vehicle in that zone discharges, draw a card. | `feedbackLoopEffect` |
+| Kilowatt (changed) | ship · 180k, Blocker, ⚡2 | When played, draw a card. | `kilowattOnPlay` |
+| Megawatt (changed) | ship · 360k, Mobile, ⚡2 | When played, draw a card. | `megawattOnPlay` |
+
+- **Feedback Loop** claims an Ambush-shaped rider (`expiresOnTurn` = this turn,
+  `data.dischargeDraw`). Both discharge paths — a hull's own Discharge
+  (`ACTIVATE_VEHICLE`) and a hull hosting a Discharge-from card — call
+  `drawOnDischarge` right after the pips are spent: one card
+  (`FEEDBACK_LOOP_DRAW`) per discharge by a friendly LH hull in that zone.
+  Drain payments are not discharges. It does not stack: a second copy on a zone
+  it already runs in is refused. Battle, bombardment and interception
+  re-dispatch the rider; it does nothing then. The board shows a spark badge.
+  Priced at 0k like Ambush — the cost is the discharges it needs.
+- **Kilowatt and Megawatt** update in place (same names, same ids); snapshots
+  dealt before the deploy stay vanilla. Costs unchanged.
+- **PracticeAI:** Megawatt back in the LH deck for the second Data Burst;
+  Feedback Loop stays out (a one-ply evaluator cannot value a draw that pays on
+  later discharges).
+- LH's draw without Byte: Faraday, Kilowatt, Megawatt, Data Burst and Feedback
+  Loop — five cards.
+
+## 7. Still open
 
 - Live test (owner): the three cards in play, the Data Burst host pick in the
   browser, and the draw rate against real opponents.

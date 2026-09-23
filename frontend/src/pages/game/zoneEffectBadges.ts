@@ -1,7 +1,7 @@
 import type { Side } from '@shared/engine/engineTypes'
 import type { ZoneEffect } from '@shared/engine/gameInit'
 
-export type ZoneEffectIcon = 'anchor' | 'crosshair' | 'torpedo' | 'noSubs' | 'ghostShip' | 'shield'
+export type ZoneEffectIcon = 'anchor' | 'crosshair' | 'torpedo' | 'noSubs' | 'ghostShip' | 'shield' | 'spark'
 
 export interface ZoneEffectBadge {
   key: string
@@ -60,6 +60,12 @@ const ZONE_EFFECT_DISPLAY: Record<string, { icon: ZoneEffectIcon; label: string;
     icon: 'crosshair',
     label: 'Flanking Maneuver',
     text: 'This turn, their next fleet attack here deploys last and every defender counts as Fragile.',
+  },
+  // LH, 2026-09-23. Shown so its owner can see which lane pays out this turn.
+  feedbackLoopEffect: {
+    icon: 'spark',
+    label: 'Feedback Loop',
+    text: 'This turn, every discharge by their LH vehicles here draws them a card.',
   },
 }
 

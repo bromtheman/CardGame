@@ -1,4 +1,4 @@
-import { KEYWORDS, LOG_MAX_ENTRIES, VEHICLE_TYPES } from '../gameSettings.ts'
+import { FEEDBACK_LOOP_DRAW, KEYWORDS, LOG_MAX_ENTRIES, VEHICLE_TYPES } from '../gameSettings.ts'
 import { materialsPerTurnOf } from '../lobbySettings.ts'
 import { secureRng } from './gameInit.ts'
 import { upkeepOwedBy } from './costs.ts'
@@ -225,6 +225,22 @@ export function drawCard(game: EngineGame, side: Side, ctx: EngineContext): void
   } else {
     putInHand(game, side, card)
   }
+}
+
+// 2026-09-23 LH Feedback Loop: "This turn, whenever a friendly LH vehicle in
+// that zone discharges, draw a card." Called by BOTH discharge paths right
+// after the pips are spent — a hull's own Discharge (ACTIVATE_VEHICLE,
+// activate.ts) and a hull hosting a Discharge-from card (placement.ts) — so a
+// path added later must call it too. A plain rule off the rider's
+// data.dischargeDraw, like drawOnExpiry: the rider is never dispatched for it.
+// One draw per discharge however many riders; Drain payments never reach here.
+export function drawOnDischarge(game: EngineGame, side: Side, zoneId: number, ctx: EngineContext): void {
+  const rider = game.state.zoneEffects.find(
+    (r) => r.side === side && r.zoneId === zoneId && r.data?.dischargeDraw === true,
+  )
+  if (!rider) return
+  for (let i = 0; i < FEEDBACK_LOOP_DRAW; i++) drawCard(game, side, ctx)
+  game.state.log.push(`${rider.cardName}: player ${side.toUpperCase()} draws`)
 }
 
 // A hull minted off a captured copy is a card of the minter's own — it is not

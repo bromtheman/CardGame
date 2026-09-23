@@ -288,7 +288,8 @@ Taken card by card on 2026-09-21; binding.
 
 Costs are printed card costs; the FtD figure is the report's material cost.
 Byte's text, Faraday and Data Burst are as amended by the
-[2026-09-22 draw amendment](2026-09-22-lh-draw-design.md).
+[2026-09-22 draw amendment](2026-09-22-lh-draw-design.md); Kilowatt's and
+Megawatt's text and Feedback Loop by its second round (2026-09-23, §6 there).
 Drain figures are as amended on 2026-09-22 (every gate one lower than first
 printed; [amendment](2026-09-22-lh-drain-charge-design.md) §6).
 Every vehicle is a report craft, so `shipProfiles.test.ts`'s demand for a
@@ -312,13 +313,13 @@ profile per non-retired LH vehicle is met by importing the report (§8).
 |---|---|---|---|---|
 | Faraday | airship · 140k (142k) | 2 | Mobile | When played, draw a card. |
 | Umbra | sub · 150k (148k) | 2 | Stealthy | Discharge 2: deal 150k damage to the enemy base in this zone, then this surfaces — it loses Stealthy for the rest of the game. |
-| Kilowatt | ship · 180k (181k) | 2 | Blocker | — |
+| Kilowatt | ship · 180k (181k) | 2 | Blocker | When played, draw a card. |
 | Ampere | ship · 200k (207k) | 2 | Mobile | When played, stun target enemy vehicle in this zone. |
 | Eclipse | ship · 220k (216k) | 2 | Stealthy | Discharge 2: this vehicle fights a 1v1 against target non-Stealthy enemy vehicle in this zone. |
 | Caspian | plane · 230k (230k) | — | Half-Cost, Temporary | Sea-skimmer: may be played into a zone with enemy Air Screen. |
 | Hydrovolt | sub · 260k (258k) | 2 | Blocker, Sub Screen | — |
 | Dynamo | airship · 350k (346k) | 1 | Mobile, Swift | Drain 1 Charge. |
-| Megawatt | ship · 360k (362k) | 2 | Mobile | — |
+| Megawatt | ship · 360k (362k) | 2 | Mobile | When played, draw a card. |
 | Penumbra | ship · 370k (375k) | 3 | — | Discharge 3: stun every enemy vehicle in this zone. |
 
 ### 5.3 Capitals
@@ -343,6 +344,7 @@ profile per non-retired LH vehicle is met by importing the report (§8).
 | Afterburner | 50k | Discharge 2 from a friendly LH vehicle: a friendly LH vehicle played this turn in that zone may attack the base this turn. |
 | Extended Sortie | 100k | Discharge 2 from a friendly LH vehicle: a friendly LH plane in that zone loses Temporary. |
 | Data Burst | 50k | Discharge 2 from a friendly LH vehicle: draw 2 cards. |
+| Feedback Loop | 0k | Choose a zone. This turn, whenever a friendly LH vehicle in that zone discharges, draw a card. |
 
 ### 5.5 Shape checks
 
