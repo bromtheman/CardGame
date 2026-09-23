@@ -28,8 +28,8 @@ import planeIcon from '../assets/icons/vehicles/plane.svg'
 import subIcon from '../assets/icons/vehicles/submarine.svg'
 import tankIcon from '../assets/icons/vehicles/tank.svg'
 import airshipIcon from '../assets/icons/vehicles/airship.svg'
+import hovercraftIcon from '../assets/icons/vehicles/hovercraft.svg'
 import anchorIcon from '../assets/icons/anchorSVG.svg'
-import hovercraftIcon from '../assets/icons/hovercraftSVG.svg'
 
 // Player-facing glossary — icon, label and plain-English rule for every
 // keyword and vehicle type. The wording tracks spec §3.7 (keywords) and

@@ -1636,7 +1636,7 @@ The PR body lists:
 ## After merge (controller, not a subagent)
 
 1. The `seed-apply.yml` Actions run is green.
-2. `npm run seed:verify` reports **193/193, drift 0**: 192 + Anode.
+2. `npm run seed:verify` reports **194/194, drift 0**: 192 + Anode + Feedback Loop (PR #86).
 3. game-action, lobby-action and create-card are redeployed, and their versions have bumped. Read them back **by content** through the Management API `/functions/<slug>/body` for:
    - `wattOnPlay`
    - `umbraBeam`

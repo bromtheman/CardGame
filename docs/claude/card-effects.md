@@ -343,6 +343,12 @@ Keywords come from the summoning card, not the spawned row
 (`defensiveParapetEffect` stamps Inoffensive/Scrappy/Blocker onto a Parapet that
 prints none) and the merge de-duplicates.
 
+A spawned hull can be made a **token** by stamping the INSTANCE's
+`meta.summonOnly = true` — the Watt's Luxon (`wattOnPlay`, 2026-09-22), a copy
+of a draftable card. `discardCard` refuses it (`isSummonOnly` reads the
+instance's own `meta`), so a dead token is simply gone and never files into a
+deck through the discard. Until then `summonOnly` was only catalog data.
+
 ## The coverage guard (`supabase/seed/effectCoverage.test.ts`)
 
 Coverage is enforced by `supabase/seed/effectCoverage.test.ts`: **G1** every effect

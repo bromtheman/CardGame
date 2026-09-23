@@ -239,5 +239,9 @@ together so no card ships ahead of its effect (2026-09-02 spec §1).
 - **Balance, live:**
   - only targeted removal answers Umbra now;
   - the Watt is the faction's strongest 90k card;
-  - Anode is 100k under its FtD cost.
+  - Anode is 100k under its FtD cost;
+  - LH's combined draw is unassessed: this amendment's repeating Watt draw
+    (Discharge 1) lands on top of main's round-two draw (PR #86: Feedback Loop,
+    and Kilowatt and Megawatt drawing when played), and a Watt discharging in a
+    Feedback Loop lane draws two.
 - **Saved decks** holding Byte or Hydrovolt need editing, the owner's included.
