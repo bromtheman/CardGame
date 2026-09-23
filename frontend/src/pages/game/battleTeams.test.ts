@@ -42,8 +42,9 @@ function battleState(extra: { a?: ZoneCardEntry[]; b?: ZoneCardEntry[]; summons?
 // battleTeams is handed it. makeGame's turn.
 const TURN = 2
 
-// Two defenders stunned on TURN (stamped TURN + 1): a ship the FtD battle
-// holds still, and a plane it lets fight normally. Bulwark is not stunned.
+// Three defenders stunned on TURN (stamped TURN + 1): a ship the FtD battle
+// holds still, and a plane and a hovercraft it lets fight normally — the hover
+// stays stunned on the board, it just is not held in FtD. Bulwark is not stunned.
 const withStunnedDefenders = () => battleState({
   b: [
     zoneEntry({
@@ -51,6 +52,9 @@ const withStunnedDefenders = () => battleState({
     }),
     zoneEntry({
       instanceId: 'gull', name: 'Gull', faction: 'OW', vehicleType: VEHICLE_TYPES.PLANE, stunnedUntilTurn: 3,
+    }),
+    zoneEntry({
+      instanceId: 'watt', name: 'Watt', faction: 'LH', vehicleType: VEHICLE_TYPES.HOVER, stunnedUntilTurn: 3,
     }),
   ],
 })
@@ -206,19 +210,22 @@ describe('battleTeams — an ambushed fleet spawns facing away', () => {
 describe('battleTeams — stunned hulls held still in FtD (2026-09-23)', () => {
   const flagOf = (cards: BattleCard[], name: string) => cards.find((c) => c.name === name)!.stunned
 
-  it('flags a stunned defending ship, and not a stunned defending plane', () => {
+  it('flags a stunned defending ship, and not a stunned defending plane or hovercraft', () => {
     const [, defending] = battleTeams(withStunnedDefenders(), TURN)
     expect(flagOf(defending!.cards, 'Anchor')).toBe(true)
     expect(flagOf(defending!.cards, 'Gull')).toBe(false)
+    expect(flagOf(defending!.cards, 'Watt')).toBe(false)
     expect(flagOf(defending!.cards, 'Bulwark')).toBe(false)
   })
 
   it('reads the turn it is handed: a stun expiring this turn holds nothing', () => {
     const [, defending] = battleTeams(withStunnedDefenders(), TURN + 1)
-    expect(defending!.cards.map((c) => c.stunned)).toEqual([false, false, false])
+    expect(defending!.cards.map((c) => c.stunned)).toEqual([false, false, false, false])
   })
 
-  it('reaches the built battle file as Stunned on that ship alone', () => {
+  // The hover and the plane are stunned on the board all the same; only the
+  // .customBattle leaves them free to fight.
+  it('reaches the built battle file as Stunned on that ship alone, never the hovercraft', () => {
     const file = buildCustomBattle(battleTeams(withStunnedDefenders(), TURN), {
       cardGame: {
         endpoint: 'https://example.supabase.co/functions/v1/battle-report',
