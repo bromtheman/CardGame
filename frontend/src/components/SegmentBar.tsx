@@ -1,5 +1,5 @@
 // A 1..max rating drawn as one filled bar cut into segments by diagonal
-// slashes — the ship profile's five scores and four matchups, and an LH
+// slashes — the ship profile's four scores and four matchups, and an LH
 // hull's charge capacity.
 //
 // How the slashes are made: the strip of segments is skewed as a whole inside

@@ -5,9 +5,10 @@ import { shipProfileHeadline, shipProfileRows } from './shipProfileView'
 describe('shipProfileRows', () => {
   const profile = shipProfileOf('DWG', 'Crossbones')!
 
-  it('lays the five scores and four matchups out as labelled rows, in report order', () => {
+  it('lays the scores and four matchups out as labelled rows, in report order', () => {
     const { scores, matchups } = shipProfileRows(profile)
-    expect(scores.map((r) => r.label)).toEqual(['Firepower', 'Toughness', 'Speed', 'Range', 'Cost'])
+    // No Cost row: the dialog's Materials chip already shows what the card costs.
+    expect(scores.map((r) => r.label)).toEqual(['Firepower', 'Toughness', 'Speed', 'Range'])
     expect(matchups.map((r) => r.label)).toEqual(['vs Ships', 'vs Aircraft', 'vs Submarines', 'vs Missiles'])
   })
 
