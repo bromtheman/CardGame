@@ -147,6 +147,27 @@ describe('chargeAttributesOf', () => {
   })
 })
 
+// The icon is how a player tells rows apart on a 16px board chip, so no two
+// attributes may share one — as Half-Cost and all five charge rules once
+// shared the spark.
+describe('attribute icons', () => {
+  it('gives every attribute a player can read an icon of its own', () => {
+    // One card carrying all five charge rules, so every charge row is present.
+    const chargeRows = chargeAttributesOf({ chargeMax: 2, chargeRelay: 1, requiresCharge: 3, dischargeCost: 1, dischargeFrom: 2 })
+    expect(chargeRows).toHaveLength(5)
+
+    const rows = [
+      ...Object.values(VEHICLE_TYPE_INFO),
+      ...Object.values(KEYWORDS).map((k) => KEYWORD_INFO[k]),
+      ...chargeRows,
+    ]
+    const labelsByIcon = new Map<string, string[]>()
+    for (const { label, icon } of rows) labelsByIcon.set(icon, [...(labelsByIcon.get(icon) ?? []), label])
+
+    expect([...labelsByIcon.values()].filter((labels) => labels.length > 1)).toEqual([])
+  })
+})
+
 describe('attributesOf with charge', () => {
   it('slots the charge rules between the vehicle type and the keywords', () => {
     const attrs = attributesOf(VEHICLE_TYPES.SHIP, [KEYWORDS.BLOCKER], { chargeMax: 2, requiresCharge: 3 })
