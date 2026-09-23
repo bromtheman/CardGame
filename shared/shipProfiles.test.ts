@@ -33,8 +33,8 @@ describe('ship profiles', () => {
     expect(wf.at(-1)?.name).toBe('Purifier')
     const lh = shipProfilesForFaction('LH')
     expect(lh.map((p) => p.name).slice(0, 3)).toEqual(['Ampere', 'Angstrom', 'Candela'])
-    expect(lh.at(-1)?.name).toBe('Quadrupole')
-    expect(lh).toHaveLength(24) // 24 + Faraday − Byte − Hydrovolt + Anode (2026-09-22 amendments)
+    expect(lh.at(-1)?.name).toBe('Thyristor')
+    expect(lh).toHaveLength(25) // 24 + Faraday − Byte − Hydrovolt + Anode (2026-09-22 amendments) + Thyristor (2026-09-23)
     expect(shipProfilesForFaction('OW')).toEqual([])
   })
 

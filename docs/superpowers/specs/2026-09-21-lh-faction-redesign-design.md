@@ -307,6 +307,9 @@ Drain figures are as amended on 2026-09-22 (every gate one lower than first
 printed; [amendment](2026-09-22-lh-drain-charge-design.md) §6).
 Ampere, Umbra and the Watt, Byte's and Hydrovolt's retirement, and Anode are as
 amended by the [2026-09-22 hovercraft amendment](2026-09-22-lh-hovercraft-design.md).
+The Thyristor came back from the bench (§11) on 2026-09-23 at the owner's
+request: a 400k Mobile airship whose only text is Drain 2 Charge — a cheaper
+Quadrupole without Blocker.
 Every vehicle is a report craft, so `shipProfiles.test.ts`'s demand for a
 profile per non-retired LH vehicle is met by importing the report (§8).
 
@@ -336,6 +339,7 @@ profile per non-retired LH vehicle is met by importing the report (§8).
 | Dynamo | airship · 350k (346k) | 1 | Mobile, Swift | Drain 1 Charge. |
 | Megawatt | ship · 360k (362k) | 2 | Mobile | When played, draw a card. |
 | Penumbra | ship · 370k (375k) | 3 | — | Discharge 3: stun every enemy vehicle in this zone. |
+| Thyristor | airship · 400k (565k) | 2 | Mobile | Drain 2 Charge. (back from the bench, 2026-09-23) |
 
 ### 5.3 Capitals
 
@@ -364,11 +368,11 @@ profile per non-retired LH vehicle is met by importing the report (§8).
 ### 5.5 Shape checks
 
 - Stun sources 3; beams 3 (150/300/400); 1v1 hulls 2; Swift 2 + Afterburner;
-  Blockers 7; Sub Screens 3, Air Screen 1; fliers 7 with Faraday (2026-09-22) against the 6-copy limit;
+  Blockers 7; Sub Screens 3, Air Screen 1; fliers 8 with Faraday (2026-09-22) and Thyristor (2026-09-23) against the 6-copy limit;
   subs 3; timers static, walls and raiders Mobile.
 - Curve: 40k pickets on turn 1; Conduit/Dipole 70k; Watt 90k turn 2; Umbra turn
   2; Kilowatt/Ampere/Eclipse turn 3; Hydrovolt turn 4; Dynamo/Megawatt/Penumbra
-  turn 5; Angstrom turn 8; Quadrupole/Cathode turn 8; Superradiance/Terawatt
+  turn 5; Thyristor turn 6; Angstrom turn 8; Quadrupole/Cathode turn 8; Superradiance/Terawatt
   turn 9; Candela/Impedance turn 10; Rectifier (350k to play) turn 5.
 - Charge timeline, un-raced: Chrysoprase (t1) + Watt + Volta (t2) + Kilowatt (t3)
   is 5 pips on turn 4 from 350k of hulls; Dynamo's gate opens turn 5; on an
@@ -484,7 +488,8 @@ engine — judgement is not.
 **Ship profiles:** `npm run profiles:import -- <reports>\LH.cards.md`, spread
 into `SHIP_PROFILES`, add `shipProfiles/LH.ts` to both functions in
 `shared-manifest.json`, `functions:sync`; the strict test then demands a profile
-for every non-retired LH vehicle — all 24 are report craft.
+for every non-retired LH vehicle — all 24 are report craft (25 since the
+Thyristor returned, 2026-09-23).
 
 ## 9. Testing and verification
 
@@ -539,8 +544,9 @@ are first-print values to be revisited after play, the way every balance pass
 has been.
 
 Bench — report craft not in the roster, swappable one-for-one later:
-Isochronous (the fastest ship; a second Mobile Blocker), Thyristor (flying
-brawler; the roster's only CP source if it returns), Tesla + Monopole Squadron
+Isochronous (the fastest ship; a second Mobile Blocker), ~~Thyristor~~ (returned
+2026-09-23 as a plain Drain 2 airship, §5.2 — without the CP source this note
+once promised), Tesla + Monopole Squadron
 (a drone carrier summoning its squadron into every battle — Obelisk's shape; cut
 for roster size, not quality), Jupiter, Exadyne, Exajoule, Gigawatt, Faraday,
 Cherenkov, Gamma Squad, Fuse, Spectrum, Thunderbird, Static Squadron,

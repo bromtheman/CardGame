@@ -194,6 +194,25 @@ export const lhVehicles = [
         meta: { chargeMax: 2, requiresCharge: 2 },
     },
     {
+        // 2026-09-23 (owner request): the report's flying plasma brawler
+        // (565,250), benched by the 2026-09-21 redesign — an airship by R-5, a
+        // cheaper Quadrupole without Blocker.
+        name: 'Thyristor',
+        isBuiltIn: true,
+        cardText: 'Drain 2 Charge.',
+        materialCost: 400000,
+        blueprintCost: 565250,
+        cpCost: 0,
+        imageUrl: 'thyristor.png',
+        playerId: null,
+        vehicleType: VEHICLE_TYPES.AIRSHIP,
+        type: 'vehicle',
+        faction: FACTIONS.LH,
+        blueprintId: null,
+        keywords: [KEYWORDS.MOBILE],
+        meta: { chargeMax: 2, requiresCharge: 2 },
+    },
+    {
         name: 'Terawatt',
         isBuiltIn: true,
         cardText: 'Drain 2 Charge. Generators: this gains 2 charge at the start of your turn instead of 1. Discharge 2: another friendly LH vehicle in this zone gains 2 charge.',
