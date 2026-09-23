@@ -40,7 +40,7 @@ export const allHeroPowers = [
     {
         faction: FACTIONS.LH,
         name: 'Surge',
-        text: 'Every friendly LH vehicle gains 1 charge.',
+        text: 'Choose a zone. Every friendly LH vehicle in that zone charges to full.',
         cpCost: 1
     },
     {

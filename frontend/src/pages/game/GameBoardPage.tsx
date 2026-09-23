@@ -21,7 +21,7 @@ import { StealthyResponseBar } from './StealthyResponseBar'
 import { BattleOverlay } from './BattleOverlay'
 import { PendingChoiceDialog } from './PendingChoiceDialog'
 import { DrainChargeDialog } from './DrainChargeDialog'
-import { HeroPowerBar, type MoveMode, type SwapMode } from './HeroPowerBar'
+import { HeroPowerBar, type MoveMode, type SwapMode, type ZonePower } from './HeroPowerBar'
 import { BotSpeechBubble } from './BotSpeechBubble'
 import { latestTableTalk, tableTalkText } from './tableTalkDelta'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
@@ -47,8 +47,9 @@ export function GameBoardPage() {
   const [moveMode, setMoveMode] = useState<MoveMode | null>(null)
   const [fieldTargeting, setFieldTargeting] = useState<CardInstance | null>(null)
   const [swapMode, setSwapMode] = useState<SwapMode | null>(null)
-  // WF Flanking Maneuver: armed while the player is choosing the zone to flank.
-  const [flankMode, setFlankMode] = useState(false)
+  // WF Flanking Maneuver / LH Surge: the faction power armed while the player
+  // chooses its zone.
+  const [zonePower, setZonePower] = useState<ZonePower | null>(null)
   // 2026-09-22 Drain N Charge: a gated card waiting on its split dialog, with
   // the zone already chosen (spec §4). A board mode like the others.
   const [draining, setDraining] = useState<{ card: CardInstance; zoneId: number } | null>(null)
@@ -141,7 +142,7 @@ export function GameBoardPage() {
     ? legalForPlacing
     : moveMode?.phase === 'pickZone'
       ? (moveMode.kind === 'handTarget' ? legalForHandTarget : legalForMove)
-      : flankMode
+      : zonePower
         ? state.zones.map((z) => z.id)
         : []
 
@@ -166,7 +167,7 @@ export function GameBoardPage() {
     setMoveMode(null)
     setFieldTargeting(null)
     setSwapMode(null)
-    setFlankMode(false)
+    setZonePower(null)
     setDraining(null)
   }
   // Every play of a hand card into a zone — the hand's one-legal-zone
@@ -212,14 +213,14 @@ export function GameBoardPage() {
     cancelAllModes()
     setMoveMode({ phase: 'pickVehicle', kind: 'counterIntelligence' })
   }
-  // WF Flanking Maneuver: every zone is a legal pick, so the highlight is
-  // "all zones" rather than a legality computation.
-  function onStartFlankingManeuver() {
+  // WF Flanking Maneuver / LH Surge: every zone is a legal pick, so the
+  // highlight is "all zones" rather than a legality computation.
+  function onStartZonePower(power: ZonePower) {
     cancelAllModes()
-    setFlankMode(true)
+    setZonePower(power)
   }
-  function onCancelFlank() {
-    setFlankMode(false)
+  function onCancelZonePower() {
+    setZonePower(null)
   }
   function onMobileMoveClick(instanceId: string) {
     cancelAllModes()
@@ -284,9 +285,9 @@ export function GameBoardPage() {
       setPlacingCard(null)
       return
     }
-    if (flankMode) {
-      void send({ type: 'USE_HERO_POWER', power: 'flankingManeuver', zoneId })
-      setFlankMode(false)
+    if (zonePower) {
+      void send({ type: 'USE_HERO_POWER', power: zonePower, zoneId })
+      setZonePower(null)
       return
     }
     if (moveMode?.phase === 'pickZone') {
@@ -437,8 +438,8 @@ export function GameBoardPage() {
             turnNumber={game.turn_number}
             highlighted={interactiveZoneIds.includes(zone.id)}
             onZoneClick={interactiveZoneIds.includes(zone.id) ? () => onZoneClick(zone.id) : undefined}
-            canMoveVehicles={canActivateZones && !fieldTargeting && !placingCard && !swapMode && !flankMode}
-            canActivateVehicles={canActivateZones && !fieldTargeting && !placingCard && !swapMode && !flankMode}
+            canMoveVehicles={canActivateZones && !fieldTargeting && !placingCard && !swapMode && !zonePower}
+            canActivateVehicles={canActivateZones && !fieldTargeting && !placingCard && !swapMode && !zonePower}
             moveVehiclePickMode={moveMode?.phase === 'pickVehicle'}
             selectedForMoveId={moveMode?.phase === 'pickZone' ? moveMode.instanceId : null}
             onPickVehicleForMove={onPickVehicleForMove}
@@ -489,9 +490,9 @@ export function GameBoardPage() {
         swapMode={swapMode}
         onStartBoardingParty={onStartBoardingParty}
         onCancelSwap={onCancelSwap}
-        flankMode={flankMode}
-        onStartFlankingManeuver={onStartFlankingManeuver}
-        onCancelFlank={onCancelFlank}
+        zonePower={zonePower}
+        onStartZonePower={onStartZonePower}
+        onCancelZonePower={onCancelZonePower}
       />
 
       <HandBar
@@ -509,7 +510,7 @@ export function GameBoardPage() {
         moveMode={moveMode}
         onVehicleHandTargetPicked={onVehicleHandTargetPicked}
         swapMode={swapMode}
-        flankMode={flankMode}
+        zonePower={zonePower}
         cancelBoardModes={cancelAllModes}
         onLiftedChange={setLiftedCard}
         leading={

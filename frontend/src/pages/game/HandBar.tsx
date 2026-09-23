@@ -9,7 +9,7 @@ import { cardInstanceToRow } from '../../lib/cards'
 import { PhysicalCard } from '../../components/PhysicalCard'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { dischargeHostAvailable } from './dischargeHostAvailable'
-import type { MoveMode, SwapMode } from './HeroPowerBar'
+import type { MoveMode, SwapMode, ZonePower } from './HeroPowerBar'
 import {
   CARD_H, CARD_W, HAND_RAIL_H, REST_SCALE, fanLayout,
 } from './handFanLayout'
@@ -79,7 +79,7 @@ export function HandBar({
   moveMode,
   onVehicleHandTargetPicked,
   swapMode,
-  flankMode,
+  zonePower,
   cancelBoardModes,
   onLiftedChange,
   leading,
@@ -107,8 +107,9 @@ export function HandBar({
   // instanceId and targetInstanceId, unlike an ability's playOnCardEffect.
   onVehicleHandTargetPicked: (instanceId: string, targetInstanceId: string) => void
   swapMode: SwapMode | null
-  // WF Flanking Maneuver's zone pick — watched for mode exclusivity only.
-  flankMode: boolean
+  // A faction power's zone pick (Flanking Maneuver, Surge) — watched for mode
+  // exclusivity only.
+  zonePower: ZonePower | null
   cancelBoardModes: () => void
   // Fires whenever the hovered/focused card changes, so GameBoardPage can
   // tint the materials readout when the lifted card is unaffordable.
@@ -157,8 +158,8 @@ export function HandBar({
   // Mode exclusivity: whenever one of GameBoardPage's own modes starts, drop
   // our internal handTargeting selection.
   useEffect(() => {
-    if (placingCard || fieldTargeting || moveMode || swapMode || flankMode) setHandTargeting(null)
-  }, [placingCard, fieldTargeting, moveMode, swapMode, flankMode])
+    if (placingCard || fieldTargeting || moveMode || swapMode || zonePower) setHandTargeting(null)
+  }, [placingCard, fieldTargeting, moveMode, swapMode, zonePower])
 
   function handleVehicleClick(card: CardInstance) {
     if (placingCard?.instanceId === card.instanceId) {

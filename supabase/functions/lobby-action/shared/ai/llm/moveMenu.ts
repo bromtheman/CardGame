@@ -137,7 +137,7 @@ function enumerateTurn(game: EngineGame, side: Side): GameAction[] {
     powers.push({ type: 'USE_HERO_POWER', power: 'changeOrder', instanceId: card.instanceId })
   }
   powers.push({ type: 'USE_HERO_POWER', power: 'drones' })
-  powers.push({ type: 'USE_HERO_POWER', power: 'surge' })
+  for (const z of zones) powers.push({ type: 'USE_HERO_POWER', power: 'surge', zoneId: z.id })
   for (const z of zones) powers.push({ type: 'USE_HERO_POWER', power: 'flankingManeuver', zoneId: z.id })
   out.push(...powers.filter(usable))
 

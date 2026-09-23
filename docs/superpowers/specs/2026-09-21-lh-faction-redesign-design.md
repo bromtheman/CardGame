@@ -29,7 +29,7 @@ before touching a stamp.
 | Speed | **Swift** keyword ("may attack the enemy base the turn it is played") on Dynamo and Rectifier, plus **Afterburner** for everyone else; Mobile on ten hulls. |
 | Principle: timers don't move | Penumbra, Superradiance, Impedance, Eclipse, Umbra have no Mobile, whatever their speed. Walls and raiders (Angstrom, Candela, Terawatt, Quadrupole, Megawatt, Dynamo, Watt, Dipole, Byte, Ampere) do. A Mobile timer charges in the empty lane and jumps; a static one can be raced. |
 | Principle: no death triggers on chaff | FtD's AI shoots the biggest hull first, and a lost battle wipes the lane, so "when this dies" on a picket almost never fires usefully. Volta's original death trigger was rewritten to fire on play. |
-| Hero power | **Surge** replaces Flyby: 1 CP, once — every friendly LH vehicle gains 1 charge. |
+| Hero power | **Surge** replaces Flyby: 1 CP, once — choose a zone; every friendly LH vehicle in it charges to full. First printed as +1 charge to every LH vehicle; amended 2026-09-23 (§6). |
 | Pricing | FtD cost rounded to 10k (down, as the old data did). Discounts only on the gated hulls: R2 none (its gate buys Swift), R3 12–18 %, R4 31 %, R5 43 %. Those are the gates as first printed; on 2026-09-22 draining made the gate a cost and every gate dropped by 1, prices unchanged ([amendment](2026-09-22-lh-drain-charge-design.md) §6). Conduit alone is priced above its hull (70k for 54k) because its text is the card. |
 | Delivery | One branch, one PR, data and effects together, so no LH card ever ships ahead of its effect (2026-09-02 spec §1). The wave is the size of the SS wave of the balance pass plus TG's keyword work. |
 
@@ -295,7 +295,8 @@ Taken card by card on 2026-09-21; binding.
   construction: an un-Sortied plane evaporates at the next turn start.
 - **R-28 Surge is usable with nothing to charge** — it spends the CP, does
   nothing and logs it; no hero power is gated on usefulness and this one will
-  not be the first.
+  not be the first. Since the 2026-09-23 amendment (§6), that means every zone
+  is a legal pick, including one where nothing can take a charge.
 
 ## 5. The roster
 
@@ -383,9 +384,18 @@ profile per non-retired LH vehicle is met by importing the report (§8).
 ## 6. Hero power
 
 > **Surge** — LH · 1 CP · once per game
-> Every friendly LH vehicle gains 1 charge.
+> Choose a zone. Every friendly LH vehicle in that zone charges to full.
 
-Capped per hull; planes and Conduit gain nothing; usable on your own turn
+**Amended 2026-09-23 at the owner's request.** Surge was first printed "Every
+friendly LH vehicle gains 1 charge." It now fills every LH hull of the
+player's in ONE chosen zone to its printed max, instead of +1 across the
+board. The enemy's hulls never charge, even in an LH mirror. The action
+carries `zoneId`, and a Surge without a real zone is refused (400). Any zone
+is a legal pick (R-28). The board highlights every zone, the zone pick
+Flanking Maneuver already used. PracticeAI's move menu offers one Surge per
+zone. `SURGE_CHARGE` is gone.
+
+Planes and Conduit print no max, so they gain nothing; usable on your own turn
 outside battles like every faction power (R-28). A **new** power: engine key
 `surge` in `FACTION_POWERS` (LH) and `HERO_POWER_LABELS`, a new `hero_powers`
 row (`hero:LH:Surge`), and the Flyby row removed by its own migration SQL — the
@@ -512,7 +522,7 @@ for every non-retired LH vehicle — all 24 are report craft.
   `npm --prefix frontend run build`, `npm run functions:check`.
 - **Browser:** an LH deck against PracticeAI — pips render and tick, the
   discharge button appears and spends, a stun badges and expires, a Drain
-  card explains itself in hand, Surge charges the board, a Swift plane
+  card explains itself in hand, Surge fills the zone it is aimed at, a Swift plane
   bombards on arrival, the spawn sheet lists the right blueprints. Signed in via
   `scripts/qa-login.mjs`, never by typing credentials.
 - **Post-merge:** the `seed-apply.yml` run is green, `npm run seed:verify`

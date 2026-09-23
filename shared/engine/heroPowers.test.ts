@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { CHANGE_ORDER_DELAY_TURNS, MAX_VEHICLES_PER_ZONE_SIDE } from '../gameSettings'
 import { applyAction, effectiveMaterialCostOf } from './index'
 import { chargeOf } from './charge.ts'
-import type { ZoneCardEntry } from './engineTypes.ts'
+import type { EngineGame, ZoneCardEntry } from './engineTypes.ts'
 import { CATALOG_HERO_POWERS } from './heroPowers'
 import { inst, makeCtx, makeGame, snap, zoneEntry } from './testFixtures'
 
@@ -680,33 +680,70 @@ describe('USE_HERO_POWER flankingManeuver (WF)', () => {
   })
 })
 
-describe('Surge (2026-09-21 LH spec §6)', () => {
-  it('gives every friendly LH hull one pip, capped, and is usable with nothing to charge', () => {
+// 2026-09-23 owner amendment: "pick a zone and charge all vehicles in that
+// zone to max energy" replaces "every friendly LH vehicle gains 1 charge".
+describe('Surge (2026-09-21 LH spec §6, amended 2026-09-23)', () => {
+  // An LH mirror, so enemy LH hulls with room are on the board to be left alone.
+  const lhGame = () => {
     const game = makeGame({ turnNumber: 3, activePlayer: 'alice' })
-    game.state.factions = { a: 'LH', b: 'SS' }
+    game.state.factions = { a: 'LH', b: 'LH' }
+    return game
+  }
+  const surge = (zoneId?: number) => ({ type: 'USE_HERO_POWER', power: 'surge', zoneId } as const)
+  const chargesIn = (game: EngineGame, zoneIndex: number, side: 'a' | 'b') =>
+    Object.fromEntries(game.state.zones[zoneIndex].cards[side].map((c) => [c.instanceId, chargeOf(c as ZoneCardEntry)]))
+
+  it('fills every friendly LH vehicle in the chosen zone to its maximum', () => {
+    const game = lhGame()
     game.state.zones[0].cards.a.push(
-      zoneEntry({ instanceId: 'x', faction: 'LH', meta: { chargeMax: 2 }, charge: 1 }),
-      zoneEntry({ instanceId: 'full', faction: 'LH', meta: { chargeMax: 1 }, charge: 1 }),
+      zoneEntry({ instanceId: 'empty', faction: 'LH', meta: { chargeMax: 3 } }),
+      zoneEntry({ instanceId: 'part', faction: 'LH', meta: { chargeMax: 4 }, charge: 1 }),
+      zoneEntry({ instanceId: 'full', faction: 'LH', meta: { chargeMax: 2 }, charge: 2 }),
       zoneEntry({ instanceId: 'plane', faction: 'LH', vehicleType: 'plane', keywords: ['temporary'] }),
+      zoneEntry({ instanceId: 'dwg', faction: 'DWG', meta: { chargeMax: 2 } }),
     )
-    game.state.zones[2].cards.a.push(zoneEntry({ instanceId: 'y', faction: 'LH', meta: { chargeMax: 3 } }))
-    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'theirs', faction: 'LH', meta: { chargeMax: 2 } }))
-    const res = applyAction(game, 'alice', { type: 'USE_HERO_POWER', power: 'surge' }, makeCtx())
+    const res = applyAction(game, 'alice', surge(1), makeCtx())
     if (!res.ok) throw new Error(res.error)
-    const a0 = res.game.state.zones[0].cards.a as ZoneCardEntry[]
-    expect(chargeOf(a0[0])).toBe(2)
-    expect(chargeOf(a0[1])).toBe(1)
-    expect(chargeOf(res.game.state.zones[2].cards.a[0] as ZoneCardEntry)).toBe(1)
-    expect(chargeOf(res.game.state.zones[0].cards.b[0] as ZoneCardEntry)).toBe(0)
+    expect(chargesIn(res.game, 0, 'a')).toEqual({ empty: 3, part: 4, full: 2, plane: 0, dwg: 0 })
+    // 3 + 3 pips gained, and the log says where.
+    expect(res.game.state.log.some((l) => /^Surge: .*zone 1.*\b6 charge/.test(l))).toBe(true)
     expect(res.game.state.resources.a.cp).toBe(2)
     expect(res.game.state.usedHeroPowers.a).toEqual(['surge'])
-    const bare = makeGame({ turnNumber: 3, activePlayer: 'alice' })
-    bare.state.factions = { a: 'LH', b: 'SS' }
-    expect(applyAction(bare, 'alice', { type: 'USE_HERO_POWER', power: 'surge' }, makeCtx()).ok).toBe(true)
+  })
+
+  it('leaves my other zones and every enemy vehicle alone', () => {
+    const game = lhGame()
+    game.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'mine', faction: 'LH', meta: { chargeMax: 2 } }))
+    game.state.zones[1].cards.a.push(zoneEntry({ instanceId: 'elsewhere', faction: 'LH', meta: { chargeMax: 2 } }))
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'theirs', faction: 'LH', meta: { chargeMax: 2 } }))
+    const res = applyAction(game, 'alice', surge(1), makeCtx())
+    if (!res.ok) throw new Error(res.error)
+    expect(chargesIn(res.game, 0, 'a')).toEqual({ mine: 2 })
+    expect(chargesIn(res.game, 1, 'a')).toEqual({ elsewhere: 0 })
+    expect(chargesIn(res.game, 0, 'b')).toEqual({ theirs: 0 })
+  })
+
+  it('needs a zone that exists', () => {
+    for (const zoneId of [undefined, 9]) {
+      const game = lhGame()
+      game.state.zones[0].cards.a.push(zoneEntry({ faction: 'LH', meta: { chargeMax: 2 } }))
+      expect(applyAction(game, 'alice', surge(zoneId), makeCtx())).toMatchObject({ ok: false, status: 400 })
+    }
+  })
+
+  it('is usable on a zone with nothing to charge: the CP is spent and the log says so (R-28)', () => {
+    const game = lhGame()
+    game.state.zones[1].cards.a.push(zoneEntry({ instanceId: 'elsewhere', faction: 'LH', meta: { chargeMax: 2 } }))
+    const res = applyAction(game, 'alice', surge(3), makeCtx())
+    if (!res.ok) throw new Error(res.error)
+    expect(res.game.state.resources.a.cp).toBe(2)
+    expect(res.game.state.usedHeroPowers.a).toEqual(['surge'])
+    expect(res.game.state.log.some((l) => /^Surge: nothing .*zone 3/.test(l))).toBe(true)
+    expect(chargesIn(res.game, 1, 'a')).toEqual({ elsewhere: 0 })
   })
 
   it('belongs to LH', () => {
     const game = makeGame({ turnNumber: 3, activePlayer: 'alice' })
-    expect(applyAction(game, 'alice', { type: 'USE_HERO_POWER', power: 'surge' }, makeCtx())).toMatchObject({ ok: false, status: 403 })
+    expect(applyAction(game, 'alice', surge(1), makeCtx())).toMatchObject({ ok: false, status: 403 })
   })
 })
