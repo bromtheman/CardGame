@@ -220,7 +220,9 @@ export const lhVehicles = [
         cpCost: 0,
         imageUrl: 'angstrom.png',
         playerId: null,
-        vehicleType: 'ship',
+        // 2026-09-23 (owner request): a Hovercraft, so FtD spawns it just above
+        // the water (HOVER_SPAWN_ALTITUDE_M).
+        vehicleType: VEHICLE_TYPES.HOVER,
         type: 'vehicle',
         faction: FACTIONS.LH,
         blueprintId: null,
@@ -274,7 +276,9 @@ export const lhVehicles = [
         cpCost: 0,
         imageUrl: 'anode.png',
         playerId: null,
-        vehicleType: VEHICLE_TYPES.SUB,
+        // 2026-09-23 (owner request): a Hovercraft, no longer a sub — it now
+        // follows every ship rule and spawns just above the water in FtD.
+        vehicleType: VEHICLE_TYPES.HOVER,
         type: 'vehicle',
         faction: FACTIONS.LH,
         blueprintId: null,
@@ -328,7 +332,9 @@ export const lhVehicles = [
         cpCost: 0,
         imageUrl: 'eclipse.png',
         playerId: null,
-        vehicleType: 'ship',
+        // 2026-09-23 (owner request): a Hovercraft, so FtD spawns it just above
+        // the water (HOVER_SPAWN_ALTITUDE_M).
+        vehicleType: VEHICLE_TYPES.HOVER,
         type: 'vehicle',
         faction: FACTIONS.LH,
         blueprintId: null,
@@ -572,7 +578,9 @@ export const lhVehicles = [
         cpCost: 0,
         imageUrl: 'kilowatt.png',
         playerId: null,
-        vehicleType: 'ship',
+        // 2026-09-23 (owner request): a Hovercraft, so FtD spawns it just above
+        // the water (HOVER_SPAWN_ALTITUDE_M).
+        vehicleType: VEHICLE_TYPES.HOVER,
         type: 'vehicle',
         faction: FACTIONS.LH,
         blueprintId: null,

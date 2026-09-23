@@ -31,7 +31,9 @@ export const wfVehicles = [
         cpCost: 0,
         imageUrl: 'veles.png',
         playerId: null,
-        vehicleType: 'ship',
+        // 2026-09-23 (owner request): a Hovercraft, so FtD spawns it just above
+        // the water (HOVER_SPAWN_ALTITUDE_M).
+        vehicleType: VEHICLE_TYPES.HOVER,
         type: 'vehicle',
         faction: FACTIONS.WF,
         blueprintId: null,
