@@ -1256,5 +1256,57 @@ export const LH_SHIP_PROFILES: Record<string, ShipProfile> = {
     },
     "verdict": "leans glass cannon",
     "verdictDetail": "Firepower 1.41× and toughness 0.82× the per-material median for its price."
+  },
+  "LH:Thyristor": {
+    "role": "flying plasma brawler",
+    "strength": 3928,
+    "rank": 4,
+    "type": "Flying plasma gunboat (game class: thruster craft, probable) — two plasma cannons, torpedoes, missiles and a nine-lens particle turret. 76 m long, 67 m wide, 6,422 blocks.",
+    "speed": "146.4 m/s (285 kn) — very fast; flies at up to 117 m.",
+    "fightsAt": "1,200 m.",
+    "sees": "Three radar 90s and four radar trackers, cameras with two trackers, infrared cameras and two trackers, two laser rangefinders, two rangefinders, 23 missile warners, a radio snooper, and four sonar buoys to drop. No sonar of its own.",
+    "summary": "Flying plasma brawler. 4th strongest and 6th hardest-hitting Hoods design; a quarter more firepower than its price class at exactly average toughness.",
+    "scores": {
+      "firepower": {
+        "score": 5,
+        "why": "88th percentile — 75 % plasma, 22 % missiles and torpedoes"
+      },
+      "toughness": {
+        "score": 5,
+        "why": "83rd percentile; 52nd among craft of its price"
+      },
+      "speed": {
+        "score": 5,
+        "why": "95th percentile"
+      },
+      "range": {
+        "score": 4,
+        "why": "67th percentile"
+      },
+      "cost": {
+        "score": 5,
+        "why": "84th percentile"
+      }
+    },
+    "matchups": {
+      "ships": {
+        "score": 5,
+        "why": "two plasma cannons on 505 generators, eight sonar torpedoes, eight EMP-and-frag missiles, two large laser-guided missiles"
+      },
+      "aircraft": {
+        "score": 3,
+        "why": "eight radar-guided missiles and a nine-lens particle turret with little charge behind it; the plasma is fixed forward; designers 1×"
+      },
+      "submarines": {
+        "score": 2,
+        "why": "eight sonar-seeking torpedoes and four sonar buoys, but no sonar aboard"
+      },
+      "missiles": {
+        "score": 4,
+        "why": "39 interceptors, 14 shields, 23 warners, 3 smoke"
+      }
+    },
+    "verdict": "brawler",
+    "verdictDetail": "Firepower 1.24× and toughness 0.98× the per-material median for its price."
   }
 }

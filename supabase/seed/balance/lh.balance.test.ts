@@ -105,6 +105,12 @@ export const CARDS: Record<string, Expected> = {
     cardText: 'Discharge 3: stun every enemy vehicle in this zone.',
     meta: { chargeMax: 3, onActivate: 'penumbraPulse', activateCpCost: 0, dischargeCost: 3 },
   },
+  // 2026-09-23 (owner request): the benched report craft returns (FtD 565,250),
+  // a cheaper Quadrupole without Blocker.
+  'LH:Thyristor': {
+    materialCost: 400_000, blueprintCost: 565_250, cpCost: 0, keywords: ['mobile'], vehicleType: 'airship',
+    cardText: 'Drain 2 Charge.', meta: { chargeMax: 2, requiresCharge: 2 },
+  },
   'LH:Angstrom': {
     materialCost: 540_000, blueprintCost: 545_846, cpCost: 0, keywords: ['blocker', 'airScreen', 'mobile'], vehicleType: 'hover',
     cardText: '', meta: { chargeMax: 2 },
@@ -212,21 +218,22 @@ describe('LH redesign — rows by value', () => {
 
 describe('LH redesign — roster shape (spec §5, §7)', () => {
   // 28 + Faraday and Data Burst (2026-09-22 draw amendment) + Feedback Loop (2026-09-23);
-  // − Byte − Hydrovolt + Anode (2026-09-22 hovercraft amendment). Byte and
-  // Hydrovolt join the 8 retired rows, so 30 draftable + 10 retired = 40 rows.
-  it('seeds 30 draftable LH cards and keeps the 10 retired rows', async () => {
+  // − Byte − Hydrovolt + Anode (2026-09-22 hovercraft amendment); + Thyristor
+  // (2026-09-23). Byte and Hydrovolt join the 8 retired rows, so 31 draftable
+  // + 10 retired = 41 rows.
+  it('seeds 31 draftable LH cards and keeps the 10 retired rows', async () => {
     const { cards } = await loadSeedData()
     const lh = cards.filter((c) => c.faction === 'LH')
     const live = lh.filter((c) => (c.meta as Record<string, unknown>)?.retired !== true)
-    expect(live).toHaveLength(30)
-    expect(lh).toHaveLength(40)
+    expect(live).toHaveLength(31)
+    expect(lh).toHaveLength(41)
     expect(live.map((c) => c.name).sort()).toEqual(Object.keys(CARDS).map((k) => k.slice(3)).sort())
   })
 
   it('every draftable LH vehicle is a report craft with a ship profile (Task 30 lands the profiles)', async () => {
     const { cards } = await loadSeedData()
     const vehicles = cards.filter((c) => c.faction === 'LH' && c.type === 'vehicle' && (c.meta as Record<string, unknown>)?.retired !== true)
-    expect(vehicles).toHaveLength(24)
+    expect(vehicles).toHaveLength(25)
   })
 
   it('the six new-keyword and gate carriers read as intended', async () => {
