@@ -37,12 +37,16 @@ Stack: Vite + React 19 + TypeScript strict + Tailwind v4 (CSS-first tokens in
   compositing; the fade-out holds the overlay mounted for `FADE_MS`. Keyword rule text
   lives in that one module (frontend-only, so it is outside functions:sync);
   `keywords.test.ts` fails if a KEYWORDS/VEHICLE_TYPES value has no entry.
-  For a **built-in** card with a ship profile (`shared/shipProfiles.ts`,
-  generated from the FtDArmament reports — see architecture.md) the modal's
-  right column opens with "How it fights in From The Depths": the report's
-  one-liner, nine pip meters with their reasons and the headline (role, FtD
-  strength, "#12" or "joint #44" for a tied rank — `src/lib/shipProfileView.ts`,
-  tested), the verdict and the craft facts, above the attributes glossary. The
+  A **built-in** vehicle gets two columns: the image, cost chips and the
+  Card's Attributes glossary on the left, and on the right its ship profile
+  (`shared/shipProfiles.ts`, generated from the FtDArmament reports — see
+  architecture.md), untitled: the headline (role, FtD strength, "#12" or
+  "joint #44" for a tied rank — `src/lib/shipProfileView.ts`, tested), the
+  report's one-liner, four score `SegmentBar`s (their reason is a hover title
+  only), four matchup bars with the armament reason printed under each, the
+  verdict and the craft facts. The profile's Cost score is deliberately not
+  drawn — the Materials chip already shows what the card costs. A vehicle
+  whose report has not landed yet shows a dashed placeholder there. The
   lookup is by `faction` + `name` and skipped for custom cards, which may
   borrow a seeded name. The two meter lists are stacked on purpose: the
   column is ~590px wide and side by side left the reasons 70px.

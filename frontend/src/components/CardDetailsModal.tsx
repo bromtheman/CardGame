@@ -28,7 +28,7 @@ function CostChip({
   )
 }
 
-// The five headline scores: label and bar, nothing else. Their `why` is
+// The four headline scores: label and bar, nothing else. Their `why` is
 // percentile wording ("64th percentile") that competed with the bar for
 // attention and said the same thing less clearly, so it stays as a hover title.
 function ScoreList({ rows }: { rows: ProfileRow[] }) {
@@ -46,7 +46,7 @@ function ScoreList({ rows }: { rows: ProfileRow[] }) {
 
 // The four matchups keep their reason printed: unlike a percentile it names
 // the armament the score is drawn from, which is the part a player acts on.
-// It sits UNDER the bar, so the bars line up with the five scores' above.
+// It sits UNDER the bar, so the bars line up with the four scores' above.
 function MatchupList({ rows }: { rows: ProfileRow[] }) {
   return (
     <ul className="flex flex-col gap-3">
