@@ -182,7 +182,8 @@ never ships ahead of its effect (2026-09-02 spec §1).
   - game-action and lobby-action are redeployed and read back by content
     (`empTorpedoEffect`, and "EMP Torpedo" in the notes);
   - Netlify rebuilds, since the merge touches `shared/`, and the
-    `GameBoardPage` chunk carries `empTorpedoEffect`.
+    `PhysicalCard` chunk (where the engine's effect registry is bundled)
+    carries `empTorpedoEffect`.
 - **Owner, live:** play the card against a lane with a sub in it (the Ampere
   line), and see the red banner when no LH vehicle holds 2 charge.
 

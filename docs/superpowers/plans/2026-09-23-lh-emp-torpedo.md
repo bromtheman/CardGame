@@ -545,7 +545,7 @@ Spec: `docs/superpowers/specs/2026-09-23-lh-emp-torpedo-design.md` (plan: `docs/
 ### After merge
 - [ ] The `seed-apply.yml` run is green, and `npm run seed:verify` reports 195 cards, drift 0
 - [ ] game-action and lobby-action are redeployed, and their bodies carry `empTorpedoEffect`
-- [ ] The Netlify `GameBoardPage` chunk carries `empTorpedoEffect`
+- [ ] The Netlify `PhysicalCard` chunk carries `empTorpedoEffect`
 - [ ] Owner, live: Ampere + EMP Torpedo on a lane with a sub; the red banner appears with no 2-pip LH vehicle
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
@@ -606,10 +606,12 @@ const html = await (await fetch(site)).text()
 const entry = html.match(/\/assets\/index-[\w-]+\.js/)?.[0]
 if (!entry) throw new Error('entry chunk not found in index.html')
 const entryJs = await (await fetch(site + entry)).text()
-const board = entryJs.match(/GameBoardPage-[\w-]+\.js/)?.[0]
-if (!board) throw new Error('GameBoardPage chunk not referenced by the entry chunk; find it in the network panel')
-const boardJs = await (await fetch(`${site}/assets/${board}`)).text()
-console.log(`netlify ${board}: empTorpedoEffect=${boardJs.includes('empTorpedoEffect')}`)
+// The engine's effect registry is bundled into the PhysicalCard chunk, which
+// the entry chunk imports (checked against a local build on 2026-09-23).
+const chunk = entryJs.match(/PhysicalCard-[\w-]+\.js/)?.[0]
+if (!chunk) throw new Error('PhysicalCard chunk not referenced by the entry chunk; find it in the network panel')
+const chunkJs = await (await fetch(`${site}/assets/${chunk}`)).text()
+console.log(`netlify ${chunk}: empTorpedoEffect=${chunkJs.includes('empTorpedoEffect')}`)
 ```
 
 Run it from the worktree root, so that `.env.local` resolves:
