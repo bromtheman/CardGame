@@ -717,16 +717,16 @@ export const WF_SHIP_PROFILES: Record<string, ShipProfile> = {
     },
     "matchups": {
       "ships": {
-        "score": 4,
-        "why": "three turrets of two cross-input lenses each on 1,470 m of tube — and nothing else"
+        "score": 3,
+        "why": "rated from play: three turrets of two cross-input lenses each on 1,470 m of tube — and nothing else"
       },
       "aircraft": {
-        "score": 2,
-        "why": "the turrets can elevate but nothing is built for aircraft; designers 0.8×"
+        "score": 4,
+        "why": "rated from play: the turrets can elevate, though nothing is built for aircraft; designers 0.8×"
       },
       "submarines": {
-        "score": 2,
-        "why": "three passive sonar sets and 11 torpedo-propelled interceptors; designers 1× vs undersea"
+        "score": 4,
+        "why": "rated from play: three passive sonar sets and 11 torpedo-propelled interceptors; designers 1× vs undersea"
       },
       "missiles": {
         "score": 4,
