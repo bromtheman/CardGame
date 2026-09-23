@@ -2,6 +2,7 @@ import { CHARGE_TICK, KEYWORDS, VEHICLE_TYPES } from '@shared/gameSettings'
 import {
   chargeGateOf, chargeMaxOf, chargeRateOf, chargeRelayOf, dischargeCostOf, dischargeFromOf,
 } from '@shared/engine/index'
+import { HOVER_SPAWN_ALTITUDE_M } from '@shared/customBattle'
 
 import shield from '../assets/icons/shieldSVG.svg'
 import repair from '../assets/icons/repairSVG.svg'
@@ -21,6 +22,7 @@ import subIcon from '../assets/icons/submarineSVG.svg'
 import tankIcon from '../assets/icons/tankSVG.svg'
 import airshipIcon from '../assets/icons/airShield1SVG.svg'
 import anchorIcon from '../assets/icons/anchorSVG.svg'
+import hovercraftIcon from '../assets/icons/hovercraftSVG.svg'
 import plane2 from '../assets/icons/plane2SVG.svg'
 import iron2 from '../assets/icons/iron2SVG.svg'
 
@@ -131,6 +133,14 @@ export const VEHICLE_TYPE_INFO: Record<string, Attribute> = {
     label: 'Ship',
     icon: shipIcon,
     description: 'Deploys to water and beach zones.',
+  },
+  [VEHICLE_TYPES.HOVER]: {
+    key: VEHICLE_TYPES.HOVER,
+    label: 'Hovercraft',
+    icon: hovercraftIcon,
+    // 2026-09-22 hovercraft amendment §4. The height is DERIVED from the battle
+    // file's constant, never restated (BattleOverlay's 80 → 160 lesson).
+    description: `Counts as a ship for every rule, and deploys to water and beach zones. In FtD it spawns ${HOVER_SPAWN_ALTITUDE_M} m above the water, where it hovers.`,
   },
   [VEHICLE_TYPES.SUB]: {
     key: VEHICLE_TYPES.SUB,

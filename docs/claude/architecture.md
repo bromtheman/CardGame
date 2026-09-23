@@ -39,6 +39,13 @@ frontend (supabase-js) ──invoke──> edge function ──applyAction──
   once-per-turn ability that suspends cannot be re-entered through a second
   activation. A card needs *both* `onActivate` and `activateCpCost` or it has no
   activated ability at all (see [card-effects.md](card-effects.md)).
+- **Vehicle classes.** `isShipClass` (`shared/vehicleClass.ts`) is the one
+  answer to "is this a ship?". A Hovercraft (`hover`, 2026-09-22) counts as a
+  ship for every rule, so no rule compares `vehicleType` to
+  `VEHICLE_TYPES.SHIP` directly: placement, pools (`matches`), `isAiShip`, and
+  every ship-only effect, hero power and bot move go through it. The one
+  difference is the FtD spawn height (`HOVER_SPAWN_ALTITUDE_M`,
+  `shared/customBattle.ts`).
 - **DP2, the battle triggers (`shared/engine/battleTriggers.ts`).** Built in
   wave 4. It registers no handler; three existing seams call it —
   `battleDeclare.ts` at lock, `battleResolve.ts` at resolve, `baseAttack.ts` on

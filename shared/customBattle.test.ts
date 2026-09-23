@@ -9,6 +9,7 @@ import {
   BUILT_IN_BLUEPRINT_ROOT,
   BlueprintResolutionError,
   FLEET_HULL_SPACING_M,
+  HOVER_SPAWN_ALTITUDE_M,
   buildCustomBattle,
   resolveBlueprintPath,
   serializeCustomBattle,
@@ -221,6 +222,19 @@ describe('buildCustomBattle', () => {
     expect(file.Teams[0]!.Blueprints.map((b) => b.SpawnAltitude))
       .toEqual([AIRCRAFT_SPAWN_ALTITUDE_M, AIRCRAFT_SPAWN_ALTITUDE_M])
     expect(file.Teams[1]!.Blueprints.map((b) => b.SpawnAltitude)).toEqual([0, 0, 0])
+  })
+
+  it('spawns a hovercraft just above the water, below the aircraft (2026-09-22 hovercraft amendment)', () => {
+    // The Watt hovers: spawned at the surface like a ship, it died before the
+    // fight began. Asserted against the constant, as the aircraft test is.
+    const file = buildCustomBattle([
+      { name: 'hover', cards: [{ name: 'Watt', faction: 'LH', vehicleType: VEHICLE_TYPES.HOVER }] },
+      { name: 'surface', cards: [{ ...marauder, vehicleType: VEHICLE_TYPES.SHIP }] },
+    ])
+    expect(file.Teams[0]!.Blueprints[0]!.SpawnAltitude).toBe(HOVER_SPAWN_ALTITUDE_M)
+    expect(file.Teams[1]!.Blueprints[0]!.SpawnAltitude).toBe(0)
+    expect(HOVER_SPAWN_ALTITUDE_M).toBeGreaterThan(0)
+    expect(HOVER_SPAWN_ALTITUDE_M).toBeLessThan(AIRCRAFT_SPAWN_ALTITUDE_M)
   })
 
   it('reproduces the Newtonsoft $type discriminators the game requires', () => {

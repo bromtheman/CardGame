@@ -93,6 +93,11 @@ export const CARD_TYPES = { VEHICLE: 'vehicle', ABILITY: 'ability' } as const
 
 export const VEHICLE_TYPES = {
   SHIP: 'ship', AIRSHIP: 'airship', TANK: 'tank', PLANE: 'plane', SUB: 'sub',
+  // 2026-09-22 hovercraft amendment §4: counts as a ship for every rule
+  // (shared/vehicleClass.ts) and spawns just above the water in FtD
+  // (HOVER_SPAWN_ALTITUDE_M, shared/customBattle.ts). The cards table's check
+  // admits it from migration *_add_hover_vehicle_type.sql.
+  HOVER: 'hover',
 } as const
 
 export const ZONE_TYPES = { WATER: 'water', BEACH: 'beach', LAND: 'land' } as const

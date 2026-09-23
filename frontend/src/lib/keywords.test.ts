@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { KEYWORDS, VEHICLE_TYPES } from '@shared/gameSettings'
+import { HOVER_SPAWN_ALTITUDE_M } from '@shared/customBattle'
 import {
   KEYWORD_INFO, VEHICLE_TYPE_INFO, attributesOf, chargeAttributesOf, keywordLabel,
 } from './keywords'
@@ -156,5 +157,17 @@ describe('attributesOf with charge', () => {
   it('leaves a card with no charge meta exactly as it was', () => {
     expect(attributesOf(VEHICLE_TYPES.SHIP, [KEYWORDS.BLOCKER], {}).map((a) => a.label))
       .toEqual(['Ship', 'Blocker'])
+  })
+})
+
+// 2026-09-22 hovercraft amendment §4: the glossary is the one place a player
+// reads that a hovercraft is a ship, and its height is derived, never restated.
+describe('hovercraft wording', () => {
+  const hover = VEHICLE_TYPE_INFO[VEHICLE_TYPES.HOVER]
+
+  it('says it is a ship in every rule and states the spawn height from the battle file', () => {
+    expect(hover.label).toBe('Hovercraft')
+    expect(hover.description).toContain('Counts as a ship for every rule')
+    expect(hover.description).toContain(`${HOVER_SPAWN_ALTITUDE_M} m above the water`)
   })
 })
