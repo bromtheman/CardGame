@@ -576,9 +576,7 @@ export const lhVehicles = [
         cpCost: 0,
         imageUrl: 'kilowatt.png',
         playerId: null,
-        // 2026-09-23 (owner request): a Hovercraft, so FtD spawns it just above
-        // the water (HOVER_SPAWN_ALTITUDE_M).
-        vehicleType: VEHICLE_TYPES.HOVER,
+        vehicleType: 'ship',
         type: 'vehicle',
         faction: FACTIONS.LH,
         blueprintId: null,
