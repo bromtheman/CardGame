@@ -276,9 +276,7 @@ export const lhVehicles = [
         cpCost: 0,
         imageUrl: 'anode.png',
         playerId: null,
-        // 2026-09-23 (owner request): a Hovercraft, no longer a sub — it now
-        // follows every ship rule and spawns just above the water in FtD.
-        vehicleType: VEHICLE_TYPES.HOVER,
+        vehicleType: VEHICLE_TYPES.SUB,
         type: 'vehicle',
         faction: FACTIONS.LH,
         blueprintId: null,

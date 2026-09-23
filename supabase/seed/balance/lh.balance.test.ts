@@ -66,7 +66,7 @@ export const CARDS: Record<string, Expected> = {
     meta: { chargeMax: 2, onActivate: 'umbraBeam', activateCpCost: 0, dischargeCost: 2 },
   },
   // Kilowatt, Megawatt and Feedback Loop as amended on 2026-09-23 (the draw
-  // amendment's second round). Kilowatt, Anode, Eclipse and Angstrom became
+  // amendment's second round). Kilowatt, Eclipse and Angstrom became
   // Hovercraft the same day (owner request).
   'LH:Kilowatt': {
     materialCost: 180_000, blueprintCost: 180_583, cpCost: 0, keywords: ['blocker'], vehicleType: 'hover',
@@ -77,10 +77,9 @@ export const CARDS: Record<string, Expected> = {
     cardText: 'Sea-skimmer: may be played into a zone with enemy Air Screen.', meta: { ignoresAirScreen: true },
   },
   // 2026-09-22 hovercraft amendment: the Anode craft in Hydrovolt's role, at
-  // Hydrovolt's price (FtD 363,765 — a 100k discount, owner's call). Was a sub
-  // until it became a Hovercraft on 2026-09-23.
+  // Hydrovolt's price (FtD 363,765 — a 100k discount, owner's call).
   'LH:Anode': {
-    materialCost: 260_000, blueprintCost: 363_765, cpCost: 0, keywords: ['blocker', 'subScreen'], vehicleType: 'hover',
+    materialCost: 260_000, blueprintCost: 363_765, cpCost: 0, keywords: ['blocker', 'subScreen'], vehicleType: 'sub',
     cardText: '', meta: { chargeMax: 2 },
   },
   'LH:Dynamo': {

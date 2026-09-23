@@ -332,7 +332,7 @@ profile per non-retired LH vehicle is met by importing the report (§8).
 | Ampere | ship · 200k (207k) | 2 | Mobile | When played, this gains 2 charge and stuns target enemy vehicle in this zone. |
 | Eclipse | hover · 220k (216k) | 2 | Stealthy | Discharge 2: this vehicle fights a 1v1 against target non-Stealthy enemy vehicle in this zone. |
 | Caspian | plane · 230k (230k) | — | Half-Cost, Temporary | Sea-skimmer: may be played into a zone with enemy Air Screen. |
-| Anode | hover · 260k (364k) | 2 | Blocker, Sub Screen | — (replaced Hydrovolt, retired, 2026-09-22; a sub until 2026-09-23) |
+| Anode | sub · 260k (364k) | 2 | Blocker, Sub Screen | — (replaced Hydrovolt, retired, 2026-09-22) |
 | Dynamo | airship · 350k (346k) | 1 | Mobile, Swift | Drain 1 Charge. |
 | Megawatt | ship · 360k (362k) | 2 | Mobile | When played, draw a card. |
 | Penumbra | ship · 370k (375k) | 3 | — | Discharge 3: stun every enemy vehicle in this zone. |
