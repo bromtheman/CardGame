@@ -15,6 +15,7 @@ import torpedoIcon from '../../assets/icons/torpedoSVG.svg'
 import noSubsIcon from '../../assets/icons/noSubsSVG.svg'
 import ship2Icon from '../../assets/icons/ship2SVG.svg'
 import shieldIcon from '../../assets/icons/shieldSVG.svg'
+import sparkIcon from '../../assets/icons/sparkSVG.svg'
 
 const ZONE_EFFECT_ICONS: Record<ZoneEffectIcon, string> = {
   anchor: anchorIcon,
@@ -23,6 +24,7 @@ const ZONE_EFFECT_ICONS: Record<ZoneEffectIcon, string> = {
   noSubs: noSubsIcon,
   ghostShip: ship2Icon,
   shield: shieldIcon,
+  spark: sparkIcon,
 }
 
 function HpBar({ label, hp, max, own = true, badge }: {

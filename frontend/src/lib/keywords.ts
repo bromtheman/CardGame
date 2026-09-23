@@ -4,27 +4,32 @@ import {
 } from '@shared/engine/index'
 import { HOVER_SPAWN_ALTITUDE_M } from '@shared/customBattle'
 
-import shield from '../assets/icons/shieldSVG.svg'
-import repair from '../assets/icons/repairSVG.svg'
-import hourglass from '../assets/icons/hourglassSVG.svg'
-import noFly from '../assets/icons/noFlyZoneSVG.svg'
-import noSubs from '../assets/icons/noSubsSVG.svg'
-import spark from '../assets/icons/sparkSVG.svg'
-import tire from '../assets/icons/tireSVG.svg'
-import tire2 from '../assets/icons/tire2SVG.svg'
-import iron from '../assets/icons/ironSVG.svg'
-import crosshair from '../assets/icons/crosshairSVG.svg'
-import torpedo from '../assets/icons/torpedoSVG.svg'
-import airport from '../assets/icons/airportSVG.svg'
-import shipIcon from '../assets/icons/shipSVG.svg'
-import planeIcon from '../assets/icons/planeSVG.svg'
-import subIcon from '../assets/icons/submarineSVG.svg'
-import tankIcon from '../assets/icons/tankSVG.svg'
-import airshipIcon from '../assets/icons/airShield1SVG.svg'
+import blockerIcon from '../assets/icons/keywords/blocker.svg'
+import temporaryIcon from '../assets/icons/keywords/temporary.svg'
+import scrappyIcon from '../assets/icons/keywords/scrappy.svg'
+import airScreenIcon from '../assets/icons/keywords/airScreen.svg'
+import subScreenIcon from '../assets/icons/keywords/subScreen.svg'
+import inoffensiveIcon from '../assets/icons/keywords/inoffensive.svg'
+import halfCostIcon from '../assets/icons/keywords/halfCost.svg'
+import fragileIcon from '../assets/icons/keywords/fragile.svg'
+import stealthyIcon from '../assets/icons/keywords/stealthy.svg'
+import mobileIcon from '../assets/icons/keywords/mobile.svg'
+import roboticIcon from '../assets/icons/keywords/robotic.svg'
+import upkeepIcon from '../assets/icons/keywords/upkeepRequired.svg'
+import swiftIcon from '../assets/icons/keywords/swift.svg'
+import decoyIcon from '../assets/icons/keywords/decoy.svg'
+import chargeIcon from '../assets/icons/keywords/charge.svg'
+import chargeRelayIcon from '../assets/icons/keywords/chargeRelay.svg'
+import drainIcon from '../assets/icons/keywords/drain.svg'
+import dischargeIcon from '../assets/icons/keywords/discharge.svg'
+import dischargeFromIcon from '../assets/icons/keywords/dischargeFrom.svg'
+import shipIcon from '../assets/icons/vehicles/ship.svg'
+import planeIcon from '../assets/icons/vehicles/plane.svg'
+import subIcon from '../assets/icons/vehicles/submarine.svg'
+import tankIcon from '../assets/icons/vehicles/tank.svg'
+import airshipIcon from '../assets/icons/vehicles/airship.svg'
 import anchorIcon from '../assets/icons/anchorSVG.svg'
 import hovercraftIcon from '../assets/icons/hovercraftSVG.svg'
-import plane2 from '../assets/icons/plane2SVG.svg'
-import iron2 from '../assets/icons/iron2SVG.svg'
 
 // Player-facing glossary — icon, label and plain-English rule for every
 // keyword and vehicle type. The wording tracks spec §3.7 (keywords) and
@@ -44,85 +49,85 @@ export const KEYWORD_INFO: Record<string, Attribute> = {
   [KEYWORDS.BLOCKER]: {
     key: KEYWORDS.BLOCKER,
     label: 'Blocker',
-    icon: shield,
+    icon: blockerIcon,
     description: 'While this sits in a zone, your opponent may not declare base attacks in that zone.',
   },
   [KEYWORDS.TEMPORARY]: {
     key: KEYWORDS.TEMPORARY,
     label: 'Temporary',
-    icon: hourglass,
+    icon: temporaryIcon,
     description: 'Removed from the board at the start of the next turn — yours or your opponent\u2019s.',
   },
   [KEYWORDS.SCRAPPY]: {
     key: KEYWORDS.SCRAPPY,
     label: 'Scrappy',
-    icon: repair,
+    icon: scrappyIcon,
     description: 'Repairing it after a battle costs no materials. Fragile overrides this.',
   },
   [KEYWORDS.AIR_SCREEN]: {
     key: KEYWORDS.AIR_SCREEN,
     label: 'Air Screen',
-    icon: noFly,
+    icon: airScreenIcon,
     description: 'Your opponent may not play planes or airships into this vehicle\u2019s zone.',
   },
   [KEYWORDS.SUB_SCREEN]: {
     key: KEYWORDS.SUB_SCREEN,
     label: 'Sub Screen',
-    icon: noSubs,
+    icon: subScreenIcon,
     description: 'Your opponent may not play submarines into this vehicle\u2019s zone.',
   },
   [KEYWORDS.INOFFENSIVE]: {
     key: KEYWORDS.INOFFENSIVE,
     label: 'Inoffensive',
-    icon: airport,
+    icon: inoffensiveIcon,
     description: 'Cannot join an attacking fleet or a base attack. It can still defend.',
   },
   [KEYWORDS.HALF_COST]: {
     key: KEYWORDS.HALF_COST,
     label: 'Half-Cost',
-    icon: spark,
+    icon: halfCostIcon,
     description: 'Costs half of its printed material cost to play. That halved cost also drives its repair bill and the base damage it deals.',
   },
   [KEYWORDS.FRAGILE]: {
     key: KEYWORDS.FRAGILE,
     label: 'Fragile',
-    icon: torpedo,
+    icon: fragileIcon,
     description: 'Can never be repaired: if a battle leaves it below 90% HP it is destroyed outright, with no 80–90% repair window. Overrides Scrappy. Airships always have it.',
   },
   [KEYWORDS.STEALTHY]: {
     key: KEYWORDS.STEALTHY,
     label: 'Stealthy',
-    icon: crosshair,
+    icon: stealthyIcon,
     description: 'When your opponent declares a fleet attack that includes this vehicle, you may pull it back out of the defending selection.',
   },
   [KEYWORDS.MOBILE]: {
     key: KEYWORDS.MOBILE,
     label: 'Mobile',
-    icon: tire,
+    icon: mobileIcon,
     description: 'You may move it to another legal zone once per turn. The move is free and does not activate either zone.',
   },
   [KEYWORDS.ROBOTIC]: {
     key: KEYWORDS.ROBOTIC,
     label: 'Robotic',
-    icon: tire2,
+    icon: roboticIcon,
     description: 'A battle-conduct rule for the spawn sheet: unlimited in-battle repair resources, but treat it as destroyed if any of its sub-objects are destroyed.',
   },
   [KEYWORDS.UPKEEP_REQUIRED]: {
     key: KEYWORDS.UPKEEP_REQUIRED,
     label: 'Upkeep Required',
-    icon: iron,
+    icon: upkeepIcon,
     description: 'At the start of each of your turns, this vehicle takes 15% of its material cost out of that turn’s income before you spend anything. A Half-Cost vehicle pays 15% of its halved cost. It costs nothing on the turn you deploy it, and nothing at all once it leaves the board.',
   },
   [KEYWORDS.SWIFT]: {
     key: KEYWORDS.SWIFT,
     label: 'Swift',
-    icon: plane2,
+    icon: swiftIcon,
     description: 'May attack the enemy base on the turn it is played — the usual one-turn deploy delay does not apply. Blockers still stop it, and the zone still activates only once.',
   },
   [KEYWORDS.DECOY]: {
     key: KEYWORDS.DECOY,
     label: 'Decoy',
-    icon: iron2,
+    icon: decoyIcon,
     description: 'Enemy card effects that could target this vehicle must target it instead of another vehicle in its zone. It only redirects: an effect this vehicle is not a legal target of is unaffected.',
   },
 }
@@ -184,7 +189,10 @@ export function keywordIcon(keyword: string): string | null {
   return KEYWORD_INFO[keyword]?.icon ?? null
 }
 
-/** Art for a vehicle type; abilities and unknown types get the generic anchor. */
+/**
+ * The small icon for a vehicle type (board chip, details list); unknown types
+ * get the generic anchor. A card's picture is not this: see cardImageOrFallback.
+ */
 export function vehicleTypeIcon(vehicleType: string | null): string {
   return VEHICLE_TYPE_INFO[vehicleType ?? '']?.icon ?? anchorIcon
 }
@@ -209,7 +217,7 @@ export function chargeAttributesOf(meta: Record<string, unknown>): Attribute[] {
     // meaningful once we know the hull actually stores charge.
     const rate = chargeRateOf(card)
     rows.push({
-      key: 'charge', label: `Charge ${max}`, icon: spark,
+      key: 'charge', label: `Charge ${max}`, icon: chargeIcon,
       description:
         `Stores up to ${max} charge. It gains ${rate} charge at the start of each of your turns`
         + `${rate === CHARGE_TICK ? ', ' : ` — faster than the usual ${CHARGE_TICK} — `}up to that cap. `
@@ -221,7 +229,7 @@ export function chargeAttributesOf(meta: Record<string, unknown>): Attribute[] {
   const relay = chargeRelayOf(card)
   if (relay > 0) {
     rows.push({
-      key: 'chargeRelay', label: `Charge Relay ${relay}`, icon: spark,
+      key: 'chargeRelay', label: `Charge Relay ${relay}`, icon: chargeRelayIcon,
       description:
         `At the start of your turn, every other friendly vehicle in this zone gains ${relay} charge on top `
         + 'of its own. Relays do not stack — a second one in the same zone adds nothing — and a relay '
@@ -232,7 +240,7 @@ export function chargeAttributesOf(meta: Record<string, unknown>): Attribute[] {
   const gate = chargeGateOf(card)
   if (gate > 0) {
     rows.push({
-      key: 'requiresCharge', label: `Drain ${gate} Charge`, icon: spark,
+      key: 'requiresCharge', label: `Drain ${gate} Charge`, icon: drainIcon,
       description:
         `Playing this drains ${gate} charge from the LH vehicles you control. Take it from any of them, `
         + 'in any zone — you choose how much each gives up as you play it. You need '
@@ -243,7 +251,7 @@ export function chargeAttributesOf(meta: Record<string, unknown>): Attribute[] {
   const discharge = dischargeCostOf(card)
   if (discharge !== null) {
     rows.push({
-      key: 'discharge', label: `Discharge ${discharge}`, icon: spark,
+      key: 'discharge', label: `Discharge ${discharge}`, icon: dischargeIcon,
       description:
         `Using its ability spends ${discharge} charge from this vehicle alone — charge held by your other `
         + 'vehicles cannot help pay, however much of it you have. It also spends this vehicle’s '
@@ -254,7 +262,7 @@ export function chargeAttributesOf(meta: Record<string, unknown>): Attribute[] {
   const from = dischargeFromOf(card)
   if (from !== null) {
     rows.push({
-      key: 'dischargeFrom', label: `Discharge ${from} from a friendly LH vehicle`, icon: spark,
+      key: 'dischargeFrom', label: `Discharge ${from} from a friendly LH vehicle`, icon: dischargeFromIcon,
       description:
         `Playing this spends ${from} charge from one friendly LH vehicle you choose. That single vehicle `
         + `must hold all ${from} — you cannot split the cost across several — and it spends its `

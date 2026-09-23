@@ -388,8 +388,9 @@ async function burnRound() {
   step('the repair was free (no materials left the owner at resolve)',
     after.resources[aSide].materials === beforeDecide.resources[aSide].materials,
     `materials ${beforeDecide.resources[aSide].materials} -> ${after.resources[aSide].materials}`)
-  step('Bull Shark shelled the enemy base for 200 HP after surviving an offensive win',
-    zoneOf(after, 1).baseHp[bSide] === zoneOf(beforeDecide, 1).baseHp[bSide] - 200,
+  // 300 since the 2026-09-22 hotfix (200 when this pass shipped).
+  step('Bull Shark shelled the enemy base for 300 HP after surviving an offensive win',
+    zoneOf(after, 1).baseHp[bSide] === zoneOf(beforeDecide, 1).baseHp[bSide] - 300,
     `enemy base ${zoneOf(beforeDecide, 1).baseHp[bSide]} -> ${zoneOf(after, 1).baseHp[bSide]}`)
   const handAfter = await g.hand(p1)
   step('Sacrilego survived, so every SS ship in hand is 30k cheaper',

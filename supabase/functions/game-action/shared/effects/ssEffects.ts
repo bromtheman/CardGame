@@ -750,7 +750,7 @@ registerCostModifier('tyrCostModifier', (_state, _side, card, turnNumber) => {
   return Math.max(decay, -Math.max(0, card.materialCost - TYR_MIN_COST))
 })
 
-// "Whenever this survives an offensive fleet battle, deal 200k damage to enemy
+// "Whenever this survives an offensive fleet battle, deal 300k damage to enemy
 // base in this zone." vengefulBattle (tgEffects.ts) is the worked example,
 // including the checkVictory call — this is a route to a base reaching 0 that
 // ATTACK_ENEMY_BASE's own call cannot cover.
@@ -759,7 +759,7 @@ registerCostModifier('tyrCostModifier', (_state, _side, card, turnNumber) => {
 // from TWO places: dispatchBattleResolve (a real battle) and
 // dispatchBaseAttackVictory (a bombardment, phase 'baseAttack' — Plunderer's
 // other half, spec §4.3 DP2 departure 5). A bombardment is not a fleet battle,
-// so without `phase === 'resolve'` this would add 200 HP to every base attack
+// so without `phase === 'resolve'` this would add 300 HP to every base attack
 // Bull Shark took part in.
 //
 // `!isDefender` is the word "offensive". `won` needs no gate: this key is

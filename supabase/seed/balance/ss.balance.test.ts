@@ -56,10 +56,11 @@ const CARDS: Record<string, Expected> = {
     keywords: ['blocker', 'subScreen'], vehicleType: 'ship',
     cardText: 'While you have less resources than this costs, you may play it with HALFCOST and INOFFENSIVE',
   },
+  // 2026-09-22 hotfix: 200k → 300k.
   'SS:Bull Shark': {
     materialCost: 640_000, blueprintCost: 898_000,
     keywords: ['blocker', 'subScreen'], vehicleType: 'ship',
-    cardText: 'Whenever this survives an offensive fleet battle, deal 200k damage to enemy base in this zone',
+    cardText: 'Whenever this survives an offensive fleet battle, deal 300k damage to enemy base in this zone',
   },
   // An ability, so vehicleType null. cpCost 2 — the card buys itself with CP,
   // not with resources it is itself printing.

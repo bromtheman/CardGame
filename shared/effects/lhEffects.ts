@@ -12,7 +12,7 @@ import {
 } from './primitives.ts'
 import type { EffectFn, EffectPayload } from './registry.ts'
 import { registerEffect } from './registry.ts'
-import { findVehicle, grantKeywordsTo, otherSide, putInHand, revokeKeywordsFrom } from '../engine/gameEngine.ts'
+import { findVehicle, grantKeywordsTo, otherSide, putInHand, revokeKeywordsFrom, zoneById } from '../engine/gameEngine.ts'
 import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
 import { isStunned, stunHull } from '../engine/stun.ts'
 import type { EngineGame, Side, ZoneCardEntry } from '../engine/engineTypes.ts'
@@ -431,6 +431,40 @@ registerEffect('wattOnPlay', (payload) => {
 // two cards share a registry name, however small the implementation
 // (docs/claude/card-effects.md, rule 2).
 registerEffect('wattDraw', grant({ draw: 1 }))
+
+// 2026-09-23, the draw amendment's second round: two solid hulls draw as they
+// land, and Feedback Loop turns a lane's discharges into cards.
+// Kilowatt and Megawatt — "When played, draw a card." Snapshots dealt before
+// the deploy name no onPlayEffect and stay vanilla.
+registerEffect('kilowattOnPlay', grant({ draw: 1 }))
+registerEffect('megawattOnPlay', grant({ draw: 1 }))
+
+// Feedback Loop — "Choose a zone. This turn, whenever a friendly LH vehicle in
+// that zone discharges, draw a card." Claims an Ambush-shaped rider that
+// expires at this player's END_TURN; the draw itself is a plain rule the two
+// discharge paths read off data.dischargeDraw (gameEngine.ts drawOnDischarge).
+// A second copy on a zone it already runs in is refused rather than spent on
+// a no-op, since it does not stack.
+const FEEDBACK_LOOP = 'feedbackLoopEffect'
+registerEffect(FEEDBACK_LOOP, ({ game, actor, card, targetZoneId, battle }) => {
+  // A standing rider is re-dispatched by battle lock, bombardment and
+  // interception in its zone (battleTriggers.ts); none of those is a discharge.
+  if (battle) return true
+  if (typeof targetZoneId !== 'number' || !zoneById(game.state, targetZoneId)) return false
+  const running = game.state.zoneEffects.some(
+    (e) => e.effect === FEEDBACK_LOOP && e.zoneId === targetZoneId && e.side === actor,
+  )
+  if (running) return false
+  game.state.zoneEffects.push({
+    effect: FEEDBACK_LOOP, zoneId: targetZoneId, side: actor, cardName: card.name,
+    setOnTurn: game.turnNumber, expiresOnTurn: game.turnNumber,
+    data: { dischargeDraw: true },
+  })
+  game.state.log.push(
+    `Player ${actor.toUpperCase()} runs ${card.name} in zone ${targetZoneId} — every LH discharge there this turn draws a card`,
+  )
+  return true
+})
 
 // Volta — "When played, a friendly LH vehicle in this zone gains 1 charge."
 // The player picks (R-3): which timer to accelerate is the whole decision.

@@ -42,11 +42,12 @@ export const ONGOING_ATTRITION_DAMAGE_PER_VEHICLE = 40_000
 // BASE_DAMAGE_DIVISOR: 40k is 40 HP of a default 2000.
 export const VENGEFUL_BASE_DAMAGE = 40_000
 
-// SS Bull Shark: "deal 200k damage to enemy base in this zone". Its OWN
-// constant, for the reason VENGEFUL_BASE_DAMAGE's comment records above — two
-// figures that are equal by coincidence must not share one. Materials, so it
-// converts through BASE_DAMAGE_DIVISOR: 200k is 200 HP of a default 2000.
-export const BULL_SHARK_BASE_DAMAGE = 200_000
+// SS Bull Shark: "deal 300k damage to enemy base in this zone" (200k until the
+// 2026-09-22 owner hotfix). Its OWN constant, for the reason
+// VENGEFUL_BASE_DAMAGE's comment records above — two figures that are equal by
+// coincidence must not share one. Materials, so it converts through
+// BASE_DAMAGE_DIVISOR: 300k is 300 HP of a default 2000.
+export const BULL_SHARK_BASE_DAMAGE = 300_000
 
 // Ambush: "position your ships 600m closer to the enemy". Its own constant
 // rather than a reuse of the hero power's: the two are equal by coincidence,
@@ -307,6 +308,9 @@ export const WATT_PLAY_CHARGE = 1
 // Data Burst: "Discharge 2 from a friendly LH vehicle: draw 2 cards." Its own
 // constant, not EXCRUCIATOR_DRAW_COUNT's, which it equals only by coincidence.
 export const DATA_BURST_DRAW = 2
+// Feedback Loop (2026-09-23): "This turn, whenever a friendly LH vehicle in
+// that zone discharges, draw a card." Cards per discharge.
+export const FEEDBACK_LOOP_DRAW = 1
 // Stun (spec §3.4): stunned until the end of its owner's next turn. Turn
 // numbers advance in half steps, so 1.0 is exactly one enemy turn when the
 // stun lands on the stunner's own turn — the only case the roster produces.

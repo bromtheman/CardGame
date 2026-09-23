@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="br" gradientUnits="userSpaceOnUse" x1="0" y1="6" x2="0" y2="58">
+      <stop offset="0" stop-color="#f7e08f"/>
+      <stop offset=".55" stop-color="#c9a227"/>
+      <stop offset="1" stop-color="#8a6a12"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(32 32) scale(0.9) translate(-32 -32)">
+    <path d="M18 12H46C46 22 38 27 34.5 32C38 37 46 42 46 52H18C18 42 26 37 29.5 32C26 27 18 22 18 12Z" fill="url(#br)" stroke="#0b1f40" stroke-width="6.22" stroke-linejoin="round" paint-order="stroke"/>
+    <path d="M21.5 15H42.5C42 20.5 38.3 25 35.8 28.2H28.2C25.7 25 22 20.5 21.5 15Z" fill="#0b1f40"/>
+    <path d="M29.8 35C27 38 23 40.5 22 44.5C25.5 42 28.8 40.8 32 40.4C35.2 40.8 38.5 42 42 44.5C41 40.5 37 38 34.2 35Z" fill="#0b1f40"/>
+    <path d="M31.2 33H32.8V41H31.2Z" fill="url(#br)"/>
+    <rect x="13" y="6" width="38" height="7" rx="2.5" fill="url(#br)" stroke="#0b1f40" stroke-width="6.22" stroke-linejoin="round" paint-order="stroke"/>
+    <rect x="13" y="51" width="38" height="7" rx="2.5" fill="url(#br)" stroke="#0b1f40" stroke-width="6.22" stroke-linejoin="round" paint-order="stroke"/>
+  </g>
+</svg>

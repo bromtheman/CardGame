@@ -562,7 +562,7 @@ export const ssVehicles = [
     {
         name: 'Bull Shark',
         isBuiltIn: true,
-        cardText: 'Whenever this survives an offensive fleet battle, deal 200k damage to enemy base in this zone',
+        cardText: 'Whenever this survives an offensive fleet battle, deal 300k damage to enemy base in this zone',
         materialCost: 640000,
         blueprintCost: 898000,
         cpCost: 0,
