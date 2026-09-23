@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest'
 import {
-  applyAction, effectFor, effectiveCostInGame, effectiveMaterialCostOf, legalZonesFor,
+  applyAction, cheapestCostInGame, drainedCostInGame, drainNeedsChoice, effectFor, effectiveCostInGame,
+  effectiveMaterialCostOf, legalZonesFor,
 } from './index'
 import { registerCostModifier, registerEffect } from '../effects/registry.ts'
 import { takeFromEnemyDeck } from '../effects/primitives.ts'
@@ -1791,15 +1792,17 @@ describe('uniquePerZone (wave 8)', () => {
   })
 })
 
-describe('Drain N Charge (2026-09-22 spec §2–§3)', () => {
+describe('Drain as a discount (2026-09-23 spec §2–§3)', () => {
   beforeAll(() => { registerEffect('t_drainHandNoop', () => true) })
+  // Printed 150k with Drain 2: 50k drained (2 × 50k off), 150k at full price.
   const gated = (over: Partial<CardInstance> = {}) => inst({
-    instanceId: 'cap', name: 'Quadrupole', faction: 'LH', materialCost: 40000, meta: { requiresCharge: 2 }, ...over,
+    instanceId: 'cap', name: 'Quadrupole', faction: 'LH', materialCost: 150_000, meta: { requiresCharge: 2 }, ...over,
   })
   const battery = (id: string, charge: number) =>
     zoneEntry({ instanceId: id, name: id, faction: 'LH', meta: { chargeMax: 2 }, charge })
-  const setup = (...cards: CardInstance[]) => {
+  const setup = (materials: number, ...cards: CardInstance[]) => {
     const game = makeGame({ turnNumber: 2, activePlayer: 'alice' })
+    game.state.resources.a.materials = materials
     game.privates.a.hand = cards.length > 0 ? cards : [gated()]
     game.state.counts.a = { hand: game.privates.a.hand.length, deck: 0 }
     return game
@@ -1807,28 +1810,35 @@ describe('Drain N Charge (2026-09-22 spec §2–§3)', () => {
   const hull = (game: EngineGame, zoneIndex: number, i: number) => game.state.zones[zoneIndex].cards.a[i] as ZoneCardEntry
   const play = (game: EngineGame, extra: Record<string, unknown> = {}, instanceId = 'cap') =>
     applyAction(game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId, zoneId: 1, ...extra } as GameAction, makeCtx())
+  const drainLines = (game: EngineGame) => game.state.log.filter((l) => l.includes(' drains '))
 
-  it('refuses the play while the board holds too little, naming both figures', () => {
-    const game = setup()
-    game.state.zones[2].cards.a.push(battery('Chrysoprase', 1))
-    expect(play(game)).toMatchObject({ ok: false, status: 400, error: 'Quadrupole drains 2 charge — your LH vehicles hold 1' })
-  })
-
-  it('spends the split the player chose, across lanes, and logs it before the deploy line', () => {
-    const game = setup()
+  it('drains the split the player chose for N × 50k off, logged before the deploy line', () => {
+    const game = setup(200_000)
     game.state.zones[0].cards.a.push(battery('Chrysoprase', 2))
     game.state.zones[2].cards.a.push(battery('Kilowatt', 2))
     const res = play(game, { chargeFrom: [{ instanceId: 'Kilowatt', amount: 2 }] })
     if (!res.ok) throw new Error(res.error)
     expect(chargeOf(hull(res.game, 0, 0))).toBe(2)
     expect(chargeOf(hull(res.game, 2, 0))).toBe(0)
+    expect(res.game.state.resources.a.materials).toBe(150_000)
     const log = res.game.state.log
-    expect(log.indexOf('Quadrupole drains 2 charge — Kilowatt 2')).toBeGreaterThanOrEqual(0)
-    expect(log.indexOf('Quadrupole drains 2 charge — Kilowatt 2')).toBeLessThan(log.indexOf('Quadrupole deployed to zone 1'))
+    const line = 'Quadrupole drains 2 charge for 100k off — Kilowatt 2'
+    expect(log.indexOf(line)).toBeGreaterThanOrEqual(0)
+    expect(log.indexOf(line)).toBeLessThan(log.indexOf('Quadrupole deployed to zone 1'))
   })
 
-  it('pays the suggested split when the play names none (PracticeAI, a stale client)', () => {
-    const game = setup()
+  it('plays at the printed price with an empty split, draining nothing', () => {
+    const game = setup(200_000)
+    game.state.zones[0].cards.a.push(battery('Chrysoprase', 2))
+    const res = play(game, { chargeFrom: [] })
+    if (!res.ok) throw new Error(res.error)
+    expect(chargeOf(hull(res.game, 0, 0))).toBe(2)
+    expect(res.game.state.resources.a.materials).toBe(50_000)
+    expect(drainLines(res.game)).toEqual([])
+  })
+
+  it('drains the suggested split when the play names none and the board holds N (PracticeAI, a forced split)', () => {
+    const game = setup(200_000)
     game.state.zones[0].cards.a.push(zoneEntry({
       instanceId: 'Umbra', name: 'Umbra', faction: 'LH', meta: { chargeMax: 2, dischargeCost: 2 }, charge: 2,
     }))
@@ -1837,10 +1847,42 @@ describe('Drain N Charge (2026-09-22 spec §2–§3)', () => {
     if (!res.ok) throw new Error(res.error)
     expect(chargeOf(hull(res.game, 0, 0))).toBe(2) // the timer keeps its salvo
     expect(chargeOf(hull(res.game, 1, 0))).toBe(0)
+    expect(res.game.state.resources.a.materials).toBe(150_000)
+  })
+
+  it('pays the printed price when the play names none and the board holds fewer than N — never a blocker', () => {
+    const game = setup(200_000)
+    game.state.zones[2].cards.a.push(battery('Chrysoprase', 1))
+    const res = play(game)
+    if (!res.ok) throw new Error(res.error)
+    expect(chargeOf(hull(res.game, 2, 0))).toBe(1)
+    expect(res.game.state.resources.a.materials).toBe(50_000)
+    expect(drainLines(res.game)).toEqual([])
+  })
+
+  it('plays a card affordable only when drained, and refuses it at full price, spending nothing', () => {
+    const drained = setup(100_000)
+    drained.state.zones[0].cards.a.push(battery('Chrysoprase', 2))
+    const res = play(drained)
+    if (!res.ok) throw new Error(res.error)
+    expect(res.game.state.resources.a.materials).toBe(50_000)
+    const full = setup(100_000)
+    full.state.zones[0].cards.a.push(battery('Chrysoprase', 2))
+    expect(play(full, { chargeFrom: [] })).toMatchObject({ ok: false, status: 400, error: 'You cannot afford that card' })
+    expect(chargeOf(hull(full, 0, 0))).toBe(2)
+    expect(full.privates.a.hand).toHaveLength(1)
+  })
+
+  it('refuses a card affordable in neither mode, and spends nothing', () => {
+    const game = setup(40_000)
+    game.state.zones[0].cards.a.push(battery('Chrysoprase', 2))
+    expect(play(game)).toMatchObject({ ok: false, status: 400, error: 'You cannot afford that card' })
+    expect(chargeOf(hull(game, 0, 0))).toBe(2)
+    expect(game.privates.a.hand).toHaveLength(1)
   })
 
   it('leaves a payer’s activation alone, so it may still discharge this turn', () => {
-    const game = setup()
+    const game = setup(200_000)
     game.state.zones[0].cards.a.push(battery('Chrysoprase', 2))
     const res = play(game)
     if (!res.ok) throw new Error(res.error)
@@ -1854,7 +1896,7 @@ describe('Drain N Charge (2026-09-22 spec §2–§3)', () => {
       [[{ instanceId: 'Theirs', amount: 2 }], 'That charge source is not one of your LH vehicles on the board'],
     ]
     for (const [chargeFrom, error] of cases) {
-      const game = setup()
+      const game = setup(200_000)
       game.state.zones[0].cards.a.push(battery('Chrysoprase', 2))
       game.state.zones[0].cards.b.push(battery('Theirs', 2))
       expect(play(game, { chargeFrom })).toMatchObject({ ok: false, status: 400, error })
@@ -1864,39 +1906,86 @@ describe('Drain N Charge (2026-09-22 spec §2–§3)', () => {
   })
 
   it('refuses a split sent with a card that drains nothing', () => {
-    const game = setup(inst({ instanceId: 'plain', name: 'Kilowatt', faction: 'LH', materialCost: 40000 }))
+    const game = setup(200_000, inst({ instanceId: 'plain', name: 'Kilowatt', faction: 'LH', materialCost: 40000 }))
     game.state.zones[0].cards.a.push(battery('Chrysoprase', 2))
     expect(play(game, { chargeFrom: [{ instanceId: 'Chrysoprase', amount: 1 }] }, 'plain'))
       .toMatchObject({ ok: false, status: 400, error: 'Kilowatt drains no charge' })
   })
 
-  it('makes a second Drain card in the same turn find its own pips', () => {
-    const game = setup(gated(), gated({ instanceId: 'cap2' }))
+  it('makes a second Drain card in the same turn find its own pips, or pay full price', () => {
+    const game = setup(400_000, gated(), gated({ instanceId: 'cap2' }))
     game.state.zones[0].cards.a.push(battery('Chrysoprase', 2), battery('Kilowatt', 1))
     const first = play(game)
     if (!first.ok) throw new Error(first.error)
-    expect(play(first.game, {}, 'cap2'))
-      .toMatchObject({ ok: false, status: 400, error: 'Quadrupole drains 2 charge — your LH vehicles hold 1' })
+    expect(first.game.state.resources.a.materials).toBe(350_000) // drained: 50k
+    const second = play(first.game, {}, 'cap2')
+    if (!second.ok) throw new Error(second.error)
+    expect(second.game.state.resources.a.materials).toBe(200_000) // one pip left: full 150k
+    expect(chargeOf(hull(second.game, 0, 1))).toBe(1)
   })
 
   // No LH card deploys through PLAY_CARD_TARGETING_CARD_IN_HAND; a synthetic
-  // one pins that Excalibur's path is not a way around the Drain.
-  it('gates and drains a vehicle deployed through Excalibur’s path too', () => {
+  // one pins that Excalibur's path follows the same rule with no split named.
+  it('prices a vehicle deployed through Excalibur’s path the same way', () => {
     const excalibur = () => [
       gated({ meta: { requiresCharge: 2, playOnCardEffect: 't_drainHandNoop' } }),
       inst({ instanceId: 'other' }),
     ]
     const action = { type: 'PLAY_CARD_TARGETING_CARD_IN_HAND', instanceId: 'cap', targetInstanceId: 'other', zoneId: 1 } as GameAction
-    const short = setup(...excalibur())
+    const short = setup(200_000, ...excalibur())
     short.state.zones[0].cards.a.push(battery('Chrysoprase', 1))
-    expect(applyAction(short, 'alice', action, makeCtx()))
-      .toMatchObject({ ok: false, status: 400, error: 'Quadrupole drains 2 charge — your LH vehicles hold 1' })
-    const game = setup(...excalibur())
+    const full = applyAction(short, 'alice', action, makeCtx())
+    if (!full.ok) throw new Error(full.error)
+    expect(full.game.state.resources.a.materials).toBe(50_000)
+    expect(chargeOf(hull(full.game, 0, 0))).toBe(1)
+    const game = setup(200_000, ...excalibur())
     game.state.zones[0].cards.a.push(battery('Chrysoprase', 2))
     const res = applyAction(game, 'alice', action, makeCtx())
     if (!res.ok) throw new Error(res.error)
     expect(chargeOf(hull(res.game, 0, 0))).toBe(0)
-    expect(res.game.state.log).toContain('Quadrupole drains 2 charge — Chrysoprase 2')
+    expect(res.game.state.resources.a.materials).toBe(150_000)
+    expect(res.game.state.log).toContain('Quadrupole drains 2 charge for 100k off — Chrysoprase 2')
+  })
+})
+
+describe('Drain prices — drainedCostInGame, cheapestCostInGame, drainNeedsChoice (2026-09-23 spec §3–§4)', () => {
+  const battery = (id: string, charge: number) =>
+    zoneEntry({ instanceId: id, name: id, faction: 'LH', meta: { chargeMax: 2 }, charge })
+  const card = (materialCost: number, requiresCharge?: number, cpCost = 0) =>
+    inst({ name: 'Quadrupole', faction: 'LH', materialCost, cpCost, meta: requiresCharge ? { requiresCharge } : {} })
+  const board = (materials: number, ...charges: number[]) => {
+    const game = makeGame()
+    game.state.resources.a.materials = materials
+    charges.forEach((c, i) => game.state.zones[0].cards.a.push(battery(`b${i}`, c)))
+    return game.state
+  }
+
+  it('takes N × 50k off, last and never below zero', () => {
+    const state = board(0)
+    expect(drainedCostInGame(state, 'a', card(660_000, 2), 2)).toBe(560_000)
+    expect(drainedCostInGame(state, 'a', card(950_000, 4), 2)).toBe(750_000)
+    expect(drainedCostInGame(state, 'a', card(60_000, 2), 2)).toBe(0)
+    expect(drainedCostInGame(state, 'a', card(60_000), 2)).toBe(60_000)
+  })
+
+  it('shows the drained price only when the board holds N', () => {
+    expect(cheapestCostInGame(board(0, 2), 'a', card(660_000, 2), 2)).toBe(560_000)
+    expect(cheapestCostInGame(board(0, 1), 'a', card(660_000, 2), 2)).toBe(660_000)
+    expect(cheapestCostInGame(board(0, 2), 'a', card(660_000), 2)).toBe(660_000)
+  })
+
+  it('asks only when a drained play is affordable and something is left to choose', () => {
+    // Both prices affordable and one way to drain: drain-or-keep is the choice.
+    expect(drainNeedsChoice(board(700_000, 2), 'a', card(660_000, 2), 2)).toBe(true)
+    // Only the drained price affordable and one way to drain: nothing to ask.
+    expect(drainNeedsChoice(board(600_000, 2), 'a', card(660_000, 2), 2)).toBe(false)
+    // Only the drained price affordable but several ways to drain: ask for the split.
+    expect(drainNeedsChoice(board(600_000, 2, 1), 'a', card(660_000, 2), 2)).toBe(true)
+    // Neither affordable, too few pips, no Drain, or CP short: send, and the server says why.
+    expect(drainNeedsChoice(board(500_000, 2, 1), 'a', card(660_000, 2), 2)).toBe(false)
+    expect(drainNeedsChoice(board(700_000, 1), 'a', card(660_000, 2), 2)).toBe(false)
+    expect(drainNeedsChoice(board(700_000, 2, 1), 'a', card(660_000), 2)).toBe(false)
+    expect(drainNeedsChoice(board(700_000, 2, 1), 'a', card(660_000, 2, 9), 2)).toBe(false)
   })
 })
 

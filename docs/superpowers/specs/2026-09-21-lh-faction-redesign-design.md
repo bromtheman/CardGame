@@ -103,6 +103,9 @@ timed disable in the game.
 > replaces this section. As first written the gate was checked and never
 > spent; it is now also a cost, and every gate dropped by 1.
 
+> **Amended again 2026-09-23.** [2026-09-23-lh-drain-discount-design.md](2026-09-23-lh-drain-discount-design.md):
+> Drain is a discount, never a gate — drain all N pips for N × 50k off, or pay the printed price.
+
 `meta.requiresCharge: N` (the key keeps its name) is printed **"Drain N
 Charge"**. It is a play precondition, checked alongside cost: the **sum of
 `charge` over the player's LH hulls in every lane** must be ≥ N. "LH"
