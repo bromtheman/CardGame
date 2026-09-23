@@ -212,7 +212,10 @@ Taken card by card on 2026-09-21; binding.
 
 - **R-1 Byte draws on discharge, not on play.** The faction's cantrip is slower
   than Earth Raker/Rook and stronger over time; a Byte that lives is a card a
-  turn. Standard empty-deck rule applies.
+  turn. Standard empty-deck rule applies. **Overturned 2026-09-22**
+  ([draw amendment](2026-09-22-lh-draw-design.md)): Byte gains 1 charge when
+  played, so its draw can fire the turn it lands, and Faraday and Data Burst
+  join the roster.
 - **R-2 Chrysoprase and Watt have no Blocker.** A 40k or 90k Blocker would stall
   every turn-1 bombardment; Kilowatt at 180k is the cheapest wall, in line with
   Iron Maiden (150k) and Paddlegun (180k).
@@ -284,6 +287,8 @@ Taken card by card on 2026-09-21; binding.
 ## 5. The roster
 
 Costs are printed card costs; the FtD figure is the report's material cost.
+Byte's text, Faraday and Data Burst are as amended by the
+[2026-09-22 draw amendment](2026-09-22-lh-draw-design.md).
 Drain figures are as amended on 2026-09-22 (every gate one lower than first
 printed; [amendment](2026-09-22-lh-drain-charge-design.md) §6).
 Every vehicle is a report craft, so `shipProfiles.test.ts`'s demand for a
@@ -293,7 +298,7 @@ profile per non-retired LH vehicle is met by importing the report (§8).
 
 | Card | Type · cost (FtD) | ⚡ | Keywords | Text |
 |---|---|---|---|---|
-| Byte | ship · 40k (43k) | 1 | Mobile | Discharge 1: draw a card. |
+| Byte | ship · 40k (43k) | 1 | Mobile | When played, this gains 1 charge. Discharge 1: draw a card. |
 | Chrysoprase | ship · 40k (40k) | 2 | Scrappy | — |
 | Volta | ship · 40k (37k) | 1 | Fragile | When played, a friendly LH vehicle in this zone gains 1 charge. |
 | Conduit | ship · 70k (54k) | — | Inoffensive, Scrappy | Relay: at the start of your turn, other friendly LH vehicles in this zone gain 1 additional charge. This does not stack. |
@@ -305,6 +310,7 @@ profile per non-retired LH vehicle is met by importing the report (§8).
 
 | Card | Type · cost (FtD) | ⚡ | Keywords | Text |
 |---|---|---|---|---|
+| Faraday | airship · 140k (142k) | 2 | Mobile | When played, draw a card. |
 | Umbra | sub · 150k (148k) | 2 | Stealthy | Discharge 2: deal 150k damage to the enemy base in this zone, then this surfaces — it loses Stealthy for the rest of the game. |
 | Kilowatt | ship · 180k (181k) | 2 | Blocker | — |
 | Ampere | ship · 200k (207k) | 2 | Mobile | When played, stun target enemy vehicle in this zone. |
@@ -336,11 +342,12 @@ profile per non-retired LH vehicle is met by importing the report (§8).
 | Overcharge | 0k + 1 CP | Target friendly LH vehicle gains 2 charge. |
 | Afterburner | 50k | Discharge 2 from a friendly LH vehicle: a friendly LH vehicle played this turn in that zone may attack the base this turn. |
 | Extended Sortie | 100k | Discharge 2 from a friendly LH vehicle: a friendly LH plane in that zone loses Temporary. |
+| Data Burst | 50k | Discharge 2 from a friendly LH vehicle: draw 2 cards. |
 
 ### 5.5 Shape checks
 
 - Stun sources 3; beams 3 (150/300/400); 1v1 hulls 2; Swift 2 + Afterburner;
-  Blockers 7; Sub Screens 3, Air Screen 1; fliers 6 against the 6-copy limit;
+  Blockers 7; Sub Screens 3, Air Screen 1; fliers 7 with Faraday (2026-09-22) against the 6-copy limit;
   subs 3; timers static, walls and raiders Mobile.
 - Curve: 40k pickets on turn 1; Conduit/Dipole 70k; Watt 90k turn 2; Umbra turn
   2; Kilowatt/Ampere/Eclipse turn 3; Hydrovolt turn 4; Dynamo/Megawatt/Penumbra

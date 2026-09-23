@@ -475,7 +475,7 @@ export const lhVehicles = [
     {
         name: 'Byte',
         isBuiltIn: true,
-        cardText: 'Discharge 1: draw a card.',
+        cardText: 'When played, this gains 1 charge. Discharge 1: draw a card.',
         materialCost: 40000,
         blueprintCost: 43301,
         cpCost: 0,
@@ -488,7 +488,30 @@ export const lhVehicles = [
         keywords: [KEYWORDS.MOBILE],
         // An activated ability needs onActivate AND a price; the CP price of 0
         // keeps BoardZone's button gate and the bot menu in step (spec §3.2).
-        meta: { chargeMax: 1, [TRIGGERS.ON_ACTIVATE]: 'byteDraw', activateCpCost: 0, dischargeCost: 1 },
+        // 2026-09-22 draw amendment: it enters with its pip, so the draw can
+        // fire the turn it lands (overturns R-1's "draws on discharge, not on play").
+        meta: {
+            chargeMax: 1, [TRIGGERS.ON_PLAY]: 'byteChargeOnPlay',
+            [TRIGGERS.ON_ACTIVATE]: 'byteDraw', activateCpCost: 0, dischargeCost: 1,
+        },
+    },
+    {
+        // 2026-09-22 draw amendment: the report's radar-heavy hover-boat
+        // (141,825), an airship by R-5, and LH's draw-on-play card.
+        name: 'Faraday',
+        isBuiltIn: true,
+        cardText: 'When played, draw a card.',
+        materialCost: 140000,
+        blueprintCost: 141825,
+        cpCost: 0,
+        imageUrl: 'faraday.png',
+        playerId: null,
+        vehicleType: VEHICLE_TYPES.AIRSHIP,
+        type: 'vehicle',
+        faction: FACTIONS.LH,
+        blueprintId: null,
+        keywords: [KEYWORDS.MOBILE],
+        meta: { chargeMax: 2, [TRIGGERS.ON_PLAY]: 'faradayOnPlay' },
     },
     {
         name: 'Volta',
@@ -693,6 +716,22 @@ export const lhVehicles = [
         faction: FACTIONS.LH,
         blueprintId: null,
         meta: { [TRIGGERS.PLAY_ON_VEHICLE]: 'extendedSortieEffect', dischargeFrom: 2 },
+    },
+    {
+        // 2026-09-22 draw amendment: charge into cards.
+        name: 'Data Burst',
+        isBuiltIn: true,
+        cardText: 'Discharge 2 from a friendly LH vehicle: draw 2 cards.',
+        materialCost: 50000,
+        blueprintCost: 0,
+        cpCost: 0,
+        imageUrl: 'dataBurst.png',
+        playerId: null,
+        vehicleType: null,
+        type: 'ability',
+        faction: FACTIONS.LH,
+        blueprintId: null,
+        meta: { [TRIGGERS.PLAY_ON_VEHICLE]: 'dataBurstEffect', dischargeFrom: 2 },
     },
 
 ];

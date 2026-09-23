@@ -125,25 +125,28 @@ export const BOT_DECKS: Record<BotFaction, Record<string, number>> = {
     'Wonder': 1,
   },
   // 2026-09-21 LH redesign. Curated for the bot: batteries it can protect,
-  // three Blockers, one timer, one beam, and the two ability cards whose
-  // second pick the policy aims by trial. No Drain capitals — a greedy bot
-  // would hold them all game.
+  // three Blockers, one timer, one beam, and the ability cards the policy
+  // aims by trial. No Drain capitals — a greedy bot would hold them all game.
+  // 2026-09-22 draw amendment: Faraday ×2 and Data Burst ×2 came in for both
+  // Watts, Megawatt and the second Kilowatt — none of them named in the LH
+  // strategy notes (factionNotes.ts), which pin every card they name to this
+  // list. Fliers 3 of 6.
   LH: {
     'Chrysoprase': 2,
     'Byte': 2,
     'Volta': 1,
     'Conduit': 1,
-    'Watt': 2,
     'Dipole': 1,
+    'Faraday': 2,
     'Umbra': 1,
-    'Kilowatt': 2,
+    'Kilowatt': 1,
     'Ampere': 1,
     'Eclipse': 1,
     'Hydrovolt': 1,
-    'Megawatt': 1,
     'Penumbra': 1,
     'Angstrom': 1,
     'EMP Salvo': 1,
     'Overcharge': 1,
+    'Data Burst': 2,
   },
 }

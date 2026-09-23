@@ -290,6 +290,12 @@ export const TERAWATT_TRANSFER_CHARGE = 2
 export const OVERCHARGE_CHARGE = 2
 // Surge (LH hero power): "Every friendly LH vehicle gains 1 charge."
 export const SURGE_CHARGE = 1
+// 2026-09-22 LH draw amendment. Byte: "When played, this gains 1 charge." —
+// its Discharge 1 draw can fire the turn it lands, or the pip can pay a Drain.
+export const BYTE_PLAY_CHARGE = 1
+// Data Burst: "Discharge 2 from a friendly LH vehicle: draw 2 cards." Its own
+// constant, not EXCRUCIATOR_DRAW_COUNT's, which it equals only by coincidence.
+export const DATA_BURST_DRAW = 2
 // Stun (spec §3.4): stunned until the end of its owner's next turn. Turn
 // numbers advance in half steps, so 1.0 is exactly one enemy turn when the
 // stun lands on the stunner's own turn — the only case the roster produces.

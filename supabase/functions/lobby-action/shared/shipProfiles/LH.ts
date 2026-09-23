@@ -1204,6 +1204,58 @@ export const LH_SHIP_PROFILES: Record<string, ShipProfile> = {
     "verdict": "balanced",
     "verdictDetail": "Firepower 1.09× and toughness 0.98× the per-material median for its price."
   },
+  "LH:Faraday": {
+    "role": "plasma hover-boat with torpedoes",
+    "strength": 1511,
+    "rank": 19,
+    "type": "Hover-boat (game class: thruster craft, probable) with two plasma cannons, ten EMP missiles and two torpedoes. 44 m long, 35 m wide, 1,880 blocks.",
+    "speed": "81.3 m/s (158 kn) — fast; flies at up to 179 m.",
+    "fightsAt": "1,000 m.",
+    "sees": "Three radar 90s, two radar trackers and a passive radar, cameras, infrared cameras, two laser rangefinders, a rangefinder, 11 missile warners, a radio snooper. No sonar.",
+    "summary": "Leans glass. A third more firepower than its price class, 60 % of the toughness.",
+    "scores": {
+      "firepower": {
+        "score": 3,
+        "why": "55th percentile — 55 % plasma, 45 % missiles"
+      },
+      "toughness": {
+        "score": 2,
+        "why": "37th percentile; 30th among craft of its price"
+      },
+      "speed": {
+        "score": 4,
+        "why": "75th percentile"
+      },
+      "range": {
+        "score": 2,
+        "why": "32nd percentile"
+      },
+      "cost": {
+        "score": 3,
+        "why": "49th percentile"
+      }
+    },
+    "matchups": {
+      "ships": {
+        "score": 3,
+        "why": "two plasma cannons, six EMP-and-frag and four EMP missiles, two sonar torpedoes"
+      },
+      "aircraft": {
+        "score": 2,
+        "why": "fixed plasma mantlets and ten radar-guided missiles; designers 1×"
+      },
+      "submarines": {
+        "score": 1,
+        "why": "two sonar torpedoes but no sonar to find a target with"
+      },
+      "missiles": {
+        "score": 2,
+        "why": "9 interceptors, 2 shields, 2 smoke, chaff, a jammer, 11 warners"
+      }
+    },
+    "verdict": "leans glass cannon",
+    "verdictDetail": "Firepower 1.29× and toughness 0.61× the per-material median for its price."
+  },
   "LH:Quadrupole": {
     "role": "flying plasma battleship",
     "strength": 6451,
