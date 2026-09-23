@@ -136,8 +136,10 @@ export const BOT_DECKS: Record<BotFaction, Record<string, number>> = {
   // 2026-09-22 hovercraft amendment: Byte retired, so both Watts came back
   // (Byte's draw moved to them); Anode replaced the retired Hydrovolt. Still
   // twenty cards, fliers 3 of 6 — a spawned Luxon is not a deck card.
+  // 2026-09-23 EMP Torpedo amendment: EMP Torpedo in for the second Chrysoprase
+  // — LH's answer to a sub that locks down a lane. Still 20 cards; fliers 3 of 6.
   LH: {
-    'Chrysoprase': 2,
+    'Chrysoprase': 1,
     'Watt': 2,
     'Volta': 1,
     'Conduit': 1,
@@ -154,5 +156,6 @@ export const BOT_DECKS: Record<BotFaction, Record<string, number>> = {
     'EMP Salvo': 1,
     'Overcharge': 1,
     'Data Burst': 1,
+    'EMP Torpedo': 1,
   },
 }
