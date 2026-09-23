@@ -346,7 +346,7 @@ profile per non-retired LH vehicle is met by importing the report (§8).
 
 | Card | Type · cost (FtD) | ⚡ | Keywords | Text |
 |---|---|---|---|---|
-| Angstrom | hover · 540k (546k) | 2 | Blocker, Air Screen, Mobile | — |
+| Angstrom | ship · 540k (546k) | 2 | Blocker, Air Screen, Mobile | — |
 | Quadrupole | airship · 560k (685k) | 2 | Blocker, Mobile | Drain 2 Charge. |
 | Cathode | sub · 600k (726k) | 2 | Stealthy, Sub Screen | Drain 2 Charge. Discharge 2: this vehicle fights a 1v1 against target enemy ship or submarine in this zone, then this surfaces — it loses Stealthy for the rest of the game. |
 | Superradiance | ship · 620k (626k) | 3 | — | Discharge 3: deal 300k damage to the enemy base in this zone. |
