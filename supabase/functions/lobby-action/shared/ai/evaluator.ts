@@ -23,7 +23,12 @@ export const EVALUATOR = {
   hand: 0.1,           // per card in the bot's hand
   baseHp: 0.0005,      // per HP of base advantage (1000 HP = half a turn)
   win: 1000,           // a decided game
-  charge: 0.15,        // per pip of charge advantage — a fraction of a discharge's tempo (2026-09-21 LH)
+  // Per pip of charge advantage — a fraction of a discharge's tempo (2026-09-21
+  // LH). Kept under half of `hand` (2026-09-22 draw amendment): at 0.15 a pip
+  // outweighed a card, so the bot never discharged Byte for its draw, and at
+  // exactly half, Data Burst's two pips for two cards (one of them its own
+  // slot back) scored zero and lost to END TURN.
+  charge: 0.04,
 } as const
 
 // Base damage a set of hulls deals per bombardment: applies the engine's

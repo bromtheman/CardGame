@@ -45,10 +45,17 @@ export const CARDS: Record<string, Expected> = {
     cardText: 'Relay: at the start of your turn, other friendly LH vehicles in this zone gain 1 additional charge. This does not stack.',
     meta: { chargeRelay: 1 },
   },
+  // Byte, Faraday and Data Burst as amended by the 2026-09-22 draw amendment
+  // (docs/superpowers/specs/2026-09-22-lh-draw-design.md).
   'LH:Byte': {
     materialCost: 40_000, blueprintCost: 43_301, cpCost: 0, keywords: ['mobile'], vehicleType: 'ship',
-    cardText: 'Discharge 1: draw a card.',
-    meta: { chargeMax: 1, onActivate: 'byteDraw', activateCpCost: 0, dischargeCost: 1 },
+    cardText: 'When played, this gains 1 charge. Discharge 1: draw a card.',
+    meta: { chargeMax: 1, onPlayEffect: 'byteChargeOnPlay', onActivate: 'byteDraw', activateCpCost: 0, dischargeCost: 1 },
+  },
+  'LH:Faraday': {
+    materialCost: 140_000, blueprintCost: 141_825, cpCost: 0, keywords: ['mobile'], vehicleType: 'airship',
+    cardText: 'When played, draw a card.',
+    meta: { chargeMax: 2, onPlayEffect: 'faradayOnPlay' },
   },
   'LH:Volta': {
     materialCost: 40_000, blueprintCost: 37_207, cpCost: 0, keywords: ['fragile'], vehicleType: 'ship',
@@ -151,6 +158,11 @@ export const CARDS: Record<string, Expected> = {
     cardText: 'Discharge 2 from a friendly LH vehicle: a friendly LH plane in that zone loses Temporary.',
     meta: { playOnVehicleEffect: 'extendedSortieEffect', dischargeFrom: 2 },
   },
+  'LH:Data Burst': {
+    materialCost: 50_000, blueprintCost: 0, cpCost: 0, keywords: [], vehicleType: null,
+    cardText: 'Discharge 2 from a friendly LH vehicle: draw 2 cards.',
+    meta: { playOnVehicleEffect: 'dataBurstEffect', dischargeFrom: 2 },
+  },
 }
 
 // Retired by this wave (spec §7): rows stay seeded, undraftable.
@@ -190,19 +202,20 @@ describe('LH redesign — rows by value', () => {
 })
 
 describe('LH redesign — roster shape (spec §5, §7)', () => {
-  it('seeds 28 draftable LH cards and keeps the 8 retired rows', async () => {
+  // 28 + Faraday and Data Burst (2026-09-22 draw amendment).
+  it('seeds 30 draftable LH cards and keeps the 8 retired rows', async () => {
     const { cards } = await loadSeedData()
     const lh = cards.filter((c) => c.faction === 'LH')
     const live = lh.filter((c) => (c.meta as Record<string, unknown>)?.retired !== true)
-    expect(live).toHaveLength(28)
-    expect(lh).toHaveLength(36)
+    expect(live).toHaveLength(30)
+    expect(lh).toHaveLength(38)
     expect(live.map((c) => c.name).sort()).toEqual(Object.keys(CARDS).map((k) => k.slice(3)).sort())
   })
 
   it('every draftable LH vehicle is a report craft with a ship profile (Task 30 lands the profiles)', async () => {
     const { cards } = await loadSeedData()
     const vehicles = cards.filter((c) => c.faction === 'LH' && c.type === 'vehicle' && (c.meta as Record<string, unknown>)?.retired !== true)
-    expect(vehicles).toHaveLength(24)
+    expect(vehicles).toHaveLength(25)
   })
 
   it('the six new-keyword and gate carriers read as intended', async () => {

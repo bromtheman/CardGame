@@ -34,7 +34,7 @@ describe('ship profiles', () => {
     const lh = shipProfilesForFaction('LH')
     expect(lh.map((p) => p.name).slice(0, 3)).toEqual(['Ampere', 'Angstrom', 'Byte'])
     expect(lh.at(-1)?.name).toBe('Quadrupole')
-    expect(lh).toHaveLength(24)
+    expect(lh).toHaveLength(25) // 24 + Faraday (2026-09-22 draw amendment)
     expect(shipProfilesForFaction('OW')).toEqual([])
   })
 

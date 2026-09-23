@@ -2,8 +2,8 @@ import { effectiveCostInGame } from '../engine/placement.ts'
 import { addCharge, hasChargeRoom } from '../engine/charge.ts'
 import { dealBaseDamage } from '../engine/baseAttack.ts'
 import {
-  FACTIONS, IMPEDANCE_BEAM_DAMAGE, KEYWORDS, OVERCHARGE_CHARGE, SUPERRADIANCE_BEAM_DAMAGE, TERAWATT_TRANSFER_CHARGE,
-  UMBRA_SALVO_DAMAGE, VEHICLE_TYPES, VOLTA_JUMP_START_CHARGE,
+  BYTE_PLAY_CHARGE, DATA_BURST_DRAW, FACTIONS, IMPEDANCE_BEAM_DAMAGE, KEYWORDS, OVERCHARGE_CHARGE,
+  SUPERRADIANCE_BEAM_DAMAGE, TERAWATT_TRANSFER_CHARGE, UMBRA_SALVO_DAMAGE, VEHICLE_TYPES, VOLTA_JUMP_START_CHARGE,
 } from '../gameSettings.ts'
 import {
   choice, drawFromPool, enemyVehicleOptions, friendlyVehicleOptions, grant, poolEligible, sequence,
@@ -363,6 +363,29 @@ const isLh = (e: { faction: string }): boolean => e.faction === FACTIONS.LH
 // Byte — "Discharge 1: draw a card." The engine has already checked and spent
 // the pip (ACTIVATE_VEHICLE, spec §3.2); this is the draw and nothing else.
 registerEffect('byteDraw', grant({ draw: 1 }))
+
+// 2026-09-22 LH draw amendment (docs/superpowers/specs/2026-09-22-lh-draw-design.md).
+// New ids again: Byte snapshots dealt before the deploy name no onPlayEffect,
+// so they keep entering empty.
+
+// Byte — "When played, this gains 1 charge." PLAY_CARD_TO_ZONE places the hull
+// before on-play effects fire, so it is on the board to charge; its own
+// chargeMax caps the gain.
+registerEffect('byteChargeOnPlay', ({ game, actor, card }) => {
+  const found = findVehicle(game.state, card.instanceId)
+  if (!found || found.side !== actor) return true
+  const gained = addCharge(found.entry as ZoneCardEntry, BYTE_PLAY_CHARGE)
+  if (gained > 0) game.state.log.push(`${card.name} gains ${gained} charge`)
+  return true
+})
+
+// Faraday — "When played, draw a card." Mandrel's shape.
+registerEffect('faradayOnPlay', grant({ draw: 1 }))
+
+// Data Burst — "Discharge 2 from a friendly LH vehicle: draw 2 cards." The
+// engine has already validated the host and spent its pips (dischargeFrom,
+// PLAY_CARD_TARGETING_CARD_ON_FIELD); this is the draw and nothing else.
+registerEffect('dataBurstEffect', grant({ draw: DATA_BURST_DRAW }))
 
 // Volta — "When played, a friendly LH vehicle in this zone gains 1 charge."
 // The player picks (R-3): which timer to accelerate is the whole decision.
