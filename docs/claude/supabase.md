@@ -306,7 +306,9 @@ the version number. Deploy `game-action` after any engine/effects change;
 
   **Wave 4 added a fourth source that needs its own smoke test**, for the same
   reason: `state.zoneEffects[].effect`. Play DWG Waters to claim a zone, then
-  let the enemy attack you there — the clause-2 rider offers a Corsair or
+  let the enemy declare a fleet attack on you there (a card-forced battle such
+  as Judgement's duel offers nothing, by the 2026-09-22 owner ruling — not a
+  probe regression) — the clause-2 rider offers a Corsair or
   Marauder minted from the catalog, and DWG Waters' own card is in neither
   hand, field, nor `pendingEffect` when that offer is built. A regression
   surfaces as an empty option list rather than an error, which is quieter than

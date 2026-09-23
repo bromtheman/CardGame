@@ -1341,6 +1341,21 @@ Added in wave 4:
   the standing `summonOnly` exclusion (§7.4), which must be repeated by hand
   because this pool is filtered off `ctx.catalog` rather than through
   `drawFromPool`.
+- ⚠ **Amended 2026-09-22 (owner ruling): clause 2 answers a FLEET battle only.**
+  Wave 4 read "whenever you fight a defensive battle in that zone" as any
+  battle the claimant defends, forced or declared — the Catshark reading above.
+  The owner narrowed it: DWG Waters activates when its claimant fights a fleet
+  battle or has its base bombarded (clause 3), and **never** in a battle an
+  enemy card forces. WF Judgement's duel was the reported case. The test is
+  `battle.forced` — `false` from `lockBattle` (`ATTACK_ENEMY_FLEET`,
+  `RESPOND_TO_ATTACK`), `true` from `declareForcedBattle`, the same flag
+  Ongoing Attrition reads — not the battle's size, so Martyr Attack, Trebuchet,
+  Eclipse, TG Duel and a sprung SS Blockade are all excluded. Blockade is the
+  sharp case: its text calls its fight "a fleet battle" and it drags in the
+  whole zone, but an enemy card still forces it. The ruling is scoped to DWG
+  Waters: the Catshark reading still governs every other "fleet battle" /
+  "fleet combat" text, Recurring Threat's "defensive fleet battle" (wave 5,
+  below) included.
 
 Added in wave 5:
 
