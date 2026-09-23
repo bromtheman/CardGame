@@ -85,6 +85,9 @@ amend that comment. §4 Q5.
 
 **M-8 Flying Squirrel Attack sends two squadrons.** The engine models one "3x
 squadron" as 3 hulls (`FLYING_SQUIRREL_ATTACK_COUNT = 3`); two → **6**.
+(Amended 2026-09-23 at the owner's request: one Flying Squirrel blueprint is
+itself a flight of three planes in FtD, so a "3x squadron" is ONE hull and two
+squadrons are **2**. Six hulls had put eighteen planes in the fight.)
 
 **M-9 Horror is retired, not deleted.** `meta.retired: true`; the row stays
 seeded and `horrorBattle` stays registered (Harbringer precedent).

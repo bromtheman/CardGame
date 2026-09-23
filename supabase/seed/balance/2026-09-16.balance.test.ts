@@ -239,7 +239,9 @@ describe('2026-09-16 balance pass — every touched row', () => {
 
   // The constants the rewritten texts print.
   it('M-8 / Slasher: the constants match the printed counts', () => {
-    expect(FLYING_SQUIRREL_ATTACK_COUNT).toBe(6) // two 3x squadrons
+    // Two hulls: one Flying Squirrel blueprint is a whole 3x squadron in FtD
+    // (2026-09-23 owner correction; M-8 had counted the planes, 6).
+    expect(FLYING_SQUIRREL_ATTACK_COUNT).toBe(2)
     expect(SLASHER_EARTH_RAKER_COUNT).toBe(1)
     expect(TYR_MIN_COST).toBe(500_000)
   })

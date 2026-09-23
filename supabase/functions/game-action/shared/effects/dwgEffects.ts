@@ -594,7 +594,9 @@ registerEffect(KRAKEN, choice({
 // (§7.3 "fights alone") against FLYING_SQUIRREL_ATTACK_COUNT freshly minted
 // Flying Squirrel summons, which exist only for this battle (spec §4.4) — the
 // aggressor is the player who played the card, not the target's owner. Two
-// 3x squadrons, six summons total, since 2026-09-16 (M-8; it was one squadron).
+// squadrons since 2026-09-16 (M-8), and one summon per squadron since
+// 2026-09-23: a Flying Squirrel blueprint is itself a flight of three planes
+// in FtD, so the six summons M-8 minted put eighteen planes in the fight.
 registerEffect('flyingSquirrelAttackEffect', ({ game, actor, ctx, targetInstanceId, card }) => {
   if (typeof targetInstanceId !== 'string') return false
   const found = findVehicle(game.state, targetInstanceId)
