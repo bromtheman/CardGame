@@ -378,6 +378,8 @@ const DWG_WATERS_EFFECT = 'dwgWatersEffect'
 //
 //   clause 1  no battle, no resolution      → claim the zone
 //   clause 2  battle.phase === 'lock'       → offer a guest, then re-entry
+//                                             (a fleet battle only — never a
+//                                             card-forced one; see below)
 //   clause 3  battle.phase === 'baseAttack' → intercept the bombardment
 
 // "From the game" is the catalog, the same phrasing Special Foundries uses for
@@ -421,14 +423,20 @@ const dwgWatersGuest = choice({
 function dwgWatersDefensiveGuest(payload: EffectPayload): boolean {
   const { game, actor, battle } = payload
   if (!battle || !battle.isDefender) return true
+  // A FLEET battle only (owner ruling, 2026-09-22): the enemy's
+  // ATTACK_ENEMY_FLEET, which lockBattle dispatches with forced: false. A
+  // battle an enemy card forces is not one, however many hulls it takes —
+  // Judgement's duel was the reported case, and Martyr Attack, Trebuchet and
+  // a sprung Blockade fall with it. Ongoing Attrition reads the same flag.
+  if (battle.forced) return true
   const active = game.state.activeBattle
   const zone = zoneById(game.state, battle.zoneId)
   if (!active || !zone) return true
   // "Alongside your fleet" needs a fleet: at least one of the defender's own
-  // board hulls in this battle. Without that check, clause 3's own battle —
-  // where the only defender is the guardian clause 3 just summoned — would
-  // also draw a clause-2 guest, and one card would put two hulls on the board
-  // for a bombardment it had already cancelled.
+  // board hulls in this battle. Defence in depth since the forced check above:
+  // clause 3's own battle — whose only defender is the guardian it summoned,
+  // the case this guard was written for — is forced, so it never gets this
+  // far, and a fleet attack's defenders are always board hulls.
   const hasFleet = active.defenderIds.some((id) => zone.cards[actor].some((c) => c.instanceId === id))
   if (!hasFleet) return true
   return dwgWatersGuest(payload)

@@ -782,6 +782,50 @@ describe('DWG Waters clauses 2 and 3', () => {
       expect(r.game.state.pendingEffect).toBeNull()
     })
 
+    // Owner ruling 2026-09-22: clause 2 answers the enemy's FLEET battle, not a
+    // battle an enemy card forces. Judgement's duel is the reported case, and
+    // it passes both older guards — the claimant defends, and its lone
+    // defender is a real board hull — so only the forced check stops it.
+    it('offers nothing when the enemy forces a duel with Judgement', () => {
+      const game = claimed()
+      const judgement = zoneEntry({
+        name: 'Judgement', faction: 'WF', vehicleType: 'ship', playedOnTurn: 2,
+        meta: { onActivate: 'judgementActivate', activateCpCost: 0 },
+      })
+      game.state.zones[0].cards.a.push(judgement)
+      game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'diver', name: 'Diver', faction: 'DWG', vehicleType: 'sub' }))
+      const ctx = makeCtx({ catalog: fullCatalog })
+      const offered = applyAction(game, 'alice', { type: 'ACTIVATE_VEHICLE', instanceId: judgement.instanceId }, ctx)
+      if (!offered.ok) throw new Error(offered.error)
+      const r = applyAction(offered.game, 'alice', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'diver' }, ctx)
+      if (!r.ok) throw new Error(r.error)
+      // The duel went ahead, so a missing offer means Waters stood aside —
+      // not that there was no battle to join.
+      expect(r.game.state.activeBattle?.defenderIds).toEqual(['diver'])
+      expect(r.game.state.pendingEffect).toBeNull()
+      expect(r.game.state.activeBattle?.summons).toEqual([])
+    })
+
+    // The rule is the battle's kind, not Judgement's name or its size. Every
+    // card-forced battle goes through declareForcedBattle — Martyr Attack,
+    // Trebuchet, Eclipse, a sprung Blockade — and this one takes the
+    // claimant's whole fleet, as a Blockade does, so a "duels only" reading of
+    // the ruling fails here too.
+    it('offers nothing on any card-forced battle, even one that takes the whole fleet', () => {
+      const game = claimed()
+      const striker = zoneEntry({ name: 'Striker', playedOnTurn: 2 })
+      const home = [zoneEntry({ name: 'Home Fleet 1' }), zoneEntry({ name: 'Home Fleet 2' })]
+      game.state.zones[0].cards.a.push(striker)
+      game.state.zones[0].cards.b.push(...home)
+      const declared = declareForcedBattle(game, makeCtx({ catalog: fullCatalog }), {
+        zoneId: 1, aggressor: 'a', attackerIds: [striker.instanceId],
+        defenderIds: home.map((h) => h.instanceId), cause: 'Test',
+      })
+      expect(declared).toBe(true)
+      expect(game.state.pendingEffect).toBeNull()
+      expect(game.state.activeBattle?.summons).toEqual([])
+    })
+
     it('declining leaves the battle unchanged and reportable', () => {
       const game = claimed()
       const attacker = zoneEntry({ playedOnTurn: 2 })
@@ -850,12 +894,14 @@ describe('DWG Waters clauses 2 and 3', () => {
       expect(r.game.state.zones[0].baseHp.b).toBe(960) // 40k / 1000 = 40 damage landed
     })
 
-    // Clause 2 must not also fire for the battle clause 3 just created: the
-    // defender has no fleet IN THAT BATTLE, and "alongside your fleet" needs a
-    // fleet (spec §7.3). The defender is given a hull standing in the zone but
-    // NOT dragged into the fight, so this can tell "no fleet in the battle"
-    // (what hasFleet checks) from "no fleet in the zone" — with an empty zone
-    // the two are indistinguishable and deleting the check still passes.
+    // Clause 2 must not also fire for the battle clause 3 just created — one
+    // card would put two hulls on the board for a bombardment it had already
+    // cancelled. Two guards stop it: the battle is card-forced (owner ruling,
+    // 2026-09-22), and the defender has no fleet IN THAT BATTLE, which
+    // "alongside your fleet" needs (spec §7.3). The hull standing in the zone
+    // but NOT dragged into the fight is what lets the second guard tell "no
+    // fleet in the battle" from "no fleet in the zone"; while the first guard
+    // holds, deleting hasFleet alone no longer fails this test.
     it('does not also offer a clause-2 guest for its own battle', () => {
       const game = claimed()
       game.state.zones[0].cards.a.push(zoneEntry({ name: 'Raider', materialCost: 40_000, playedOnTurn: 2 }))
