@@ -25,6 +25,9 @@ const metaOf = (card: SeedCard) => (card.meta ?? {}) as Record<string, unknown>
 interface Expected {
   materialCost: number
   blueprintCost: number
+  // Absent means 0 — the pass priced nothing in CP; Mutiny's 1 CP is the
+  // 2026-09-22 hotfix.
+  cpCost?: number
   keywords: string[]
   vehicleType: string | null
   cardText: string
@@ -42,8 +45,9 @@ const AI_SHIP = {
 
 const CARDS: Record<string, Expected> = {
   // ---------------------------------------------------------------- DWG
+  // 2026-09-22 hotfix: 400k → 600k, and 1 CP.
   'DWG:Mutiny': {
-    materialCost: 400_000, blueprintCost: 0, keywords: [], vehicleType: null,
+    materialCost: 600_000, blueprintCost: 0, cpCost: 1, keywords: [], vehicleType: null,
     cardText: 'Choose an enemy vehicle, gain control of it and give it temporary',
   },
   'DWG:Brigand': {
@@ -158,12 +162,14 @@ describe('2026-09-16 balance pass — every touched row', () => {
     expect({
       materialCost: card!.materialCost,
       blueprintCost: card!.blueprintCost,
+      cpCost: card!.cpCost,
       keywords: [...(card!.keywords ?? [])].sort(),
       vehicleType: card!.vehicleType ?? null,
       cardText: card!.cardText ?? '',
     }).toEqual({
       materialCost: want.materialCost,
       blueprintCost: want.blueprintCost,
+      cpCost: want.cpCost ?? 0,
       keywords: [...want.keywords].sort(),
       vehicleType: want.vehicleType,
       cardText: want.cardText,
