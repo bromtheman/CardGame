@@ -139,7 +139,9 @@ export const dwgVehicles = [
         type: 'vehicle',
         faction: FACTIONS.DWG,
         blueprintId: null,
-        keywords: [KEYWORDS.AIR_SCREEN],
+        // SUB_SCREEN restored 2026-09-23 (owner request) beside the 2026-09-16
+        // AIR_SCREEN; FRAGILE stays off.
+        keywords: [KEYWORDS.AIR_SCREEN, KEYWORDS.SUB_SCREEN],
         meta: {
         }
     },{

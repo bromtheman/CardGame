@@ -65,8 +65,9 @@ const CARDS: Record<string, Expected> = {
     materialCost: 250_000, blueprintCost: 267_000, keywords: [], vehicleType: 'ship',
     cardText: 'when played, you may swap a friendly airship with an enemy airship or plane. If airship you provide is worth less than what you get, the opponent draws a card and reduces that cards cost by the difference.',
   },
+  // SUB_SCREEN back 2026-09-23 (owner request), beside M-6's AIR_SCREEN.
   'DWG:Tarpon': {
-    materialCost: 510_000, blueprintCost: 511_605, keywords: ['airScreen'], vehicleType: 'airship', cardText: '',
+    materialCost: 510_000, blueprintCost: 511_605, keywords: ['airScreen', 'subScreen'], vehicleType: 'airship', cardText: '',
   },
   'DWG:Albacore': {
     materialCost: 260_000, blueprintCost: 261_000, keywords: ['fragile'], vehicleType: 'airship',

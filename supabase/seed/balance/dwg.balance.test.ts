@@ -48,9 +48,10 @@ const CARDS: Record<string, Expected> = {
     vehicleType: 'ship', cardText: PLUNDERER_TEXT,
   },
   // moved 2026-09-16 (M-6): AIR_SCREEN in, FRAGILE and SUB_SCREEN out, and the
-  // aircraft lock dropped outright. Also pinned in balance/2026-09-16.balance.test.ts.
+  // aircraft lock dropped outright. SUB_SCREEN came back 2026-09-23 (owner
+  // request); FRAGILE did not. Also pinned in balance/2026-09-16.balance.test.ts.
   'DWG:Tarpon': {
-    materialCost: 510_000, blueprintCost: 511_605, keywords: ['airScreen'],
+    materialCost: 510_000, blueprintCost: 511_605, keywords: ['airScreen', 'subScreen'],
     vehicleType: 'airship', cardText: '',
   },
   // +HALF_COST restored 2026-09-16 (moved), undoing 09-02's removal. SCRAPPY is

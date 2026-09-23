@@ -73,6 +73,9 @@ name it. §4 Q3–Q4.
 true` (the wave-8 Obelisk mechanic, per side) replacing `aircraftLock`. Tarpon
 drops `aircraftLock` outright. That leaves `aircraftLocked` (`placement.ts:54`)
 with no carrier: keep it, commented, per 2026-09-02 R-8; do not delete the key.
+(Amended 2026-09-23 at the owner's request: Tarpon gets `SUB_SCREEN` back beside
+this pass's `AIR_SCREEN`; `FRAGILE` stays off. The summary row below records
+what this pass did.)
 
 **M-7 Tyr's decay floors at 500k.** `tyrCostModifier` (`ssEffects.ts:793`)
 returns `max(−(materialCost − TYR_MIN_COST), −TYR_HAND_DISCOUNT × steps)`, new
