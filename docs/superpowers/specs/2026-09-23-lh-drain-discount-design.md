@@ -15,6 +15,7 @@ wins. The older ones are edited to point here (§11).
 | Shape | **All or nothing.** Drain exactly N pips, split any way you like as today, or drain none. There is no partial drain. |
 | Rate | **50k per pip**, from one constant, `DRAIN_DISCOUNT_PER_CHARGE`. |
 | Prices | **Printed prices rise by N × 50k**, so a drained play costs exactly what the card costs today. Cathode is the one exception (below). |
+| Card value | **Value follows price** (owner ruling after the whole-branch review). The printed price is also the hull's value everywhere else: bombard damage is cost ÷ 1000, FtD battle materials are 10% of cost, repairs cost 50%, and Boarding Party needs a ship that costs at least as much. So the repriced hulls hit harder, cost more to repair, and are harder to steal (§8). Chosen over keeping today's prices, and over a surcharge that would have left their value unchanged. |
 | Data key | **`meta.requiresCharge` is kept and changes meaning** (approach A). There is one rule in the code. Games in progress keep their dealt prices (§9). |
 | Cathode | Stays at **600k**, so 500k drained. Its only keyword is **Fragile**: Stealthy and Sub Screen are gone. **No Discharge ability.** It gains **Overheat**: after each battle it fights, it is stunned until the end of the next turn, using the existing stun unchanged. |
 | Watt | **120k.** It **enters with no charge**: when played it only spawns its Luxon. |
@@ -223,6 +224,22 @@ reference:
     Its `onActivate`, `activateCpCost` and `dischargeCost` go.
   - Watt: its `onPlayEffect` becomes `wattEscortOnPlay`.
   - No other key changes.
+- **Value follows price (§1).** The new printed prices also set each hull's
+  value, so bombard damage per hull changes:
+
+  | Card | Damage |
+  |---|---|
+  | Dynamo | 350 → 400 |
+  | Thyristor | 400 → 500 |
+  | Quadrupole | 560 → 660 |
+  | Terawatt | 640 → 740 |
+  | Candela | 700 → 850 |
+  | Impedance | 750 → 950 |
+  | Watt | 90 → 120 |
+
+  Against a 2,000 HP base this moves some kill thresholds. Terawatt alone now
+  needs three bombards rather than four. Impedance kills with two bombards and
+  its beam, where it needed three before.
 - **Pins.** `lh.balance.test.ts` pins every row above, including each Drain
   card's text against its gate, so "costs Xk less" always equals N × 50k.
 - **Deploy.** `seed:build` regenerates `seed_data.sql`, and card data does not

@@ -269,7 +269,7 @@ describe('LH Drain — a discount the text states', () => {
       .toEqual(['Candela', 'Cathode', 'Dynamo', 'Impedance', 'Quadrupole', 'Terawatt', 'Thyristor'])
     for (const c of drains) {
       const n = (c.meta as Record<string, unknown>).requiresCharge as number
-      expect(c.cardText, c.name).toMatch(new RegExp(`^Drain ${n} Charge: costs ${(n * DRAIN_DISCOUNT_PER_CHARGE) / 1000}k less\.`))
+      expect(c.cardText, c.name).toMatch(new RegExp(`^Drain ${n} Charge: costs ${(n * DRAIN_DISCOUNT_PER_CHARGE) / 1000}k less\\.`))
     }
   })
 })

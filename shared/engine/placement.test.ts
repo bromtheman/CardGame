@@ -1938,12 +1938,14 @@ describe('Drain as a discount (2026-09-23 spec §2–§3)', () => {
     if (!full.ok) throw new Error(full.error)
     expect(full.game.state.resources.a.materials).toBe(50_000)
     expect(chargeOf(hull(full.game, 0, 0))).toBe(1)
-    const game = setup(200_000, ...excalibur())
+    // Affordable ONLY drained (100k against 150k printed), so the afford check
+    // itself must take the discount on this path, not just pay().
+    const game = setup(100_000, ...excalibur())
     game.state.zones[0].cards.a.push(battery('Chrysoprase', 2))
     const res = applyAction(game, 'alice', action, makeCtx())
     if (!res.ok) throw new Error(res.error)
     expect(chargeOf(hull(res.game, 0, 0))).toBe(0)
-    expect(res.game.state.resources.a.materials).toBe(150_000)
+    expect(res.game.state.resources.a.materials).toBe(50_000)
     expect(res.game.state.log).toContain('Quadrupole drains 2 charge for 100k off — Chrysoprase 2')
   })
 })
@@ -1966,6 +1968,9 @@ describe('Drain prices — drainedCostInGame, cheapestCostInGame, drainNeedsChoi
     expect(drainedCostInGame(state, 'a', card(950_000, 4), 2)).toBe(750_000)
     expect(drainedCostInGame(state, 'a', card(60_000, 2), 2)).toBe(0)
     expect(drainedCostInGame(state, 'a', card(60_000), 2)).toBe(60_000)
+    // After Half-Cost, not before: 300k halves to 150k, then 100k off is 50k
+    // (off first would be (300k − 100k) / 2 = 100k).
+    expect(drainedCostInGame(state, 'a', { ...card(300_000, 2), keywords: ['halfCost'] }, 2)).toBe(50_000)
   })
 
   it('shows the drained price only when the board holds N', () => {

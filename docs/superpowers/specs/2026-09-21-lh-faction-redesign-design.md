@@ -263,14 +263,15 @@ Taken card by card on 2026-09-21; binding.
 - **R-14 Drain is a vulnerability and a cost** (amended 2026-09-22; first
   ruled "Requires is a vulnerability, not a hurdle"). A hunted board cannot
   pay; an un-raced one pays, and must refill before its next Drain card. Gates
-  are read and paid at play time only (§3.3).
+  are read and paid at play time only (§3.3). **Amended 2026-09-23** ([drain discount spec](2026-09-23-lh-drain-discount-design.md) §2):
+  Drain is a discount, never a gate — a hunted board pays full price instead of being unable to play.
 - **R-15 Megawatt is vanilla with Mobile.** The "rapid strikes" second-bombard
   discharge was rejected: the backbone is the plain body that makes the timers
   safe to run.
 - **R-16 Penumbra has no Mobile and no other use for its pips** — the only thing
   its charge is for is the salvo.
 - **R-17 Angstrom has no Sub Screen; Candela has no Air Screen.** One screen per
-  wall; a hull with both is SS's hero power on a 700-damage Mobile Blocker.
+  wall; a hull with both is SS's hero power on an 850-damage Mobile Blocker (700 before the 2026-09-23 repricing).
 - **R-18 Cathode surfaces on discharge and duels ships *or submarines*** — the
   roster's one active anti-sub tool. Surfacing on declaration. **Superseded 2026-09-23**
   ([drain discount spec](2026-09-23-lh-drain-discount-design.md) §6): Cathode has no duel
@@ -281,7 +282,7 @@ Taken card by card on 2026-09-21; binding.
   Generators — rate 2; transfer). The transfer is an activated ability, so Terawatt cannot both
   transfer and be an ability card's discharge host in one turn. Generators
   applies before Conduit's relay; everything caps at 4.
-- **R-21 Candela is the deal**: 700k for a 1,021k hull, no text beyond the gate,
+- **R-21 Candela is the deal**: 700k drained (850k printed since 2026-09-23) for a 1,021k hull, no text beyond the Drain,
   fights at its FtD weight in battles.
 - **R-22 Rectifier prints Fragile** — moot while Temporary, live once Extended
   Sortie makes it permanent (TG Audacious prints the same set for Spawn
@@ -373,9 +374,9 @@ profile per non-retired LH vehicle is met by importing the report (§8).
 
 ### 5.5 Shape checks
 
-- Stun sources 3; beams 3 (150/300/400); 1v1 hulls 2; Swift 2 + Afterburner;
-  Blockers 7; Sub Screens 3, Air Screen 1; fliers 8 with Faraday (2026-09-22) and Thyristor (2026-09-23) against the 6-copy limit;
-  subs 3; timers static, walls and raiders Mobile.
+- Stun sources 3; beams 3 (150/300/400); 1v1 hulls 1 (Eclipse; Cathode's duel went 2026-09-23); Swift 2 + Afterburner;
+  Blockers 7; Sub Screens 2 (Anode, Candela), Air Screen 1; fliers 8 with Faraday (2026-09-22) and Thyristor (2026-09-23) against the 6-copy limit;
+  subs 3; timers static, walls and raiders Mobile (Quadrupole excepted since 2026-09-23).
 - Curve: 40k pickets on turn 1; Conduit/Dipole 70k; Watt 120k turn 2; Umbra turn
   2; Kilowatt/Ampere/Eclipse turn 3; Hydrovolt turn 4; Dynamo/Megawatt/Penumbra
   turn 5; Thyristor turn 6; Angstrom turn 8; Quadrupole/Cathode turn 8; Superradiance/Terawatt
@@ -385,7 +386,8 @@ profile per non-retired LH vehicle is met by importing the report (§8).
   un-raced board every Drain capital is gated by materials, not pips, but each
   one drains the board it lands on (2026-09-22), so two in a row pay twice. A raced board — pickets
   fleet-attacked on turns 2–4 — has none, and its capitals sit in hand. That is
-  the interaction the mechanic exists to create.
+  the interaction the mechanic exists to create. *(2026-09-23: Drain is a discount — a raced board
+  pays full price for its capitals instead of holding them; [drain discount spec](2026-09-23-lh-drain-discount-design.md) §2.)*
 - A legal sample deck: 2 Chrysoprase, 2 Byte, Volta, Conduit, 2 Watt, Dipole,
   Luxon, Umbra, 2 Kilowatt, Ampere, Eclipse, Penumbra, Megawatt, Angstrom, EMP
   Salvo, Overcharge — twenty cards, two fliers, one sub.
