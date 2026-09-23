@@ -2,6 +2,12 @@
   base = "frontend"
   command = "npm run build"
   publish = "dist"
+  # The frontend also bundles ../shared (the @shared alias in vite.config.ts).
+  # Without this line Netlify's default skips any build whose diff misses the
+  # base directory, so a shared/-only merge (PR #73's ship profiles, PR #84's
+  # LH cards) never reached the live site. Runs in the base directory; exit 0
+  # skips the build, anything else builds.
+  ignore = "git diff --quiet $CACHED_COMMIT_REF $COMMIT_REF -- . ../shared ../netlify.toml"
 
 [[redirects]]
   from = "/*"
