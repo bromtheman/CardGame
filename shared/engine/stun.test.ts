@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { applyAction, baseDamageFrom, discardSnapshotOf, fleetAttackRosters, legalZonesFor, moveEntry } from './index.ts'
+import {
+  applyAction, baseDamageFrom, discardSnapshotOf, fleetAttackRosters, holdsStillInFtd, legalZonesFor, moveEntry,
+} from './index.ts'
 import { isStunned, stunHull } from './stun.ts'
 import { inst, makeCtx, makeGame, zoneEntry } from './testFixtures.ts'
 import type { ZoneCardEntry } from './engineTypes.ts'
@@ -50,5 +52,29 @@ describe('stun (2026-09-21 LH spec §3.4)', () => {
   it('is stripped on discard', () => {
     const snap = discardSnapshotOf(zoneEntry({ stunnedUntilTurn: 4 })) as Record<string, unknown>
     expect('stunnedUntilTurn' in snap).toBe(false)
+  })
+})
+
+// 2026-09-23: the FtD mod holds a flagged hull still for the whole battle —
+// movement AI off and locked, weapons still firing. This is which hulls get the
+// flag. Every hull below was stunned on turn 3, so it is stamped 4.
+describe('holdsStillInFtd — which stunned hulls the FtD battle holds still', () => {
+  it.each(['ship', 'tank', 'sub'])('holds a stunned %s still', (vehicleType) => {
+    expect(holdsStillInFtd(zoneEntry({ vehicleType, stunnedUntilTurn: 4 }), 3)).toBe(true)
+  })
+
+  // Each needs its AI to stay up: a hovercraft may lose its cushion, a plane
+  // would crash, an airship leans on its lift. Hover is the one isShipClass
+  // would have let through.
+  it.each(['hover', 'plane', 'airship'])('lets a stunned %s fight normally', (vehicleType) => {
+    expect(holdsStillInFtd(zoneEntry({ vehicleType, stunnedUntilTurn: 4 }), 3)).toBe(false)
+  })
+
+  it('holds nothing that is not stunned', () => {
+    expect(holdsStillInFtd(zoneEntry({ vehicleType: 'ship' }), 3)).toBe(false)
+  })
+
+  it('lets the hull go on the turn its stun expires', () => {
+    expect(holdsStillInFtd(zoneEntry({ vehicleType: 'ship', stunnedUntilTurn: 4 }), 4)).toBe(false)
   })
 })

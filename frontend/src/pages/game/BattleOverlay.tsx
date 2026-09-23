@@ -13,6 +13,7 @@ import { AIRCRAFT_SPAWN_ALTITUDE_M, HOVER_SPAWN_ALTITUDE_M } from '@shared/custo
 import { shortHandNumber } from '@shared/format'
 
 import { ConcedeButton } from './ConcedeButton'
+import { battleTeams, heldInFtdIds } from './battleTeams'
 import { LaunchInFtdButton } from './LaunchInFtdButton'
 import { applyPrefill, prefillSummary, winnerLabel } from './ftdPrefill'
 import type { FtdPrefill } from './ftdPrefill'
@@ -55,7 +56,13 @@ function outcomeLabel(
   return { label: 'Destroyed', survives: false }
 }
 
-function FleetColumn({ title, entries, mySide }: { title: string; entries: Participant[]; mySide: Side }) {
+function FleetColumn({ title, entries, mySide, heldInFtd }: {
+  title: string
+  entries: Participant[]
+  mySide: Side
+  /** instanceIds the generated battle file flags `Stunned` (heldInFtdIds). */
+  heldInFtd: ReadonlySet<string>
+}) {
   return (
     <div>
       <p className="font-display text-lg">{title}</p>
@@ -75,6 +82,15 @@ function FleetColumn({ title, entries, mySide }: { title: string; entries: Parti
             <p className="text-xs text-ocean-300">
               In-battle resources: {shortHandNumber(Math.floor(effectiveMaterialCostOf(entry) * IN_BATTLE_RESOURCE_RATE))}
             </p>
+            {/* The board's stun badge colours, so the two read as one rule. */}
+            {heldInFtd.has(entry.instanceId) && (
+              <p className="mt-1 text-xs text-ocean-300">
+                <span className="whitespace-nowrap rounded-full bg-red-700 px-1.5 font-bold text-parchment-100">
+                  Stunned — held still in FtD
+                </span>{' '}
+                Its movement AI stays off for the whole fight; its weapons still fire.
+              </p>
+            )}
             {isSummon && (
               <p className="mt-1 text-xs text-ocean-300/70">
                 Summoned for this battle only — not on anyone's board, and vanishes when the report is approved
@@ -438,7 +454,7 @@ function FtdResultBanner({
 // component (via a key on the battle's identity) whenever a *new* battle
 // starts, so this local form state never leaks from one battle into another.
 export function BattleOverlay({
-  state, mySide, send, busy, gameId, practice, onConcede,
+  state, mySide, send, busy, gameId, practice, turnNumber, onConcede,
 }: {
   state: PublicGameState
   mySide: Side
@@ -446,6 +462,8 @@ export function BattleOverlay({
   busy: boolean
   gameId: string
   practice: boolean
+  /** The game row's turn_number (PublicGameState carries none); stuns are read against it. */
+  turnNumber: number
   onConcede: () => void
 }) {
   const battle = state.activeBattle
@@ -476,6 +494,9 @@ export function BattleOverlay({
   // the identical instruction from their own side of it — which is the point:
   // the captain who must WAIT is the one who has to be told.
   const deploy = deployOrderFor(participants)
+  // The hulls the "Fight in FtD" file holds still, read off the same rosters
+  // LaunchInFtdButton builds that file from, so the marker and the file agree.
+  const heldInFtd = heldInFtdIds(battleTeams(state, turnNumber))
 
   function onHpChange(id: string, hp: number) {
     setResults((r) => ({ ...r, [id]: hp }))
@@ -557,7 +578,7 @@ export function BattleOverlay({
             Fleet battle — Zone {battle.zoneId}
             {zone && <span className="text-base capitalize text-ocean-300"> ({zone.biome})</span>}
           </h2>
-          <LaunchInFtdButton state={state} gameId={gameId} />
+          <LaunchInFtdButton state={state} gameId={gameId} turnNumber={turnNumber} />
         </div>
         <p className="mt-1 text-sm text-ocean-300">
           Spawn distance: <span className="font-bold text-parchment-100">{battle.distanceM} m</span>
@@ -611,8 +632,8 @@ export function BattleOverlay({
         </p>
 
         <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <FleetColumn title="Attacker fleet" entries={attackers} mySide={mySide} />
-          <FleetColumn title="Defender fleet" entries={defenders} mySide={mySide} />
+          <FleetColumn title="Attacker fleet" entries={attackers} mySide={mySide} heldInFtd={heldInFtd} />
+          <FleetColumn title="Defender fleet" entries={defenders} mySide={mySide} heldInFtd={heldInFtd} />
         </div>
 
         <p className="mt-3 text-xs text-ocean-300">

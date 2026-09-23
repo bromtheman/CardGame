@@ -89,6 +89,47 @@ The aggressor-first ordering in `battleTeams.ts` is load-bearing for the same
 reason: the mod reports a winning TEAM index, and `sideForTeamIndex` turns index
 0 into the aggressor's side.
 
+### Amendment 2026-09-23: `Stunned`, a hull the mod holds still
+
+A vehicle in the `CardGame` block may carry `"Stunned": true`:
+
+```json
+"Vehicles": [
+  { "InstanceId": "c-17", "Name": "Marauder", "Stunned": true },
+  { "InstanceId": "c-22", "Name": "Buccaneer" }
+]
+```
+
+- **Meaning:** the mod turns that hull's movement AI off and locks it for the
+  whole battle; its weapons keep firing. It is the board's stun (LH spec §3.4:
+  cannot move, still defends) fought out in FtD.
+- **When it is written:** the hull is stunned when the file is built
+  (`isStunned(entry, turnNumber)`) **and** its `vehicleType` is ship, tank or
+  sub. That rule is `holdsStillInFtd` (`shared/engine/stun.ts`) over
+  `FTD_HELD_VEHICLE_TYPES` (`shared/gameSettings.ts`). Hover, airship and plane
+  hulls stay stunned on the board but fight normally in FtD: without its AI a
+  hovercraft may lose its cushion, a plane would crash, and an airship depends
+  on its lift.
+- **Only ever `true`.** An unheld vehicle carries no `Stunned` key, never
+  `false`, so a battle with nothing held produces a file byte-identical to one
+  built before this amendment.
+- **Optional, no version bump.** `BATTLE_REPORT_WIRE_VERSION` is unchanged. The
+  mod never gates on `Version`: an older mod ignores the field, and the current
+  one reads a missing field as false.
+- **Pairing:** unchanged, and the flag rides it like `InstanceId` does.
+  `battleTeams(state, turnNumber)` sets `stunned` on each card, and
+  `buildCardGameBlock` copies it from `team.cards[j]`. The turn is the game
+  row's `turn_number` (`PublicGameState` carries none), passed from
+  `GameBoardPage` through `BattleOverlay` to `LaunchInFtdButton`. The spawn sheet
+  marks the same hulls "Stunned — held still in FtD" through `heldInFtdIds`,
+  which reads the flags `battleTeams` set.
+- **Integrity:** unchanged. The browser builds the file and a player can edit
+  it like any other field; the opponent's approval of the report is still the
+  check.
+
+Design, including the mod side: `C:\Users\JFinn\FtdReal\docs\superpowers\specs\2026-09-23-stunned-ships-design.md`
+(the CardGameBattleLoader mod's folder, outside this repo).
+
 ## Auth: what a client with no Supabase session needs
 
 `game-action`, `lobby-action` and `create-card` all authenticate the same way —

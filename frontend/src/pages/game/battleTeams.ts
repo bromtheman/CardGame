@@ -1,6 +1,6 @@
 import type { PublicGameState } from '@shared/engine/gameInit'
 import type { Side } from '@shared/engine/engineTypes'
-import { battleParticipants, effectiveMaterialCostOf, otherSide } from '@shared/engine/index'
+import { battleParticipants, effectiveMaterialCostOf, holdsStillInFtd, otherSide } from '@shared/engine/index'
 import type { BattleTeamInput } from '@shared/customBattle'
 import { CARD_TYPES } from '@shared/gameSettings'
 
@@ -31,9 +31,14 @@ import { CARD_TYPES } from '@shared/gameSettings'
  * two copies of one ship collide. The block is built from this same array, so
  * the index pairing is structural rather than asserted (`buildCardGameBlock`).
  *
+ * Each card also says whether the FtD battle holds that hull still
+ * (`holdsStillInFtd`: stunned, and a ship, tank or sub), which the block writes
+ * as `Stunned: true`. That is why this takes the game row's `turn_number`:
+ * PublicGameState carries no turn of its own, and a stun is read against one.
+ *
  * Requires `state.activeBattle`.
  */
-export function battleTeams(state: PublicGameState): BattleTeamInput[] {
+export function battleTeams(state: PublicGameState, turnNumber: number): BattleTeamInput[] {
   const battle = state.activeBattle!
   const participants = [...battleParticipants(state).values()]
   const fleetOn = (side: Side) =>
@@ -45,6 +50,7 @@ export function battleTeams(state: PublicGameState): BattleTeamInput[] {
         vehicleType: p.entry.vehicleType,
         materialCost: effectiveMaterialCostOf(p.entry),
         instanceId: p.entry.instanceId,
+        stunned: holdsStillInFtd(p.entry, turnNumber),
       }))
 
   const defender = otherSide(battle.aggressor)
@@ -73,4 +79,15 @@ export function battleTeams(state: PublicGameState): BattleTeamInput[] {
       facesAway: facesAway(defender),
     },
   ]
+}
+
+/**
+ * The hulls the FtD battle holds still, by instanceId: the cards `battleTeams`
+ * flagged `stunned`. The spawn sheet's marker reads this rather than asking
+ * `holdsStillInFtd` itself, so it shows exactly the hulls the battle file
+ * flags — the sheet and the file cannot disagree.
+ */
+export function heldInFtdIds(teams: BattleTeamInput[]): ReadonlySet<string> {
+  return new Set(teams.flatMap((team) =>
+    team.cards.flatMap((card) => (card.stunned && card.instanceId ? [card.instanceId] : []))))
 }

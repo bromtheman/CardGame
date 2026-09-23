@@ -49,7 +49,9 @@ function playerFacingError(e: unknown): string {
  * the card game stays the thing being played.
  *
  * `battleTeams` builds the two fleets — including the spawn altitudes, attacker
- * rotation and in-battle resources the overlay's spawn sheet already quotes.
+ * rotation and in-battle resources the overlay's spawn sheet already quotes, and
+ * the stunned hulls it marks "held still in FtD". It reads stuns against
+ * `turnNumber`, the game row's, since PublicGameState carries no turn.
  *
  * Before building the file this mints a single-use battle token and embeds it,
  * with the (team, vehicle) -> instanceId map, in the file's `CardGame` block.
@@ -61,13 +63,15 @@ function playerFacingError(e: unknown): string {
  * path rather than at battle declaration: one live token per player per game,
  * created at the moment a player actually takes the file away.
  */
-export function LaunchInFtdButton({ state, gameId }: { state: PublicGameState; gameId: string }) {
+export function LaunchInFtdButton({
+  state, gameId, turnNumber,
+}: { state: PublicGameState; gameId: string; turnNumber: number }) {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const battle = state.activeBattle
   if (!battle) return null
 
-  const teams = battleTeams(state)
+  const teams = battleTeams(state, turnNumber)
   // FtD needs something on both sides; an empty team produces a battle that
   // ends the instant it starts.
   const bothSidesCrewed = teams.every((team) => team.cards.length > 0)

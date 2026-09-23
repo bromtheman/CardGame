@@ -356,6 +356,7 @@ export function GameBoardPage() {
           busy={busy}
           gameId={game.id}
           practice={botSideOf(game.settings) !== null}
+          turnNumber={game.turn_number}
           onConcede={onConcede}
         />
       )}
