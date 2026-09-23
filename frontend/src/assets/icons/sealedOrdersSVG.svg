@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Sealed orders: the picture for an ability card, a scroll of written
+       orders under a wax seal. Flat black like the vehicle silhouettes; the
+       card face draws it at 60% opacity. -->
+  <defs>
+    <mask id="writing" maskUnits="userSpaceOnUse" x="0" y="0" width="64" height="64">
+      <rect width="64" height="64" fill="#fff"/>
+      <path d="M20 19H44M20 25H44M20 31H40M20 37H33" stroke="#000" stroke-width="2.4" stroke-linecap="round"/>
+      <path d="M48.42 37.6L50.4 40.57L53.66 42L53.27 45.54L54.85 48.74L52.27 51.2L51.43 54.66L47.87 54.89L45 57L42.13 54.89L38.57 54.66L37.73 51.2L35.15 48.74L36.73 45.54L36.34 42L39.6 40.57L41.58 37.6L45 38.6Z" fill="#000" stroke="#000" stroke-width="4" stroke-linejoin="round"/>
+    </mask>
+    <mask id="stamp" maskUnits="userSpaceOnUse" x="0" y="0" width="64" height="64">
+      <rect width="64" height="64" fill="#fff"/>
+      <path d="M45 42.6L46.12 45.46L49.18 45.64L46.81 47.59L47.59 50.56L45 48.9L42.41 50.56L43.19 47.59L40.82 45.64L43.88 45.46Z" fill="#000"/>
+    </mask>
+  </defs>
+  <g mask="url(#writing)">
+    <rect x="15" y="9" width="34" height="44"/>
+    <rect x="11" y="5" width="42" height="9" rx="4.5"/>
+    <rect x="11" y="48" width="42" height="9" rx="4.5"/>
+  </g>
+  <path d="M48.42 37.6L50.4 40.57L53.66 42L53.27 45.54L54.85 48.74L52.27 51.2L51.43 54.66L47.87 54.89L45 57L42.13 54.89L38.57 54.66L37.73 51.2L35.15 48.74L36.73 45.54L36.34 42L39.6 40.57L41.58 37.6L45 38.6Z" stroke="#000" stroke-width="2.5" stroke-linejoin="round" mask="url(#stamp)"/>
+</svg>
