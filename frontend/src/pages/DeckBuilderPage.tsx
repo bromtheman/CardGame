@@ -9,7 +9,7 @@ import { CopyStepper } from '../components/CopyStepper'
 import { PhysicalCard } from '../components/PhysicalCard'
 import { useCardsQuery } from '../lib/cards'
 import { useDecksQuery } from '../lib/decks'
-import { MAX_COPIES_PER_CARD, setDeckCopies } from '../lib/deckEditing'
+import { MAX_COPIES_PER_CARD, deckListOrder, setDeckCopies } from '../lib/deckEditing'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../lib/auth'
 
@@ -120,7 +120,7 @@ export function DeckBuilderPage() {
   }
 
   const cardById = new Map((allCards ?? []).map((c) => [c.id, c]))
-  const inDeck = Object.entries(cards)
+  const inDeck = deckListOrder(cards, cardById)
   return (
     <main className="mx-auto flex max-w-[1600px] flex-wrap gap-6 p-6">
       <section className="min-w-[600px] flex-1">
@@ -148,7 +148,11 @@ export function DeckBuilderPage() {
           ))}
         </div>
       </section>
-      <aside className="w-96">
+      {/* Sticks beside the pool (lg ≈ where the columns stop wrapping), so the
+          deck stays in view however far down the pool you scroll. Capped to the
+          viewport and scrolling on its own: a sticky box taller than the screen
+          would hide Save until the pool ran out. */}
+      <aside className="w-96 lg:sticky lg:top-6 lg:max-h-[calc(100dvh-3rem)] lg:self-start lg:overflow-y-auto">
         <input className="w-full rounded bg-ocean-900 p-2 font-display text-xl" value={name}
           onChange={(e) => { setName(e.target.value); setSaveState('idle') }} />
         <ul className="mt-3 flex flex-col gap-1">
