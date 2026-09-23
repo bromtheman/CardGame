@@ -14,6 +14,7 @@ import {
   resolveBlueprintPath,
   serializeCustomBattle,
 } from './customBattle.ts'
+import type { BattleCard, BattleTeamInput } from './customBattle.ts'
 import { BATTLE_REPORT_WIRE_VERSION } from './battleReport.ts'
 import { FACTIONS, VEHICLE_TYPES } from './gameSettings.ts'
 
@@ -413,6 +414,73 @@ describe('the CardGame block', () => {
   it('survives serialisation as ordinary JSON', () => {
     const text = serializeCustomBattle(buildCustomBattle(teams, { cardGame: cardGameSpec }))
     expect(JSON.parse(text).CardGame.Teams[0].Vehicles[0].InstanceId).toBe('i-1')
+  })
+})
+
+// 2026-09-23 amendment: a vehicle the mod must hold still (movement AI off for
+// the whole fight, weapons on) carries `Stunned: true`. It is optional and only
+// ever true, and the mod reads a missing field as "fight normally", so a battle
+// with nothing held must produce the file it did before the field existed.
+describe('the CardGame block — Stunned (2026-09-23 amendment)', () => {
+  const shark = { name: 'Tiger Shark', faction: FACTIONS.SS, instanceId: 'c-9' }
+  const buccaneer = { name: 'Buccaneer', faction: FACTIONS.DWG, instanceId: 'c-22' }
+  const heldMarauder = { ...marauder, instanceId: 'c-17', stunned: true }
+  const freeMarauder = { ...marauder, instanceId: 'c-17' }
+  const battleWith = (defenders: BattleCard[]): BattleTeamInput[] => [
+    { name: 'SS (attacking)', side: 'a', isAttacker: true, cards: [shark] },
+    { name: 'DWG (defending)', side: 'b', cards: defenders },
+  ]
+
+  // The contract's own example: c-17 is held, c-22 is not.
+  it('writes Stunned: true on a held vehicle and nothing at all on the rest', () => {
+    const file = buildCustomBattle(battleWith([heldMarauder, { ...buccaneer, stunned: false }]), {
+      cardGame: cardGameSpec,
+    })
+    expect(JSON.stringify(file.CardGame!.Teams)).toBe(
+      '[{"Side":"a","Vehicles":[{"InstanceId":"c-9","Name":"Tiger Shark"}]},' +
+        '{"Side":"b","Vehicles":[{"InstanceId":"c-17","Name":"Marauder","Stunned":true},' +
+        '{"InstanceId":"c-22","Name":"Buccaneer"}]}]',
+    )
+  })
+
+  it('keeps the flag on the vehicle paired with its own blueprint', () => {
+    const bulwarkC40 = { ...bulwark, instanceId: 'c-40' }
+    const file = buildCustomBattle(battleWith([buccaneer, heldMarauder, bulwarkC40]), {
+      cardGame: cardGameSpec,
+    })
+    expect(file.Teams[1]!.Blueprints.map((b) => b.FileName)).toEqual([
+      'Built In/Neter/DWG/Bucanneer', 'Built In/Neter/DWG/Marauder', 'Built In/Neter/OW/Bulwark',
+    ])
+    expect(file.CardGame!.Teams[1]!.Vehicles).toEqual([
+      { InstanceId: 'c-22', Name: 'Buccaneer' },
+      { InstanceId: 'c-17', Name: 'Marauder', Stunned: true },
+      { InstanceId: 'c-40', Name: 'Bulwark' },
+    ])
+  })
+
+  it('changes nothing outside the CardGame block, Blueprints included', () => {
+    const { CardGame: heldBlock, ...heldRest } = buildCustomBattle(battleWith([heldMarauder]), {
+      cardGame: cardGameSpec,
+    })
+    const { CardGame: freeBlock, ...freeRest } = buildCustomBattle(battleWith([freeMarauder]), {
+      cardGame: cardGameSpec,
+    })
+    expect(heldBlock).not.toEqual(freeBlock)
+    expect(JSON.stringify(heldRest)).toBe(JSON.stringify(freeRest))
+  })
+
+  it('writes exactly the pre-amendment file when nothing is held', () => {
+    const noField = buildCustomBattle(battleWith([freeMarauder, buccaneer]), { cardGame: cardGameSpec })
+    const allFalse = buildCustomBattle(
+      battleWith([{ ...freeMarauder, stunned: false }, { ...buccaneer, stunned: false }]),
+      { cardGame: cardGameSpec },
+    )
+    expect(JSON.stringify(noField.CardGame!.Teams)).toBe(
+      '[{"Side":"a","Vehicles":[{"InstanceId":"c-9","Name":"Tiger Shark"}]},' +
+        '{"Side":"b","Vehicles":[{"InstanceId":"c-17","Name":"Marauder"},' +
+        '{"InstanceId":"c-22","Name":"Buccaneer"}]}]',
+    )
+    expect(serializeCustomBattle(allFalse)).toBe(serializeCustomBattle(noField))
   })
 })
 

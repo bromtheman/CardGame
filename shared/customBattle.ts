@@ -113,6 +113,18 @@ export interface BattleCard {
    * Nothing in the `.customBattle` schema itself carries it.
    */
   instanceId?: string
+  /**
+   * Hold this hull still for the whole FtD battle: the mod switches its
+   * movement AI off and locks it, while its weapons keep firing. Decided by
+   * `holdsStillInFtd` (shared/engine/stun.ts — a stunned ship, tank or sub);
+   * this module only copies it.
+   *
+   * Only read when a `cardGame` block is requested, where `true` becomes the
+   * vehicle's `Stunned: true`. Omitted or false writes nothing at all, so a
+   * battle with no held hull produces exactly the file it did before the flag
+   * existed.
+   */
+  stunned?: boolean
 }
 
 export interface BattleTeamInput {
@@ -217,6 +229,13 @@ interface CustomBattleTeamJson {
 export interface CardGameVehicleJson {
   InstanceId: string
   Name: string
+  /**
+   * Hold this hull's movement AI off for the whole battle; firing stays on
+   * (2026-09-23 amendment). Written only as `true`, never `false`: the mod
+   * reads a missing field as false, so the field needs no
+   * BATTLE_REPORT_WIRE_VERSION bump.
+   */
+  Stunned?: true
 }
 
 export interface CardGameTeamJson {
@@ -461,7 +480,13 @@ function buildCardGameBlock(
               `Card "${card.name}" needs an \`instanceId\` to appear in the CardGame block.`,
             )
           }
-          return { InstanceId: card.instanceId, Name: card.name }
+          // Spread rather than assigned, like CardGame itself: an unheld
+          // vehicle carries no `Stunned` key at all, never `false`.
+          return {
+            InstanceId: card.instanceId,
+            Name: card.name,
+            ...(card.stunned ? { Stunned: true as const } : {}),
+          }
         }),
       }
     }),

@@ -313,6 +313,18 @@ export const FEEDBACK_LOOP_DRAW = 1
 // numbers advance in half steps, so 1.0 is exactly one enemy turn when the
 // stun lands on the stunner's own turn — the only case the roster produces.
 export const STUN_DURATION_TURNS = 1
+// The stunned hulls a generated FtD battle holds still (2026-09-23): the file
+// flags them `Stunned`, and the CardGameBattleLoader mod switches their
+// movement AI off for the whole fight while their weapons keep firing — the
+// board's "cannot move, still defends" (holdsStillInFtd, engine/stun.ts).
+// Listed by name rather than via isShipClass, which counts hover as a ship.
+// Left out on purpose, stunned on the board but fighting normally in FtD:
+//   * hover — without its AI a hovercraft may lose its cushion;
+//   * plane — would crash;
+//   * airship — depends on its lift.
+export const FTD_HELD_VEHICLE_TYPES: readonly string[] = [
+  VEHICLE_TYPES.SHIP, VEHICLE_TYPES.TANK, VEHICLE_TYPES.SUB,
+]
 // The three LH beams — effect damage to a base, ignoring Blocker like Bull
 // Shark's (spec §3.8). Three constants for three figures: two equal figures
 // never share one (VENGEFUL_BASE_DAMAGE's rule).
