@@ -37,11 +37,12 @@ export const FACTION_NOTES: Partial<Record<BotFaction, FactionNote>> = {
 - Stun (Ampere on play, Penumbra at three pips, EMP Salvo) switches an enemy hull off through its next turn: it cannot attack, move, Block or Screen, and a Stealthy hull cannot withdraw. Stun a Blocker and bombard past it the same turn; stun a Stealthy hull and fleet-attack it. Ampere also lands fully charged, so spend its pips the turn you play it — on EMP Salvo, Data Burst or a Drain capital.
 - Umbra shells the base past Blockers at two pips and stays Stealthy, so it keeps firing; Eclipse duels a chosen enemy at two pips. Fire a full hull rather than holding it unless you are saving its pips for a Drain capital.
 - Draw keeps your hand full: the Watt enters holding a pip, so discharge it for a card the turn it lands and again each turn it lives, and it brings a permanent decoy plane that pulls enemy effects away from your other hulls; Faraday, Kilowatt and Megawatt draw a card when played; Data Burst spends two pips from one hull for two cards. Turn spare pips into cards whenever no beam, stun or Drain needs them.
-- Lasers stop at the water: play Anode's Sub Screen where enemy submarines would hurt.`,
+- Lasers stop at the water, so a fleet battle cannot sink a submarine. EMP Torpedo removes one for two pips from a hull in its lane — Ampere lands fully charged, so it can pay the turn it arrives — and Anode's Sub Screen keeps new ones out.`,
     // Every card name the prose relies on, verbatim — a test pins each against the seed.
     mentions: [
       'Kilowatt', 'Anode', 'Angstrom', 'Chrysoprase', 'Volta', 'Dipole', 'Conduit',
       'Overcharge', 'Ampere', 'Penumbra', 'EMP Salvo', 'Umbra', 'Eclipse', 'Watt', 'Faraday', 'Data Burst', 'Megawatt',
+      'EMP Torpedo',
     ],
   },
 }

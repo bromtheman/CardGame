@@ -190,3 +190,22 @@ describe('evaluator — 2026-09-21 LH', () => {
     expect(boardChargeOf(g.state, 'a')).toBe(2)
   })
 })
+
+// 2026-09-23 EMP Torpedo: a charged LH hull beside a Blocker sub. Removing the
+// sub reopens the lane to bombardment, so the scored flow must rank the
+// torpedo above ending the turn — PracticeAI finds LH's answer to a locked lane.
+describe('scoreMove — EMP Torpedo', () => {
+  it('scores the torpedo on a Blocker sub above END TURN', () => {
+    const g = makeGame({ activePlayer: BOT, turnNumber: 3, privates: { a: { hand: [], deck: [] }, b: { hand: [inst({
+      instanceId: 'torpedo', name: 'EMP Torpedo', type: 'ability', vehicleType: null, faction: 'LH', materialCost: 100000,
+      meta: { playOnVehicleEffect: 'empTorpedoEffect', dischargeFrom: 2 },
+    })], deck: [] } } })
+    g.state.factions = { a: 'TG', b: 'LH' }
+    g.state.resources.b.materials = 100000
+    g.state.zones[0].cards.b.push(hull(200000, { instanceId: 'ampere', name: 'Ampere', faction: 'LH', meta: { chargeMax: 2 }, charge: 2, playedOnTurn: 1 }))
+    g.state.zones[0].cards.a.push(hull(375000, { instanceId: 'agony', name: 'Agony', faction: 'TG', vehicleType: 'sub', keywords: [KEYWORDS.BLOCKER] }))
+    const end = scoreMove(g, BOT, { type: 'END_TURN' }, makeCtx(), 1)!
+    const torpedo = scoreMove(g, BOT, { type: 'PLAY_CARD_TARGETING_CARD_ON_FIELD', instanceId: 'torpedo', targetInstanceId: 'ampere' }, makeCtx(), 1)!
+    expect(torpedo).toBeGreaterThan(end)
+  })
+})

@@ -12,7 +12,7 @@ import {
 } from './primitives.ts'
 import type { EffectFn, EffectPayload } from './registry.ts'
 import { registerEffect } from './registry.ts'
-import { findVehicle, grantKeywordsTo, otherSide, putInHand, revokeKeywordsFrom, zoneById } from '../engine/gameEngine.ts'
+import { discardCard, findVehicle, grantKeywordsTo, otherSide, putInHand, revokeKeywordsFrom, zoneById } from '../engine/gameEngine.ts'
 import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
 import { isStunned, stunHull } from '../engine/stun.ts'
 import type { EngineGame, Side, ZoneCardEntry } from '../engine/engineTypes.ts'
@@ -635,7 +635,7 @@ registerEffect(TERAWATT_TRANSFER, choice({
   },
 }))
 
-// The three "Discharge 2 from a friendly LH vehicle" abilities (spec §3.2,
+// The "Discharge 2 from a friendly LH vehicle" abilities that make a second pick (spec §3.2,
 // R-24). PLAY_CARD_TARGETING_CARD_ON_FIELD has validated the host and spent
 // the pips; each effect makes its second pick in the HOST'S lane through
 // `choice`. An empty option list resolves with null → false → the play is
@@ -658,6 +658,41 @@ registerEffect(EMP_SALVO, choice({
     const found = findVehicle(game.state, choiceId)
     if (!found || found.side !== otherSide(actor)) return false
     stunHull(game, found.entry as ZoneCardEntry)
+    return true
+  },
+}))
+
+// EMP Torpedo — "Discharge 2 from a friendly LH vehicle: remove target enemy
+// submarine in that zone from play." (2026-09-23 EMP Torpedo amendment.)
+// EMP Salvo's second pick narrowed to submarines, resolving with WF Sub
+// Strike's removal body — under its OWN registry id, never subStrikeEffect's
+// (the Kraken/Paddlegun rule, docs/claude/card-effects.md).
+//
+// ⚠ REMOVE FROM PLAY IS NOT DESTROY (2026-09-02 R-7): the sub leaves through
+// discardCard, the single exit out of play, and is never pushed to
+// destroyedEntries, so no onDeathEffect fires. `vehicleType === SUB` exactly:
+// a hovercraft is a ship in every rule and is never offered. Stealthy subs
+// are fair game — Stealthy only withdraws a defender from a fleet battle.
+const EMP_TORPEDO = 'empTorpedoEffect'
+const isSub = (e: ZoneCardEntry): boolean => e.vehicleType === VEHICLE_TYPES.SUB
+registerEffect(EMP_TORPEDO, choice({
+  effect: EMP_TORPEDO,
+  prompt: 'EMP Torpedo — choose an enemy submarine in that zone to remove',
+  options: ({ game, actor, targetInstanceId }) => {
+    const host = hostLane(game, targetInstanceId)
+    return host ? enemyVehicleOptions(game, actor, host.zone.id, isSub) : []
+  },
+  resolve: ({ game, actor, card }, choiceId) => {
+    if (choiceId === null) return false
+    // choice() has already checked choiceId was offered; re-check the board in
+    // case the sub left it while the choice sat open.
+    const found = findVehicle(game.state, choiceId)
+    if (!found || found.side !== otherSide(actor) || !isSub(found.entry as ZoneCardEntry)) return false
+    const enemy = found.side
+    found.zone.cards[enemy] = found.zone.cards[enemy].filter((c) => c.instanceId !== choiceId)
+    discardCard(game, enemy, found.entry)
+    // The sub was public on the board a moment ago, so naming it leaks nothing.
+    game.state.log.push(`${card.name}: ${found.entry.name} is removed from play in zone ${found.zone.id}`)
     return true
   },
 }))
