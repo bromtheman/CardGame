@@ -31,9 +31,12 @@ export const CARDS: Record<string, Expected> = {
     materialCost: 70_000, blueprintCost: 65_069, cpCost: 0, keywords: ['mobile'], vehicleType: 'airship',
     cardText: '', meta: { chargeMax: 2 },
   },
+  // 2026-09-22 hovercraft amendment: Byte's draw, a Decoy Luxon token, and the
+  // Hovercraft type; the Watt itself no longer prints Decoy.
   'LH:Watt': {
-    materialCost: 90_000, blueprintCost: 90_797, cpCost: 0, keywords: ['scrappy', 'mobile', 'decoy'], vehicleType: 'ship',
-    cardText: '', meta: { chargeMax: 1 },
+    materialCost: 90_000, blueprintCost: 90_797, cpCost: 0, keywords: ['scrappy', 'mobile'], vehicleType: 'hover',
+    cardText: 'When played, this gains 1 charge and a friendly Luxon spawns in this zone. That Luxon has Decoy and is not Temporary. Discharge 1: draw a card.',
+    meta: { chargeMax: 1, onPlayEffect: 'wattOnPlay', onActivate: 'wattDraw', activateCpCost: 0, dischargeCost: 1 },
   },
   'LH:Luxon': {
     materialCost: 60_000, blueprintCost: 59_142, cpCost: 0, keywords: ['halfCost', 'temporary'], vehicleType: 'plane',
@@ -222,7 +225,8 @@ describe('LH redesign — roster shape (spec §5, §7)', () => {
     const seed = await bySeedKey()
     expect(seed.get('LH:Dynamo')!.keywords).toContain('swift')
     expect(seed.get('LH:Rectifier')!.keywords).toContain('swift')
-    expect(seed.get('LH:Watt')!.keywords).toContain('decoy')
+    // Decoy is no longer printed: the Watt's Luxon token takes it by grant (2026-09-22).
+    expect(seed.get('LH:Watt')!.keywords).not.toContain('decoy')
     // Every gate one lower than first printed: draining made it a cost (2026-09-22 spec §6).
     for (const [k, gate] of [['LH:Dynamo', 1], ['LH:Quadrupole', 2], ['LH:Cathode', 2], ['LH:Terawatt', 2], ['LH:Candela', 3], ['LH:Impedance', 4]] as const) {
       expect((seed.get(k)!.meta as Record<string, unknown>).requiresCharge, k).toBe(gate)

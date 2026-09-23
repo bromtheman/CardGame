@@ -444,19 +444,25 @@ export const lhVehicles = [
     {
         name: 'Watt',
         isBuiltIn: true,
-        cardText: '',
+        cardText: 'When played, this gains 1 charge and a friendly Luxon spawns in this zone. That Luxon has Decoy and is not Temporary. Discharge 1: draw a card.',
         materialCost: 90000,
         blueprintCost: 90797,
         cpCost: 0,
         imageUrl: 'watt.png',
         playerId: null,
-        vehicleType: 'ship',
+        // 2026-09-22 hovercraft amendment: a skimmer that hovers — it died when
+        // FtD spawned it at the surface like a ship.
+        vehicleType: VEHICLE_TYPES.HOVER,
         type: 'vehicle',
         faction: FACTIONS.LH,
         blueprintId: null,
-        // Decoy's rule lives in the glossary, like every keyword's — no card text (R-6).
-        keywords: [KEYWORDS.SCRAPPY, KEYWORDS.MOBILE, KEYWORDS.DECOY],
-        meta: { chargeMax: 1 },
+        // Byte's draw moved here, and the Decoy moved to the permanent Luxon
+        // token wattOnPlay spawns (R-6 amended).
+        keywords: [KEYWORDS.SCRAPPY, KEYWORDS.MOBILE],
+        meta: {
+            chargeMax: 1, [TRIGGERS.ON_PLAY]: 'wattOnPlay',
+            [TRIGGERS.ON_ACTIVATE]: 'wattDraw', activateCpCost: 0, dischargeCost: 1,
+        },
     },
     {
         name: 'Luxon',

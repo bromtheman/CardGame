@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { applyAction, chargeOf, discardSnapshotOf } from '../engine/index.ts'
+import { applyAction, CATALOG_EFFECTS, chargeOf, discardCard, discardSnapshotOf } from '../engine/index.ts'
 import type { GameAction, ZoneCardEntry } from '../engine/engineTypes.ts'
-import { inst, makeCtx, makeGame, zoneEntry } from '../engine/testFixtures.ts'
+import { MAX_VEHICLES_PER_ZONE_SIDE } from '../gameSettings.ts'
+import { inst, makeCtx, makeGame, snap, zoneEntry } from '../engine/testFixtures.ts'
 
 // One block per 2026-09-21 LH effect. Each drives the registered effect
 // through the real action (ACTIVATE_VEHICLE, PLAY_CARD_TO_ZONE, …) so the
@@ -462,5 +463,90 @@ describe('Extended Sortie — extendedSortieEffect', () => {
     expect(wing).toBeDefined()
     expect(wing.keywords).toEqual(['halfCost', 'fragile', 'swift'])
     expect(discardSnapshotOf(wing).keywords).toContain('temporary')
+  })
+})
+
+// 2026-09-22 hovercraft amendment §3: Byte's draw moved here; the Decoy moved
+// to a permanent Luxon token.
+describe('Watt — wattOnPlay and wattDraw', () => {
+  const luxon = () => snap({
+    name: 'Luxon', faction: 'LH', vehicleType: 'plane', materialCost: 60000,
+    keywords: ['halfCost', 'temporary'], meta: { deployRequiresLhVehicle: true },
+  })
+  const wattMeta = { chargeMax: 1, onPlayEffect: 'wattOnPlay', onActivate: 'wattDraw', activateCpCost: 0, dischargeCost: 1 }
+  const setup = () => {
+    const game = lhGame()
+    game.privates.a.hand = [inst({
+      instanceId: 'watt', name: 'Watt', faction: 'LH', vehicleType: 'hover', materialCost: 90000,
+      keywords: ['scrappy', 'mobile'], meta: wattMeta,
+    })]
+    game.state.counts.a = { hand: 1, deck: 1 }
+    return game
+  }
+  const play = (game: ReturnType<typeof makeGame>, ctx = makeCtx({ catalog: [luxon()] })) =>
+    applyAction(game, 'alice', { type: 'PLAY_CARD_TO_ZONE', instanceId: 'watt', zoneId: 1 }, ctx)
+
+  it('asks for the catalog, so game-action loads it for a Watt play', () => {
+    expect(CATALOG_EFFECTS.has('wattOnPlay')).toBe(true)
+  })
+
+  it('lands with its pip and launches a Luxon that has Decoy, is not Temporary, and is a token', () => {
+    const res = play(setup())
+    if (!res.ok) throw new Error(res.error)
+    const [hull, escort] = res.game.state.zones[0].cards.a as ZoneCardEntry[]
+    expect(hull.instanceId).toBe('watt')
+    expect(chargeOf(hull)).toBe(1)
+    expect(escort.name).toBe('Luxon')
+    expect(escort.keywords).toEqual(['halfCost', 'decoy'])
+    expect(escort.meta.summonOnly).toBe(true)
+    expect(res.game.state.log).toContain('Watt gains 1 charge')
+    expect(res.game.state.log).toContain('Watt launches a Luxon in zone 1 — it has Decoy and stays')
+  })
+
+  it('keeps its Luxon through a full round of turn starts', () => {
+    const res = play(setup())
+    if (!res.ok) throw new Error(res.error)
+    const endedAlice = applyAction(res.game, 'alice', { type: 'END_TURN' }, makeCtx())
+    if (!endedAlice.ok) throw new Error(endedAlice.error)
+    const ended = applyAction(endedAlice.game, 'bob', { type: 'END_TURN' }, makeCtx())
+    if (!ended.ok) throw new Error(ended.error)
+    expect(ended.game.state.zones[0].cards.a.map((c) => c.name)).toEqual(['Watt', 'Luxon'])
+  })
+
+  it('sends a dead Luxon nowhere — it never reaches the discard', () => {
+    const res = play(setup())
+    if (!res.ok) throw new Error(res.error)
+    discardCard(res.game, 'a', res.game.state.zones[0].cards.a[1])
+    expect(res.game.state.destroyed.a).toEqual([])
+  })
+
+  it('still lands and charges in a full lane, with no Luxon and a log line', () => {
+    const game = setup()
+    for (let i = 0; i < MAX_VEHICLES_PER_ZONE_SIDE - 1; i++) game.state.zones[0].cards.a.push(zoneEntry({ faction: 'LH' }))
+    const res = play(game)
+    if (!res.ok) throw new Error(res.error)
+    const lane = res.game.state.zones[0].cards.a as ZoneCardEntry[]
+    expect(lane).toHaveLength(MAX_VEHICLES_PER_ZONE_SIDE)
+    expect(lane.some((c) => c.name === 'Luxon')).toBe(false)
+    expect(chargeOf(lane.find((c) => c.instanceId === 'watt')!)).toBe(1)
+    expect(res.game.state.log).toContain('Watt: no room in zone 1 for its Luxon')
+  })
+
+  it('fails the play when the catalog has no Luxon — a data bug, not an empty pool', () => {
+    const game = setup()
+    expect(play(game, makeCtx())).toMatchObject({ ok: false })
+    expect(game.privates.a.hand.map((c) => c.instanceId)).toEqual(['watt'])
+  })
+
+  it('discharges its pip for a card', () => {
+    const game = lhGame()
+    game.state.zones[0].cards.a.push(zoneEntry({
+      instanceId: 'watt', name: 'Watt', faction: 'LH', vehicleType: 'hover', keywords: ['scrappy', 'mobile'],
+      meta: wattMeta, charge: 1,
+    }))
+    const res = activate(game, 'watt')
+    if (!res.ok) throw new Error(res.error)
+    expect(res.game.privates.a.hand.map((c) => c.name)).toEqual(['Spare'])
+    expect(chargeOf(res.game.state.zones[0].cards.a[0] as ZoneCardEntry)).toBe(0)
   })
 })

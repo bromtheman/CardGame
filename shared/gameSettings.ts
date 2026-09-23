@@ -301,6 +301,9 @@ export const BYTE_PLAY_CHARGE = 1
 // 2026-09-22 hovercraft amendment. Ampere: "When played, this gains 2 charge
 // and stuns …" — it lands full, so its pips can pay the same turn.
 export const AMPERE_PLAY_CHARGE = 2
+// Watt: "When played, this gains 1 charge …" — Byte's draw moved here, so the
+// pip can buy a card the turn it lands (2026-09-22 hovercraft amendment).
+export const WATT_PLAY_CHARGE = 1
 // Data Burst: "Discharge 2 from a friendly LH vehicle: draw 2 cards." Its own
 // constant, not EXCRUCIATOR_DRAW_COUNT's, which it equals only by coincidence.
 export const DATA_BURST_DRAW = 2
