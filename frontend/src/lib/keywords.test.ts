@@ -114,14 +114,15 @@ describe('chargeAttributesOf', () => {
     expect(text).toContain('do not stack')
   })
 
-  it('explains Drain as a whole-board cost the player splits as they choose', () => {
+  it('explains Drain as an optional whole-board discount of N × 50k, never a gate', () => {
     expect(labels({ chargeMax: 2, requiresCharge: 3 })).toEqual(['Charge 2', 'Drain 3 Charge'])
     const text = body({ requiresCharge: 3 }, 'requiresCharge')
-    expect(text).toContain('drains 3 charge')
-    expect(text).toContain('any of them')
-    expect(text).toContain('you choose')
-    expect(text).toContain('whole board')
-    expect(text).not.toContain('does not spend')
+    expect(text).toContain('you may drain exactly 3 charge')
+    expect(text).toContain('any mix of them')
+    expect(text).toContain('costs 150k less')
+    expect(text).toContain('you pay the full price')
+    expect(text).toContain('never out of reach')
+    expect(text).not.toContain('You need')
   })
 
   it('explains Discharge as a cost paid by the one vehicle, plus its activation', () => {

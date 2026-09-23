@@ -126,7 +126,9 @@ export const BOT_DECKS: Record<BotFaction, Record<string, number>> = {
   },
   // 2026-09-21 LH redesign. Curated for the bot: batteries it can protect,
   // three Blockers, one timer, one beam, and the ability cards the policy
-  // aims by trial. No Drain capitals — a greedy bot would hold them all game.
+  // aims by trial. No Drain capitals: curated while Drain gated a play, when a
+  // greedy bot held them all game. Since 2026-09-23 Drain is a discount and
+  // they are always playable — a candidate for the next curation.
   // 2026-09-22 draw amendment: Faraday ×2 and Data Burst ×2 came in for both
   // Watts, Megawatt and the second Kilowatt — none of them named in the LH
   // strategy notes (factionNotes.ts), which pin every card they name to this

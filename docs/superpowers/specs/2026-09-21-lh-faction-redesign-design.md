@@ -342,23 +342,23 @@ profile per non-retired LH vehicle is met by importing the report (§8).
 | Eclipse | hover · 220k (216k) | 2 | Stealthy | Discharge 2: this vehicle fights a 1v1 against target non-Stealthy enemy vehicle in this zone. |
 | Caspian | plane · 230k (230k) | — | Half-Cost, Temporary | Sea-skimmer: may be played into a zone with enemy Air Screen. |
 | Anode | sub · 260k (364k) | 2 | Blocker, Sub Screen | — (replaced Hydrovolt, retired, 2026-09-22) |
-| Dynamo | airship · 350k (346k) | 1 | Mobile, Swift | Drain 1 Charge. |
+| Dynamo | airship · 400k (346k) | 1 | Mobile, Swift | Drain 1 Charge: costs 50k less. |
 | Megawatt | ship · 360k (362k) | 2 | Mobile | When played, draw a card. |
 | Penumbra | ship · 370k (375k) | 3 | — | Discharge 3: stun every enemy vehicle in this zone. |
-| Thyristor | airship · 400k (565k) | 2 | Mobile | Drain 2 Charge. (back from the bench, 2026-09-23) |
+| Thyristor | airship · 500k (565k) | 2 | Mobile | Drain 2 Charge: costs 100k less. (back from the bench, 2026-09-23) |
 
 ### 5.3 Capitals
 
 | Card | Type · cost (FtD) | ⚡ | Keywords | Text |
 |---|---|---|---|---|
 | Angstrom | ship · 540k (546k) | 2 | Blocker, Air Screen, Mobile | — |
-| Quadrupole | airship · 560k (685k) | 2 | Blocker, Mobile | Drain 2 Charge. |
+| Quadrupole | airship · 660k (685k) | 2 | Blocker | Drain 2 Charge: costs 100k less. (2026-09-23: no Mobile) |
 | Cathode | sub · 600k (726k) | 2 | Fragile | Drain 2 Charge: costs 100k less. Overheat: after each battle it fights, it is stunned until the end of the next turn. (2026-09-23) |
 | Superradiance | ship · 620k (626k) | 3 | — | Discharge 3: deal 300k damage to the enemy base in this zone. |
-| Terawatt | hover · 640k (725k) | 4 | Blocker, Scrappy, Mobile | Drain 2 Charge. Generators: this gains 2 charge at the start of your turn instead of 1. Discharge 2: another friendly LH vehicle in this zone gains 2 charge. |
-| Candela | ship · 700k (1,021k) | 2 | Blocker, Sub Screen, Scrappy, Mobile | Drain 3 Charge. |
+| Terawatt | hover · 740k (725k) | 4 | Blocker, Scrappy, Mobile | Drain 2 Charge: costs 100k less. Generators: this gains 2 charge at the start of your turn instead of 1. Discharge 2: another friendly LH vehicle in this zone gains 2 charge. |
+| Candela | ship · 850k (1,021k) | 2 | Blocker, Sub Screen, Scrappy, Mobile | Drain 3 Charge: costs 150k less. |
 | Rectifier | plane · 700k (735k) | — | Half-Cost, Temporary, Fragile, Swift | — |
-| Impedance | ship · 750k (1,327k) | 2 | Blocker | Drain 4 Charge. Discharge 2: deal 400k damage to the enemy base in this zone. |
+| Impedance | ship · 950k (1,327k) | 2 | Blocker | Drain 4 Charge: costs 200k less. Discharge 2: deal 400k damage to the enemy base in this zone. |
 
 ### 5.4 Abilities
 
@@ -379,7 +379,7 @@ profile per non-retired LH vehicle is met by importing the report (§8).
 - Curve: 40k pickets on turn 1; Conduit/Dipole 70k; Watt 120k turn 2; Umbra turn
   2; Kilowatt/Ampere/Eclipse turn 3; Hydrovolt turn 4; Dynamo/Megawatt/Penumbra
   turn 5; Thyristor turn 6; Angstrom turn 8; Quadrupole/Cathode turn 8; Superradiance/Terawatt
-  turn 9; Candela/Impedance turn 10; Rectifier (350k to play) turn 5.
+  turn 9; Candela/Impedance turn 10; Rectifier (350k to play) turn 5. Since 2026-09-23 the Drain capitals print N × 50k more, so these are their drained turns; undrained, each lands a turn or two later (Cathode excepted: 600k printed, 500k drained).
 - Charge timeline, un-raced: Chrysoprase (t1) + Watt + Volta (t2) + Kilowatt (t3)
   is 5 pips on turn 4 from 380k of hulls; Dynamo's gate opens turn 5; on an
   un-raced board every Drain capital is gated by materials, not pips, but each

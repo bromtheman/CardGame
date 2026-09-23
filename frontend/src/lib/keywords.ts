@@ -1,7 +1,8 @@
 import { CHARGE_TICK, KEYWORDS, VEHICLE_TYPES } from '@shared/gameSettings'
 import {
-  chargeGateOf, chargeMaxOf, chargeRateOf, chargeRelayOf, dischargeCostOf, dischargeFromOf,
+  chargeGateOf, chargeMaxOf, chargeRateOf, chargeRelayOf, dischargeCostOf, dischargeFromOf, drainDiscountOf,
 } from '@shared/engine/index'
+import { shortHandNumber } from '@shared/format'
 import { HOVER_SPAWN_ALTITUDE_M } from '@shared/customBattle'
 
 import blockerIcon from '../assets/icons/keywords/blocker.svg'
@@ -239,12 +240,13 @@ export function chargeAttributesOf(meta: Record<string, unknown>): Attribute[] {
 
   const gate = chargeGateOf(card)
   if (gate > 0) {
+    const off = shortHandNumber(drainDiscountOf(card))
     rows.push({
       key: 'requiresCharge', label: `Drain ${gate} Charge`, icon: drainIcon,
       description:
-        `Playing this drains ${gate} charge from the LH vehicles you control. Take it from any of them, `
-        + 'in any zone — you choose how much each gives up as you play it. You need '
-        + `${gate} in total across your whole board, so losing charged vehicles can put this card out of reach.`,
+        `As you play this, you may drain exactly ${gate} charge from the LH vehicles you control — any mix `
+        + `of them, in any zone. If you do, it costs ${off} less. Drain nothing and you pay the full price, `
+        + 'so it is never out of reach.',
     })
   }
 

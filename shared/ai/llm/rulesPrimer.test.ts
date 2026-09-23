@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { KEYWORDS, MATERIALS_PER_TURN, SURVIVE_HP_PERCENT } from '../../gameSettings'
+import { DRAIN_DISCOUNT_PER_CHARGE, KEYWORDS, MATERIALS_PER_TURN, SURVIVE_HP_PERCENT } from '../../gameSettings'
 import { shipProfilesForFaction } from '../../shipProfiles'
 import { FACTION_NOTES, GENERAL_TIPS } from './factionNotes'
 import { TEMPO_GUARD_TURNS } from './llmSettings'
@@ -11,6 +11,12 @@ describe('rules primer', () => {
     expect(stripped).not.toMatch(/\d/)
     for (const text of Object.values(KEYWORD_GLOSSARY)) expect(text).not.toMatch(/\d/)
     for (const block of Object.values(HOW_YOU_PLAY)) expect(block).not.toMatch(/\d/)
+  })
+  it('explains Drain as a discount at the engine’s rate, never a requirement (2026-09-23)', () => {
+    const text = renderPrimer('LH')
+    expect(text).toContain(`N × ${DRAIN_DISCOUNT_PER_CHARGE} less`)
+    expect(text).toContain('never a requirement')
+    expect(text).not.toContain('can be played only while')
   })
   it('times a stun from the turn it lands, whoever stunned it (2026-09-23 Overheat)', () => {
     expect(PRIMER_TEMPLATE).toContain('until the end of the turn after the one it was stunned in')

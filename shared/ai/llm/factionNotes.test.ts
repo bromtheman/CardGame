@@ -15,6 +15,11 @@ describe('faction notes', () => {
     for (const [faction, note] of Object.entries(FACTION_NOTES)) expect(note.text, faction).not.toMatch(/\d/)
   })
 
+  it('describes a Drain capital as always playable, cheaper when drained (2026-09-23)', () => {
+    expect(FACTION_NOTES.LH.text).toContain('is always playable')
+    expect(FACTION_NOTES.LH.text).not.toContain('needs that many pips')
+  })
+
   it('says the Watt enters empty and draws from its owner’s next turn (2026-09-23)', () => {
     expect(FACTION_NOTES.LH.text).not.toContain('enters holding a pip')
     expect(FACTION_NOTES.LH.text).toContain("the Watt's first pip arrives at the start of your next turn")
