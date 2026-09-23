@@ -12,6 +12,10 @@ describe('rules primer', () => {
     for (const text of Object.values(KEYWORD_GLOSSARY)) expect(text).not.toMatch(/\d/)
     for (const block of Object.values(HOW_YOU_PLAY)) expect(block).not.toMatch(/\d/)
   })
+  it('times a stun from the turn it lands, whoever stunned it (2026-09-23 Overheat)', () => {
+    expect(PRIMER_TEMPLATE).toContain('until the end of the turn after the one it was stunned in')
+    expect(PRIMER_TEMPLATE).not.toContain("until the end of its owner's next turn")
+  })
   it('gives the economy its own rule: materials are overwritten each turn, never saved', () => {
     // One clause inside the turn-flow bullet lost to the model's "materials
     // are a stockpile" prior (2026-09-17 bot_decisions: "conserving resources

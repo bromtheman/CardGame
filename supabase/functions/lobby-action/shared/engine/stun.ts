@@ -23,10 +23,19 @@ export function holdsStillInFtd(
     entry.vehicleType !== null && FTD_HELD_VEHICLE_TYPES.includes(entry.vehicleType)
 }
 
-// Applied + 1.0: every LH stun lands on LH's own turn, so this is exactly one
-// enemy turn, clearing when the stunner's next turn begins. Re-stunning
+// Applied + 1.0 on the turn it lands, so it covers exactly the next turn and
+// clears when the one after begins. Every LH stun of an ENEMY lands on LH's own
+// turn, so that next turn is the enemy's; Cathode's Overheat (2026-09-23) can
+// land on either player's turn, and passes its own log line. Re-stunning
 // rewrites the stamp. Rounded the way endTurn rounds turnNumber.
-export function stunHull(game: EngineGame, entry: ZoneCardEntry): void {
+export function stunHull(game: EngineGame, entry: ZoneCardEntry, logLine?: string): void {
   entry.stunnedUntilTurn = Math.round((game.turnNumber + STUN_DURATION_TURNS) * 10) / 10
-  game.state.log.push(`${entry.name} is stunned — its systems are down until the end of its owner's next turn`)
+  game.state.log.push(logLine ?? `${entry.name} is stunned — its systems are down until the end of its owner's next turn`)
+}
+
+// Whether a stun wears off when the NEXT turn begins — it lasts to the end of
+// this one — rather than a turn later: the stun badge's wording (2026-09-23
+// spec §4). Turns advance in half steps.
+export function stunEndsThisTurn(entry: { stunnedUntilTurn?: number }, turnNumber: number): boolean {
+  return isStunned(entry, turnNumber) && (entry.stunnedUntilTurn as number) - turnNumber <= 0.5
 }

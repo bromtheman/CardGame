@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { shortHandNumber } from '@shared/format'
 import { effectiveMaterialCostOf } from '@shared/engine/index'
-import { chargeMaxOf, chargeOf, isStunned } from '@shared/engine/index'
+import { chargeMaxOf, chargeOf, isStunned, stunEndsThisTurn } from '@shared/engine/index'
 import type { ZoneCardEntry } from '@shared/engine/engineTypes'
 import { KeywordIcons } from '../../components/KeywordIcons'
 import { CardDetailsModal } from '../../components/CardDetailsModal'
@@ -77,7 +77,7 @@ export function MiniVehicle({
         </span>
       )}
       {stunned && (
-        <span title="Stunned — cannot attack, move, Block or Screen until the end of its owner's next turn" className="absolute -bottom-1 left-1/2 -translate-x-1/2 rounded-full bg-red-700 px-1 text-[9px] font-bold text-parchment-100">
+        <span title={`Stunned — cannot attack, move, Block or Screen until the end of ${stunEndsThisTurn(entry, turnNumber) ? 'this' : 'the next'} turn`} className="absolute -bottom-1 left-1/2 -translate-x-1/2 rounded-full bg-red-700 px-1 text-[9px] font-bold text-parchment-100">
           stunned
         </span>
       )}

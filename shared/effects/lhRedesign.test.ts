@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { applyAction, CATALOG_EFFECTS, chargeOf, discardCard, discardSnapshotOf } from '../engine/index.ts'
-import type { GameAction, ZoneCardEntry } from '../engine/engineTypes.ts'
+import {
+  applyAction, CATALOG_EFFECTS, chargeOf, discardCard, discardSnapshotOf, findVehicle, fleetAttackRosters,
+  holdsStillInFtd, isStunned,
+} from '../engine/index.ts'
+import type { EngineGame, GameAction, ZoneCardEntry } from '../engine/engineTypes.ts'
 import { MAX_VEHICLES_PER_ZONE_SIDE } from '../gameSettings.ts'
 import { inst, makeCtx, makeGame, snap, zoneEntry } from '../engine/testFixtures.ts'
 
@@ -231,7 +234,7 @@ describe('Penumbra — penumbraPulse', () => {
   })
 })
 
-describe('Cathode — cathodeDuel', () => {
+describe('Cathode — cathodeDuel (dealt snapshots only since 2026-09-23)', () => {
   it('offers ships and subs only, surfaces at declaration, and declares the 1v1', () => {
     const game = lhGame()
     game.state.zones[0].cards.a.push(zoneEntry({
@@ -263,6 +266,87 @@ describe('Cathode — cathodeDuel', () => {
     const res = activate(game, 'cat')
     if (!res.ok) throw new Error(res.error)
     expect(res.game.state.pendingEffect?.options.map((o) => o.id)).toEqual(['hov'])
+  })
+})
+
+// 2026-09-23 (docs/superpowers/specs/2026-09-23-lh-drain-discount-design.md §6):
+// Cathode no longer duels; every battle it survives stuns it for a turn.
+describe('Cathode — cathodeOverheat', () => {
+  const cathode = () => zoneEntry({
+    instanceId: 'cat', name: 'Cathode', faction: 'LH', vehicleType: 'sub', keywords: ['fragile'],
+    meta: { chargeMax: 2, requiresCharge: 2, onBattleEffect: 'cathodeOverheat' },
+  })
+  const cat = (game: EngineGame) => findVehicle(game.state, 'cat')?.entry as ZoneCardEntry | undefined
+  // Alice reports and Bob approves — DECIDE refuses the reporter's own report.
+  const resolve = (game: EngineGame, results: Record<string, number>) => {
+    const submitted = applyAction(game, 'alice', { type: 'SUBMIT_BATTLE_REPORT', results, repairs: [] }, makeCtx())
+    if (!submitted.ok) throw new Error(submitted.error)
+    const decided = applyAction(submitted.game, 'bob', { type: 'DECIDE_BATTLE_REPORT', approve: true }, makeCtx())
+    if (!decided.ok) throw new Error(decided.error)
+    return decided.game
+  }
+  const bobsTurn = () => {
+    const game = lhGame()
+    game.turnNumber = 4.5
+    game.activePlayer = 'bob'
+    return game
+  }
+  const overheated = 'Cathode overheats — stunned until the end of the next turn'
+
+  it('does nothing at lock, then stuns a Cathode that attacked and survived through the enemy turn', () => {
+    const game = lhGame() // turn 4, Alice (LH) to act
+    game.state.zones[0].cards.a.push(cathode())
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe' }))
+    const declared = applyAction(game, 'alice', { type: 'ATTACK_ENEMY_FLEET', zoneId: 1 }, makeCtx())
+    if (!declared.ok) throw new Error(declared.error)
+    expect(cat(declared.game)!.stunnedUntilTurn).toBeUndefined()
+    const done = resolve(declared.game, { cat: 100, foe: 0 })
+    const hull = cat(done)!
+    expect(hull.stunnedUntilTurn).toBe(5)
+    expect(isStunned(hull, 4.5)).toBe(true)
+    expect(holdsStillInFtd(hull, 4.5)).toBe(true) // the enemy's turn: FtD holds the sub still
+    expect(isStunned(hull, 5)).toBe(false)        // ready on its owner's next turn
+    expect(done.state.log).toContain(overheated)
+  })
+
+  it('stuns a Cathode that defended — a draw included — through its owner’s next turn, so it cannot strike back', () => {
+    const game = bobsTurn()
+    game.state.zones[0].cards.a.push(cathode())
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe' }), zoneEntry({ instanceId: 'foe2' }))
+    const declared = applyAction(game, 'bob', { type: 'ATTACK_ENEMY_FLEET', zoneId: 1 }, makeCtx())
+    if (!declared.ok) throw new Error(declared.error)
+    const done = resolve(declared.game, { cat: 95, foe: 0, foe2: 100 })
+    const hull = cat(done)!
+    expect(hull.stunnedUntilTurn).toBe(5.5)
+    expect(fleetAttackRosters(done.state, 'a', 1, 5)!.force).toEqual([])
+    expect(isStunned(hull, 5.5)).toBe(false)
+  })
+
+  it('overheats after a forced 1v1 too — an enemy Eclipse duels it, now that it is not Stealthy', () => {
+    const game = bobsTurn()
+    game.state.zones[0].cards.a.push(cathode())
+    game.state.zones[0].cards.b.push(zoneEntry({
+      instanceId: 'ecl', name: 'Eclipse', faction: 'LH', vehicleType: 'hover', keywords: ['stealthy'],
+      meta: { chargeMax: 2, onActivate: 'eclipseDuel', activateCpCost: 0, dischargeCost: 2 }, charge: 2,
+    }))
+    const offered = applyAction(game, 'bob', { type: 'ACTIVATE_VEHICLE', instanceId: 'ecl' } as GameAction, makeCtx())
+    if (!offered.ok) throw new Error(offered.error)
+    expect(offered.game.state.pendingEffect?.options.map((o) => o.id)).toEqual(['cat'])
+    const declared = applyAction(offered.game, 'bob', { type: 'RESOLVE_PENDING_EFFECT', choiceId: 'cat' }, makeCtx())
+    if (!declared.ok) throw new Error(declared.error)
+    const done = resolve(declared.game, { ecl: 0, cat: 100 })
+    expect(cat(done)!.stunnedUntilTurn).toBe(5.5)
+  })
+
+  it('leaves a Cathode that died alone — nothing overheats', () => {
+    const game = lhGame()
+    game.state.zones[0].cards.a.push(cathode())
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'foe' }))
+    const declared = applyAction(game, 'alice', { type: 'ATTACK_ENEMY_FLEET', zoneId: 1 }, makeCtx())
+    if (!declared.ok) throw new Error(declared.error)
+    const done = resolve(declared.game, { cat: 85, foe: 100 }) // 85%: destroyed — no repair asked, none allowed
+    expect(cat(done)).toBeUndefined()
+    expect(done.state.log).not.toContain(overheated)
   })
 })
 

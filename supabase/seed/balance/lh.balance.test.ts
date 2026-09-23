@@ -127,10 +127,13 @@ export const CARDS: Record<string, Expected> = {
     materialCost: 700_000, blueprintCost: 734_617, cpCost: 0, keywords: ['halfCost', 'temporary', 'fragile', 'swift'], vehicleType: 'plane',
     cardText: '', meta: {},
   },
+  // 2026-09-23 (owner request): it won every fight it was in — submerged, only
+  // torpedoes reach it — so Stealthy, Sub Screen and the duel went, Fragile came
+  // in, and every battle it survives stuns it for a turn (spec §6).
   'LH:Cathode': {
-    materialCost: 600_000, blueprintCost: 726_398, cpCost: 0, keywords: ['stealthy', 'subScreen'], vehicleType: 'sub',
-    cardText: 'Drain 2 Charge. Discharge 2: this vehicle fights a 1v1 against target enemy ship or submarine in this zone, then this surfaces — it loses Stealthy for the rest of the game.',
-    meta: { chargeMax: 2, requiresCharge: 2, onActivate: 'cathodeDuel', activateCpCost: 0, dischargeCost: 2 },
+    materialCost: 600_000, blueprintCost: 726_398, cpCost: 0, keywords: ['fragile'], vehicleType: 'sub',
+    cardText: 'Drain 2 Charge: costs 100k less. Overheat: after each battle it fights, it is stunned until the end of the next turn.',
+    meta: { chargeMax: 2, requiresCharge: 2, onBattleEffect: 'cathodeOverheat' },
   },
   'LH:Superradiance': {
     materialCost: 620_000, blueprintCost: 625_766, cpCost: 0, keywords: [], vehicleType: 'ship',
@@ -203,7 +206,7 @@ describe('LH redesign — rows by value', () => {
     // stray gate or price cannot ride in unpinned.
     const meta = (card!.meta ?? {}) as Record<string, unknown>
     for (const [key, value] of Object.entries(want.meta)) expect(meta[key], `${k}.meta.${key}`).toEqual(value)
-    for (const key of ['chargeMax', 'chargeRate', 'chargeRelay', 'dischargeCost', 'dischargeFrom', 'requiresCharge', 'deployRequiresLhVehicle', 'ignoresAirScreen', 'activateCpCost']) {
+    for (const key of ['chargeMax', 'chargeRate', 'chargeRelay', 'dischargeCost', 'dischargeFrom', 'requiresCharge', 'deployRequiresLhVehicle', 'ignoresAirScreen', 'activateCpCost', 'onActivate', 'onBattleEffect']) {
       if (!(key in want.meta)) expect(meta[key], `${k}.meta.${key} should be absent`).toBeUndefined()
     }
     expect(meta.retired, `${k} must not be retired`).not.toBe(true)

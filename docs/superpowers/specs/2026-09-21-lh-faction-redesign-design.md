@@ -47,7 +47,7 @@ From the report, and what each trait became:
 - **Toughness from heavy armour, not shields** → Scrappy on the tanks (Chrysoprase,
   Conduit, Watt, Terawatt, Candela) and nowhere else; DWG stays the Scrappy faction.
 - **Weak to submarines** (lasers stop at the water) → three **Sub Screens**
-  (Hydrovolt, Cathode, Candela) and one hull that can hunt a sub (Cathode).
+  (Hydrovolt, Cathode, Candela) and one hull that can hunt a sub (Cathode). *(2026-09-23: Cathode is neither now — [drain discount spec](2026-09-23-lh-drain-discount-design.md) §6.)*
 - **Missile-proof point-defence** on Angstrom → the roster's **Air Screen**, on a
   Mobile wall.
 
@@ -272,7 +272,9 @@ Taken card by card on 2026-09-21; binding.
 - **R-17 Angstrom has no Sub Screen; Candela has no Air Screen.** One screen per
   wall; a hull with both is SS's hero power on a 700-damage Mobile Blocker.
 - **R-18 Cathode surfaces on discharge and duels ships *or submarines*** — the
-  roster's one active anti-sub tool. Surfacing on declaration.
+  roster's one active anti-sub tool. Surfacing on declaration. **Superseded 2026-09-23**
+  ([drain discount spec](2026-09-23-lh-drain-discount-design.md) §6): Cathode has no duel
+  and never surfaces; it overheats after every battle it fights.
 - **R-19 Superradiance is neither Mobile nor a Blocker nor Scrappy**: the
   offensive capital, static, paying full repairs to keep a 3-pip timer alive.
 - **R-20 Terawatt keeps all three lines** (Drain 2 — first printed Requires 3;
@@ -351,7 +353,7 @@ profile per non-retired LH vehicle is met by importing the report (§8).
 |---|---|---|---|---|
 | Angstrom | ship · 540k (546k) | 2 | Blocker, Air Screen, Mobile | — |
 | Quadrupole | airship · 560k (685k) | 2 | Blocker, Mobile | Drain 2 Charge. |
-| Cathode | sub · 600k (726k) | 2 | Stealthy, Sub Screen | Drain 2 Charge. Discharge 2: this vehicle fights a 1v1 against target enemy ship or submarine in this zone, then this surfaces — it loses Stealthy for the rest of the game. |
+| Cathode | sub · 600k (726k) | 2 | Fragile | Drain 2 Charge: costs 100k less. Overheat: after each battle it fights, it is stunned until the end of the next turn. (2026-09-23) |
 | Superradiance | ship · 620k (626k) | 3 | — | Discharge 3: deal 300k damage to the enemy base in this zone. |
 | Terawatt | hover · 640k (725k) | 4 | Blocker, Scrappy, Mobile | Drain 2 Charge. Generators: this gains 2 charge at the start of your turn instead of 1. Discharge 2: another friendly LH vehicle in this zone gains 2 charge. |
 | Candela | ship · 700k (1,021k) | 2 | Blocker, Sub Screen, Scrappy, Mobile | Drain 3 Charge. |

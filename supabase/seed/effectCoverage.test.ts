@@ -253,6 +253,7 @@ const DELIBERATE_ORPHANS: Record<string, string> = {
   candelaOnPlay: '2026-09-21 LH redesign: Candela no longer draws from the [TG] pool (spec §7)',
   terawattJoin: '2026-09-21 LH redesign replaced Terawatt\'s bystander join with terawattTransfer (spec §7)',
   umbraSalvo: '2026-09-22 hovercraft amendment: Umbra no longer surfaces; umbraBeam replaced it (spec §3)',
+  cathodeDuel: '2026-09-23 drain discount: Cathode no longer duels; cathodeOverheat replaced its ability (spec §6)',
 }
 
 describe('G4: every registered implementation is reachable from a seeded card', () => {
@@ -297,12 +298,13 @@ describe('G4: every registered implementation is reachable from a seeded card', 
   // One name per line so a later branch adding its own orphan (OW's
   // bulwarkOnPlay, SS's victoriaActivate, ...) is a clean insertion rather
   // than a rewrite of this whole line (2026-09-02 spec §2.3).
-  it('the deliberate list matches exactly what the 2026-08-30, 2026-09-02, 2026-09-16, 2026-09-21 and 2026-09-22 passes orphaned', () => {
+  it('the deliberate list matches exactly what the 2026-08-30, 2026-09-02, 2026-09-16, 2026-09-21, 2026-09-22 and 2026-09-23 passes orphaned', () => {
     expect(Object.keys(DELIBERATE_ORPHANS).sort()).toEqual([
       'ampereOnPlay',
       'ampereStun',
       'bulwarkOnPlay',
       'candelaOnPlay',
+      'cathodeDuel',
       'conduitEffect',
       'disembowelerOnPlay',
       'eclipseEffect',

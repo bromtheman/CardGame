@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   applyAction, baseDamageFrom, discardSnapshotOf, fleetAttackRosters, holdsStillInFtd, legalZonesFor, moveEntry,
 } from './index.ts'
-import { isStunned, stunHull } from './stun.ts'
+import { isStunned, stunEndsThisTurn, stunHull } from './stun.ts'
 import { inst, makeCtx, makeGame, zoneEntry } from './testFixtures.ts'
 import type { ZoneCardEntry } from './engineTypes.ts'
 
@@ -16,6 +16,22 @@ describe('stun (2026-09-21 LH spec §3.4)', () => {
     expect(isStunned(e, 2.5)).toBe(true)
     expect(isStunned(e, 3)).toBe(false)
     expect(isStunned(zoneEntry(), 2)).toBe(false)
+  })
+
+  it('logs a caller’s own line when one is given (Cathode’s Overheat, 2026-09-23)', () => {
+    const game = makeGame({ turnNumber: 2 })
+    const e = zoneEntry({ instanceId: 'e', name: 'Cathode' })
+    stunHull(game, e, 'Cathode overheats — stunned until the end of the next turn')
+    expect(e.stunnedUntilTurn).toBe(3)
+    expect(game.state.log).toEqual(['Cathode overheats — stunned until the end of the next turn'])
+  })
+
+  it('says whether a stun wears off at the end of this turn or the next (the badge’s wording)', () => {
+    const e = zoneEntry({ stunnedUntilTurn: 3 })
+    expect(stunEndsThisTurn(e, 2)).toBe(false)   // stunned on turn 2: the next turn is still to come
+    expect(stunEndsThisTurn(e, 2.5)).toBe(true)  // its last stunned turn
+    expect(stunEndsThisTurn(e, 3)).toBe(false)   // no longer stunned
+    expect(stunEndsThisTurn(zoneEntry(), 2)).toBe(false)
   })
 
   it('cannot bombard and does not count as a Blocker', () => {

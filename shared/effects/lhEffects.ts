@@ -558,8 +558,9 @@ registerEffect(AMPERE_CHARGED, (payload) => {
 // as its cost, and NO zone activation spent — "a forced battle is not a zone
 // activation" holds for these as for every other forced battle. "Non-Stealthy"
 // is read at declaration, so a hull Ampere stunned this turn qualifies.
-// `surfaces` is Cathode's (R-18): Stealthy comes off the moment the duel is
-// declared, and a refused declaration rolls the whole clone back.
+// `surfaces` is Cathode's (R-18; dealt snapshots only since 2026-09-23):
+// Stealthy comes off the moment the duel is declared, and a refused
+// declaration rolls the whole clone back.
 function duel(id: string, prompt: string, targetable: (e: ZoneCardEntry) => boolean, surfaces: boolean): EffectFn {
   const canTarget = (game: EngineGame, e: ZoneCardEntry) =>
     !(e.keywords.includes(KEYWORDS.STEALTHY) && !isStunned(e, game.turnNumber)) && targetable(e)
@@ -599,6 +600,21 @@ registerEffect('cathodeDuel', duel(
   (e) => isShipClass(e.vehicleType) || e.vehicleType === VEHICLE_TYPES.SUB,
   true,
 ))
+
+// 2026-09-23 (docs/superpowers/specs/2026-09-23-lh-drain-discount-design.md §6):
+// Cathode — "Overheat: after each battle it fights, it is stunned until the
+// end of the next turn." The existing stun, stamped from the battle's own turn:
+// after an attack it sits out the enemy's turn (held still in FtD — subs are
+// held types), after a defence its owner's next one. Resolve only, survivors
+// only, whatever the outcome; lock does nothing. A NEW id: dealt Cathodes keep
+// cathodeDuel and never overheat.
+registerEffect('cathodeOverheat', ({ game, actor, card, battle }) => {
+  if (battle?.phase !== 'resolve' || !battle.survived) return true
+  const self = findVehicle(game.state, card.instanceId)
+  if (!self || self.side !== actor) return true
+  stunHull(game, self.entry as ZoneCardEntry, `${card.name} overheats — stunned until the end of the next turn`)
+  return true
+})
 
 // Penumbra — "Discharge 3: stun every enemy vehicle in this zone." Every hull,
 // already-stunned ones included (they get the same expiry). An empty lane is

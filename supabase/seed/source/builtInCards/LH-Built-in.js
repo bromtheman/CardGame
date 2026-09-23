@@ -669,7 +669,7 @@ export const lhVehicles = [
     {
         name: 'Cathode',
         isBuiltIn: true,
-        cardText: 'Drain 2 Charge. Discharge 2: this vehicle fights a 1v1 against target enemy ship or submarine in this zone, then this surfaces — it loses Stealthy for the rest of the game.',
+        cardText: 'Drain 2 Charge: costs 100k less. Overheat: after each battle it fights, it is stunned until the end of the next turn.',
         materialCost: 600000,
         blueprintCost: 726398,
         cpCost: 0,
@@ -679,8 +679,11 @@ export const lhVehicles = [
         type: 'vehicle',
         faction: FACTIONS.LH,
         blueprintId: null,
-        keywords: [KEYWORDS.STEALTHY, KEYWORDS.SUB_SCREEN],
-        meta: { chargeMax: 2, requiresCharge: 2, [TRIGGERS.ON_ACTIVATE]: 'cathodeDuel', activateCpCost: 0, dischargeCost: 2 },
+        // 2026-09-23 (owner request): it won every fight it was in — submerged,
+        // only torpedoes reach it — so Stealthy, Sub Screen and the duel went,
+        // Fragile came in, and every battle it survives stuns it for a turn.
+        keywords: [KEYWORDS.FRAGILE],
+        meta: { chargeMax: 2, requiresCharge: 2, [TRIGGERS.ON_BATTLE_EFFECT]: 'cathodeOverheat' },
     },
     {
         name: 'Superradiance',
