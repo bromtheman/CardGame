@@ -470,8 +470,8 @@ New: **Thresher Shark** (ship 580k/914k, `BLOCKER+SUB_SCREEN`,
 `resourceSurge: { materialsUnder: 580_000, grantKeywords: ['halfCost','inoffensive'] }`
 — the threshold is its own printed cost, which `materialsUnder` expresses
 exactly); **Bull Shark** (ship 640k/898k, `BLOCKER+SUB_SCREEN`, 200k base damage
-on surviving an offensive battle, via `BASE_DAMAGE_DIVISOR` like every other
-base-damage figure); **Tiger Shark** (ship 690k/914k, `slotDenial: 3`, text
+— amended 2026-09-22, owner hotfix: **300k** — on surviving an offensive battle,
+via `BASE_DAMAGE_DIVISOR` like every other base-damage figure); **Tiger Shark** (ship 690k/914k, `slotDenial: 3`, text
 rewritten per R-1); **Cash advance** (ability, cp 2, gain 150k this turn then
 draw).
 
