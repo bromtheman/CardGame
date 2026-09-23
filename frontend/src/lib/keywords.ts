@@ -22,11 +22,11 @@ import chargeRelayIcon from '../assets/icons/keywords/chargeRelay.svg'
 import drainIcon from '../assets/icons/keywords/drain.svg'
 import dischargeIcon from '../assets/icons/keywords/discharge.svg'
 import dischargeFromIcon from '../assets/icons/keywords/dischargeFrom.svg'
-import shipIcon from '../assets/icons/shipSVG.svg'
-import planeIcon from '../assets/icons/planeSVG.svg'
-import subIcon from '../assets/icons/submarineSVG.svg'
-import tankIcon from '../assets/icons/tankSVG.svg'
-import airshipIcon from '../assets/icons/airShield1SVG.svg'
+import shipIcon from '../assets/icons/vehicles/ship.svg'
+import planeIcon from '../assets/icons/vehicles/plane.svg'
+import subIcon from '../assets/icons/vehicles/submarine.svg'
+import tankIcon from '../assets/icons/vehicles/tank.svg'
+import airshipIcon from '../assets/icons/vehicles/airship.svg'
 import anchorIcon from '../assets/icons/anchorSVG.svg'
 
 // Player-facing glossary — icon, label and plain-English rule for every
@@ -179,7 +179,10 @@ export function keywordIcon(keyword: string): string | null {
   return KEYWORD_INFO[keyword]?.icon ?? null
 }
 
-/** Art for a vehicle type; abilities and unknown types get the generic anchor. */
+/**
+ * The small icon for a vehicle type (board chip, details list); unknown types
+ * get the generic anchor. A card's picture is not this: see cardImageOrFallback.
+ */
 export function vehicleTypeIcon(vehicleType: string | null): string {
   return VEHICLE_TYPE_INFO[vehicleType ?? '']?.icon ?? anchorIcon
 }

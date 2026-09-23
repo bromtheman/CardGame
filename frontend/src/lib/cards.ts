@@ -1,8 +1,14 @@
 import { useQuery } from '@tanstack/react-query'
 import type { SnapshotCard } from '@shared/engine/gameInit'
+import { VEHICLE_TYPES } from '@shared/gameSettings'
 import type { Database } from './database.types'
 import { supabase } from './supabaseClient'
-import { vehicleTypeIcon } from './keywords'
+import shipArt from '../assets/icons/shipSVG.svg'
+import submarineArt from '../assets/icons/submarineSVG.svg'
+import tankArt from '../assets/icons/tankSVG.svg'
+import planeArt from '../assets/icons/planeSVG.svg'
+import airshipArt from '../assets/icons/airShield1SVG.svg'
+import anchorArt from '../assets/icons/anchorSVG.svg'
 
 export type CardRow = Database['public']['Tables']['cards']['Row']
 
@@ -18,13 +24,24 @@ export function useCardsQuery() {
   })
 }
 
+// The picture for a card with no hosted art: a faded silhouette of its vehicle
+// type, or the anchor for an ability. Not the gold vehicleTypeIcon — the owner
+// kept these silhouettes as card pictures when the icons went gold (2026-09-22).
+const PLACEHOLDER_ART: Record<string, string> = {
+  [VEHICLE_TYPES.SHIP]: shipArt,
+  [VEHICLE_TYPES.SUB]: submarineArt,
+  [VEHICLE_TYPES.TANK]: tankArt,
+  [VEHICLE_TYPES.PLANE]: planeArt,
+  [VEHICLE_TYPES.AIRSHIP]: airshipArt,
+}
+
 // Built-in image_urls are bare filenames with no hosted art; only real URLs
 // render (blob: covers the create-card local preview).
 export function cardImageOrFallback(card: CardRow): { src: string; isFallback: boolean } {
   if (card.image_url.startsWith('http') || card.image_url.startsWith('blob:')) {
     return { src: card.image_url, isFallback: false }
   }
-  return { src: vehicleTypeIcon(card.vehicle_type), isFallback: true }
+  return { src: PLACEHOLDER_ART[card.vehicle_type ?? ''] ?? anchorArt, isFallback: true }
 }
 
 // A card in play/in hand carries the same fields as a `cards` row under

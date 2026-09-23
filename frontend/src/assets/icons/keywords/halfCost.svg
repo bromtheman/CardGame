@@ -7,11 +7,9 @@
     </linearGradient>
   </defs>
   <g transform="translate(32 32) scale(0.9) translate(-32 -32)">
-    <g transform="translate(-1.5 0)">
-      <path d="M35.5 14H48L54 26L59 50H35.5Z" fill="url(#br)" fill-opacity=".16" stroke="#0b1f40" stroke-width="8.42" stroke-dasharray="6 4" stroke-linejoin="round"/>
-      <path d="M35.5 14H48L54 26L59 50H35.5Z" fill="none" stroke="url(#br)" stroke-width="2.2" stroke-dasharray="6 4" stroke-linejoin="round"/>
-      <path d="M16 14H32V50H5L10 26Z" fill="url(#br)" stroke="#0b1f40" stroke-width="6.22" stroke-linejoin="round" paint-order="stroke"/>
-      <path d="M16 14H32V26H10Z" fill="rgba(255,248,220,.45)"/>
-    </g>
+    <path d="M32 4V60" fill="none" stroke="#0b1f40" stroke-width="11.72" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M32 4V60" fill="none" stroke="url(#br)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M44.5 19.5C44 14.5 39 11.5 32 11.5C24.5 11.5 19.5 15 19.5 21C19.5 27.5 25.5 29.5 32 31C38.5 32.5 44.5 34.5 44.5 41.5C44.5 47.5 39 51 32 51C24.5 51 19.5 47.5 19 42" fill="none" stroke="#0b1f40" stroke-width="13.72" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M44.5 19.5C44 14.5 39 11.5 32 11.5C24.5 11.5 19.5 15 19.5 21C19.5 27.5 25.5 29.5 32 31C38.5 32.5 44.5 34.5 44.5 41.5C44.5 47.5 39 51 32 51C24.5 51 19.5 47.5 19 42" fill="none" stroke="url(#br)" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round"/>
   </g>
 </svg>
