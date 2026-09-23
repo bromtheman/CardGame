@@ -417,7 +417,8 @@ registerEffect(VOLTA, choice({
 
 // The three beams (spec §3.8): effect damage in the hull's own lane, Blocker
 // ignored, a fallen base a no-op. dealBaseDamage owns the rule; this only
-// finds the lane and, for Umbra, surfaces the sub afterwards (R-8).
+// finds the lane and, for the pre-2026-09-22 Umbra id, surfaces the sub
+// afterwards (R-8, since overturned).
 function beam(materials: number, surfaces: boolean): EffectFn {
   return ({ game, actor, card }) => {
     const found = findVehicle(game.state, card.instanceId)
@@ -431,6 +432,10 @@ function beam(materials: number, surfaces: boolean): EffectFn {
   }
 }
 registerEffect('umbraSalvo', beam(UMBRA_SALVO_DAMAGE, true))
+
+// 2026-09-22 hovercraft amendment §3: Umbra stays Stealthy after firing (R-8
+// overturned). A NEW id: dealt Umbras keep 'umbraSalvo' and still surface.
+registerEffect('umbraBeam', beam(UMBRA_SALVO_DAMAGE, false))
 registerEffect('superradianceBeam', beam(SUPERRADIANCE_BEAM_DAMAGE, false))
 registerEffect('impedanceBeam', beam(IMPEDANCE_BEAM_DAMAGE, false))
 

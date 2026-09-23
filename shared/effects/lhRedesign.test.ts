@@ -93,6 +93,29 @@ describe('Umbra — umbraSalvo', () => {
   })
 })
 
+// 2026-09-22 hovercraft amendment: Umbra stays Stealthy after firing (R-8
+// overturned). Dealt Umbras keep umbraSalvo, and the block above pins that
+// they still surface.
+describe('Umbra — umbraBeam', () => {
+  const umbra = (charge: number) => zoneEntry({
+    instanceId: 'umbra', name: 'Umbra', faction: 'LH', vehicleType: 'sub', keywords: ['stealthy'],
+    meta: { chargeMax: 2, onActivate: 'umbraBeam', activateCpCost: 0, dischargeCost: 2 }, charge,
+  })
+  it('shells the base past a Blocker for 150 and stays Stealthy', () => {
+    const game = lhGame()
+    game.state.zones[0].cards.a.push(umbra(2))
+    game.state.zones[0].cards.b.push(zoneEntry({ keywords: ['blocker'] }))
+    const res = activate(game, 'umbra')
+    if (!res.ok) throw new Error(res.error)
+    expect(res.game.state.zones[0].baseHp.b).toBe(850)
+    const hull = res.game.state.zones[0].cards.a[0] as ZoneCardEntry
+    expect(hull.keywords).toEqual(['stealthy'])
+    expect(hull.meta.revokedKeywords).toBeUndefined()
+    expect(chargeOf(hull)).toBe(0)
+    expect(res.game.state.log.some((line) => line.includes('surfaces'))).toBe(false)
+  })
+})
+
 describe('Ampere — ampereStun', () => {
   const ampere = () => inst({
     instanceId: 'ampere', name: 'Ampere', faction: 'LH', materialCost: 200000, keywords: ['mobile'],

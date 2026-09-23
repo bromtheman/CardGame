@@ -125,7 +125,7 @@ export const lhVehicles = [
     {
         name: 'Umbra',
         isBuiltIn: true,
-        cardText: 'Discharge 2: deal 150k damage to the enemy base in this zone, then this surfaces — it loses Stealthy for the rest of the game.',
+        cardText: 'Discharge 2: deal 150k damage to the enemy base in this zone.',
         materialCost: 150000,
         blueprintCost: 148479,
         cpCost: 0,
@@ -136,7 +136,8 @@ export const lhVehicles = [
         faction: FACTIONS.LH,
         blueprintId: null,
         keywords: [KEYWORDS.STEALTHY],
-        meta: { chargeMax: 2, [TRIGGERS.ON_ACTIVATE]: 'umbraSalvo', activateCpCost: 0, dischargeCost: 2 },
+        // 2026-09-22 hovercraft amendment: umbraBeam — it stays Stealthy (R-8 overturned).
+        meta: { chargeMax: 2, [TRIGGERS.ON_ACTIVATE]: 'umbraBeam', activateCpCost: 0, dischargeCost: 2 },
     },
     {
         name: 'Conduit',

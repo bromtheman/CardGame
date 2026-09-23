@@ -64,8 +64,8 @@ export const CARDS: Record<string, Expected> = {
   },
   'LH:Umbra': {
     materialCost: 150_000, blueprintCost: 148_479, cpCost: 0, keywords: ['stealthy'], vehicleType: 'sub',
-    cardText: 'Discharge 2: deal 150k damage to the enemy base in this zone, then this surfaces — it loses Stealthy for the rest of the game.',
-    meta: { chargeMax: 2, onActivate: 'umbraSalvo', activateCpCost: 0, dischargeCost: 2 },
+    cardText: 'Discharge 2: deal 150k damage to the enemy base in this zone.',
+    meta: { chargeMax: 2, onActivate: 'umbraBeam', activateCpCost: 0, dischargeCost: 2 },
   },
   'LH:Kilowatt': {
     materialCost: 180_000, blueprintCost: 180_583, cpCost: 0, keywords: ['blocker'], vehicleType: 'ship',
