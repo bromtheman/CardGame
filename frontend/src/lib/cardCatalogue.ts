@@ -25,3 +25,13 @@ export function catalogueCards<T extends CatalogueCard>(cards: readonly T[], tab
     return tab === 'CUSTOM' ? !c.is_built_in : c.is_built_in && c.faction === tab
   })
 }
+
+/**
+ * The tab the Cards page is on, read from its `?faction=` param so a refresh
+ * or a shared link keeps it. Matched without regard to case, because the
+ * param may be hand-typed; a missing or unknown value opens the first faction.
+ */
+export function catalogueTab(param: string | null, factions: readonly string[]): string | null {
+  const wanted = param?.toUpperCase()
+  return [...factions, 'CUSTOM'].find((t) => t.toUpperCase() === wanted) ?? factions[0] ?? null
+}

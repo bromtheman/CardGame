@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useMemo } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { PhysicalCard } from '../components/PhysicalCard'
-import { catalogueCards } from '../lib/cardCatalogue'
+import { catalogueCards, catalogueTab } from '../lib/cardCatalogue'
 import { useCardsQuery } from '../lib/cards'
 
 export function CardsPage() {
@@ -10,8 +10,10 @@ export function CardsPage() {
     () => [...new Set((cards ?? []).filter((c) => c.is_built_in).map((c) => c.faction))].sort(),
     [cards],
   )
-  const [tab, setTab] = useState<string | null>(null)
-  const active = tab ?? factions[0] ?? null
+  const [searchParams, setSearchParams] = useSearchParams()
+  const active = catalogueTab(searchParams.get('faction'), factions)
+  // Replace, not push: Back leaves the page instead of replaying tab clicks.
+  const selectTab = (f: string) => setSearchParams({ faction: f }, { replace: true })
 
   if (isLoading) return <main className="p-8 text-center">Loading cards…</main>
   if (error) return <main className="p-8 text-center text-red-400">Failed to load cards: {String(error)}</main>
@@ -23,7 +25,7 @@ export function CardsPage() {
         {[...factions, 'CUSTOM'].map((f) => (
           <button
             key={f}
-            onClick={() => setTab(f)}
+            onClick={() => selectTab(f)}
             className={`rounded px-3 py-1 font-bold ${active === f ? 'bg-brass-400 text-ocean-950' : 'bg-ocean-900 text-parchment-100'}`}
           >
             {f}
