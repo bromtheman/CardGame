@@ -47,7 +47,7 @@ const feedbackLoop = (instanceId = 'loop') => inst({
 describe('draw when played — Faraday, Kilowatt, Megawatt', () => {
   it.each([
     ['Faraday', 'faradayOnPlay', 'airship'],
-    ['Kilowatt', 'kilowattOnPlay', 'ship'],
+    ['Kilowatt', 'kilowattOnPlay', 'hover'],
     ['Megawatt', 'megawattOnPlay', 'ship'],
   ] as const)('%s draws a card as it lands', (name, effect, vehicleType) => {
     const game = lhGame()

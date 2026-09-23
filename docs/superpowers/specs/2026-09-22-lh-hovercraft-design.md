@@ -29,7 +29,7 @@ The owner, after playing the faction live:
 | Byte | **Retired.** Its draw moves to the Watt. |
 | Watt | Takes Byte's draw, loses Decoy, spawns a permanent Luxon that carries the Decoy, and becomes a Hovercraft. **Price stays 90k.** |
 | The Watt's Luxon | **A token**: gone when it dies, never in a discard. It needs a free slot in the lane. |
-| Hovercraft | A new vehicle type that **counts as a ship for every rule** and spawns 20 m above the water in FtD. On the Watt and Terawatt (Terawatt added at the owner's request after implementation, 2026-09-22). Chosen over a spawn-height flag on a plain ship and over a type with its own rules. |
+| Hovercraft | A new vehicle type that **counts as a ship for every rule** and spawns 20 m above the water in FtD. On the Watt and Terawatt (Terawatt added at the owner's request after implementation, 2026-09-22), and since 2026-09-23 on Kilowatt, Eclipse, Angstrom and WF's Veles (§10). Chosen over a spawn-height flag on a plain ship and over a type with its own rules. |
 | Anode | A new card at **Hydrovolt's 260k** (FtD cost 364k — a 100k discount, chosen over 360k), with Hydrovolt's role. Hydrovolt retires. |
 | Merge order | The migration that admits `hover` is **applied to production before the merge** (§5). |
 | Testing | TDD for every new effect and rule; no self-play probe. The owner tests live. |
@@ -140,8 +140,9 @@ custom hovercraft, priced and keyworded like ships (`computeMaterialCost` and
 accepts `hover` once redeployed.
 
 **Data.** `VEHICLE_TYPES.HOVER = 'hover'` in both `shared/gameSettings.ts` and
-the seed source's `gameSettings.js`. The Watt and Terawatt are `hover` (Terawatt at the owner's request, 2026-09-22); moving another
-skimmer later is a change to its row's type.
+the seed source's `gameSettings.js`. The Watt and Terawatt are `hover` (Terawatt at the owner's request, 2026-09-22),
+and so are Kilowatt, Eclipse, Angstrom and WF's Veles since 2026-09-23
+(§10); moving another skimmer later is a change to its row's type.
 
 **R-5 amended.** "Every hover/thruster craft is an airship" still holds for craft
 that fly (Dipole, Dynamo, Faraday, Quadrupole). A skimmer that FtD classes as a
@@ -234,9 +235,9 @@ together so no card ships ahead of its effect (2026-09-02 spec §1).
 
 ## 9. Still open
 
-- **Owner, in FtD:** check that the Watt and Terawatt hover at 20 m instead of dying. Other
-  skimmers (Ampere, Volta, Chrysoprase, Megawatt …) move to Hovercraft if they
-  are seen dying the same way.
+- **Owner, in FtD:** check that the Watt and Terawatt hover at 20 m instead of dying, and
+  the four §10 craft too. Other skimmers (Ampere, Volta, Chrysoprase, Megawatt …)
+  move to Hovercraft if they are seen dying the same way.
 - **Balance, live:**
   - only targeted removal answers Umbra now;
   - the Watt is the faction's strongest 90k card;
@@ -246,3 +247,26 @@ together so no card ships ahead of its effect (2026-09-02 spec §1).
     and Kilowatt and Megawatt drawing when played), and a Watt discharging in a
     Feedback Loop lane draws two.
 - **Saved decks** holding Byte or Hydrovolt need editing, the owner's included.
+
+## 10. 2026-09-23: four more hovercraft
+
+At the owner's request, four more ships became Hovercraft. Each change is to its
+row's `vehicleType` only. Costs, keywords, texts and effects stay the same. No
+code or migration is needed, since `hover` has been admitted since §5.
+
+| Card | Was | Now |
+|---|---|---|
+| WF Veles | ship | hover |
+| LH Kilowatt | ship | hover |
+| LH Eclipse | ship | hover |
+| LH Angstrom | ship | hover |
+
+**Only the spawn height changes.** A Hovercraft is a ship in every rule (§4),
+so all four play exactly as before and now spawn at `HOVER_SPAWN_ALTITUDE_M`.
+A built-in card's art is its type icon, so they show the hovercraft icon.
+
+**Anode stays a submarine.** It was on the owner's first list by mistake
+(owner, 2026-09-23).
+
+**Delivery.** This is a seed-data change only, and `seed-apply.yml` applies it
+on merge. Games already dealt keep their snapshots.

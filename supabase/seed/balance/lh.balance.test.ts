@@ -66,9 +66,10 @@ export const CARDS: Record<string, Expected> = {
     meta: { chargeMax: 2, onActivate: 'umbraBeam', activateCpCost: 0, dischargeCost: 2 },
   },
   // Kilowatt, Megawatt and Feedback Loop as amended on 2026-09-23 (the draw
-  // amendment's second round).
+  // amendment's second round). Kilowatt, Eclipse and Angstrom became
+  // Hovercraft the same day (owner request).
   'LH:Kilowatt': {
-    materialCost: 180_000, blueprintCost: 180_583, cpCost: 0, keywords: ['blocker'], vehicleType: 'ship',
+    materialCost: 180_000, blueprintCost: 180_583, cpCost: 0, keywords: ['blocker'], vehicleType: 'hover',
     cardText: 'When played, draw a card.', meta: { chargeMax: 2, onPlayEffect: 'kilowattOnPlay' },
   },
   'LH:Caspian': {
@@ -95,7 +96,7 @@ export const CARDS: Record<string, Expected> = {
     meta: { chargeMax: 2, onPlayEffect: 'ampereChargedStun' },
   },
   'LH:Eclipse': {
-    materialCost: 220_000, blueprintCost: 215_980, cpCost: 0, keywords: ['stealthy'], vehicleType: 'ship',
+    materialCost: 220_000, blueprintCost: 215_980, cpCost: 0, keywords: ['stealthy'], vehicleType: 'hover',
     cardText: 'Discharge 2: this vehicle fights a 1v1 against target non-Stealthy enemy vehicle in this zone.',
     meta: { chargeMax: 2, onActivate: 'eclipseDuel', activateCpCost: 0, dischargeCost: 2 },
   },
@@ -105,7 +106,7 @@ export const CARDS: Record<string, Expected> = {
     meta: { chargeMax: 3, onActivate: 'penumbraPulse', activateCpCost: 0, dischargeCost: 3 },
   },
   'LH:Angstrom': {
-    materialCost: 540_000, blueprintCost: 545_846, cpCost: 0, keywords: ['blocker', 'airScreen', 'mobile'], vehicleType: 'ship',
+    materialCost: 540_000, blueprintCost: 545_846, cpCost: 0, keywords: ['blocker', 'airScreen', 'mobile'], vehicleType: 'hover',
     cardText: '', meta: { chargeMax: 2 },
   },
   'LH:Quadrupole': {

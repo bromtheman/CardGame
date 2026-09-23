@@ -27,9 +27,11 @@ interface Expected {
 }
 
 const CARDS: Record<string, Expected> = {
+  // A Hovercraft since 2026-09-23 (owner request): a ship in every rule that
+  // spawns just above the water in FtD.
   'WF:Veles': {
     materialCost: 225_000, blueprintCost: 286_922, keywords: ['stealthy', 'scrappy'],
-    vehicleType: 'ship',
+    vehicleType: 'hover',
     cardText: 'This card may be spawned into battle after all enemies are already spawned in',
   },
   // moved 2026-09-16: 750k -> 760k. Also pinned in balance/2026-09-16.balance.test.ts.
