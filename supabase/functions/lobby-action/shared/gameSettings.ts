@@ -296,6 +296,9 @@ export const BYTE_PLAY_CHARGE = 1
 // Data Burst: "Discharge 2 from a friendly LH vehicle: draw 2 cards." Its own
 // constant, not EXCRUCIATOR_DRAW_COUNT's, which it equals only by coincidence.
 export const DATA_BURST_DRAW = 2
+// Feedback Loop (2026-09-23): "This turn, whenever a friendly LH vehicle in
+// that zone discharges, draw a card." Cards per discharge.
+export const FEEDBACK_LOOP_DRAW = 1
 // Stun (spec §3.4): stunned until the end of its owner's next turn. Turn
 // numbers advance in half steps, so 1.0 is exactly one enemy turn when the
 // stun lands on the stunner's own turn — the only case the roster produces.

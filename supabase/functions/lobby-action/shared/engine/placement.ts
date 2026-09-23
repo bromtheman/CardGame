@@ -5,7 +5,7 @@ import {
 import type { CardInstance, PublicGameState } from './gameInit.ts'
 import type { ApplyResult, EngineContext, EngineGame, Side, ZoneCardEntry } from './engineTypes.ts'
 import {
-  additionalSpawnsOf, copyMeta, discardCard, err, findVehicle, grantKeywordsTo, otherSide,
+  additionalSpawnsOf, copyMeta, discardCard, drawOnDischarge, err, findVehicle, grantKeywordsTo, otherSide,
   registerHandler, zoneById,
 } from './gameEngine.ts'
 import { zoneCapFor } from './zoneCapacity.ts'
@@ -624,6 +624,7 @@ registerHandler('PLAY_CARD_TARGETING_CARD_ON_FIELD', (game, actor, action, ctx) 
     // hull's activation for the turn (R-20), same as ACTIVATE_VEHICLE's own
     // stamp, so a second host or a later ACTIVATE_VEHICLE this turn refuses.
     ;(target.entry as ZoneCardEntry).activatedOnTurn = game.turnNumber
+    drawOnDischarge(game, actor, target.zone.id, ctx)
   }
 
   const failure = resolvePlayEffects(
