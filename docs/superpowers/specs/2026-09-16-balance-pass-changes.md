@@ -14,7 +14,8 @@ per [2026-09-02 §2.1](2026-09-02-balance-pass-design.md). After merge:
 
 Notation: cost = `materialCost`, bp = `blueprintCost`, kw = `keywords`,
 `+X`/`−X` = keyword added/removed. Unlisted fields are unchanged; every card is
-`isBuiltIn: true`, `cpCost: 0`. Rows live in
+`isBuiltIn: true`, `cpCost: 0` (except Mutiny, 1 CP since the 2026-09-22
+hotfix — §3). Rows live in
 `supabase/seed/source/builtInCards/<FACTION>-built-in.js`.
 
 ## 1. Mechanics (engine work, cross-card)
@@ -51,7 +52,8 @@ Express it as a data key on Mirth Swarm (e.g. `battleCap: 1`) checked at
 has text and no effect name (G2 `silent` check — `slotDenial` precedent,
 2026-09-02 §4.1).
 
-**M-4 Mutiny (new DWG ability, 400k): steal an enemy vehicle for one turn.**
+**M-4 Mutiny (new DWG ability, 400k; 600k and 1 CP since the 2026-09-22
+hotfix): steal an enemy vehicle for one turn.**
 `playOnVehicleEffect`. PLAY_CARD_TARGETING_CARD_ON_FIELD does not check
 ownership (E-5), so the effect must require `found.side === otherSide(actor)`
 (`flyingSquirrelAttackEffect` shape). Move the entry from `zone.cards[enemy]` to
@@ -152,7 +154,8 @@ with its reason). `fearOnPlay`, `slasherOnPlay`, `sacrilegoBattle`,
 
 ## 3. New rows
 
-**Mutiny** — DWG, `type: 'ability'`, cost 400000, bp 0, `vehicleType: null`,
+**Mutiny** — DWG, `type: 'ability'`, cost 400000 (amended 2026-09-22, owner
+hotfix: cost **600000** and `cpCost: 1`), bp 0, `vehicleType: null`,
 `imageUrl: 'mutiny.png'` (file convention), meta
 `{ playOnVehicleEffect: 'mutinyEffect' }`.
 Text: `Choose an enemy vehicle, gain control of it and give it temporary`
