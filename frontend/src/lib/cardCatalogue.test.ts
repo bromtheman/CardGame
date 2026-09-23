@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { catalogueCards, type CatalogueCard } from './cardCatalogue'
+import { catalogueCards, catalogueTab, type CatalogueCard } from './cardCatalogue'
 
 const card = (over: Partial<CatalogueCard>): CatalogueCard => ({
   is_built_in: true, faction: 'TG', meta: {}, ...over,
@@ -38,5 +38,30 @@ describe('catalogueCards', () => {
 
   it('shows nothing when no tab is selected', () => {
     expect(catalogueCards([card({})], null)).toEqual([])
+  })
+})
+
+describe('catalogueTab', () => {
+  // Sorted as the page sorts them, so DWG is the tab a bare /cards opens on.
+  const factions = ['DWG', 'GT', 'LH', 'OW', 'SS', 'TG', 'WF']
+
+  it('opens the faction named in the URL, so a refresh keeps it', () => {
+    expect(catalogueTab('SS', factions)).toBe('SS')
+  })
+
+  it('reads a hand-typed faction regardless of case', () => {
+    expect(catalogueTab('ss', factions)).toBe('SS')
+  })
+
+  it('opens the CUSTOM tab, which is not in the faction list', () => {
+    expect(catalogueTab('CUSTOM', factions)).toBe('CUSTOM')
+  })
+
+  it('falls back to the first faction when the URL names none', () => {
+    expect(catalogueTab(null, factions)).toBe('DWG')
+  })
+
+  it('falls back to the first faction on a value that is no tab', () => {
+    expect(catalogueTab('XYZ', factions)).toBe('DWG')
   })
 })

@@ -71,7 +71,7 @@ export function CreateCardPage() {
         throw error
       }
       await queryClient.invalidateQueries({ queryKey: ['cards'] })
-      navigate('/cards')
+      navigate('/cards?faction=CUSTOM')
     } catch (err) {
       setErrors([err instanceof Error ? err.message : String(err)])
     } finally {
