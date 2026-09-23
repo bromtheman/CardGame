@@ -791,5 +791,22 @@ export const lhVehicles = [
         blueprintId: null,
         meta: { [TRIGGERS.PLAY_ON_ZONE]: 'feedbackLoopEffect' },
     },
+    {
+        // 2026-09-23 EMP Torpedo amendment: LH's answer to a submarine that
+        // locks down a lane — WF Sub Strike's effect, paid in charge.
+        name: 'EMP Torpedo',
+        isBuiltIn: true,
+        cardText: 'Discharge 2 from a friendly LH vehicle: remove target enemy submarine in that zone from play.',
+        materialCost: 100000,
+        blueprintCost: 0,
+        cpCost: 0,
+        imageUrl: 'empTorpedo.png',
+        playerId: null,
+        vehicleType: null,
+        type: 'ability',
+        faction: FACTIONS.LH,
+        blueprintId: null,
+        meta: { [TRIGGERS.PLAY_ON_VEHICLE]: 'empTorpedoEffect', dischargeFrom: 2 },
+    },
 
 ];
