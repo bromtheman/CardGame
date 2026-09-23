@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="br" gradientUnits="userSpaceOnUse" x1="0" y1="6" x2="0" y2="58">
+      <stop offset="0" stop-color="#f7e08f"/>
+      <stop offset=".55" stop-color="#c9a227"/>
+      <stop offset="1" stop-color="#8a6a12"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(32 32) scale(0.9) translate(-32 -32)">
+    <g transform="translate(0 -2)">
+      <rect x="31" y="16" width="2.5" height="12" fill="url(#br)" stroke="#0b1f40" stroke-width="6.22" stroke-linejoin="round" paint-order="stroke"/>
+      <rect x="27.5" y="19.5" width="9.5" height="2.2" fill="url(#br)" stroke="#0b1f40" stroke-width="6.22" stroke-linejoin="round" paint-order="stroke"/>
+      <rect x="19" y="30" width="5.5" height="10" fill="url(#br)" stroke="#0b1f40" stroke-width="6.22" stroke-linejoin="round" paint-order="stroke"/>
+      <path d="M24 40V33H28V27H36.5V33H40.5V40Z" fill="url(#br)" stroke="#0b1f40" stroke-width="6.22" stroke-linejoin="round" paint-order="stroke"/>
+      <rect x="51" y="36.2" width="8" height="2" fill="url(#br)" stroke="#0b1f40" stroke-width="6.22" stroke-linejoin="round" paint-order="stroke"/>
+      <path d="M44 40V36.5Q44 35 45.5 35H50Q51.5 35 51.5 36.5V40Z" fill="url(#br)" stroke="#0b1f40" stroke-width="6.22" stroke-linejoin="round" paint-order="stroke"/>
+      <rect x="4.5" y="36.2" width="8" height="2" fill="url(#br)" stroke="#0b1f40" stroke-width="6.22" stroke-linejoin="round" paint-order="stroke"/>
+      <path d="M12 40V36.5Q12 35 13.5 35H18Q19.5 35 19.5 36.5V40Z" fill="url(#br)" stroke="#0b1f40" stroke-width="6.22" stroke-linejoin="round" paint-order="stroke"/>
+      <path d="M3 40H61L55.5 51H9.5Z" fill="url(#br)" stroke="#0b1f40" stroke-width="6.22" stroke-linejoin="round" paint-order="stroke"/>
+    </g>
+  </g>
+</svg>
