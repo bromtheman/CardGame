@@ -29,7 +29,7 @@ The owner, after playing the faction live:
 | Byte | **Retired.** Its draw moves to the Watt. |
 | Watt | Takes Byte's draw, loses Decoy, spawns a permanent Luxon that carries the Decoy, and becomes a Hovercraft. **Price stays 90k.** |
 | The Watt's Luxon | **A token**: gone when it dies, never in a discard. It needs a free slot in the lane. |
-| Hovercraft | A new vehicle type that **counts as a ship for every rule** and spawns 20 m above the water in FtD. On the Watt only for now. Chosen over a spawn-height flag on a plain ship and over a type with its own rules. |
+| Hovercraft | A new vehicle type that **counts as a ship for every rule** and spawns 20 m above the water in FtD. On the Watt and Terawatt (Terawatt added at the owner's request after implementation, 2026-09-22). Chosen over a spawn-height flag on a plain ship and over a type with its own rules. |
 | Anode | A new card at **Hydrovolt's 260k** (FtD cost 364k — a 100k discount, chosen over 360k), with Hydrovolt's role. Hydrovolt retires. |
 | Merge order | The migration that admits `hover` is **applied to production before the merge** (§5). |
 | Testing | TDD for every new effect and rule; no self-play probe. The owner tests live. |
@@ -41,6 +41,7 @@ The owner, after playing the faction live:
 | Ampere (changed) | ship · 200k (207k) | 2 | Mobile | When played, this gains 2 charge and stuns target enemy vehicle in this zone. | `ampereChargedStun` (new) |
 | Umbra (changed) | sub · 150k (148k) | 2 | Stealthy | Discharge 2: deal 150k damage to the enemy base in this zone. | `umbraBeam` (new) |
 | Watt (changed) | hover · 90k (91k) | 1 | Scrappy, Mobile | When played, this gains 1 charge and a friendly Luxon spawns in this zone. That Luxon has Decoy and is not Temporary. Discharge 1: draw a card. | `wattOnPlay`, `wattDraw` (new) |
+| Terawatt (changed) | hover · 640k (725k) | 4 | Blocker, Scrappy, Mobile | unchanged | — |
 | Anode (new) | sub · 260k (364k) | 2 | Blocker, Sub Screen | — | — |
 | Byte | retired | | | | `byteChargeOnPlay`, `byteDraw` stay registered |
 | Hydrovolt | retired | | | | — |
@@ -139,7 +140,7 @@ custom hovercraft, priced and keyworded like ships (`computeMaterialCost` and
 accepts `hover` once redeployed.
 
 **Data.** `VEHICLE_TYPES.HOVER = 'hover'` in both `shared/gameSettings.ts` and
-the seed source's `gameSettings.js`. Only the Watt is `hover`; moving another
+the seed source's `gameSettings.js`. The Watt and Terawatt are `hover` (Terawatt at the owner's request, 2026-09-22); moving another
 skimmer later is a change to its row's type.
 
 **R-5 amended.** "Every hover/thruster craft is an airship" still holds for craft
@@ -233,7 +234,7 @@ together so no card ships ahead of its effect (2026-09-02 spec §1).
 
 ## 9. Still open
 
-- **Owner, in FtD:** check that the Watt hovers at 20 m instead of dying. Other
+- **Owner, in FtD:** check that the Watt and Terawatt hover at 20 m instead of dying. Other
   skimmers (Ampere, Volta, Chrysoprase, Megawatt …) move to Hovercraft if they
   are seen dying the same way.
 - **Balance, live:**

@@ -345,7 +345,7 @@ profile per non-retired LH vehicle is met by importing the report (§8).
 | Quadrupole | airship · 560k (685k) | 2 | Blocker, Mobile | Drain 2 Charge. |
 | Cathode | sub · 600k (726k) | 2 | Stealthy, Sub Screen | Drain 2 Charge. Discharge 2: this vehicle fights a 1v1 against target enemy ship or submarine in this zone, then this surfaces — it loses Stealthy for the rest of the game. |
 | Superradiance | ship · 620k (626k) | 3 | — | Discharge 3: deal 300k damage to the enemy base in this zone. |
-| Terawatt | ship · 640k (725k) | 4 | Blocker, Scrappy, Mobile | Drain 2 Charge. Generators: this gains 2 charge at the start of your turn instead of 1. Discharge 2: another friendly LH vehicle in this zone gains 2 charge. |
+| Terawatt | hover · 640k (725k) | 4 | Blocker, Scrappy, Mobile | Drain 2 Charge. Generators: this gains 2 charge at the start of your turn instead of 1. Discharge 2: another friendly LH vehicle in this zone gains 2 charge. |
 | Candela | ship · 700k (1,021k) | 2 | Blocker, Sub Screen, Scrappy, Mobile | Drain 3 Charge. |
 | Rectifier | plane · 700k (735k) | — | Half-Cost, Temporary, Fragile, Swift | — |
 | Impedance | ship · 750k (1,327k) | 2 | Blocker | Drain 4 Charge. Discharge 2: deal 400k damage to the enemy base in this zone. |

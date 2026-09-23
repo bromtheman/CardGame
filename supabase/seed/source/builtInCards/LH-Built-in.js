@@ -202,7 +202,9 @@ export const lhVehicles = [
         cpCost: 0,
         imageUrl: 'terawatt.png',
         playerId: null,
-        vehicleType: 'ship',
+        // 2026-09-22 hovercraft amendment (owner request): a 116 m/s skimmer like
+        // the Watt, so FtD spawns it just above the water (HOVER_SPAWN_ALTITUDE_M).
+        vehicleType: VEHICLE_TYPES.HOVER,
         type: 'vehicle',
         faction: FACTIONS.LH,
         blueprintId: null,

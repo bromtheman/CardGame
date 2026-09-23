@@ -1647,5 +1647,5 @@ The PR body lists:
 4. Netlify: the `PhysicalCard-*.js` chunk carries `LH:Anode`.
    - A `shared/`-only diff can skip the build; this one touches `frontend/`, so it should not.
    - Also grep the battle-launch chunk for `HOVER_SPAWN_ALTITUDE_M`'s value in the altitude sentence.
-5. **Owner, in FtD:** check that the Watt hovers at 20 m instead of dying. Then play live: the Luxon token, Ampere's pips and Umbra's repeat shots.
+5. **Owner, in FtD:** check that the Watt and Terawatt hover at 20 m instead of dying. Then play live: the Luxon token, Ampere's pips and Umbra's repeat shots.
 6. **Still unimplemented per the spec:** nothing. Moving other skimmers to Hovercraft stays open (spec §9) until one is seen dying.
