@@ -597,7 +597,7 @@ insert into public.hero_powers (id, name, faction, power_text, cp_cost, meta)
 values ('fa330112-2cf2-58a4-96a4-c2bfaf58db93', 'Salvage', 'NEUTRAL', 'Return destroyed blueprint to hand', 1, '{}'::jsonb)
 on conflict (id) do update set name = excluded.name, faction = excluded.faction, power_text = excluded.power_text, cp_cost = excluded.cp_cost, meta = excluded.meta;
 insert into public.hero_powers (id, name, faction, power_text, cp_cost, meta)
-values ('0503c36d-a2ff-514d-a2f4-2a26a12b67a8', 'Boarding Party', 'DWG', 'Choose a friendly DWG faction ship. you may exchange it with one of your opponents Faction ships of equal or lesser cost from the same zone', 1, '{}'::jsonb)
+values ('0503c36d-a2ff-514d-a2f4-2a26a12b67a8', 'Boarding Party', 'DWG', 'Choose a friendly DWG faction ship. you may exchange it with one of your opponents Faction ships or submarines of equal or lesser cost from the same zone', 1, '{}'::jsonb)
 on conflict (id) do update set name = excluded.name, faction = excluded.faction, power_text = excluded.power_text, cp_cost = excluded.cp_cost, meta = excluded.meta;
 insert into public.hero_powers (id, name, faction, power_text, cp_cost, meta)
 values ('78d7b7df-c926-593e-9ad9-543778c16ad8', 'Change Order', 'OW', 'Discard an OW vehicle card. Draw a copy of a player made ship or tank from your deck in two turns', 1, '{}'::jsonb)

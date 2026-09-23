@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { VEHICLE_TYPES, ZONE_TYPES } from './gameSettings.ts'
 import { biomeAllows } from './engine/index.ts'
-import { isShipClass } from './vehicleClass.ts'
+import { isShipClass, isShipOrSub } from './vehicleClass.ts'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -15,6 +15,18 @@ describe('isShipClass', () => {
     expect(isShipClass(VEHICLE_TYPES.HOVER)).toBe(true)
     for (const t of [VEHICLE_TYPES.SUB, VEHICLE_TYPES.TANK, VEHICLE_TYPES.PLANE, VEHICLE_TYPES.AIRSHIP, null, undefined]) {
       expect(isShipClass(t), String(t)).toBe(false)
+    }
+  })
+})
+
+// 2026-09-23 owner request: DWG's Boarding Party may take an enemy submarine.
+describe('isShipOrSub', () => {
+  it('is true for ships, hovercraft and submarines, and nothing else', () => {
+    expect(isShipOrSub(VEHICLE_TYPES.SHIP)).toBe(true)
+    expect(isShipOrSub(VEHICLE_TYPES.HOVER)).toBe(true)
+    expect(isShipOrSub(VEHICLE_TYPES.SUB)).toBe(true)
+    for (const t of [VEHICLE_TYPES.TANK, VEHICLE_TYPES.PLANE, VEHICLE_TYPES.AIRSHIP, null, undefined]) {
+      expect(isShipOrSub(t), String(t)).toBe(false)
     }
   })
 })

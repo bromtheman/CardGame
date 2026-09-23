@@ -4,7 +4,7 @@ import type { Side, ZoneCardEntry } from '@shared/engine/engineTypes'
 import { chargeOf } from '@shared/engine/index'
 import { KEYWORDS } from '@shared/gameSettings'
 import { shortHandNumber } from '@shared/format'
-import { isShipClass } from '@shared/vehicleClass'
+import { isShipClass, isShipOrSub } from '@shared/vehicleClass'
 import { MiniVehicle } from './MiniVehicle'
 import type { ZoneEffectBadge, ZoneEffectIcon } from './zoneEffectBadges'
 import { LANE_GRID_COLUMNS, SLOT_HEIGHT_CLASS, SLOT_WIDTH_CLASS } from './laneLayout'
@@ -197,8 +197,8 @@ function LaneCount({ count, cap, mine }: { count: number; cap: number; mine: boo
 //
 // Swap-mode (Task 10, DWG's Boarding Party): `swapPickOwnMode` makes own DWG
 // ships clickable to start the trade; `swapPickEnemyMode` (true only in the
-// zone holding the already-picked own ship) makes enemy ships clickable to
-// complete it. Both filters mirror the engine's own validation in
+// zone holding the already-picked own ship) makes enemy ships and submarines
+// clickable to complete it. Both filters mirror the engine's own validation in
 // shared/engine/heroPowers.ts's boardingParty (faction/vehicleType/zone) —
 // display-only, the server re-validates (including the cost check, which
 // this component deliberately does not pre-filter on).
@@ -301,7 +301,7 @@ export function BoardZone({
         cap={theirCap}
         entries={zone.cards[theirSide] as ZoneCardEntry[]}
         renderEntry={(c) => {
-          const swapEnemyEligible = !!swapPickEnemyMode && isShipClass(c.vehicleType)
+          const swapEnemyEligible = !!swapPickEnemyMode && isShipOrSub(c.vehicleType)
           return (
             <MiniVehicle
               key={c.instanceId}
