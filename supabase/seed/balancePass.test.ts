@@ -54,12 +54,13 @@ const CARDS: Record<string, Expected> = {
     vehicleType: 'airship', cardText: ALBACORE_TEXT,
   },
   // Tarpon and Buccaneer were moved again by the 2026-09-02 and 2026-09-16
-  // passes and are updated in place, per §2.3 — this file stays the record of
+  // passes (and Tarpon's SUB_SCREEN restored by a 2026-09-23 owner request)
+  // and are updated in place, per §2.3 — this file stays the record of
   // what 2026-08-30 moved, not a frozen snapshot of what it moved them to. The
   // current values are also pinned, with their card text, in
   // balance/dwg.balance.test.ts and balance/2026-09-16.balance.test.ts.
   'DWG:Tarpon': {
-    materialCost: 510_000, blueprintCost: 511_605, keywords: ['airScreen'],
+    materialCost: 510_000, blueprintCost: 511_605, keywords: ['airScreen', 'subScreen'],
     vehicleType: 'airship', cardText: '',
   },
   'DWG:Buccaneer': {

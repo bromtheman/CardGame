@@ -40,6 +40,17 @@ describe('cardImageOrFallback', () => {
     expect(img.src).toMatch(/\S/)
   })
 
+  // Owner ruling, 2026-09-23: abilities are pictured by sealed orders. The
+  // anchor they used to share is the DWG Waters zone badge, and an ability
+  // must not look like any vehicle.
+  it('pictures an ability apart from every vehicle and from the DWG Waters anchor', () => {
+    const ability = cardImageOrFallback(card(null)).src
+    for (const type of Object.values(VEHICLE_TYPES)) {
+      expect(ability, `looks like a ${type}`).not.toBe(cardImageOrFallback(card(type)).src)
+    }
+    expect(ability).not.toBe(anchorArt)
+  })
+
   it('shows hosted art as it is', () => {
     expect(cardImageOrFallback(card(VEHICLE_TYPES.SHIP, 'https://example.com/volta.png')))
       .toEqual({ src: 'https://example.com/volta.png', isFallback: false })

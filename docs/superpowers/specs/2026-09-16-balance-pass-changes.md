@@ -73,6 +73,9 @@ name it. §4 Q3–Q4.
 true` (the wave-8 Obelisk mechanic, per side) replacing `aircraftLock`. Tarpon
 drops `aircraftLock` outright. That leaves `aircraftLocked` (`placement.ts:54`)
 with no carrier: keep it, commented, per 2026-09-02 R-8; do not delete the key.
+(Amended 2026-09-23 at the owner's request: Tarpon gets `SUB_SCREEN` back beside
+this pass's `AIR_SCREEN`; `FRAGILE` stays off. The summary row below records
+what this pass did.)
 
 **M-7 Tyr's decay floors at 500k.** `tyrCostModifier` (`ssEffects.ts:793`)
 returns `max(−(materialCost − TYR_MIN_COST), −TYR_HAND_DISCOUNT × steps)`, new
@@ -82,6 +85,9 @@ amend that comment. §4 Q5.
 
 **M-8 Flying Squirrel Attack sends two squadrons.** The engine models one "3x
 squadron" as 3 hulls (`FLYING_SQUIRREL_ATTACK_COUNT = 3`); two → **6**.
+(Amended 2026-09-23 at the owner's request: one Flying Squirrel blueprint is
+itself a flight of three planes in FtD, so a "3x squadron" is ONE hull and two
+squadrons are **2**. Six hulls had put eighteen planes in the fight.)
 
 **M-9 Horror is retired, not deleted.** `meta.retired: true`; the row stays
 seeded and `horrorBattle` stays registered (Harbringer precedent).

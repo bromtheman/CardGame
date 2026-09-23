@@ -70,6 +70,15 @@ describe('buildMenu', () => {
     expect(menu).toContainEqual({ type: 'USE_HERO_POWER', power: 'boardingParty', instanceId: 'mine', targetInstanceId: 'hov' })
   })
 
+  it('offers Boarding Party against an enemy submarine (2026-09-23 owner request)', () => {
+    const g = makeGame({ activePlayer: BOT, turnNumber: 3 })
+    g.state.factions = { a: 'WF', b: 'DWG' }
+    g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'mine', faction: 'DWG', materialCost: 100000, playedOnTurn: 1 }))
+    g.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'sub', faction: 'WF', vehicleType: 'sub', materialCost: 90000, playedOnTurn: 1 }))
+    const menu = buildMenu(g, BOT, makeCtx(), 'turn').map((m) => m.action)
+    expect(menu).toContainEqual({ type: 'USE_HERO_POWER', power: 'boardingParty', instanceId: 'mine', targetInstanceId: 'sub' })
+  })
+
   it('offers an LH bot Surge once per zone, each line naming its zone (2026-09-23 amendment)', () => {
     const g = makeGame({ activePlayer: BOT, turnNumber: 3 })
     g.state.factions = { a: 'DWG', b: 'LH' }

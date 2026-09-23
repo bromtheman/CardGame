@@ -28,7 +28,7 @@ export const FACTION_NOTES: Partial<Record<BotFaction, FactionNote>> = {
 - Your airships are where your battlefield punching power comes in: Albacore and Buccaneer are both very capable combatants, and Tarpon is not bad either.
 - Your endgame comes from superior card draw, specifically drawing from your opponent's deck. Use Plunderer (a ship that draws from the enemy deck when it survives a victorious fleet battle or damages the enemy base) to generate cards from your opponent's deck, and use Gang Up (which lets your whole fleet in a zone battle one singled-out enemy vehicle) to get Plunderer generating cards more than once in a single turn.
 - Double Up is a zero-cost ability that makes a ship spawn an additional copy of itself when played. It helps you build an early-game fleet faster than other factions can, for an early lead.
-- Your hero power Boarding Party swaps one of your ships for an enemy ship of equal or lesser cost in the same zone. That suits you: your ships are often weak relative to their printed cost, and you can put more bodies into a zone than most opponents.`,
+- Your hero power Boarding Party swaps one of your ships for an enemy ship or submarine of equal or lesser cost in the same zone. That suits you: your ships are often weak relative to their printed cost, and you can put more bodies into a zone than most opponents.`,
     mentions: ['Crossbones', 'Kraken', 'Paddlegun', 'Albacore', 'Buccaneer', 'Tarpon', 'Plunderer', 'Gang Up', 'Double Up', 'Boarding Party'],
   },
   LH: {

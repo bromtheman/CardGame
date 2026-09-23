@@ -211,9 +211,11 @@ Universal (NEUTRAL):
 Faction:
 
 - **DWG — Boarding Party**: choose a friendly DWG faction ship; you may exchange
-  it with one of your opponent's ships (any faction) of equal or lesser
-  effective cost from the same zone — both traded hulls count as freshly
-  deployed on their new side
+  it with one of your opponent's ships or submarines (any faction) of equal or
+  lesser effective cost from the same zone — both traded hulls count as freshly
+  deployed on their new side. (Amended 2026-09-23 at the owner's request:
+  submarines added. A capture is not a play, so an enemy Sub Screen in the zone
+  does not protect its submarines.)
 - **OW — Change Order**: discard an OW vehicle card (it goes to the graveyard);
   a random player-made ship or tank is drawn from your deck at the start of
   your turn two turns later (none in deck → the order fizzles with a log note)

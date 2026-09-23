@@ -11,7 +11,7 @@ import { biomeAllows, effectiveMaterialCostOf, uniquePerZoneBlocked } from './pl
 import { zoneCapFor } from './zoneCapacity.ts'
 import { catalogCard, spawnInto } from '../effects/primitives.ts'
 import { isStunned } from './stun.ts'
-import { isShipClass } from '../vehicleClass.ts'
+import { isShipClass, isShipOrSub } from '../vehicleClass.ts'
 
 // power → faction that alone may use it. Powers absent from this map (the
 // four universal ones) are open to any faction.
@@ -44,9 +44,11 @@ export const CATALOG_HERO_POWERS: ReadonlySet<string> = new Set(['drones'])
 export const FLANKING_MANEUVER_EFFECT = 'flankingManeuverEffect'
 export const FLANKING_MANEUVER_NAME = 'Flanking Maneuver'
 
-// DWG: swap one of my DWG ships for a same-zone enemy ship that costs no
-// more (at EFFECTIVE cost — Half-Cost and future modifiers included) than
-// mine. Both hulls are re-stamped as freshly deployed on their new side.
+// DWG: swap one of my DWG ships for a same-zone enemy ship or submarine
+// (submarines since the 2026-09-23 owner request) that costs no more (at
+// EFFECTIVE cost — Half-Cost and future modifiers included) than mine. Both
+// hulls are re-stamped as freshly deployed on their new side. A capture is
+// not a play, so an enemy Sub Screen in the zone does not protect its subs.
 function boardingParty(
   game: EngineGame, actor: Side, instanceId: string | undefined, targetInstanceId: string | undefined,
 ): ApplyResult {
@@ -58,12 +60,12 @@ function boardingParty(
     return err(400, 'You must select your own DWG ship')
   }
   const theirs = findVehicle(game.state, targetInstanceId)
-  if (!theirs || theirs.side !== otherSide(actor) || !isShipClass(theirs.entry.vehicleType)) {
-    return err(400, 'The target must be an enemy ship')
+  if (!theirs || theirs.side !== otherSide(actor) || !isShipOrSub(theirs.entry.vehicleType)) {
+    return err(400, 'The target must be an enemy ship or submarine')
   }
-  if (theirs.zone.id !== mine.zone.id) return err(400, 'The enemy ship must be in the same zone as yours')
+  if (theirs.zone.id !== mine.zone.id) return err(400, 'The enemy vessel must be in the same zone as yours')
   if (effectiveMaterialCostOf(theirs.entry) > effectiveMaterialCostOf(mine.entry)) {
-    return err(400, 'That enemy ship costs more than yours')
+    return err(400, 'That enemy vessel costs more than yours')
   }
   const zone = mine.zone
   const enemySide = otherSide(actor)

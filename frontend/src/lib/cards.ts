@@ -9,6 +9,7 @@ import tankArt from '../assets/icons/tankSVG.svg'
 import planeArt from '../assets/icons/planeSVG.svg'
 import airshipArt from '../assets/icons/airShield1SVG.svg'
 import hoverArt from '../assets/icons/hovercraftSVG.svg'
+import abilityArt from '../assets/icons/sealedOrdersSVG.svg'
 import anchorArt from '../assets/icons/anchorSVG.svg'
 
 export type CardRow = Database['public']['Tables']['cards']['Row']
@@ -26,8 +27,9 @@ export function useCardsQuery() {
 }
 
 // The picture for a card with no hosted art: a faded silhouette of its vehicle
-// type, or the anchor for an ability. Not the gold vehicleTypeIcon — the owner
-// kept these silhouettes as card pictures when the icons went gold (2026-09-22).
+// type, or sealed orders for an ability (owner, 2026-09-23 — the anchor is the
+// DWG Waters badge). Not the gold vehicleTypeIcon — the owner kept these
+// silhouettes as card pictures when the icons went gold (2026-09-22).
 // Every VEHICLE_TYPES value needs an entry: a missing one falls back to the
 // anchor silently (cards.test.ts holds every type to it).
 const PLACEHOLDER_ART: Record<string, string> = {
@@ -47,7 +49,8 @@ export function cardImageOrFallback(card: CardRow): { src: string; isFallback: b
   if (card.image_url.startsWith('http') || card.image_url.startsWith('blob:')) {
     return { src: card.image_url, isFallback: false }
   }
-  return { src: PLACEHOLDER_ART[card.vehicle_type ?? ''] ?? anchorArt, isFallback: true }
+  if (!card.vehicle_type) return { src: abilityArt, isFallback: true }
+  return { src: PLACEHOLDER_ART[card.vehicle_type] ?? anchorArt, isFallback: true }
 }
 
 // A card in play/in hand carries the same fields as a `cards` row under

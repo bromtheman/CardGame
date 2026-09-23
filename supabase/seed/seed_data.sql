@@ -75,7 +75,7 @@ insert into public.cards (id, name, is_built_in, owner_id, faction, type, vehicl
 values ('c6bb16c3-d75c-59ba-bc0d-08bceec142ef', 'Spawn Buccaneer', true, null, 'DWG', 'ability', null, 0, 225000, 0, 'Spawn a Buccaneer into a zone. It gains the Scrappy keyword.', 'spawnBuccaneer.png', '[]'::jsonb, '{"playOnZoneEffect":"spawnBuccaneerEffect"}'::jsonb)
 on conflict (id) do update set name = excluded.name, is_built_in = excluded.is_built_in, owner_id = excluded.owner_id, faction = excluded.faction, type = excluded.type, vehicle_type = excluded.vehicle_type, blueprint_cost = excluded.blueprint_cost, material_cost = excluded.material_cost, cp_cost = excluded.cp_cost, card_text = excluded.card_text, image_url = excluded.image_url, keywords = excluded.keywords, meta = excluded.meta;
 insert into public.cards (id, name, is_built_in, owner_id, faction, type, vehicle_type, blueprint_cost, material_cost, cp_cost, card_text, image_url, keywords, meta)
-values ('6a7b6067-31e0-5760-9691-2d6decaa4e05', 'Tarpon', true, null, 'DWG', 'vehicle', 'airship', 511605, 510000, 0, '', 'ransack.png', '["airScreen"]'::jsonb, '{}'::jsonb)
+values ('6a7b6067-31e0-5760-9691-2d6decaa4e05', 'Tarpon', true, null, 'DWG', 'vehicle', 'airship', 511605, 510000, 0, '', 'ransack.png', '["airScreen","subScreen"]'::jsonb, '{}'::jsonb)
 on conflict (id) do update set name = excluded.name, is_built_in = excluded.is_built_in, owner_id = excluded.owner_id, faction = excluded.faction, type = excluded.type, vehicle_type = excluded.vehicle_type, blueprint_cost = excluded.blueprint_cost, material_cost = excluded.material_cost, cp_cost = excluded.cp_cost, card_text = excluded.card_text, image_url = excluded.image_url, keywords = excluded.keywords, meta = excluded.meta;
 insert into public.cards (id, name, is_built_in, owner_id, faction, type, vehicle_type, blueprint_cost, material_cost, cp_cost, card_text, image_url, keywords, meta)
 values ('fd8db1b6-0d09-5501-99a0-107432f5a71f', '[GT] Achievement', true, null, 'GT', 'vehicle', 'plane', 265000, 260000, 0, '', 'achievement.png', '["stealthy"]'::jsonb, '{}'::jsonb)
@@ -597,7 +597,7 @@ insert into public.hero_powers (id, name, faction, power_text, cp_cost, meta)
 values ('fa330112-2cf2-58a4-96a4-c2bfaf58db93', 'Salvage', 'NEUTRAL', 'Return destroyed blueprint to hand', 1, '{}'::jsonb)
 on conflict (id) do update set name = excluded.name, faction = excluded.faction, power_text = excluded.power_text, cp_cost = excluded.cp_cost, meta = excluded.meta;
 insert into public.hero_powers (id, name, faction, power_text, cp_cost, meta)
-values ('0503c36d-a2ff-514d-a2f4-2a26a12b67a8', 'Boarding Party', 'DWG', 'Choose a friendly DWG faction ship. you may exchange it with one of your opponents Faction ships of equal or lesser cost from the same zone', 1, '{}'::jsonb)
+values ('0503c36d-a2ff-514d-a2f4-2a26a12b67a8', 'Boarding Party', 'DWG', 'Choose a friendly DWG faction ship. you may exchange it with one of your opponents Faction ships or submarines of equal or lesser cost from the same zone', 1, '{}'::jsonb)
 on conflict (id) do update set name = excluded.name, faction = excluded.faction, power_text = excluded.power_text, cp_cost = excluded.cp_cost, meta = excluded.meta;
 insert into public.hero_powers (id, name, faction, power_text, cp_cost, meta)
 values ('78d7b7df-c926-593e-9ad9-543778c16ad8', 'Change Order', 'OW', 'Discard an OW vehicle card. Draw a copy of a player made ship or tank from your deck in two turns', 1, '{}'::jsonb)
