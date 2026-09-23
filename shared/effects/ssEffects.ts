@@ -15,6 +15,7 @@ import type { EngineGame, Side, ZoneCardEntry } from '../engine/engineTypes.ts'
 import { checkVictory, findVehicle, grantKeywordsTo, otherSide, putInHand, zoneById } from '../engine/gameEngine.ts'
 import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
 import type { CardInstance } from '../engine/gameInit.ts'
+import { isShipClass } from '../vehicleClass.ts'
 
 // "An AI ship" — the pool seven cards share (Victoria, Trondheim, Excalibur,
 // Nothung, Resolute, Argonaut, Sacrilego). Since the 2026-09-16 pass (M-1)
@@ -404,7 +405,7 @@ function braveheartZone(game: EngineGame, actor: Side, card: { instanceId: strin
 // attack — INOFFENSIVE is precisely "cannot attack" (§7.3's Gang Up ruling).
 // The ENEMY target is deliberately unfiltered — Inoffensive can still defend.
 const canDuel = (e: ZoneCardEntry) =>
-  e.vehicleType === VEHICLE_TYPES.SHIP && !e.keywords.includes(KEYWORDS.INOFFENSIVE)
+  isShipClass(e.vehicleType) && !e.keywords.includes(KEYWORDS.INOFFENSIVE)
 
 // Whether Braveheart's own zone currently holds both a legal fighter (a ship
 // that canDuel) and a legal enemy target — checked ONCE, before hop 1 ever

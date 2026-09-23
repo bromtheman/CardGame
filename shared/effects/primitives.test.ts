@@ -559,3 +559,23 @@ describe('isAiShip (2026-09-16 M-1)', () => {
     expect(isAiShip(inst({ isBuiltIn: true, type: 'ability', vehicleType: null }))).toBe(false)
   })
 })
+
+// 2026-09-22 hovercraft amendment §4: a pool or test that asks for a ship
+// takes a hovercraft.
+describe('ship class', () => {
+  it('a pool asking for ships draws a hovercraft', () => {
+    const game = makeGame()
+    game.privates.a.deck = [inst({ instanceId: 'hov', vehicleType: 'hover' })]
+    game.state.counts.a = { hand: 0, deck: 1 }
+    const ok = drawFromPool({ source: 'deck', filter: { vehicleType: 'ship' }, count: 1 })({
+      game, actor: 'a', card: inst({ type: 'ability' }), ctx: makeCtx(),
+    })
+    expect(ok).toBe(true)
+    expect(game.privates.a.hand.map((c) => c.instanceId)).toEqual(['hov'])
+  })
+
+  it('isAiShip takes a built-in hovercraft and still refuses an airship', () => {
+    expect(isAiShip({ isBuiltIn: true, type: 'vehicle', vehicleType: 'hover' })).toBe(true)
+    expect(isAiShip({ isBuiltIn: true, type: 'vehicle', vehicleType: 'airship' })).toBe(false)
+  })
+})

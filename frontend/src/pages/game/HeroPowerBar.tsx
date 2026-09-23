@@ -2,7 +2,8 @@ import { useState } from 'react'
 import type { CardInstance, PublicGameState } from '@shared/engine/gameInit'
 import type { GameAction, Side } from '@shared/engine/engineTypes'
 import { battleFrozen } from '@shared/engine/index'
-import { HERO_POWER_DISTANCE_MOD_M, VEHICLE_TYPES } from '@shared/gameSettings'
+import { HERO_POWER_DISTANCE_MOD_M } from '@shared/gameSettings'
+import { isShipClass } from '@shared/vehicleClass'
 import { PromptDialog } from '../../components/ConfirmDialog'
 
 // Move-mode shared between Rapid Redeployment (pick any own vehicle, then a
@@ -111,7 +112,7 @@ export function HeroPowerBar({
   // a zone (flankMode); drones and surge send at once like Draw; changeOrder
   // picks from an inline hand-card dropdown, same pattern as Salvage's.
   const factionPowerInfo = FACTION_POWER_INFO[state.factions[mySide]]
-  const hasOwnDwgShip = state.zones.some((z) => z.cards[mySide].some((c) => c.faction === 'DWG' && c.vehicleType === VEHICLE_TYPES.SHIP))
+  const hasOwnDwgShip = state.zones.some((z) => z.cards[mySide].some((c) => c.faction === 'DWG' && isShipClass(c.vehicleType)))
   const hasOwnVehicle = state.zones.some((z) => z.cards[mySide].length > 0)
   const eligibleFactionCards: CardInstance[] =
     factionPowerInfo?.power === 'changeOrder'

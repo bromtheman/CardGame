@@ -14,6 +14,7 @@ import { mulberry32 } from '../seededRng.ts'
 import { describeMenuItem } from './describe.ts'
 import { MENU_MAX_ITEMS, MENU_MAX_TRIALS, MENU_SCORE_WINDOW_TURNS } from './llmSettings.ts'
 import { sectionOf } from './sections.ts'
+import { isShipClass } from '../../vehicleClass.ts'
 import type { Section } from './sections.ts'
 
 // One verified-legal move, as the model sees it (spec §4). Ids are 1-based
@@ -123,9 +124,9 @@ function enumerateTurn(game: EngineGame, side: Side): GameAction[] {
   for (const delta of [HERO_POWER_DISTANCE_MOD_M, -HERO_POWER_DISTANCE_MOD_M]) powers.push({ type: 'USE_HERO_POWER', power: 'tacticalPositioning', distanceDeltaM: delta })
   for (const { zone, card } of mine) {
     for (const z of zones) if (z.id !== zone.id) powers.push({ type: 'USE_HERO_POWER', power: 'rapidRedeployment', instanceId: card.instanceId, zoneId: z.id })
-    if (card.vehicleType === 'ship') {
+    if (isShipClass(card.vehicleType)) {
       for (const t of theirs) {
-        if (t.zone.id === zone.id && t.card.vehicleType === 'ship') {
+        if (t.zone.id === zone.id && isShipClass(t.card.vehicleType)) {
           powers.push({ type: 'USE_HERO_POWER', power: 'boardingParty', instanceId: card.instanceId, targetInstanceId: t.card.instanceId })
         }
       }

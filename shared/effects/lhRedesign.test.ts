@@ -187,6 +187,18 @@ describe('Cathode — cathodeDuel', () => {
     expect(cat.keywords).toEqual(['subScreen'])
     expect(done.game.state.activeBattle?.defenderIds).toEqual(['sub'])
   })
+
+  it('offers an enemy hovercraft — it counts as a ship (2026-09-22 hovercraft amendment)', () => {
+    const game = lhGame()
+    game.state.zones[0].cards.a.push(zoneEntry({
+      instanceId: 'cat', name: 'Cathode', faction: 'LH', vehicleType: 'sub', keywords: ['stealthy', 'subScreen'],
+      meta: { chargeMax: 2, requiresCharge: 2, onActivate: 'cathodeDuel', activateCpCost: 0, dischargeCost: 2 }, charge: 2,
+    }))
+    game.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'hov', vehicleType: 'hover' }))
+    const res = activate(game, 'cat')
+    if (!res.ok) throw new Error(res.error)
+    expect(res.game.state.pendingEffect?.options.map((o) => o.id)).toEqual(['hov'])
+  })
 })
 
 describe('Superradiance and Impedance — beams', () => {

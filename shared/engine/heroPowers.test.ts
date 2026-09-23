@@ -259,6 +259,19 @@ describe('USE_HERO_POWER boardingParty (DWG)', () => {
     })
     expect(r2).toMatchObject({ ok: false, status: 400 })
   })
+
+  it('trades for an enemy hovercraft — it counts as a ship (2026-09-22 hovercraft amendment)', () => {
+    const g = makeGame()
+    const mine = zoneEntry({ faction: 'DWG', vehicleType: 'ship', materialCost: 100000, playedOnTurn: 1 })
+    const theirs = zoneEntry({ faction: 'LH', vehicleType: 'hover', materialCost: 90000, playedOnTurn: 1 })
+    g.state.zones[0].cards.a.push(mine)
+    g.state.zones[0].cards.b.push(theirs)
+    const r = applyAction(g, 'alice', {
+      type: 'USE_HERO_POWER', power: 'boardingParty', instanceId: mine.instanceId, targetInstanceId: theirs.instanceId,
+    })
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.zones[0].cards.a.map((c) => c.instanceId)).toEqual([theirs.instanceId])
+  })
 })
 
 describe('USE_HERO_POWER changeOrder (OW)', () => {

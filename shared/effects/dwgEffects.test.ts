@@ -487,6 +487,15 @@ describe('doubleUpEffect', () => {
     })
     expect(ok).toBe(false)
   })
+
+  it('takes a DWG hovercraft — it counts as a ship (2026-09-22 hovercraft amendment)', () => {
+    const { game, target } = withHandTarget({ vehicleType: 'hover' })
+    const ok = effectFor('doubleUpEffect')!({
+      game, actor: 'a', card: inst({ type: 'ability', name: 'Double Up' }), ctx: makeCtx(),
+      targetInstanceId: target.instanceId,
+    })
+    expect(ok).toBe(true)
+  })
 })
 
 describe('dwgWatersEffect', () => {

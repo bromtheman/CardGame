@@ -162,4 +162,8 @@ describe('rules primer', () => {
       expect(renderPrimer('DWG', flow)).toContain(sentence)
     }
   })
+  it('tells the model a hovercraft is a ship (2026-09-22 hovercraft amendment)', () => {
+    expect(PRIMER_TEMPLATE).toContain('Placement: ships, hovercraft and submarines go to water or beach zones;')
+    expect(PRIMER_TEMPLATE).toContain('A hovercraft (type hover) counts as a ship for every rule.')
+  })
 })

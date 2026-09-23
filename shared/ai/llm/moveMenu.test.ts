@@ -61,6 +61,15 @@ describe('buildMenu', () => {
     expect(menu.some((a) => a.type === 'USE_HERO_POWER' && a.power === 'boardingParty')).toBe(false)
   })
 
+  it('offers Boarding Party against an enemy hovercraft — it counts as a ship (2026-09-22 hovercraft amendment)', () => {
+    const g = makeGame({ activePlayer: BOT, turnNumber: 3 })
+    g.state.factions = { a: 'LH', b: 'DWG' }
+    g.state.zones[0].cards.b.push(zoneEntry({ instanceId: 'mine', faction: 'DWG', materialCost: 100000, playedOnTurn: 1 }))
+    g.state.zones[0].cards.a.push(zoneEntry({ instanceId: 'hov', faction: 'LH', vehicleType: 'hover', materialCost: 90000, playedOnTurn: 1 }))
+    const menu = buildMenu(g, BOT, makeCtx(), 'turn').map((m) => m.action)
+    expect(menu).toContainEqual({ type: 'USE_HERO_POWER', power: 'boardingParty', instanceId: 'mine', targetInstanceId: 'hov' })
+  })
+
   // A throwing trial is not reachable through the public API today — Drones
   // (the one hero power the enumerator reaches that reads ctx.catalog) fails
   // gracefully with an ok:false result even when the catalog can't supply

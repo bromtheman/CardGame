@@ -15,6 +15,7 @@ import { findVehicle, otherSide, putInHand, revokeKeywordsFrom } from '../engine
 import { declareForcedBattle, joinBattle } from '../engine/battleDeclare.ts'
 import { isStunned, stunHull } from '../engine/stun.ts'
 import type { EngineGame, Side, ZoneCardEntry } from '../engine/engineTypes.ts'
+import { isShipClass } from '../vehicleClass.ts'
 
 // LH built-in card effects.
 
@@ -497,7 +498,7 @@ registerEffect('eclipseDuel', duel('eclipseDuel', 'Choose a non-Stealthy enemy v
 registerEffect('cathodeDuel', duel(
   'cathodeDuel',
   'Choose an enemy ship or submarine for Cathode to fight — it will surface',
-  (e) => e.vehicleType === VEHICLE_TYPES.SHIP || e.vehicleType === VEHICLE_TYPES.SUB,
+  (e) => isShipClass(e.vehicleType) || e.vehicleType === VEHICLE_TYPES.SUB,
   true,
 ))
 

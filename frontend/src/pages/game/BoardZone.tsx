@@ -2,8 +2,9 @@ import type { ReactNode } from 'react'
 import type { ZoneState } from '@shared/engine/gameInit'
 import type { Side, ZoneCardEntry } from '@shared/engine/engineTypes'
 import { chargeOf } from '@shared/engine/index'
-import { KEYWORDS, VEHICLE_TYPES } from '@shared/gameSettings'
+import { KEYWORDS } from '@shared/gameSettings'
 import { shortHandNumber } from '@shared/format'
+import { isShipClass } from '@shared/vehicleClass'
 import { MiniVehicle } from './MiniVehicle'
 import type { ZoneEffectBadge, ZoneEffectIcon } from './zoneEffectBadges'
 import { LANE_GRID_COLUMNS, SLOT_HEIGHT_CLASS, SLOT_WIDTH_CLASS } from './laneLayout'
@@ -298,7 +299,7 @@ export function BoardZone({
         cap={theirCap}
         entries={zone.cards[theirSide] as ZoneCardEntry[]}
         renderEntry={(c) => {
-          const swapEnemyEligible = !!swapPickEnemyMode && c.vehicleType === VEHICLE_TYPES.SHIP
+          const swapEnemyEligible = !!swapPickEnemyMode && isShipClass(c.vehicleType)
           return (
             <MiniVehicle
               key={c.instanceId}
@@ -336,7 +337,7 @@ export function BoardZone({
             typeof meta.onActivate === 'string' &&
             c.activatedOnTurn !== turnNumber &&
             (dischargeCost === null || chargeOf(c) >= dischargeCost)
-          const swapOwnEligible = !!swapPickOwnMode && c.faction === 'DWG' && c.vehicleType === VEHICLE_TYPES.SHIP
+          const swapOwnEligible = !!swapPickOwnMode && c.faction === 'DWG' && isShipClass(c.vehicleType)
           return (
             <MiniVehicle
               key={c.instanceId}
