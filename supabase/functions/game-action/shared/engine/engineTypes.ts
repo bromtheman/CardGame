@@ -193,7 +193,7 @@ export type GameAction =
       cardId?: string       // salvage: which destroyed card
       instanceId?: string   // rapidRedeployment/boardingParty(mine)/changeOrder/flyby/counterIntelligence: which card
       targetInstanceId?: string // boardingParty: the enemy ship being traded for
-      zoneId?: number       // rapidRedeployment: destination; flankingManeuver: the zone to flank
+      zoneId?: number       // rapidRedeployment: destination; flankingManeuver: the zone to flank; surge: the zone to charge
       distanceDeltaM?: number // tacticalPositioning: ±meters
     }
   | {

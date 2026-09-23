@@ -70,6 +70,22 @@ describe('buildMenu', () => {
     expect(menu).toContainEqual({ type: 'USE_HERO_POWER', power: 'boardingParty', instanceId: 'mine', targetInstanceId: 'hov' })
   })
 
+  it('offers an LH bot Surge once per zone, each line naming its zone (2026-09-23 amendment)', () => {
+    const g = makeGame({ activePlayer: BOT, turnNumber: 3 })
+    g.state.factions = { a: 'DWG', b: 'LH' }
+    g.state.zones[1].cards.b.push(zoneEntry({ instanceId: 'cell', faction: 'LH', meta: { chargeMax: 2 }, playedOnTurn: 1 }))
+    const surges = buildMenu(g, BOT, makeCtx(), 'turn')
+      .filter((m) => m.action.type === 'USE_HERO_POWER' && m.action.power === 'surge')
+    expect(surges.map((m) => m.action)).toEqual([
+      { type: 'USE_HERO_POWER', power: 'surge', zoneId: 1 },
+      { type: 'USE_HERO_POWER', power: 'surge', zoneId: 2 },
+      { type: 'USE_HERO_POWER', power: 'surge', zoneId: 3 },
+    ])
+    expect(surges.map((m) => m.text.split(' → ')[0])).toEqual([
+      'HERO POWER Surge: zone 1', 'HERO POWER Surge: zone 2', 'HERO POWER Surge: zone 3',
+    ])
+  })
+
   // A throwing trial is not reachable through the public API today — Drones
   // (the one hero power the enumerator reaches that reads ctx.catalog) fails
   // gracefully with an ok:false result even when the catalog can't supply

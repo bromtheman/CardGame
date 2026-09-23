@@ -28,6 +28,15 @@ export type MoveMode =
 // owns the actual state; mirrors MoveMode's shape.
 export type SwapMode = { phase: 'pickOwn' } | { phase: 'pickEnemy'; ownInstanceId: string }
 
+// A faction power armed and waiting on its zone: WF Flanking Maneuver or LH
+// Surge. Every zone is a legal pick for both, so GameBoardPage highlights all
+// of them and sends the power with the zone clicked.
+export type ZonePower = 'flankingManeuver' | 'surge'
+const ZONE_POWER_PROMPTS: Record<ZonePower, string> = {
+  flankingManeuver: 'Pick the zone to flank, or cancel.',
+  surge: 'Pick the zone to charge, or cancel.',
+}
+
 type UniversalPower = 'salvage' | 'tacticalPositioning' | 'draw' | 'rapidRedeployment'
 type FactionPower =
   | 'boardingParty' | 'changeOrder' | 'surge'
@@ -40,7 +49,7 @@ type FactionPower =
 const FACTION_POWER_INFO: Record<string, { power: FactionPower; label: string; blurb: string }> = {
   DWG: { power: 'boardingParty', label: 'Boarding Party', blurb: 'Exchange a friendly DWG ship with an enemy ship of equal or lesser cost in the same zone' },
   OW: { power: 'changeOrder', label: 'Change Order', blurb: 'Discard an OW vehicle; draw a player-made ship or tank from your deck in two turns' },
-  LH: { power: 'surge', label: 'Surge', blurb: 'Every friendly LH vehicle gains 1 charge' },
+  LH: { power: 'surge', label: 'Surge', blurb: 'Choose a zone: every friendly LH vehicle in that zone charges to full' },
   SS: { power: 'counterIntelligence', label: 'Counter Intelligence', blurb: 'Give one of your vehicles on the board Air Screen and Sub Screen' },
   TG: { power: 'drones', label: 'Drones', blurb: 'Spawn a Temporary Mirth Swarm into every zone' },
   WF: { power: 'flankingManeuver', label: 'Flanking Maneuver', blurb: 'Choose a zone: your next fleet attack there this turn deploys after the defender, and every enemy vehicle counts as Fragile for that battle' },
@@ -56,7 +65,7 @@ export function HeroPowerBar({
   state, mySide, isMyTurn, isActive, send, busy, hand,
   moveMode, onStartRapidRedeployment, onStartCounterIntelligence, onCancelMove,
   swapMode, onStartBoardingParty, onCancelSwap,
-  flankMode, onStartFlankingManeuver, onCancelFlank,
+  zonePower, onStartZonePower, onCancelZonePower,
 }: {
   state: PublicGameState
   mySide: Side
@@ -74,10 +83,11 @@ export function HeroPowerBar({
   // SS Counter Intelligence: pick one of my vehicles on the board (moveMode's
   // pickVehicle phase, kind 'counterIntelligence').
   onStartCounterIntelligence: () => void
-  // WF Flanking Maneuver: pick a zone — every zone highlights while armed.
-  flankMode: boolean
-  onStartFlankingManeuver: () => void
-  onCancelFlank: () => void
+  // WF Flanking Maneuver / LH Surge: pick a zone — every zone highlights
+  // while one is armed.
+  zonePower: ZonePower | null
+  onStartZonePower: (power: ZonePower) => void
+  onCancelZonePower: () => void
 }) {
   const [salvageOpen, setSalvageOpen] = useState(false)
   const [factionPickerOpen, setFactionPickerOpen] = useState(false)
@@ -108,8 +118,8 @@ export function HeroPowerBar({
   }
 
   // Faction power: absent for NEUTRAL/GT (nothing renders). boardingParty and
-  // counterIntelligence pick on the board (swapMode / moveMode); flanking picks
-  // a zone (flankMode); drones and surge send at once like Draw; changeOrder
+  // counterIntelligence pick on the board (swapMode / moveMode); flanking and
+  // surge pick a zone (zonePower); drones sends at once like Draw; changeOrder
   // picks from an inline hand-card dropdown, same pattern as Salvage's.
   const factionPowerInfo = FACTION_POWER_INFO[state.factions[mySide]]
   const hasOwnDwgShip = state.zones.some((z) => z.cards[mySide].some((c) => c.faction === 'DWG' && isShipClass(c.vehicleType)))
@@ -134,8 +144,7 @@ export function HeroPowerBar({
   const factionModeActive =
     factionPowerInfo?.power === 'boardingParty' ? !!swapMode
       : factionPowerInfo?.power === 'counterIntelligence' ? counterIntelActive
-        : factionPowerInfo?.power === 'flankingManeuver' ? flankMode
-          : false
+        : zonePower !== null && zonePower === factionPowerInfo?.power
   const factionDisabled = busy || (!!factionReason && !factionModeActive)
 
   async function onDraw() {
@@ -175,11 +184,11 @@ export function HeroPowerBar({
         if (counterIntelActive) onCancelMove()
         else onStartCounterIntelligence()
         return
-      case 'flankingManeuver':
-        if (flankMode) onCancelFlank()
-        else onStartFlankingManeuver()
+      case 'flankingManeuver': case 'surge':
+        if (zonePower) onCancelZonePower()
+        else onStartZonePower(factionPowerInfo.power)
         return
-      case 'drones': case 'surge':
+      case 'drones':
         void send({ type: 'USE_HERO_POWER', power: factionPowerInfo.power })
         return
       default:
@@ -300,10 +309,10 @@ export function HeroPowerBar({
         </span>
       )}
 
-      {flankMode && (
+      {zonePower && (
         <span className="ml-auto flex items-center gap-2 text-sm text-brass-400">
-          Pick the zone to flank, or cancel.
-          <button onClick={onCancelFlank} className="rounded border border-ocean-600 px-2 py-0.5 text-xs text-parchment-100">
+          {ZONE_POWER_PROMPTS[zonePower]}
+          <button onClick={onCancelZonePower} className="rounded border border-ocean-600 px-2 py-0.5 text-xs text-parchment-100">
             Cancel
           </button>
         </span>

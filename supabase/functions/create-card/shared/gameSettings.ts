@@ -294,8 +294,6 @@ export const VOLTA_JUMP_START_CHARGE = 1
 export const TERAWATT_TRANSFER_CHARGE = 2
 // Overcharge: "Target friendly LH vehicle gains 2 charge."
 export const OVERCHARGE_CHARGE = 2
-// Surge (LH hero power): "Every friendly LH vehicle gains 1 charge."
-export const SURGE_CHARGE = 1
 // 2026-09-22 LH draw amendment. Byte: "When played, this gains 1 charge." —
 // its Discharge 1 draw can fire the turn it lands, or the pip can pay a Drain.
 export const BYTE_PLAY_CHARGE = 1

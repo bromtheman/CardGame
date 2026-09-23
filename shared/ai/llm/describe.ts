@@ -61,7 +61,7 @@ export function describeAction(game: EngineGame, side: Side, action: GameAction)
           return `${label}: trade ${nameOf(game, side, action.instanceId ?? '')} for ${nameOf(game, side, action.targetInstanceId ?? '')}`
         case 'changeOrder': case 'flyby': case 'counterIntelligence':
           return `${label}: ${nameOf(game, side, action.instanceId ?? '')}`
-        case 'flankingManeuver': return `${label}: zone ${action.zoneId}`
+        case 'flankingManeuver': case 'surge': return `${label}: zone ${action.zoneId}`
         default: return label
       }
     }

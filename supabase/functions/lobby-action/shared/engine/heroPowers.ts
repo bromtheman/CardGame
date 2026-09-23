@@ -1,9 +1,9 @@
 import {
   CHANGE_ORDER_DELAY_TURNS, HERO_POWER_DISTANCE_MOD_M, KEYWORDS,
-  SPAWN_DISTANCE_MAX_M, SPAWN_DISTANCE_MIN_M, SURGE_CHARGE,
+  SPAWN_DISTANCE_MAX_M, SPAWN_DISTANCE_MIN_M,
 } from '../gameSettings.ts'
 import type { ApplyResult, EngineContext, EngineGame, Side, ZoneCardEntry } from './engineTypes.ts'
-import { addCharge } from './charge.ts'
+import { addCharge, chargeMaxOf } from './charge.ts'
 import {
   battleFrozen, discardCard, drawCard, err, findVehicle, otherSide, putInHand, registerHandler, zoneById,
 } from './gameEngine.ts'
@@ -116,19 +116,23 @@ function flyby(game: EngineGame, actor: Side, instanceId: string | undefined): A
   return { ok: true, game }
 }
 
-// LH: "Every friendly LH vehicle gains 1 charge." Capped per hull, planes and
-// Conduit gain nothing, and it is usable with nothing to charge (R-28) — no
-// hero power is gated on usefulness and this one will not be the first.
-function surge(game: EngineGame, actor: Side): ApplyResult {
+// LH: "Choose a zone. Every friendly LH vehicle in that zone charges to full."
+// (the 2026-09-23 owner amendment; until then every LH hull gained 1 charge).
+// Planes and Conduit print no chargeMax, so they gain nothing, and any zone
+// is a legal pick, even one with nothing to charge (R-28) — no hero power is
+// gated on usefulness and this one will not be the first.
+function surge(game: EngineGame, actor: Side, zoneId: number | undefined): ApplyResult {
+  if (typeof zoneId !== 'number') return err(400, 'Surge needs a zone')
+  const zone = zoneById(game.state, zoneId)
+  if (!zone) return err(400, 'No such zone')
   let gained = 0
-  for (const zone of game.state.zones) {
-    for (const entry of zone.cards[actor] as ZoneCardEntry[]) {
-      if (entry.faction === 'LH') gained += addCharge(entry, SURGE_CHARGE)
-    }
+  for (const entry of zone.cards[actor] as ZoneCardEntry[]) {
+    if (entry.faction === 'LH') gained += addCharge(entry, chargeMaxOf(entry))
   }
+  const player = `player ${actor.toUpperCase()}`
   game.state.log.push(gained > 0
-    ? `Surge: player ${actor.toUpperCase()}'s fleet gains ${gained} charge`
-    : `Surge: nothing on player ${actor.toUpperCase()}'s board could take a charge`)
+    ? `Surge: ${player}'s fleet in zone ${zoneId} charges to full (+${gained} charge)`
+    : `Surge: nothing of ${player}'s in zone ${zoneId} could take a charge`)
   return { ok: true, game }
 }
 
@@ -304,7 +308,7 @@ registerHandler('USE_HERO_POWER', (game, actor, action, ctx) => {
       const result = flankingManeuver(game, actor, action.zoneId)
       if (!result.ok) return result
     } else if (action.power === 'surge') {
-      const result = surge(game, actor)
+      const result = surge(game, actor, action.zoneId)
       if (!result.ok) return result
     } else {
       return err(400, 'Unknown hero power')
