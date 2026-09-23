@@ -212,7 +212,7 @@ export const EXCALIBUR_COST_DELTA = -200_000 // Excalibur: AI ship in hand costs
 export const PLUNDERER_CAPTURE_SURCHARGE = 20_000
 export const REPAIRMEN_READY_DRAW_MAX_COST = 400_000 // Repairmen Ready draws below this
 
-export const FLYING_SQUIRREL_ATTACK_COUNT = 6 // Flying Squirrel Attack: "two flying squirrel (3x squadron)" — two squadrons of three (2026-09-16 M-8)
+export const FLYING_SQUIRREL_ATTACK_COUNT = 2 // Flying Squirrel Attack: "two flying squirrel (3x squadron)" — two hulls, each blueprint a flight of three planes in FtD (2026-09-23; M-8 had 6)
 export const MARTYR_ATTACK_COUNT = 4          // Martyr Attack: base summon count
 export const MARTYR_ATTACK_BOOSTED_COUNT = 6  // Martyr Attack: target is an airship, or a 400k+ player design
 export const MARTYR_ATTACK_BOOST_MIN_COST = 400_000

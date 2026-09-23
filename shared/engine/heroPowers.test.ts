@@ -272,6 +272,40 @@ describe('USE_HERO_POWER boardingParty (DWG)', () => {
     if (!r.ok) throw new Error(r.error)
     expect(r.game.state.zones[0].cards.a.map((c) => c.instanceId)).toEqual([theirs.instanceId])
   })
+
+  // 2026-09-23 owner request: the target may be a submarine as well as a ship.
+  // A capture is not a play, so the enemy's own Sub Screen in the zone does
+  // not protect it — Mutiny and Sinners Luck ignore screens the same way.
+  it('trades for an enemy submarine, even behind its own Sub Screen (2026-09-23 owner request)', () => {
+    const g = makeGame()
+    const mine = zoneEntry({ faction: 'DWG', vehicleType: 'ship', materialCost: 100000, name: 'Brigand', playedOnTurn: 1 })
+    const theirs = zoneEntry({ faction: 'WF', vehicleType: 'sub', materialCost: 90000, name: 'Lurker', playedOnTurn: 1 })
+    const screen = zoneEntry({ faction: 'WF', vehicleType: 'ship', materialCost: 250000, keywords: ['subScreen'], playedOnTurn: 1 })
+    g.state.zones[0].cards.a.push(mine)
+    g.state.zones[0].cards.b.push(theirs, screen)
+    const r = applyAction(g, 'alice', {
+      type: 'USE_HERO_POWER', power: 'boardingParty', instanceId: mine.instanceId, targetInstanceId: theirs.instanceId,
+    })
+    if (!r.ok) throw new Error(r.error)
+    expect(r.game.state.zones[0].cards.a.map((c) => c.instanceId)).toEqual([theirs.instanceId])
+    expect(r.game.state.zones[0].cards.b.map((c) => c.instanceId)).toEqual([screen.instanceId, mine.instanceId])
+    expect(r.game.state.log).toContain('Boarding Party: Brigand traded for Lurker')
+  })
+
+  it('still refuses an enemy plane, airship or tank', () => {
+    for (const vehicleType of ['plane', 'airship', 'tank']) {
+      const g = makeGame()
+      // The beach takes every one of them, so the type is the only objection.
+      const mine = zoneEntry({ faction: 'DWG', vehicleType: 'ship', materialCost: 100000, playedOnTurn: 1 })
+      const theirs = zoneEntry({ faction: 'OW', vehicleType, materialCost: 80000, playedOnTurn: 1 })
+      g.state.zones[1].cards.a.push(mine)
+      g.state.zones[1].cards.b.push(theirs)
+      const r = applyAction(g, 'alice', {
+        type: 'USE_HERO_POWER', power: 'boardingParty', instanceId: mine.instanceId, targetInstanceId: theirs.instanceId,
+      })
+      expect(r, vehicleType).toMatchObject({ ok: false, status: 400 })
+    }
+  })
 })
 
 describe('USE_HERO_POWER changeOrder (OW)', () => {

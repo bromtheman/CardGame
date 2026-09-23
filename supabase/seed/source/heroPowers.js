@@ -28,7 +28,7 @@ export const allHeroPowers = [
     {
         faction: FACTIONS.DWG,
         name: 'Boarding Party',
-        text: 'Choose a friendly DWG faction ship. you may exchange it with one of your opponents Faction ships of equal or lesser cost from the same zone',
+        text: 'Choose a friendly DWG faction ship. you may exchange it with one of your opponents Faction ships or submarines of equal or lesser cost from the same zone',
         cpCost: 1
     },
     {

@@ -24,7 +24,7 @@ export type MoveMode =
   | { phase: 'pickZone'; instanceId: string; kind: 'handTarget'; targetInstanceId: string }
 
 // Swap-mode for the DWG faction power (Boarding Party): pick one of my DWG
-// ships on the board, then an enemy ship in the same zone. GameBoardPage
+// ships on the board, then an enemy ship or submarine in the same zone. GameBoardPage
 // owns the actual state; mirrors MoveMode's shape.
 export type SwapMode = { phase: 'pickOwn' } | { phase: 'pickEnemy'; ownInstanceId: string }
 
@@ -47,7 +47,7 @@ type FactionPower =
 // shared/engine/heroPowers.ts's FACTION_POWERS map). GT has no faction power
 // authored, so a GT deck renders only the four universal buttons.
 const FACTION_POWER_INFO: Record<string, { power: FactionPower; label: string; blurb: string }> = {
-  DWG: { power: 'boardingParty', label: 'Boarding Party', blurb: 'Exchange a friendly DWG ship with an enemy ship of equal or lesser cost in the same zone' },
+  DWG: { power: 'boardingParty', label: 'Boarding Party', blurb: 'Exchange a friendly DWG ship with an enemy ship or submarine of equal or lesser cost in the same zone' },
   OW: { power: 'changeOrder', label: 'Change Order', blurb: 'Discard an OW vehicle; draw a player-made ship or tank from your deck in two turns' },
   LH: { power: 'surge', label: 'Surge', blurb: 'Choose a zone: every friendly LH vehicle in that zone charges to full' },
   SS: { power: 'counterIntelligence', label: 'Counter Intelligence', blurb: 'Give one of your vehicles on the board Air Screen and Sub Screen' },

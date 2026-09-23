@@ -474,8 +474,9 @@ document at the call site, not a reason to skip `poolEligible` elsewhere.
 ## Hero powers (`heroPowers.ts`)
 
 `FACTION_POWERS` maps power → required faction (`boardingParty`→DWG swap one of
-your on-field DWG ships with a same-zone enemy ship of equal or lesser effective
-cost (re-stamps `playedOnTurn` on both), `changeOrder`→OW discard → scheduled
+your on-field DWG ships with a same-zone enemy ship or submarine
+(`isShipOrSub`, 2026-09-23) of equal or lesser effective cost (re-stamps
+`playedOnTurn` on both), `changeOrder`→OW discard → scheduled
 redelivery of a random custom ship/tank, `flyby`→LH hand card gains `halfCost` +
 `temporary` idempotently, `counterIntelligence`→SS own on-field hull gains
 `airScreen` + `subScreen` idempotently, `drones`→TG spawns a Mirth Swarm into

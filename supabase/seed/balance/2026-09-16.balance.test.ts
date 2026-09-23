@@ -65,8 +65,9 @@ const CARDS: Record<string, Expected> = {
     materialCost: 250_000, blueprintCost: 267_000, keywords: [], vehicleType: 'ship',
     cardText: 'when played, you may swap a friendly airship with an enemy airship or plane. If airship you provide is worth less than what you get, the opponent draws a card and reduces that cards cost by the difference.',
   },
+  // SUB_SCREEN back 2026-09-23 (owner request), beside M-6's AIR_SCREEN.
   'DWG:Tarpon': {
-    materialCost: 510_000, blueprintCost: 511_605, keywords: ['airScreen'], vehicleType: 'airship', cardText: '',
+    materialCost: 510_000, blueprintCost: 511_605, keywords: ['airScreen', 'subScreen'], vehicleType: 'airship', cardText: '',
   },
   'DWG:Albacore': {
     materialCost: 260_000, blueprintCost: 261_000, keywords: ['fragile'], vehicleType: 'airship',
@@ -238,7 +239,9 @@ describe('2026-09-16 balance pass — every touched row', () => {
 
   // The constants the rewritten texts print.
   it('M-8 / Slasher: the constants match the printed counts', () => {
-    expect(FLYING_SQUIRREL_ATTACK_COUNT).toBe(6) // two 3x squadrons
+    // Two hulls: one Flying Squirrel blueprint is a whole 3x squadron in FtD
+    // (2026-09-23 owner correction; M-8 had counted the planes, 6).
+    expect(FLYING_SQUIRREL_ATTACK_COUNT).toBe(2)
     expect(SLASHER_EARTH_RAKER_COUNT).toBe(1)
     expect(TYR_MIN_COST).toBe(500_000)
   })
