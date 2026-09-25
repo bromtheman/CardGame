@@ -271,6 +271,11 @@ A built-in card's art is its type icon, so they show the hovercraft icon.
 **Anode stays a submarine.** It was on the owner's first list by mistake
 (owner, 2026-09-23).
 
+**Anode has no Sub Screen** (owner, 2026-09-24). It keeps Blocker, its price
+and its ⚡2. That leaves Candela as the only LH card that prints Sub Screen, and
+the bot's LH deck carries none, so the strategy notes no longer tell the bot to
+play one.
+
 **Kilowatt and Angstrom are ships again.** Both shipped as Hovercraft in this
 section's first version (PR #97). The same day, the owner asked for each to be
 a normal ship that starts at the surface (0 m) instead of 20 m up. Kilowatt
