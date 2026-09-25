@@ -342,7 +342,7 @@ profile per non-retired LH vehicle is met by importing the report (§8).
 | Ampere | ship · 200k (207k) | 2 | Mobile | When played, this gains 2 charge and stuns target enemy vehicle in this zone. |
 | Eclipse | hover · 220k (216k) | 2 | Stealthy | Discharge 2: this vehicle fights a 1v1 against target non-Stealthy enemy vehicle in this zone. |
 | Caspian | plane · 230k (230k) | — | Half-Cost, Temporary | Sea-skimmer: may be played into a zone with enemy Air Screen. |
-| Anode | sub · 260k (364k) | 2 | Blocker, Sub Screen | — (replaced Hydrovolt, retired, 2026-09-22) |
+| Anode | sub · 260k (364k) | 2 | Blocker | — (replaced Hydrovolt, retired, 2026-09-22; Sub Screen removed 2026-09-24) |
 | Dynamo | airship · 400k (346k) | 1 | Mobile, Swift | Drain 1 Charge: costs 50k less. |
 | Megawatt | ship · 360k (362k) | 2 | Mobile | When played, draw a card. |
 | Penumbra | ship · 370k (375k) | 3 | — | Discharge 3: stun every enemy vehicle in this zone. |
@@ -375,7 +375,7 @@ profile per non-retired LH vehicle is met by importing the report (§8).
 ### 5.5 Shape checks
 
 - Stun sources 3; beams 3 (150/300/400); 1v1 hulls 1 (Eclipse; Cathode's duel went 2026-09-23); Swift 2 + Afterburner;
-  Blockers 7; Sub Screens 2 (Anode, Candela), Air Screen 1; fliers 8 with Faraday (2026-09-22) and Thyristor (2026-09-23) against the 6-copy limit;
+  Blockers 7; Sub Screen 1 (Candela; Anode's removed 2026-09-24), Air Screen 1; fliers 8 with Faraday (2026-09-22) and Thyristor (2026-09-23) against the 6-copy limit;
   subs 3; timers static, walls and raiders Mobile (Quadrupole excepted since 2026-09-23).
 - Curve: 40k pickets on turn 1; Conduit/Dipole 70k; Watt 120k turn 2; Umbra turn
   2; Kilowatt/Ampere/Eclipse turn 3; Hydrovolt turn 4; Dynamo/Megawatt/Penumbra

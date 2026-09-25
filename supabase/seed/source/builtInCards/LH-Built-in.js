@@ -288,6 +288,7 @@ export const lhVehicles = [
     {
         // 2026-09-22 hovercraft amendment: the report's torpedo submarine with a
         // particle pod (363,765) in Hydrovolt's role, at Hydrovolt's price.
+        // Sub Screen removed 2026-09-24 (owner request).
         name: 'Anode',
         isBuiltIn: true,
         cardText: '',
@@ -300,7 +301,7 @@ export const lhVehicles = [
         type: 'vehicle',
         faction: FACTIONS.LH,
         blueprintId: null,
-        keywords: [KEYWORDS.BLOCKER, KEYWORDS.SUB_SCREEN],
+        keywords: [KEYWORDS.BLOCKER],
         meta: { chargeMax: 2 },
     },
     {

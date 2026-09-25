@@ -79,9 +79,10 @@ export const CARDS: Record<string, Expected> = {
     cardText: 'Sea-skimmer: may be played into a zone with enemy Air Screen.', meta: { ignoresAirScreen: true },
   },
   // 2026-09-22 hovercraft amendment: the Anode craft in Hydrovolt's role, at
-  // Hydrovolt's price (FtD 363,765 — a 100k discount, owner's call).
+  // Hydrovolt's price (FtD 363,765 — a 100k discount, owner's call). Sub
+  // Screen removed 2026-09-24 (owner request).
   'LH:Anode': {
-    materialCost: 260_000, blueprintCost: 363_765, cpCost: 0, keywords: ['blocker', 'subScreen'], vehicleType: 'sub',
+    materialCost: 260_000, blueprintCost: 363_765, cpCost: 0, keywords: ['blocker'], vehicleType: 'sub',
     cardText: '', meta: { chargeMax: 2 },
   },
   'LH:Dynamo': {
