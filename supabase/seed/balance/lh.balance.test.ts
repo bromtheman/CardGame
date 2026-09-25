@@ -86,7 +86,7 @@ export const CARDS: Record<string, Expected> = {
     cardText: '', meta: { chargeMax: 2 },
   },
   'LH:Dynamo': {
-    materialCost: 400_000, blueprintCost: 346_346, cpCost: 0, keywords: ['mobile', 'swift'], vehicleType: 'airship',
+    materialCost: 450_000, blueprintCost: 346_346, cpCost: 0, keywords: ['mobile', 'swift'], vehicleType: 'airship',
     cardText: 'Drain 1 Charge: costs 50k less.', meta: { chargeMax: 1, requiresCharge: 1 },
   },
   'LH:Megawatt': {
@@ -111,7 +111,7 @@ export const CARDS: Record<string, Expected> = {
   // 2026-09-23 (owner request): the benched report craft returns (FtD 565,250),
   // a cheaper Quadrupole without Blocker.
   'LH:Thyristor': {
-    materialCost: 500_000, blueprintCost: 565_250, cpCost: 0, keywords: ['mobile'], vehicleType: 'airship',
+    materialCost: 600_000, blueprintCost: 565_250, cpCost: 0, keywords: ['mobile'], vehicleType: 'airship',
     cardText: 'Drain 2 Charge: costs 100k less.', meta: { chargeMax: 2, requiresCharge: 2 },
   },
   'LH:Angstrom': {
@@ -120,11 +120,11 @@ export const CARDS: Record<string, Expected> = {
   },
   // 2026-09-23 (owner request): no Mobile.
   'LH:Quadrupole': {
-    materialCost: 660_000, blueprintCost: 685_159, cpCost: 0, keywords: ['blocker'], vehicleType: 'airship',
+    materialCost: 760_000, blueprintCost: 685_159, cpCost: 0, keywords: ['blocker'], vehicleType: 'airship',
     cardText: 'Drain 2 Charge: costs 100k less.', meta: { chargeMax: 2, requiresCharge: 2 },
   },
   'LH:Candela': {
-    materialCost: 850_000, blueprintCost: 1_021_169, cpCost: 0, keywords: ['blocker', 'subScreen', 'scrappy', 'mobile'], vehicleType: 'ship',
+    materialCost: 1_000_000, blueprintCost: 1_021_169, cpCost: 0, keywords: ['blocker', 'subScreen', 'scrappy', 'mobile'], vehicleType: 'ship',
     cardText: 'Drain 3 Charge: costs 150k less.', meta: { chargeMax: 2, requiresCharge: 3 },
   },
   'LH:Rectifier': {
@@ -134,8 +134,10 @@ export const CARDS: Record<string, Expected> = {
   // 2026-09-23 (owner request): it won every fight it was in — submerged, only
   // torpedoes reach it — so Stealthy, Sub Screen and the duel went, Fragile came
   // in, and every battle it survives stuns it for a turn (spec §6).
+  // 2026-09-24 (owner): every Drain card prints N × 50k over its 2026-09-23
+  // price (see 'LH Drain' below), so these six rows and Cathode's rose with it.
   'LH:Cathode': {
-    materialCost: 600_000, blueprintCost: 726_398, cpCost: 0, keywords: ['fragile'], vehicleType: 'sub',
+    materialCost: 700_000, blueprintCost: 726_398, cpCost: 0, keywords: ['fragile'], vehicleType: 'sub',
     cardText: 'Drain 2 Charge: costs 100k less. Overheat: after each battle it fights, it is stunned until the end of the next turn.',
     meta: { chargeMax: 2, requiresCharge: 2, onBattleEffect: 'cathodeOverheat' },
   },
@@ -145,12 +147,12 @@ export const CARDS: Record<string, Expected> = {
     meta: { chargeMax: 3, onActivate: 'superradianceBeam', activateCpCost: 0, dischargeCost: 3 },
   },
   'LH:Impedance': {
-    materialCost: 950_000, blueprintCost: 1_326_933, cpCost: 0, keywords: ['blocker'], vehicleType: 'ship',
+    materialCost: 1_150_000, blueprintCost: 1_326_933, cpCost: 0, keywords: ['blocker'], vehicleType: 'ship',
     cardText: 'Drain 4 Charge: costs 200k less. Discharge 2: deal 400k damage to the enemy base in this zone.',
     meta: { chargeMax: 2, requiresCharge: 4, onActivate: 'impedanceBeam', activateCpCost: 0, dischargeCost: 2 },
   },
   'LH:Terawatt': {
-    materialCost: 740_000, blueprintCost: 725_002, cpCost: 0, keywords: ['blocker', 'scrappy', 'mobile'], vehicleType: 'hover',
+    materialCost: 840_000, blueprintCost: 725_002, cpCost: 0, keywords: ['blocker', 'scrappy', 'mobile'], vehicleType: 'hover',
     cardText: 'Drain 2 Charge: costs 100k less. Generators: this gains 2 charge at the start of your turn instead of 1. Discharge 2: another friendly LH vehicle in this zone gains 2 charge.',
     meta: { chargeMax: 4, chargeRate: 2, requiresCharge: 2, onActivate: 'terawattTransfer', activateCpCost: 0, dischargeCost: 2 },
   },
@@ -271,6 +273,21 @@ describe('LH Drain — a discount the text states', () => {
     for (const c of drains) {
       const n = (c.meta as Record<string, unknown>).requiresCharge as number
       expect(c.cardText, c.name).toMatch(new RegExp(`^Drain ${n} Charge: costs ${(n * DRAIN_DISCOUNT_PER_CHARGE) / 1000}k less\\.`))
+    }
+  })
+
+  // 2026-09-24 (owner): a drained play costs what the card printed on
+  // 2026-09-23; only a play without charge pays the N × 50k premium on top.
+  it('charges a drained play the card’s 2026-09-23 price', async () => {
+    const { cards } = await loadSeedData()
+    const drainedPrice: Record<string, number> = {
+      Dynamo: 400_000, Thyristor: 500_000, Quadrupole: 660_000, Cathode: 600_000,
+      Terawatt: 740_000, Candela: 850_000, Impedance: 950_000,
+    }
+    for (const [name, price] of Object.entries(drainedPrice)) {
+      const card = cards.find((c) => c.faction === 'LH' && c.name === name)!
+      const n = (card.meta as Record<string, unknown>).requiresCharge as number
+      expect(card.materialCost - n * DRAIN_DISCOUNT_PER_CHARGE, name).toBe(price)
     }
   })
 })

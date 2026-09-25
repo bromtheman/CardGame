@@ -14,10 +14,10 @@ wins. The older ones are edited to point here (§11).
 | Drain | **A discount, never a blocker.** A Drain card can always be played at its printed price. Draining N pips as you play it takes N × 50k off. |
 | Shape | **All or nothing.** Drain exactly N pips, split any way you like as today, or drain none. There is no partial drain. |
 | Rate | **50k per pip**, from one constant, `DRAIN_DISCOUNT_PER_CHARGE`. |
-| Prices | **Printed prices rise by N × 50k**, so a drained play costs exactly what the card costs today. Cathode is the one exception (below). |
+| Prices | **Printed prices rise by N × 50k**, so a drained play costs exactly what the card costs today. Cathode is the one exception (below). **Amended 2026-09-24 (§8.1):** every Drain card, Cathode included, rose N × 50k again, so a drained play costs the 2026-09-23 printed price. |
 | Card value | **Value follows price** (owner ruling after the whole-branch review). The printed price is also the hull's value everywhere else: bombard damage is cost ÷ 1000, FtD battle materials are 10% of cost, repairs cost 50%, and Boarding Party needs a ship that costs at least as much. So the repriced hulls hit harder, cost more to repair, and are harder to steal (§8). Chosen over keeping today's prices, and over a surcharge that would have left their value unchanged. |
 | Data key | **`meta.requiresCharge` is kept and changes meaning** (approach A). There is one rule in the code. Games in progress keep their dealt prices (§9). |
-| Cathode | Stays at **600k**, so 500k drained. Its only keyword is **Fragile**: Stealthy and Sub Screen are gone. **No Discharge ability.** It gains **Overheat**: after each battle it fights, it is stunned until the end of the next turn, using the existing stun unchanged. |
+| Cathode | Stays at **600k**, so 500k drained (700k and 600k since the 2026-09-24 amendment, §8.1). Its only keyword is **Fragile**: Stealthy and Sub Screen are gone. **No Discharge ability.** It gains **Overheat**: after each battle it fights, it is stunned until the end of the next turn, using the existing stun unchanged. |
 | Watt | **120k.** It **enters with no charge**: when played it only spawns its Luxon. |
 | Quadrupole | **Loses Mobile.** Blocker only, and still Fragile, as every airship is. |
 
@@ -244,6 +244,31 @@ reference:
   card's text against its gate, so "costs Xk less" always equals N × 50k.
 - **Deploy.** `seed:build` regenerates `seed_data.sql`, and card data does not
   deploy with the code (CLAUDE.md): `seed-apply.yml` applies it on merge.
+
+### 8.1 Amendment, 2026-09-24: drained plays keep the 2026-09-23 price
+
+The owner's intent was that LH Drain cards keep their values and pay a premium
+only when played without charge. So each card's price above becomes its
+**drained** price, and its printed price rises by another N × 50k. Cathode is no
+longer an exception. Card text, keywords and meta are unchanged, and value
+still follows the printed price (owner, 2026-09-24).
+
+| Card | Drain | Printed (was) | Printed now | Drained | Bombard damage |
+|---|---|---|---|---|---|
+| Dynamo | 1 | 400k | **450k** | 400k | 400 → 450 |
+| Thyristor | 2 | 500k | **600k** | 500k | 500 → 600 |
+| Quadrupole | 2 | 660k | **760k** | 660k | 660 → 760 |
+| Cathode | 2 | 600k | **700k** | 600k | — (subs never bombard) |
+| Terawatt | 2 | 740k | **840k** | 740k | 740 → 840 |
+| Candela | 3 | 850k | **1,000k** | 850k | 850 → 1,000 |
+| Impedance | 4 | 950k | **1,150k** | 950k | 950 → 1,150 |
+
+- Against a 2,000 HP base, before modifiers: Quadrupole alone now needs three
+  bombards rather than four. Candela needs two rather than three. Impedance
+  kills with two bombards and no beam.
+- **Pins.** `lh.balance.test.ts` pins every row. A further test checks that
+  each Drain card's printed price minus N × 50k equals the drained column
+  above.
 
 ## 9. Games in progress
 

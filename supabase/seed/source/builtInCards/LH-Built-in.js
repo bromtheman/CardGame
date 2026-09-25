@@ -180,11 +180,12 @@ export const lhVehicles = [
     {
         // 2026-09-23 (owner request): Drain is a discount — every Drain row prints
         // N × 50k more, so a drained play costs what it did — and Quadrupole
-        // loses Mobile.
+        // loses Mobile. 2026-09-24 (owner): every Drain row rose N × 50k again,
+        // so a drained play costs the 2026-09-23 printed price.
         name: 'Quadrupole',
         isBuiltIn: true,
         cardText: 'Drain 2 Charge: costs 100k less.',
-        materialCost: 660000,
+        materialCost: 760000,
         blueprintCost: 685159,
         cpCost: 0,
         imageUrl: 'quadrupole.png',
@@ -203,7 +204,7 @@ export const lhVehicles = [
         name: 'Thyristor',
         isBuiltIn: true,
         cardText: 'Drain 2 Charge: costs 100k less.',
-        materialCost: 500000,
+        materialCost: 600000,
         blueprintCost: 565250,
         cpCost: 0,
         imageUrl: 'thyristor.png',
@@ -219,7 +220,7 @@ export const lhVehicles = [
         name: 'Terawatt',
         isBuiltIn: true,
         cardText: 'Drain 2 Charge: costs 100k less. Generators: this gains 2 charge at the start of your turn instead of 1. Discharge 2: another friendly LH vehicle in this zone gains 2 charge.',
-        materialCost: 740000,
+        materialCost: 840000,
         blueprintCost: 725002,
         cpCost: 0,
         imageUrl: 'terawatt.png',
@@ -253,7 +254,7 @@ export const lhVehicles = [
         name: 'Candela',
         isBuiltIn: true,
         cardText: 'Drain 3 Charge: costs 150k less.',
-        materialCost: 850000,
+        materialCost: 1000000,
         blueprintCost: 1021169,
         cpCost: 0,
         imageUrl: 'candela.png',
@@ -626,7 +627,7 @@ export const lhVehicles = [
         name: 'Dynamo',
         isBuiltIn: true,
         cardText: 'Drain 1 Charge: costs 50k less.',
-        materialCost: 400000,
+        materialCost: 450000,
         blueprintCost: 346346,
         cpCost: 0,
         imageUrl: 'dynamo.png',
@@ -675,7 +676,7 @@ export const lhVehicles = [
         name: 'Cathode',
         isBuiltIn: true,
         cardText: 'Drain 2 Charge: costs 100k less. Overheat: after each battle it fights, it is stunned until the end of the next turn.',
-        materialCost: 600000,
+        materialCost: 700000,
         blueprintCost: 726398,
         cpCost: 0,
         imageUrl: 'cathode.png',
@@ -687,6 +688,7 @@ export const lhVehicles = [
         // 2026-09-23 (owner request): it won every fight it was in — submerged,
         // only torpedoes reach it — so Stealthy, Sub Screen and the duel went,
         // Fragile came in, and every battle it survives stuns it for a turn.
+        // 2026-09-24 (owner): printed 700k, so drained it costs its 2026-09-23 600k.
         keywords: [KEYWORDS.FRAGILE],
         meta: { chargeMax: 2, requiresCharge: 2, [TRIGGERS.ON_BATTLE_EFFECT]: 'cathodeOverheat' },
     },
@@ -710,7 +712,7 @@ export const lhVehicles = [
         name: 'Impedance',
         isBuiltIn: true,
         cardText: 'Drain 4 Charge: costs 200k less. Discharge 2: deal 400k damage to the enemy base in this zone.',
-        materialCost: 950000,
+        materialCost: 1150000,
         blueprintCost: 1326933,
         cpCost: 0,
         imageUrl: 'impedance.png',
