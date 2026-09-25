@@ -683,7 +683,8 @@ registerEffect(EMP_SALVO, choice({
 }))
 
 // Overcharge — "Target friendly LH vehicle gains 2 charge." A fresh hull is a
-// legal target (R-25); a full one, or a non-LH one, is not.
+// legal target (R-25); a full one, or a non-LH one, is not. The card retired
+// 2026-09-24; this stays for the snapshots of games already dealt.
 registerEffect('overchargeEffect', ({ game, actor, card, targetInstanceId }) => {
   if (typeof targetInstanceId !== 'string') return false
   const found = findVehicle(game.state, targetInstanceId)
