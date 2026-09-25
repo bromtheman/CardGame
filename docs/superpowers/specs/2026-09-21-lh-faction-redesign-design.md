@@ -26,7 +26,7 @@ before touching a stamp.
 | Two verbs | **Discharge N** spends pips from one hull (a hull's own activated ability, or an ability card spending from a friendly hull). **Drain N Charge** — printed "Requires N Charge" until the [2026-09-22 amendment](2026-09-22-lh-drain-charge-design.md) — is a play precondition on the board total *and* a cost: playing the card spends N pips from any mix of friendly LH hulls, split as the player chooses. The opponent can still break it by killing charged hulls. Flagship prices are discounted below FtD cost in exchange. |
 | Stun | Yes, as the second pillar: a timed disable (§3.4), on exactly three cards, always paid for in charge or a 200k body. Fragile/Inoffensive grants were rejected — TG owns them, and a permanent disable for a charge cost is either useless or oppressive. |
 | Third keyword | **Decoy** (Watt only). Accepted because every timer in the roster is otherwise a 50k Martyr Attack away from never firing (§3.6). |
-| Speed | **Swift** keyword ("may attack the enemy base the turn it is played") on Dynamo and Rectifier, plus **Afterburner** for everyone else; Mobile on ten hulls. |
+| Speed | **Swift** keyword ("may attack the enemy base the turn it is played") on Dynamo (and on Rectifier until 2026-09-24), plus **Afterburner** for everyone else; Mobile on ten hulls. |
 | Principle: timers don't move | Penumbra, Superradiance, Impedance, Eclipse, Umbra have no Mobile, whatever their speed. Walls and raiders (Angstrom, Candela, Terawatt, Quadrupole, Megawatt, Dynamo, Watt, Dipole, Byte, Ampere) do. A Mobile timer charges in the empty lane and jumps; a static one can be raced. |
 | Principle: no death triggers on chaff | FtD's AI shoots the biggest hull first, and a lost battle wipes the lane, so "when this dies" on a picket almost never fires usefully. Volta's original death trigger was rewritten to fire on play. |
 | Hero power | **Surge** replaces Flyby: 1 CP, once — choose a zone; every friendly LH vehicle in it charges to full. First printed as +1 charge to every LH vehicle; amended 2026-09-23 (§6). |
@@ -286,7 +286,9 @@ Taken card by card on 2026-09-21; binding.
   fights at its FtD weight in battles.
 - **R-22 Rectifier prints Fragile** — moot while Temporary, live once Extended
   Sortie makes it permanent (TG Audacious prints the same set for Spawn
-  Audacious). Swift damage is 350 (§3.5).
+  Audacious). Swift damage is 350 (§3.5). *(2026-09-24, owner: Rectifier has
+  no Swift. It reaches the base the turn it lands only through Afterburner, still
+  at 350, or next turn once Extended Sortie keeps it.)*
 - **R-23 Impedance has no on-play damage.** Terawatt's bank is the honest way to
   fire it on the turn it lands. It stays in the roster: the ladder wants a top
   rung and the faction wants its dream card.
@@ -358,7 +360,7 @@ profile per non-retired LH vehicle is met by importing the report (§8).
 | Superradiance | ship · 620k (626k) | 3 | — | Discharge 3: deal 300k damage to the enemy base in this zone. |
 | Terawatt | hover · 740k (725k) | 4 | Blocker, Scrappy, Mobile | Drain 2 Charge: costs 100k less. Generators: this gains 2 charge at the start of your turn instead of 1. Discharge 2: another friendly LH vehicle in this zone gains 2 charge. |
 | Candela | ship · 850k (1,021k) | 2 | Blocker, Sub Screen, Scrappy, Mobile | Drain 3 Charge: costs 150k less. |
-| Rectifier | plane · 700k (735k) | — | Half-Cost, Temporary, Fragile, Swift | — |
+| Rectifier | plane · 700k (735k) | — | Half-Cost, Temporary, Fragile | — (Swift removed 2026-09-24) |
 | Impedance | ship · 950k (1,327k) | 2 | Blocker | Drain 4 Charge: costs 200k less. Discharge 2: deal 400k damage to the enemy base in this zone. |
 
 ### 5.4 Abilities
@@ -374,7 +376,7 @@ profile per non-retired LH vehicle is met by importing the report (§8).
 
 ### 5.5 Shape checks
 
-- Stun sources 3; beams 3 (150/300/400); 1v1 hulls 1 (Eclipse; Cathode's duel went 2026-09-23); Swift 2 + Afterburner;
+- Stun sources 3; beams 3 (150/300/400); 1v1 hulls 1 (Eclipse; Cathode's duel went 2026-09-23); Swift 1 (Dynamo; Rectifier's removed 2026-09-24) + Afterburner;
   Blockers 7; Sub Screen 1 (Candela; Anode's removed 2026-09-24), Air Screen 1; fliers 8 with Faraday (2026-09-22) and Thyristor (2026-09-23) against the 6-copy limit;
   subs 3; timers static, walls and raiders Mobile (Quadrupole excepted since 2026-09-23).
 - Curve: 40k pickets on turn 1; Conduit/Dipole 70k; Watt 120k turn 2; Umbra turn
