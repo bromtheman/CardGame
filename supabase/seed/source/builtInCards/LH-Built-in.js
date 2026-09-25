@@ -319,8 +319,9 @@ export const lhVehicles = [
         faction: FACTIONS.LH,
         blueprintId: null,
         // Fragile is moot while Temporary and live once Extended Sortie keeps it
-        // (R-22) — TG Audacious prints the same set for Spawn Audacious.
-        keywords: [KEYWORDS.HALF_COST, KEYWORDS.TEMPORARY, KEYWORDS.FRAGILE, KEYWORDS.SWIFT],
+        // (R-22) — TG Audacious prints the same set for Spawn Audacious. Swift
+        // removed 2026-09-24 (owner request): Afterburner is its way to the base.
+        keywords: [KEYWORDS.HALF_COST, KEYWORDS.TEMPORARY, KEYWORDS.FRAGILE],
         meta: {},
     },
     {

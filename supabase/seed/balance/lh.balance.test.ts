@@ -127,8 +127,10 @@ export const CARDS: Record<string, Expected> = {
     materialCost: 1_000_000, blueprintCost: 1_021_169, cpCost: 0, keywords: ['blocker', 'subScreen', 'scrappy', 'mobile'], vehicleType: 'ship',
     cardText: 'Drain 3 Charge: costs 150k less.', meta: { chargeMax: 2, requiresCharge: 3 },
   },
+  // Swift removed 2026-09-24 (owner request): it hits the base the turn it
+  // lands only through Afterburner, or next turn through Extended Sortie.
   'LH:Rectifier': {
-    materialCost: 700_000, blueprintCost: 734_617, cpCost: 0, keywords: ['halfCost', 'temporary', 'fragile', 'swift'], vehicleType: 'plane',
+    materialCost: 700_000, blueprintCost: 734_617, cpCost: 0, keywords: ['halfCost', 'temporary', 'fragile'], vehicleType: 'plane',
     cardText: '', meta: {},
   },
   // 2026-09-23 (owner request): it won every fight it was in — submerged, only
@@ -248,7 +250,7 @@ describe('LH redesign — roster shape (spec §5, §7)', () => {
   it('the six new-keyword and gate carriers read as intended', async () => {
     const seed = await bySeedKey()
     expect(seed.get('LH:Dynamo')!.keywords).toContain('swift')
-    expect(seed.get('LH:Rectifier')!.keywords).toContain('swift')
+    expect(seed.get('LH:Rectifier')!.keywords).not.toContain('swift')
     // Decoy is no longer printed: the Watt's Luxon token takes it by grant (2026-09-22).
     expect(seed.get('LH:Watt')!.keywords).not.toContain('decoy')
     // Every gate one lower than first printed: draining made it a cost (2026-09-22 spec §6).
