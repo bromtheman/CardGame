@@ -674,7 +674,7 @@ export const lhVehicles = [
         name: 'Cathode',
         isBuiltIn: true,
         cardText: 'Drain 2 Charge: costs 100k less. Overheat: after each battle it fights, it is stunned until the end of the next turn.',
-        materialCost: 600000,
+        materialCost: 700000,
         blueprintCost: 726398,
         cpCost: 0,
         imageUrl: 'cathode.png',
@@ -686,6 +686,7 @@ export const lhVehicles = [
         // 2026-09-23 (owner request): it won every fight it was in — submerged,
         // only torpedoes reach it — so Stealthy, Sub Screen and the duel went,
         // Fragile came in, and every battle it survives stuns it for a turn.
+        // 2026-09-24 (owner): printed 700k, so drained it costs its old 600k.
         keywords: [KEYWORDS.FRAGILE],
         meta: { chargeMax: 2, requiresCharge: 2, [TRIGGERS.ON_BATTLE_EFFECT]: 'cathodeOverheat' },
     },

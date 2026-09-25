@@ -133,8 +133,10 @@ export const CARDS: Record<string, Expected> = {
   // 2026-09-23 (owner request): it won every fight it was in — submerged, only
   // torpedoes reach it — so Stealthy, Sub Screen and the duel went, Fragile came
   // in, and every battle it survives stuns it for a turn (spec §6).
+  // 2026-09-24 (owner): no longer the exception to "printed +N × 50k" — 700k,
+  // so drained it costs its old 600k like every other Drain card.
   'LH:Cathode': {
-    materialCost: 600_000, blueprintCost: 726_398, cpCost: 0, keywords: ['fragile'], vehicleType: 'sub',
+    materialCost: 700_000, blueprintCost: 726_398, cpCost: 0, keywords: ['fragile'], vehicleType: 'sub',
     cardText: 'Drain 2 Charge: costs 100k less. Overheat: after each battle it fights, it is stunned until the end of the next turn.',
     meta: { chargeMax: 2, requiresCharge: 2, onBattleEffect: 'cathodeOverheat' },
   },

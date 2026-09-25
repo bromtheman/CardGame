@@ -14,10 +14,10 @@ wins. The older ones are edited to point here (§11).
 | Drain | **A discount, never a blocker.** A Drain card can always be played at its printed price. Draining N pips as you play it takes N × 50k off. |
 | Shape | **All or nothing.** Drain exactly N pips, split any way you like as today, or drain none. There is no partial drain. |
 | Rate | **50k per pip**, from one constant, `DRAIN_DISCOUNT_PER_CHARGE`. |
-| Prices | **Printed prices rise by N × 50k**, so a drained play costs exactly what the card costs today. Cathode is the one exception (below). |
+| Prices | **Printed prices rise by N × 50k**, so a drained play costs exactly what the card costs today. Cathode was first the one exception; since 2026-09-24 it follows the rule too (below). |
 | Card value | **Value follows price** (owner ruling after the whole-branch review). The printed price is also the hull's value everywhere else: bombard damage is cost ÷ 1000, FtD battle materials are 10% of cost, repairs cost 50%, and Boarding Party needs a ship that costs at least as much. So the repriced hulls hit harder, cost more to repair, and are harder to steal (§8). Chosen over keeping today's prices, and over a surcharge that would have left their value unchanged. |
 | Data key | **`meta.requiresCharge` is kept and changes meaning** (approach A). There is one rule in the code. Games in progress keep their dealt prices (§9). |
-| Cathode | Stays at **600k**, so 500k drained. Its only keyword is **Fragile**: Stealthy and Sub Screen are gone. **No Discharge ability.** It gains **Overheat**: after each battle it fights, it is stunned until the end of the next turn, using the existing stun unchanged. |
+| Cathode | **700k**, so 600k drained. (2026-09-24 owner amendment: it first stayed at 600k, 500k drained, but LH Drain cards keep their old price when drained and cost more only when played without charge.) Its only keyword is **Fragile**: Stealthy and Sub Screen are gone. **No Discharge ability.** It gains **Overheat**: after each battle it fights, it is stunned until the end of the next turn, using the existing stun unchanged. |
 | Watt | **120k.** It **enters with no charge**: when played it only spawns its Luxon. |
 | Quadrupole | **Loses Mobile.** Blocker only, and still Fragile, as every airship is. |
 
@@ -216,7 +216,7 @@ reference:
 | Terawatt | hover | 640k | **740k** (640k) | 725k | Blocker, Scrappy, Mobile | Drain 2 Charge: costs 100k less. Generators: … Discharge 2: … (rest unchanged) |
 | Candela | ship | 700k | **850k** (700k) | 1,021k | Blocker, Sub Screen, Scrappy, Mobile | Drain 3 Charge: costs 150k less. |
 | Impedance | ship | 750k | **950k** (750k) | 1,327k | Blocker | Drain 4 Charge: costs 200k less. Discharge 2: … (rest unchanged) |
-| Cathode | sub | 600k | 600k (**500k**) | 726k | **Fragile** | Drain 2 Charge: costs 100k less. Overheat: after each battle it fights, it is stunned until the end of the next turn. |
+| Cathode | sub | 600k | **700k** (600k) | 726k | **Fragile** | Drain 2 Charge: costs 100k less. Overheat: after each battle it fights, it is stunned until the end of the next turn. |
 | Watt | hover | 90k | **120k** | 91k | Scrappy, Mobile | When played, a friendly Luxon spawns in this zone. That Luxon has Decoy and is not Temporary. Discharge 1: draw a card. |
 
 - **Meta changes:**
