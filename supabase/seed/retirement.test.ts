@@ -13,6 +13,7 @@ import { loadSeedData } from './transform'
 // The 2026-09-21 LH redesign retired the old LH roster and the four [TG] pool cards (spec §7).
 // Note TG:Amusement (an existing TG card, retired 2026-09-02) is distinct from
 // TG:[TG] Amusement (the LH pool row, retired 2026-09-21) — both belong below.
+// LH:Overcharge joined on 2026-09-24 by owner request.
 const RETIRED = [
   'DWG:Land Marauder',
   'LH:Byte',
@@ -20,6 +21,7 @@ const RETIRED = [
   'LH:Hydrovolt',
   'LH:Orbit',
   'LH:Orbit Flank',
+  'LH:Overcharge',
   'LH:Robotic Assemblers',
   'LH:Sapphire',
   'LH:Sapphire Screen',
@@ -37,8 +39,8 @@ const RETIRED = [
   'WF:Harbringer',
 ]
 
-describe('card retirements (2026-09-02, 2026-09-16, 2026-09-17, 2026-09-21, 2026-09-22)', () => {
-  it('retires exactly the twenty-one cards named above', async () => {
+describe('card retirements (2026-09-02, 2026-09-16, 2026-09-17, 2026-09-21, 2026-09-22, 2026-09-24)', () => {
+  it('retires exactly the twenty-two cards named above', async () => {
     const { cards } = await loadSeedData()
     const actual = cards
       .filter((c) => (c.meta as { retired?: unknown } | undefined)?.retired === true)
@@ -68,5 +70,6 @@ describe('card retirements (2026-09-02, 2026-09-16, 2026-09-17, 2026-09-21, 2026
     expect(meta('WF:Harbringer').onBattleEffect).toBe('harbringerBattle')
     expect(meta('LH:Byte').onPlayEffect).toBe('byteChargeOnPlay')
     expect(meta('LH:Byte').onActivate).toBe('byteDraw')
+    expect(meta('LH:Overcharge').playOnVehicleEffect).toBe('overchargeEffect')
   })
 })

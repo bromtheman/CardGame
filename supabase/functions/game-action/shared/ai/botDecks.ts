@@ -138,10 +138,12 @@ export const BOT_DECKS: Record<BotFaction, Record<string, number>> = {
   // 2026-09-22 hovercraft amendment: Byte retired, so both Watts came back
   // (Byte's draw moved to them); Anode replaced the retired Hydrovolt. Still
   // twenty cards, fliers 3 of 6 — a spawned Luxon is not a deck card.
+  // 2026-09-24: Overcharge retired; a second Volta took its slot, the deck's
+  // other instant pip.
   LH: {
     'Chrysoprase': 2,
     'Watt': 2,
-    'Volta': 1,
+    'Volta': 2,
     'Conduit': 1,
     'Dipole': 1,
     'Faraday': 2,
@@ -154,7 +156,6 @@ export const BOT_DECKS: Record<BotFaction, Record<string, number>> = {
     'Penumbra': 1,
     'Angstrom': 1,
     'EMP Salvo': 1,
-    'Overcharge': 1,
     'Data Burst': 1,
   },
 }
