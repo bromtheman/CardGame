@@ -296,6 +296,7 @@ Taken card by card on 2026-09-21; binding.
   discharging hull's lane** — the setup is always visible where the effect lands.
 - **R-25 Overcharge costs 1 CP and no materials.** LH has no CP generation, so
   every Overcharge is a hero power not used. A fresh hull is a legal target.
+  **Overcharge retired 2026-09-24** at the owner's request (§7).
 - **R-26 Afterburner's charged hull and its beneficiary may be the same hull**
   (Overcharge a fresh hull to 2, then Afterburner from itself).
 - **R-27 Extended Sortie keeps the plane a plane** — Half-Cost figures for damage
@@ -368,7 +369,7 @@ profile per non-retired LH vehicle is met by importing the report (§8).
 | Card | Cost | Text |
 |---|---|---|
 | EMP Salvo | 60k | Discharge 2 from a friendly LH vehicle: stun target enemy vehicle in that zone. |
-| Overcharge | 0k + 1 CP | Target friendly LH vehicle gains 2 charge. |
+| ~~Overcharge~~ | retired 2026-09-24 | |
 | Afterburner | 50k | Discharge 2 from a friendly LH vehicle: a friendly LH vehicle played this turn in that zone may attack the base this turn. |
 | Extended Sortie | 100k | Discharge 2 from a friendly LH vehicle: a friendly LH plane in that zone loses Temporary. |
 | Data Burst | 50k | Discharge 2 from a friendly LH vehicle: draw 2 cards. |
@@ -425,6 +426,8 @@ games; with its row gone the UI never offers it.
   Thunderbird, Sapphire, Sapphire Screen, Spectrum, Orbit, Orbit Flank, Robotic
   Assemblers, and the four `[TG]` pool cards ([TG] Amusement, [TG] Fear,
   [TG] Hysteria, [TG] Obsession) whose only reader was the pool draw.
+  Overcharge joined them on 2026-09-24 at the owner's request; its
+  `overchargeEffect` stays implemented, named by the retired row.
 - **Old registry ids.** Six lose their last live carrier and join
   `DELIBERATE_ORPHANS`: `ampereOnPlay`, `conduitEffect`, `quadrupoleOnPlay`,
   `terawattJoin`, `candelaOnPlay`, `eclipseEffect`. Six are still named by

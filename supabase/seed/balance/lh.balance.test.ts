@@ -163,11 +163,6 @@ export const CARDS: Record<string, Expected> = {
     cardText: 'Discharge 2 from a friendly LH vehicle: stun target enemy vehicle in that zone.',
     meta: { playOnVehicleEffect: 'empSalvoEffect', dischargeFrom: 2 },
   },
-  'LH:Overcharge': {
-    materialCost: 0, blueprintCost: 0, cpCost: 1, keywords: [], vehicleType: null,
-    cardText: 'Target friendly LH vehicle gains 2 charge.',
-    meta: { playOnVehicleEffect: 'overchargeEffect' },
-  },
   'LH:Afterburner': {
     materialCost: 50_000, blueprintCost: 0, cpCost: 0, keywords: [], vehicleType: null,
     cardText: 'Discharge 2 from a friendly LH vehicle: a friendly LH vehicle played this turn in that zone may attack the base this turn.',
@@ -196,6 +191,8 @@ export const RETIRED = [
   'LH:Orbit', 'LH:Orbit Flank', 'LH:Robotic Assemblers',
   'TG:[TG] Amusement', 'TG:[TG] Fear', 'TG:[TG] Hysteria', 'TG:[TG] Obsession',
   'LH:Byte', 'LH:Hydrovolt',
+  // 2026-09-24, owner request.
+  'LH:Overcharge',
 ]
 
 describe('LH redesign — rows by value', () => {
@@ -230,13 +227,13 @@ describe('LH redesign — rows by value', () => {
 describe('LH redesign — roster shape (spec §5, §7)', () => {
   // 28 + Faraday and Data Burst (2026-09-22 draw amendment) + Feedback Loop (2026-09-23);
   // − Byte − Hydrovolt + Anode (2026-09-22 hovercraft amendment); + Thyristor
-  // (2026-09-23). Byte and Hydrovolt join the 8 retired rows, so 31 draftable
-  // + 10 retired = 41 rows.
-  it('seeds 31 draftable LH cards and keeps the 10 retired rows', async () => {
+  // (2026-09-23). Byte and Hydrovolt join the 8 retired rows; Overcharge
+  // (2026-09-24) joins them too, so 30 draftable + 11 retired = 41 rows.
+  it('seeds 30 draftable LH cards and keeps the 11 retired rows', async () => {
     const { cards } = await loadSeedData()
     const lh = cards.filter((c) => c.faction === 'LH')
     const live = lh.filter((c) => (c.meta as Record<string, unknown>)?.retired !== true)
-    expect(live).toHaveLength(31)
+    expect(live).toHaveLength(30)
     expect(lh).toHaveLength(41)
     expect(live.map((c) => c.name).sort()).toEqual(Object.keys(CARDS).map((k) => k.slice(3)).sort())
   })

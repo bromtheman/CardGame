@@ -753,7 +753,11 @@ export const lhVehicles = [
         type: 'ability',
         faction: FACTIONS.LH,
         blueprintId: null,
-        meta: { [TRIGGERS.PLAY_ON_VEHICLE]: 'overchargeEffect' },
+        meta: {
+            [TRIGGERS.PLAY_ON_VEHICLE]: 'overchargeEffect',
+            // Retired 2026-09-24 at the owner's request.
+            retired: true,
+        },
     },
     {
         name: 'Afterburner',

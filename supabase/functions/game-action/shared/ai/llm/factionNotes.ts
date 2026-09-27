@@ -33,14 +33,14 @@ export const FACTION_NOTES: Partial<Record<BotFaction, FactionNote>> = {
   },
   LH: {
     text: `- LH is the Lightning Hoods: fast laser, plasma and EMP craft. Your hulls carry CHARGE — a pip fills at the start of each of your turns up to the card's max, and a hull's "Discharge N" ability spends N of them. Charge is visible to both players and dies with the hull, so a charging hull is a threat your opponent will try to fleet-attack; keep it behind a Blocker (Kilowatt, Anode, Angstrom) or move it away with Mobile.
-- Cheap pickets (Chrysoprase, Volta, Dipole) exist to bank pips. A "Drain N Charge" capital is always playable: when your board holds its N pips as you play it they are drained and it costs less, otherwise it costs full price, so keep the pickets alive and let them refill between capitals. Conduit adds one extra charge a turn to the other LH hulls in its lane; Volta and Overcharge add pips at once.
+- Cheap pickets (Chrysoprase, Volta, Dipole) exist to bank pips. A "Drain N Charge" capital is always playable: when your board holds its N pips as you play it they are drained and it costs less, otherwise it costs full price, so keep the pickets alive and let them refill between capitals. Conduit adds one extra charge a turn to the other LH hulls in its lane; Volta adds a pip at once.
 - Stun (Ampere on play, Penumbra at three pips, EMP Salvo) switches an enemy hull off through its next turn: it cannot attack, move, Block or Screen, and a Stealthy hull cannot withdraw. Stun a Blocker and bombard past it the same turn; stun a Stealthy hull and fleet-attack it. Ampere also lands fully charged, so spend its pips the turn you play it — on EMP Salvo, Data Burst or a Drain capital.
 - Umbra shells the base past Blockers at two pips and stays Stealthy, so it keeps firing; Eclipse duels a chosen enemy at two pips. Fire a full hull rather than holding it unless you are saving its pips for a Drain capital.
 - Draw keeps your hand full: the Watt's first pip arrives at the start of your next turn, so discharge it for a card each turn it lives, and it brings a permanent decoy plane that pulls enemy effects away from your other hulls; Faraday, Kilowatt and Megawatt draw a card when played; Data Burst spends two pips from one hull for two cards. Turn spare pips into cards whenever no beam, stun or Drain needs them.`,
     // Every card name the prose relies on, verbatim — a test pins each against the seed.
     mentions: [
       'Kilowatt', 'Anode', 'Angstrom', 'Chrysoprase', 'Volta', 'Dipole', 'Conduit',
-      'Overcharge', 'Ampere', 'Penumbra', 'EMP Salvo', 'Umbra', 'Eclipse', 'Watt', 'Faraday', 'Data Burst', 'Megawatt',
+      'Ampere', 'Penumbra', 'EMP Salvo', 'Umbra', 'Eclipse', 'Watt', 'Faraday', 'Data Burst', 'Megawatt',
     ],
   },
 }
